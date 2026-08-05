@@ -110,3 +110,23 @@ def test_native_lm_studio_request_turns_reasoning_off(monkeypatch):
     assert result == VALID_PROMPT
     assert captured["reasoning"] == "off"
     assert captured["store"] is False
+
+
+def test_pipeline_restores_omitted_catalan_dialogue_before_validation():
+    source = (
+        'Luffy enters a restaurant and asks in catalonian language '
+        '"A ver, cabrones, quiero flaó de ese".'
+    )
+    omitted = """integrated_multimodal_description:
+[Shot 1] Live-action Luffy enters a restaurant in Ibiza with an arrogant expression.
+
+overall_soundscape:
+Restaurant chatter and clinking dishes.
+
+non_diegetic_music:
+N/A"""
+    result, validation, _manifest = prompt_enhancer.enhance_prompt_with_completion(
+        source, "t2va", 5.0, "", lambda _messages: omitted, 0, {"provider": "test"},
+    )
+    assert '<d>[Catalan] A ver, cabrones, quiero flaó de ese</d>' in result
+    assert validation["valid"]

@@ -1,24 +1,31 @@
 # ComfyUI MiniMax H3 Prompt Enhancer
 
-Guide-constrained prompt authoring and validation nodes for MiniMax H3 workflows in ComfyUI.
+Guide-constrained prompt enhancement, repair, and validation nodes for MiniMax H3 workflows in ComfyUI.
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](#project-status)
+[![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](#project-status-and-license)
 
-Turn a short request into MiniMax H3's documented audiovisual prompt structures, validate the result, or reuse the same guide with an LLM node you already have. The package is standalone: it does not require MiniMax Director and can be inserted into native or custom H3 workflows.
+The main node turns a short request into MiniMax H3's documented audiovisual prompt structure. It can use either:
 
-It does not bundle model weights, inspect reference pixels, or replace MiniMax H3 conditioning. It prepares text for the H3 prompt input.
+1. an OpenAI-compatible endpoint such as LM Studio; or
+2. a local GGUF selected from `ComfyUI/models/llm_gguf`, launched through an isolated `llama-server` process.
+
+The package does not bundle model weights or llama.cpp, does not inspect reference pixels, and does not replace H3 conditioning. It prepares and validates text for native or custom H3 workflows.
 
 ## Contents
 
 - [Why use it?](#why-use-it)
+- [Backend design](#backend-design)
 - [Quick start](#quick-start)
 - [Nodes](#nodes)
-- [Modes and output contracts](#modes-and-output-contracts)
-- [References and exact content](#references-and-exact-content)
-- [Model and endpoint selection](#model-and-endpoint-selection)
+- [Exact wiring](#exact-wiring)
+- [Prompt contracts](#prompt-contracts)
+- [Dialogue, language, and exact text](#dialogue-language-and-exact-text)
+- [References](#references)
 - [Installation](#installation)
+- [Models and llama.cpp](#models-and-llamacpp)
+- [Memory policy](#memory-policy)
 - [Privacy and security](#privacy-and-security)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -26,101 +33,158 @@ It does not bundle model weights, inspect reference pixels, or replace MiniMax H
 
 ## Why use it?
 
-MiniMax H3 responds best when visual action, timing, camera, dialogue and sound are expressed in the structure expected by the selected generation mode. This pack makes that structure explicit and machine-checkable.
+MiniMax H3 responds best when actions, timing, camera, dialogue, language, and sound follow the structure expected by the selected generation mode. This pack makes that structure explicit and machine-checkable.
 
 | Need | What the pack provides |
 |---|---|
-| Rewrite a short idea | An OpenAI-compatible enhancer with optional repair passes |
-| Reuse an existing LLM node | A guide builder that outputs separate system and user prompts |
-| Check hand-written text | A model-free validator with structured errors and recommendations |
-| Preserve exact content | Quoted dialogue, lyrics and visible text are carried as protected content |
-| Keep references stable | Positional image/video/audio references become H3 labels without scenario-specific logic |
-| Keep local prompts local | Loopback endpoints are allowed by default; remote endpoints require explicit opt-in |
+| Rewrite a basic idea | A switchable remote/local Prompt Enhancer |
+| Use a local quantized LLM | GGUF discovery and isolated llama.cpp execution |
+| Preserve dialogue | Exact quoted text and mandatory `<d>[Language] ...</d>` blocks |
+| Reuse another LLM node | Separate system/user instructions from Prompt Guide Builder |
+| Check authored text | Model-free structural validation and repair feedback |
+| Feed duration downstream | `duration_seconds` output on both enhancer nodes |
+| Reclaim VRAM before H3 | Per-run unload by default, with optional persistent mode |
 
-The validator catches structural mistakes; it cannot guarantee visual quality, identity fidelity, physical correctness or that the diffusion model will follow every instruction.
+Validation is a structural gate. It cannot guarantee visual quality, identity fidelity, physical correctness, or diffusion-model compliance.
+
+## Backend design
+
+| Route | Runtime | Best for | Memory lifecycle |
+|---|---|---|---|
+| OpenAI-compatible | LM Studio, Ollama, or another compatible API | Existing local/remote LLM services | Controlled by that service |
+| Local GGUF | Standalone `llama-server` | Direct use of GGUF files without LM Studio running | Close after every prompt by default, or keep loaded on request |
+| Existing ComfyUI LLM node | QwenVL/GGUF/other node plus Guide Builder | Reusing a loader already present in the graph | Controlled by that node |
+
+### Why standalone llama-server?
+
+Some ComfyUI prompt enhancers import `llama-cpp-python` inside the long-running ComfyUI process. This pack deliberately uses a standalone `llama-server` for its direct GGUF route:
+
+- newer llama.cpp builds can support newer architectures or quantizations without replacing a Python/CUDA wheel shared by other custom nodes;
+- a native-model crash is isolated from ComfyUI;
+- terminating the process releases its RAM and VRAM deterministically;
+- the same OpenAI-compatible request pipeline is used for remote and local execution.
+
+The trade-off is model startup time when `keep_server_loaded` is disabled. Users with sufficient VRAM can keep the process alive between prompt-enhancement calls.
+
+`llama-server` is required only for the local GGUF route. The endpoint route, Guide Builder, and Validator do not need it.
 
 ## Quick start
 
-1. Install the custom node and restart ComfyUI.
-2. Start an OpenAI-compatible chat server such as LM Studio. The default endpoint is `http://127.0.0.1:1234/v1`.
+### Remote or LM Studio
+
+1. Install the node pack and restart ComfyUI.
+2. Start an OpenAI-compatible server. LM Studio commonly uses `http://127.0.0.1:1234/v1`.
 3. Add **MiniMax H3 Prompt Enhancer** from `MiniMax H3 → Prompting`.
-4. Enter a `basic_prompt`, choose the H3 mode, and set the intended duration.
-5. For Ref2VA, define the available labels and their roles in `reference_context`.
-6. Connect `enhanced_prompt` to the prompt input used by your H3 conditioning node.
-7. Inspect `validation_report`. A green structural result is a gate, not a quality guarantee.
+4. Leave `use_remote_model=true`.
+5. Enter the endpoint and optionally an exact API model ID.
+6. Connect `enhanced_prompt` to H3 conditioning and `duration_seconds` to the downstream duration control.
 
-Typical direct wiring:
+Loopback endpoints work by default. Sending prompts to another host requires `allow_remote_endpoint=true`.
 
-```text
-basic prompt → MiniMax H3 Prompt Enhancer → H3 conditioning prompt
-                                      ├──→ validation_report
-                                      └──→ enhancement_manifest
-```
+### Local GGUF without LM Studio
 
-To reuse another text-generation node:
+1. Install a current official llama.cpp build containing `llama-server` or `llama-server.exe`.
+2. Place one or more text-generation GGUF files in `ComfyUI/models/llm_gguf/`.
+3. Restart ComfyUI or refresh node definitions.
+4. Add **MiniMax H3 Prompt Enhancer** and set `use_remote_model=false`.
+5. Select `local_model` and the detected `llama_server_path` from their dropdowns.
+6. Leave `keep_server_loaded=false` when H3 needs the VRAM immediately afterward.
 
-```text
-basic prompt → Prompt Guide Builder → existing LLM node → Prompt Validator → H3
-```
+The frontend hides endpoint-only controls in local mode and hides GGUF-only controls in remote mode. It also refits the node so widgets and outputs remain inside its frame when old workflows are opened.
 
 ## Nodes
 
+All nodes appear under `MiniMax H3 → Prompting`.
+
 ### MiniMax H3 Prompt Enhancer
 
-Calls an OpenAI-compatible chat endpoint and returns:
+The primary switchable node.
+
+Outputs:
 
 | Output | Meaning |
 |---|---|
-| `enhanced_prompt` | Normalized prompt ready for the selected H3 conditioning mode |
-| `validation_report` | Resolved mode, validity, structural errors and recommendations |
-| `enhancement_manifest` | Provider/model/mode and repair metadata; never contains the API key |
+| `enhanced_prompt` | Normalized prompt for H3 conditioning |
+| `validation_report` | Resolved mode, errors, and recommendations |
+| `enhancement_manifest` | Backend/model/mode/memory metadata; never contains an API key |
+| `duration_seconds` | Unchanged requested duration for downstream wiring |
 
-Important controls:
+Shared controls:
 
 | Control | Default | Behavior |
 |---|---:|---|
-| `endpoint` | `http://127.0.0.1:1234/v1` | OpenAI-compatible API root |
-| `model` | blank | Discovers models and prefers a compact instruct/chat entry |
+| `mode` | `auto` | T2VA unless reference context contains H3 reference labels |
+| `duration_seconds` | `5.0` | Constrains prompt timing and is forwarded as an output |
 | `temperature` | `0.2` | Low variance for structured rewriting |
-| `max_tokens` | `4096` | Output budget for the completed prompt |
-| `timeout_seconds` | `300` | Network/model timeout |
-| `repair_attempts` | `1` | Re-prompts the model with validator errors, up to two times |
-| `disable_thinking` | enabled | Requests non-reasoning output where the endpoint supports it |
-| `allow_remote_endpoint` | disabled | Required before sending content beyond the local machine |
+| `max_tokens` | `4096` | Completion budget |
+| `repair_attempts` | `1` | Re-prompts with validator errors |
+| `disable_thinking` | enabled | Requests direct structured output where supported |
+| `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 
-The node is deliberately marked as changed on each queue so prompt enhancement is not silently reused from an old ComfyUI execution cache.
+Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
+
+Existing serialized workflows remain remote by default because `use_remote_model` defaults to enabled and the new output was appended after the three original outputs.
+
+### MiniMax H3 GGUF Prompt Enhancer
+
+The specialized direct-GGUF node exposes both model and runtime paths, extra registered model roots, GPU-layer offload, context, threads, timeouts, and the persistent-process toggle. It returns the same four outputs as the main enhancer.
+
+Use it when you need custom paths or prefer a graph dedicated to GGUF. The main node is simpler for models under `ComfyUI/models/llm_gguf`.
+
+### MiniMax H3 Unload GGUF Prompt Model
+
+Stops the optional persistent prompt-model server and releases its RAM/VRAM. It is safe to queue when no persistent model is loaded.
 
 ### MiniMax H3 Prompt Guide Builder
 
-Builds `system_prompt`, `user_prompt` and `resolved_mode` without calling a model. Use it with QwenVL/GGUF nodes, Ollama, LM Studio integrations or another text-generation node already installed in ComfyUI.
-
-The builder is the best choice when you want to control model loading elsewhere in the graph or avoid a second API client.
+Builds `system_prompt`, `user_prompt`, and `resolved_mode` without calling an LLM. Connect the two prompt outputs to an existing QwenVL, GGUF, Ollama, or other text-generation node, then validate its result.
 
 ### MiniMax H3 Prompt Validator
 
-Validates enhanced or manually authored prompts without an LLM call. It checks:
+Validates enhanced or manually authored prompts without running an LLM. It checks section order, alignment instructions, shot numbering and timing, language-tagged dialogue, exact quoted content, reference labels, and full-reference definitions.
 
-- required section names and order;
-- first/last-frame alignment instructions;
-- sequential shot numbering and increasing cut times;
-- dialogue tags and preservation of quoted content;
-- declared reference labels;
-- Ref2VA description structure and recommended detail.
+## Exact wiring
 
-It returns the original `prompt`, a Boolean `valid`, and a JSON `validation_report`. Connect `valid` to your own workflow gate if desired.
+### Switchable main node
 
-## Modes and output contracts
+```text
+basic prompt → MiniMax H3 Prompt Enhancer → enhanced_prompt → H3 conditioning
+                                      ├──→ validation_report
+                                      ├──→ enhancement_manifest
+                                      └──→ duration_seconds → video-duration control
+```
+
+Set `use_remote_model=true` for an endpoint or `false` for the selected GGUF. Do not chain both backends.
+
+### Persistent GGUF with explicit unload
+
+```text
+Prompt Enhancer [local GGUF, keep_server_loaded=true]
+    ├──→ enhanced_prompt → H3 conditioning
+    └──→ repeated prompt iteration
+
+Unload GGUF Prompt Model → release RAM/VRAM before a constrained H3 render
+```
+
+### Existing ComfyUI LLM node
+
+```text
+basic prompt → Prompt Guide Builder.system_prompt ─┐
+               Prompt Guide Builder.user_prompt ──┼→ existing LLM → Prompt Validator → H3
+```
+
+## Prompt contracts
 
 | Mode | Intended use | Required structure |
 |---|---|---|
 | `T2VA` | Text-to-video with native audio | Three-section base format |
 | `I2VA` | First-frame-guided generation | Alignment instruction plus base format |
-| `FL2VA` | First- and last-frame-guided generation | Dual alignment instruction plus base format |
+| `FL2VA` | First/last-frame-guided generation | Dual alignment instruction plus base format |
 | `L2VA` | Last-frame-guided generation | Final-frame alignment plus base format |
-| `Ref2VA` | Full multimodal reference generation | Six-section reference format |
-| `auto` | Conservative automatic choice | Ref2VA only when `reference_context` contains an H3 reference label; otherwise T2VA |
+| `Ref2VA` | Multimodal reference generation | Six-section reference format |
+| `auto` | Conservative automatic choice | Ref2VA only when reference context contains an H3 label; otherwise T2VA |
 
-Base modes use these sections in order:
+Base output sections:
 
 ```text
 integrated_multimodal_description:
@@ -128,7 +192,7 @@ overall_soundscape:
 non_diegetic_music:
 ```
 
-Ref2VA uses:
+Full-reference output sections:
 
 ```text
 subject_definitions:
@@ -139,56 +203,48 @@ overall_soundscape:
 non_diegetic_music:
 ```
 
-`duration_seconds` constrains cut timestamps; it does not change the frame count in your generation workflow. Configure the H3 latent/video length separately.
+Shot 1 has no timestamp. Later shots use `[Shot N] At MM:SS.mmm,` with strictly increasing cut times inside `duration_seconds`.
 
-## References and exact content
+## Dialogue, language, and exact text
 
-The enhancer cannot see attached images, videos or audio. `reference_context` must describe the labels that the downstream H3 node will actually receive.
-
-Example:
+MiniMax's guide requires spoken content inside a dialogue block:
 
 ```text
-<Picture 1>: identity and clothing reference for the presenter.
-<Picture 2>: exact product design and markings.
-<Audio 1>: the presenter's vocal identity and delivery reference.
+The speaker (S1) says: <d>[Catalan] A ver, cabrones, quiero flaó de ese</d>.
 ```
 
-Then a basic request may say:
+The enhancer now creates an explicit mandatory-dialogue contract before generation and performs deterministic post-normalization:
+
+- speech cues such as `says`, `asking`, `preguntando`, or `gritando` identify spoken quotes;
+- requested language names become the `[Language]` marker;
+- common variants such as `Catalonian`, `Catalan`, `catalán`, and `català` normalize to `[Catalan]`;
+- every quoted spoken line is copied verbatim, without translation, censorship, or paraphrase;
+- if an LLM still omits the line, it is restored to the timeline inside `<d>` before validation.
+
+Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
+
+## References
+
+The enhancer cannot inspect attached images, video, or audio. Describe the assets passed downstream in `reference_context`:
 
 ```text
-The person in image 1 presents the object in image 2 and says "Here it is."
+<Picture 1> is the exact person identity and wardrobe reference.
+<Picture 2> is the exact product reference; preserve its shape, colors, controls, and markings.
 ```
 
-Positional references are generic bindings, not hard-coded objects: `image 1` maps to `<Picture 1>`, `video 2` to `<Video 2>`, and `audio 1` to `<Audio 1>`. The implementation contains no production logic for any particular weapon, character or test scene.
-
-Quoted dialogue, lyrics and visible text are preserved rather than translated or paraphrased. The LLM can still make mistakes; always inspect the enhanced prompt and validator output before an expensive render.
-
-## Model and endpoint selection
-
-### LM Studio
-
-The default works with LM Studio's local API:
-
-```text
-http://127.0.0.1:1234/v1
-```
-
-When `disable_thinking` is enabled, the client first tries LM Studio's native chat route with reasoning disabled and falls back to `/v1/chat/completions` with `enable_thinking: false`.
-
-Leaving `model` blank queries `/v1/models`, excludes obvious embedding/reranking entries and prefers a compact instruct/chat model. This is convenient, but explicit model selection is recommended for reproducible workflows.
-
-### Choosing a model
-
-- A capable 4B-class instruct model is the recommended interactive starting point.
-- A 27B–35B model may improve difficult Ref2VA synthesis but loads more slowly and uses substantially more memory.
-- Sub-1B models frequently miss sections, reference constraints or exact dialogue.
-- Uncensored/abliterated variants may reduce refusals but can also reduce instruction fidelity; validation remains necessary.
-
-MiniMax H3's own Qwen3-VL checkpoint cannot be reused as the chat model here. ComfyUI loads a truncated conditioning encoder without a text-generation head.
-
-Any OpenAI-compatible server can be used. Remote servers are blocked until `allow_remote_endpoint` is enabled.
+Positional wording is supported generically: `image 1`, `imagen 1`, or `picture 1` maps to `<Picture 1>`; corresponding video and audio wording maps to `<Video N>` and `<Audio N>`. There is no scenario-specific production logic.
 
 ## Installation
+
+### ComfyUI Manager
+
+Until a Registry entry is published, use **Install via Git URL**:
+
+```text
+https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer.git
+```
+
+Restart ComfyUI after installation.
 
 ### Git
 
@@ -198,81 +254,113 @@ From `ComfyUI/custom_nodes`:
 git clone https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer.git
 ```
 
-Restart ComfyUI. The nodes appear under `MiniMax H3 → Prompting`.
+This node pack has no mandatory third-party Python dependencies. Python 3.10+ and a current ComfyUI installation are required.
 
-The project is public on GitHub but is not yet published in the Comfy Registry. Until a Registry package exists, use Git or ComfyUI Manager's **Install via Git URL** function.
+Registry metadata is included in `pyproject.toml` for future publication.
 
-### Requirements
+## Models and llama.cpp
 
-- Python 3.10 or newer.
-- A current ComfyUI installation.
-- No additional Python packages for the node pack itself.
-- A reachable chat endpoint only when using **Prompt Enhancer**. **Guide Builder** and **Validator** work offline.
+### GGUF discovery
 
-### Update
+The main dropdown scans text GGUF files under:
 
-```bash
-git -C ComfyUI-MiniMax-H3-Prompt-Enhancer pull --ff-only
+```text
+ComfyUI/models/llm_gguf/
 ```
 
-Restart ComfyUI after updating. Back up important workflows before changing versions.
+Multimodal projection files whose names contain `mmproj` are excluded because enhancement is text-only. The specialized GGUF node can additionally use trusted roots registered through `MINIMAX_H3_GGUF_MODEL_DIRS`.
 
-### Uninstall
+### llama-server discovery
 
-Stop ComfyUI and remove the `ComfyUI-MiniMax-H3-Prompt-Enhancer` directory. Existing workflow JSON files are not deleted, but ComfyUI will report the three node types as missing until the pack is reinstalled or those nodes are replaced.
+The main node searches, in order:
+
+1. `MINIMAX_H3_LLAMA_SERVER`;
+2. `llama-server` available on `PATH`;
+3. runtimes below `ComfyUI/models/prompt_enhancers/runtimes/`.
+
+Install llama.cpp from its [official releases](https://github.com/ggml-org/llama.cpp/releases) or build it for your platform. The extension never downloads or updates the executable silently.
+
+### Model recommendations
+
+- Official Qwen 3 4B GGUF Q4_K_M is a compact multilingual starting point.
+- Official Gemma 4 E4B QAT GGUF offers higher quality with greater memory use and requires a recent llama.cpp build.
+- Community uncensored/abliterated variants may reduce refusals but can weaken section discipline or instruction fidelity.
+- Quantization and runtime compatibility evolve independently; update llama.cpp when a GGUF reports an unsupported tensor or architecture type.
+
+## Memory policy
+
+`keep_server_loaded=false` is the production-safe default:
+
+- start private server;
+- load GGUF;
+- enhance and optionally repair;
+- terminate server;
+- return all model RAM/VRAM to the operating system.
+
+`keep_server_loaded=true` reuses an identical model/runtime/context configuration across queued enhancements. Changing the model or runtime automatically closes the previous cached server. Use **Unload GGUF Prompt Model** before H3 when memory pressure matters. ComfyUI shutdown also closes the cached process.
+
+Keeping a model loaded saves startup time but reserves its VRAM. It does not improve generation quality.
 
 ## Privacy and security
 
-- Loopback hosts are allowed by default.
-- Remote hosts require `allow_remote_endpoint=true`.
-- Enabling remote access sends `basic_prompt`, `reference_context` and the generated guide to that endpoint.
-- API keys are used only in request headers and are excluded from manifests and logs.
-- The node inherits ComfyUI's network/authentication boundary. Do not expose an unauthenticated ComfyUI instance to an untrusted network.
-- Remove private prompts, paths, endpoints and keys from workflows and bug reports.
+- Remote endpoints are blocked unless they are loopback or `allow_remote_endpoint=true`.
+- API keys are sent only as authorization headers and are excluded from manifests.
+- The private GGUF server binds to `127.0.0.1`, uses a random port and a random per-process API key.
+- Subprocesses launch with `shell=False` and are terminated on normal completion, errors, configuration changes, explicit unload, or ComfyUI shutdown.
+- GGUF paths must be under registered model roots.
+- GGUF files are native-runtime inputs. Obtain models and llama.cpp builds from trusted sources and verify published checksums where possible.
 
 ## Troubleshooting
 
-### No model is selected
+### Local model or llama-server dropdown is empty
 
-Enter the exact model ID reported by your server's `/v1/models` endpoint. Automatic selection intentionally ignores embedding and reranking models.
+Place text GGUF files in `ComfyUI/models/llm_gguf`. Put `llama-server` on `PATH`, set `MINIMAX_H3_LLAMA_SERVER`, or place it below the documented runtime directory. Restart ComfyUI or refresh node definitions afterward.
 
-### The model spends the output budget thinking
+### Widgets or outputs extend beyond the node frame
 
-Keep `disable_thinking` enabled. If the server ignores the request, use a non-thinking instruct model or configure the server's chat template directly.
+Reload the browser after updating the extension. The frontend recalculates the node size when it is created, configured, or switched between remote and local modes. Old saved dimensions are expanded automatically.
 
-### The validator rejects an otherwise good prompt
+### GGUF reports an unsupported tensor type
 
-Read `validation_report` before increasing `repair_attempts`. Common causes are missing colons, reordered sections, timestamps outside the requested duration, undeclared reference labels or changed quoted text.
+Update llama.cpp. A new GGUF quantization may be newer than the selected runtime. This is one reason the extension does not pin an in-process `llama-cpp-python` wheel.
 
-### Image/video/audio references are ignored
+### GGUF enhancement is slower than LM Studio
 
-The node does not inspect media or create ComfyUI reference connections. Declare the actual downstream H3 labels in `reference_context`, and ensure the corresponding media are connected to the H3 conditioning workflow.
+Per-run mode includes process startup and model loading. Enable `keep_server_loaded` for repeated prompt iteration when sufficient VRAM is available, or use the already-running LM Studio endpoint.
 
-### HTTP 401, 404 or timeout
+### Dialogue disappears or has no language tag
 
-- Confirm the endpoint root and API key.
-- Verify `/v1/models` and `/v1/chat/completions` are exposed.
-- Increase `timeout_seconds` for a model that is still loading.
-- For a remote host, enable `allow_remote_endpoint` only after reviewing its privacy policy.
+Update to the latest node version and inspect `validation_report`. Spoken quoted source content should be present verbatim inside `<d>[Language] ...</d>`. Include an explicit phrase such as `says in Catalan` when the language matters.
+
+### The validator still reports errors
+
+Increase `repair_attempts` to one or two. Structural validity does not guarantee that a small model can follow a complex prompt; try a stronger instruct GGUF or an endpoint model.
+
+### HTTP 401, 404, or timeout
+
+Verify endpoint root, API key, model ID, server status, and timeout. Use the API root such as `/v1`, not the full `/chat/completions` URL unless the server requires it.
 
 ## Development
 
-Run the test suite from the repository root:
+Run from the repository root:
 
 ```bash
 python -m pytest -q
+ruff check .
+node --check web/backend_toggle.js
+git diff --check
 ```
 
-The suite covers modes, normalization, positional-reference preservation, dialogue/text retention, endpoint policy, model selection and repair behavior.
+Tests cover all H3 modes, timing, alignment, exact dialogue/language preservation, references, endpoint policy, repair, GGUF discovery, process isolation, persistent reuse, explicit unload, and failure cleanup.
 
-Bug reports should include the ComfyUI version, node-pack commit, endpoint type, selected model, resolved mode, sanitized input and the complete validation/error report. Do not attach API keys or private reference content.
+Bug reports should include the ComfyUI version, extension commit, backend, model identifier, resolved mode, sanitized source prompt, and complete validation/error report. GGUF reports should also include the llama.cpp build and quantization. Never attach API keys or private reference content.
 
 ## Guide basis
 
-The rule set is an original executable specification derived from MiniMax H3's public base-mode and full-reference prompt-writing guides. It does not copy those documents verbatim. See the [ComfyUI MiniMax H3 documentation](https://docs.comfy.org/tutorials/video/minimax/minimax-h3) and [official H3 weights repository](https://huggingface.co/Comfy-Org/MiniMax-H3) for the surrounding model workflow.
+The implementation is based on MiniMax's public base and full-reference Video Prompt Writing Guides. It is an original implementation and is not an official MiniMax or ComfyUI product.
 
 ## Project status and license
 
-Version `0.1.0` is a tested Beta. The documented node/output names are stable for existing workflows, but validation rules may become stricter as the public H3 guidance evolves.
+The project is beta software. Prompt validation and backend lifecycle behavior are tested, but model outputs remain nondeterministic.
 
-Source code is licensed under [GPL-3.0-only](LICENSE). Model weights are not bundled and remain subject to their upstream licenses. This independent project is not affiliated with or endorsed by MiniMax, Comfy Org, LM Studio or any referenced model provider.
+Licensed under [GPL-3.0-only](LICENSE).

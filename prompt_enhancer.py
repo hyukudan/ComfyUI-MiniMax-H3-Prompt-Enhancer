@@ -6,14 +6,15 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
+    from .prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
+    from prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -76,8 +77,9 @@ def _model_name(root: str, requested: str, api_key: str, timeout: int) -> str:
 
 def _completion(root: str, model: str, messages: list[dict], api_key: str,
                 temperature: float, max_tokens: int, timeout: int,
-                disable_thinking: bool = True) -> str:
-    if disable_thinking:
+                disable_thinking: bool = True,
+                prefer_lm_studio_native: bool = True) -> str:
+    if disable_thinking and prefer_lm_studio_native:
         native_root = root[:-3] if root.endswith("/v1") else root
         native_payload = {
             "model": model,
@@ -124,27 +126,28 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
         raise RuntimeError("LLM endpoint returned no choices[0].message.content") from exc
 
 
-def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
-                   reference_context: str, endpoint: str, model: str, api_key: str,
-                   temperature: float, max_tokens: int, timeout: int,
-                   repair_attempts: int, allow_remote_endpoint: bool,
-                   disable_thinking: bool = True) -> tuple[str, dict, dict]:
+def enhance_prompt_with_completion(
+    basic_prompt: str,
+    mode: str,
+    duration_seconds: float,
+    reference_context: str,
+    completion: Callable[[list[dict]], str],
+    repair_attempts: int,
+    manifest: dict,
+) -> tuple[str, dict, dict]:
+    """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
-    root = _api_root(endpoint)
-    _require_allowed_endpoint(root, bool(allow_remote_endpoint))
-    secret = str(api_key).strip() or os.getenv("MINIMAX_H3_PROMPT_ENHANCER_API_KEY", "")
-    selected_model = _model_name(root, model, secret, int(timeout))
     user_request = build_user_request(basic_prompt, mode, duration_seconds, reference_context)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_request},
     ]
     resolved_mode = resolve_mode(mode, reference_context)
-    enhanced = normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
-        _completion(root, selected_model, messages, secret, temperature, max_tokens, timeout, disable_thinking)
-    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt)
+    enhanced = normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+        completion(messages)
+    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt), basic_prompt, resolved_mode)
     validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):
@@ -158,21 +161,52 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                 + "\n- ".join(validation["errors"])
             )},
         ])
-        enhanced = normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
-            _completion(root, selected_model, messages, secret, temperature, max_tokens, timeout, disable_thinking)
-        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt)
+        enhanced = normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+            completion(messages)
+        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt), basic_prompt, resolved_mode)
         validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
-    manifest = {
-        "provider": "local_chat_api",
-        "endpoint": root,
-        "model": selected_model,
+    result_manifest = {
+        **manifest,
         "mode": validation["mode"],
         "durationSeconds": float(duration_seconds),
-        "temperature": float(temperature),
-        "maxTokens": int(max_tokens),
         "repairAttemptsUsed": attempts,
-        "thinkingDisabled": bool(disable_thinking),
-        "lmStudioNativePreferred": bool(disable_thinking),
         "valid": validation["valid"],
     }
-    return enhanced, validation, manifest
+    return enhanced, validation, result_manifest
+
+
+def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
+                   reference_context: str, endpoint: str, model: str, api_key: str,
+                   temperature: float, max_tokens: int, timeout: int,
+                   repair_attempts: int, allow_remote_endpoint: bool,
+                   disable_thinking: bool = True) -> tuple[str, dict, dict]:
+    basic_prompt = str(basic_prompt).strip()
+    if not basic_prompt:
+        raise ValueError("basic_prompt cannot be empty")
+    root = _api_root(endpoint)
+    _require_allowed_endpoint(root, bool(allow_remote_endpoint))
+    secret = str(api_key).strip() or os.getenv("MINIMAX_H3_PROMPT_ENHANCER_API_KEY", "")
+    selected_model = _model_name(root, model, secret, int(timeout))
+
+    def complete(messages: list[dict]) -> str:
+        return _completion(
+            root, selected_model, messages, secret, temperature, max_tokens, timeout, disable_thinking
+        )
+
+    return enhance_prompt_with_completion(
+        basic_prompt,
+        mode,
+        duration_seconds,
+        reference_context,
+        complete,
+        repair_attempts,
+        {
+            "provider": "local_chat_api",
+            "endpoint": root,
+            "model": selected_model,
+            "temperature": float(temperature),
+            "maxTokens": int(max_tokens),
+            "thinkingDisabled": bool(disable_thinking),
+            "lmStudioNativePreferred": bool(disable_thinking),
+        },
+    )

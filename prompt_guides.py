@@ -42,10 +42,21 @@ _ROLE_REFERENCE_RE = re.compile(
 )
 _QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
 _SPEECH_CUE_RE = re.compile(
-    r"\b(?:say|says|said|state|states|ask|asks|shout|shouts|whisper|whispers|speak|speaks|"
-    r"dice|dijo|pregunta|grita|susurra|habla)\b",
+    r"\b(?:say|says|said|saying|state|states|ask|asks|asking|shout|shouts|shouting|"
+    r"whisper|whispers|whispering|speak|speaks|speaking|dice|dijo|diciendo|pregunta|"
+    r"preguntando|grita|gritando|susurra|susurrando|habla|hablando)\b",
     re.IGNORECASE,
 )
+_LANGUAGE_ALIASES = {
+    "catalonian": "Catalan",
+    "catalan": "Catalan",
+    "catalán": "Catalan",
+    "catala": "Catalan",
+    "català": "Catalan",
+    "castilian": "Spanish",
+    "castellano": "Spanish",
+    "español": "Spanish",
+}
 
 
 SYSTEM_PROMPT = """You rewrite basic user requests into production-ready MiniMax H3 audiovisual prompts.
@@ -240,6 +251,18 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET DURATION: {float(duration_seconds):.3f} seconds",
         "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
     ]
+    dialogue_contracts = []
+    for match in _QUOTED_RE.finditer(basic_prompt or ""):
+        cue_window = (basic_prompt or "")[max(0, match.start() - 180):match.start()]
+        if _SPEECH_CUE_RE.search(cue_window):
+            dialogue_contracts.append(
+                f'- <d>[{_source_dialogue_language(basic_prompt, match)}] {match.group(1)}</d>'
+            )
+    if dialogue_contracts:
+        parts.append(
+            "MANDATORY DIALOGUE CONTRACT (copy each block verbatim into the shot where it is spoken; "
+            "do not omit, translate, censor, or move it to soundscape):\n" + "\n".join(dialogue_contracts)
+        )
     if reference_context.strip():
         parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
     positional_contract = _positional_reference_contract(basic_prompt)
@@ -287,6 +310,61 @@ def normalize_dialogue_tags(text: str) -> str:
         flags=re.IGNORECASE,
     )
     return re.sub(r"(<d>\[[^\]]+\])\s*", r"\1 ", value, flags=re.IGNORECASE)
+
+
+def _source_dialogue_language(source_prompt: str, quote_match) -> str:
+    window = (source_prompt or "")[max(0, quote_match.start() - 180):quote_match.start()]
+    matches = re.findall(
+        r"\b(?:in|en)\s+(?:(?:the\s+)?([\wÀ-ÿ-]+)\s+(?:language|idioma)|"
+        r"(?:language|idioma)\s+([\wÀ-ÿ-]+)|([\wÀ-ÿ-]+))",
+        window,
+        flags=re.IGNORECASE,
+    )
+    if not matches:
+        return "Original language"
+    raw = next((part for part in matches[-1] if part), "").strip()
+    return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
+
+
+def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
+    """Deterministically retain spoken source quotes and their requested language tags."""
+    value = str(text)
+    additions = []
+    for match in _QUOTED_RE.finditer(source_prompt or ""):
+        cue_window = (source_prompt or "")[max(0, match.start() - 180):match.start()]
+        if not _SPEECH_CUE_RE.search(cue_window):
+            continue
+        quote = match.group(1)
+        language = _source_dialogue_language(source_prompt, match)
+        block = f"<d>[{language}] {quote}</d>"
+        tagged = re.compile(
+            rf"<d>\[[^\]]+\]\s*{re.escape(quote)}\s*</d>",
+            flags=re.IGNORECASE,
+        )
+        if tagged.search(value):
+            value = tagged.sub(block, value)
+            continue
+        quoted = re.compile(rf'["“]{re.escape(quote)}["”]')
+        if quoted.search(value):
+            value = quoted.sub(block, value, count=1)
+            continue
+        if quote in value:
+            value = value.replace(quote, block, 1)
+            continue
+        additions.append(
+            f"The on-screen speaker (S1) delivers the requested line: {block}."
+        )
+    if not additions:
+        return value
+    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
+    match = re.search(
+        rf"(?ms)(^{re.escape(section)}:\s*)(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
+        value,
+    )
+    if not match:
+        return value
+    body = match.group(2).rstrip() + " " + " ".join(additions)
+    return value[:match.start(2)] + body + "\n\n" + value[match.end(2):].lstrip()
 
 
 def normalize_shot_timestamps(text: str) -> str:
