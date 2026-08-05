@@ -275,6 +275,7 @@ def enhance_prompt_with_gguf_server(
     repair_attempts: int,
     disable_thinking: bool = True,
     keep_server_loaded: bool = False,
+    enhance_description: bool = True,
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -360,6 +361,7 @@ def enhance_prompt_with_gguf_server(
                     "serverReused": reused,
                     "serverUnloadedAfterRun": not bool(keep_server_loaded),
                 },
+                enhance_description,
             )
         finally:
             if not bool(keep_server_loaded):

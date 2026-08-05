@@ -134,12 +134,15 @@ def enhance_prompt_with_completion(
     completion: Callable[[list[dict]], str],
     repair_attempts: int,
     manifest: dict,
+    enhance_description: bool = True,
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
-    user_request = build_user_request(basic_prompt, mode, duration_seconds, reference_context)
+    user_request = build_user_request(
+        basic_prompt, mode, duration_seconds, reference_context, enhance_description
+    )
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_request},
@@ -170,6 +173,7 @@ def enhance_prompt_with_completion(
         "mode": validation["mode"],
         "durationSeconds": float(duration_seconds),
         "repairAttemptsUsed": attempts,
+        "descriptionEnhanced": bool(enhance_description),
         "valid": validation["valid"],
     }
     return enhanced, validation, result_manifest
@@ -179,7 +183,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    reference_context: str, endpoint: str, model: str, api_key: str,
                    temperature: float, max_tokens: int, timeout: int,
                    repair_attempts: int, allow_remote_endpoint: bool,
-                   disable_thinking: bool = True) -> tuple[str, dict, dict]:
+                   disable_thinking: bool = True,
+                   enhance_description: bool = True) -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -209,4 +214,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
             "thinkingDisabled": bool(disable_thinking),
             "lmStudioNativePreferred": bool(disable_thinking),
         },
+        enhance_description,
     )

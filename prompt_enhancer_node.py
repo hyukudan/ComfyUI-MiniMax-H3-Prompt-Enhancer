@@ -42,15 +42,19 @@ class MiniMaxH3PromptGuideBuilder:
             "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
             "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
             "reference_context": ("STRING", {"multiline": True, "default": ""}),
+        }, "optional": {
+            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
         }}
 
-    def build(self, basic_prompt, mode, duration_seconds, reference_context):
+    def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context)
         return (
             SYSTEM_PROMPT,
-            build_user_request(basic_prompt, resolved, duration_seconds, reference_context),
+            build_user_request(
+                basic_prompt, resolved, duration_seconds, reference_context, enhance_description
+            ),
             resolved,
         )
 
@@ -83,6 +87,7 @@ class MiniMaxH3PromptEnhancer:
             "allow_remote_endpoint": ("BOOLEAN", {"default": False}),
         }, "optional": {
             "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
+            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Improve staging, cinematography, pacing, transitions, and sound without changing source facts or exact dialogue"}),
             "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
@@ -108,18 +113,20 @@ class MiniMaxH3PromptEnhancer:
                 temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking,
                 allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
                 gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
-                keep_server_loaded=False):
+                keep_server_loaded=False, enhance_description=True):
         if bool(use_remote_model):
             prompt, validation, manifest = enhance_prompt(
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
                 temperature, max_tokens, timeout_seconds, repair_attempts, allow_remote_endpoint,
                 disable_thinking,
+                enhance_description,
             )
         else:
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
                 basic_prompt, mode, duration_seconds, reference_context, llama_server_path, local_model,
                 "", gpu_layers, context_size, threads, temperature, max_tokens, timeout_seconds,
                 startup_timeout, repair_attempts, disable_thinking, keep_server_loaded,
+                enhance_description,
             )
         return (
             prompt,
@@ -158,6 +165,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "startup_timeout": ("INT", {"default": 180, "min": 10, "max": 1800, "step": 10}),
             "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True}),
+            "enhance_description": ("BOOLEAN", {"default": True}),
             "keep_server_loaded": ("BOOLEAN", {"default": False}),
         }}
 
@@ -168,12 +176,13 @@ class MiniMaxH3GGUFPromptEnhancer:
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, llama_server_path,
                 gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
                 max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
-                keep_server_loaded):
+                enhance_description, keep_server_loaded):
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
             request_timeout, startup_timeout, repair_attempts, disable_thinking,
             keep_server_loaded,
+            enhance_description,
         )
         return (
             prompt,

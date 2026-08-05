@@ -68,6 +68,7 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     monkeypatch.setattr(prompt_enhancer_node, "available_llama_servers", lambda: ["llama-server"])
     inputs = MiniMaxH3PromptEnhancer.INPUT_TYPES()["optional"]
     assert inputs["use_remote_model"][1]["default"] is True
+    assert inputs["enhance_description"][1]["default"] is True
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False

@@ -120,6 +120,7 @@ Shared controls:
 | `repair_attempts` | `1` | Re-prompts with validator errors |
 | `disable_thinking` | enabled | Requests direct structured output where supported |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
+| `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
 
 Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
 
@@ -204,6 +205,19 @@ non_diegetic_music:
 ```
 
 Shot 1 has no timestamp. Later shots use `[Shot N] At MM:SS.mmm,` with strictly increasing cut times inside `duration_seconds`.
+
+## Description enhancement
+
+`enhance_description` controls whether the LLM acts as a restrained director or only as a format adapter.
+
+When enabled, it develops terse source wording into concrete staging, composition, performance, lighting, camera
+motion, pacing, action continuity, physical sound, and requested music. It may introduce a cut only when the cut
+provides a meaningful change in viewpoint, time, location, scale, or information. Otherwise it prefers a motivated
+continuous camera move.
+
+When disabled, it performs a conservative conversion into MiniMax H3's required structure and preserves the source's
+original level of detail. Both modes keep quoted dialogue, reference bindings, identities, requested actions, timing,
+and the intended ending authoritative.
 
 ## Dialogue, language, and exact text
 

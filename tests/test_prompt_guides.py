@@ -185,6 +185,17 @@ def test_unrelated_in_phrase_is_not_misread_as_language():
     assert "[His]" not in request
 
 
+def test_description_enhancement_toggle_changes_direction_not_source_contract():
+    source = 'A detective enters and says "Do not move."'
+    enhanced = build_user_request(source, "t2va", 5.0, enhance_description=True)
+    conservative = build_user_request(source, "t2va", 5.0, enhance_description=False)
+    assert "ACTIVE DIRECTORIAL ENHANCEMENT" in enhanced
+    assert "meaningful change of viewpoint" in enhanced
+    assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
+    assert '<d>[Original language] Do not move.</d>' in enhanced
+    assert '<d>[Original language] Do not move.</d>' in conservative
+
+
 def test_only_timeline_shot_one_is_bracketed():
     raw = "integrated_multimodal_description: Shot 1 opens wide.\noverall_soundscape: Shot 1 reference.\nnon_diegetic_music: N/A"
     fixed = normalize_first_shot_marker(raw, "t2va")

@@ -251,7 +251,7 @@ def alignment_instruction(mode: str, duration_seconds: float, final_shot: int | 
 
 
 def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
-                       reference_context: str = "") -> str:
+                       reference_context: str = "", enhance_description: bool = True) -> str:
     resolved = resolve_mode(mode, reference_context)
     alignment = alignment_instruction(resolved, duration_seconds)
     parts = [
@@ -259,6 +259,27 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET DURATION: {float(duration_seconds):.3f} seconds",
         "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
     ]
+    if bool(enhance_description):
+        parts.append(
+            "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
+            "- Turn terse wording into a concrete, vivid audiovisual sequence across the full target duration.\n"
+            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera motion, "
+            "action continuity, pacing, physical sound, and requested musical treatment.\n"
+            "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
+            "action and spoken line.\n"
+            "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
+            "otherwise prefer a motivated continuous camera move.\n"
+            "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
+            "- Do not invent new characters, plot events, dialogue, branded objects, reference assets, or an ending that "
+            "changes the user's intent."
+        )
+    else:
+        parts.append(
+            "CONSERVATIVE FORMAT ADAPTATION:\n"
+            "Convert the request into the required MiniMax H3 structure with only the detail needed for coherent "
+            "generation. Do not creatively expand its staging, story, shot design, or sound. Preserve the user's "
+            "level of specificity."
+        )
     dialogue_contracts = []
     for match in _QUOTED_RE.finditer(basic_prompt or ""):
         cue_window = (basic_prompt or "")[max(0, match.start() - 180):match.start()]
