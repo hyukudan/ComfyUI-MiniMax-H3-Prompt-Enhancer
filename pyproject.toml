@@ -1,0 +1,19 @@
+[project]
+name = "comfyui-minimax-h3-prompt-enhancer"
+version = "0.1.0"
+description = "Guide-constrained MiniMax H3 prompt enhancement and validation nodes for ComfyUI"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer"
+Issues = "https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
