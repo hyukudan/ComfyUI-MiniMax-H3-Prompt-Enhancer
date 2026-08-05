@@ -49,8 +49,8 @@ class MiniMaxH3PromptEnhancer:
     RETURN_TYPES = ("STRING", "STRING", "STRING")
     RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest")
     DESCRIPTION = (
-        "Rewrite a basic request into MiniMax H3's official base or full-reference structure using any "
-        "OpenAI-compatible local LLM. Connect the result to any MiniMax H3 prompt input."
+        "Rewrite a basic request into MiniMax H3's documented base or full-reference structure through an "
+        "OpenAI-compatible endpoint. Local endpoints are allowed by default; remote use requires explicit opt-in."
     )
 
     @classmethod
@@ -94,7 +94,10 @@ class MiniMaxH3PromptValidator:
     OUTPUT_NODE = True
     RETURN_TYPES = ("STRING", "BOOLEAN", "STRING")
     RETURN_NAMES = ("prompt", "valid", "validation_report")
-    DESCRIPTION = "Validate a manually authored or enhanced prompt against MiniMax H3's official structure."
+    DESCRIPTION = (
+        "Validate a manually authored or enhanced prompt against MiniMax H3's documented audiovisual structure "
+        "without calling an LLM. Structural validity does not guarantee generation quality."
+    )
 
     @classmethod
     def INPUT_TYPES(cls):
