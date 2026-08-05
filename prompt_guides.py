@@ -70,8 +70,8 @@ Shared timeline rules:
   Preserve the referenced person's identity or object's exact visible design wherever it appears. Never invent a
   Picture, Video, or Audio label that the request/reference context did not provide. Do not reveal an object before
   the action or spoken cue where the user explicitly says it first becomes visible.
-- Preserve concrete product nouns. In a firearm context, magazines/Spanish "cargadores" are detachable magazines,
-  never cartridges, rounds, or generic ammunition.
+- Preserve every referenced object's concrete noun, subtype, visible attributes, materials, markings, proportions,
+  and identity. Do not silently replace a supplied object with a generic or semantically related alternative.
 - overall_soundscape is one continuous paragraph of 1-4 sentences covering ambience, physical sounds, and
   non-verbal human sounds. Do not repeat dialogue or audience-only music there.
 - non_diegetic_music is 1-3 sentences describing only audience-only music through instrumentation, tempo, rhythm,
@@ -520,10 +520,6 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                         errors.append(
                             f"{label} appears before the user-specified reveal cue {cue!r}"
                         )
-        if re.search(r"\b(?:magazines?|cargadores?)\b", source_prompt or "", re.IGNORECASE) and re.search(
-            r"\b(?:cartridges?|rounds?)\b", detail_text, re.IGNORECASE,
-        ):
-            errors.append("Output changed firearm magazines/cargadores into cartridges or rounds")
         if detail_words and not 350 <= detail_words <= 500:
             warnings.append(f"Ref2VA detailed_description has {detail_words} words; 350-500 is recommended")
     return {

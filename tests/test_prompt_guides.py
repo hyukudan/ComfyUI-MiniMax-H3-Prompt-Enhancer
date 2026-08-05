@@ -157,6 +157,25 @@ def test_plain_image_numbers_become_immutable_picture_bindings():
     assert "Do not create any additional" in request
 
 
+def test_positional_roles_are_generic_and_not_tied_to_the_regression_example():
+    request = build_user_request(
+        "The driver in image 1 puts on the yellow racing helmet in image 2 beside the car in image 3.",
+        "ref2va", 6.0, "",
+    )
+    assert "<Subject 1> is the reusable driver shown in <Picture 1>" in request
+    assert "<Subject 2> is the reusable yellow racing helmet shown in <Picture 2>" in request
+    assert "<Subject 3> is the reusable car shown in <Picture 3>" in request
+
+
+def test_plain_video_and_audio_ordinals_become_exact_asset_tags():
+    request = build_user_request(
+        "Continue video 1 while using audio 2 as a timing and voice reference.", "ref2va", 8.0, "",
+    )
+    assert "<Video 1> is the exact user-provided video 1" in request
+    assert "<Audio 2> is the exact user-provided audio 2" in request
+    assert "Continue <Video 1> while using <Audio 2>" in request
+
+
 def test_ref2va_rejects_invented_assets_and_timeline_picture_definitions():
     detail = " ".join(["The person from <Picture 1> holds the Uzi from <Picture 2>."] * 55)
     prompt = f"""subject_definitions:
