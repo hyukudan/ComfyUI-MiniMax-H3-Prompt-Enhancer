@@ -178,6 +178,44 @@ Slow noir jazz."""
     assert not any("invented voiceover" in error.lower() for error in report["errors"])
 
 
+def test_internal_monologue_restoration_removes_duplicate_placeholder_speech():
+    source = (
+        'Detective Conan with his hand on his chin, thinking concentrated '
+        '"Quién debe ser el asesino?", while a murder happens behind him.'
+    )
+    generated = """integrated_multimodal_description:
+[Shot 1] Conan studies the scene. At 2.0 seconds, Conan speaks while maintaining intense focus on the unseen killer. [Shot 2] At 00:01.667, The camera remains focused on Conan as he delivers his line, but the background remains visible. A cut returns to the detective's internal monologue.
+
+overall_soundscape:
+Muffled struggle.
+
+non_diegetic_music:
+Slow noir jazz."""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert repaired.count("<d>") == 1
+    assert repaired.count("Quién debe ser el asesino?") == 1
+    assert repaired.count("off-screen internal monologue") == 1
+    assert "Conan speaks" not in repaired
+    assert "delivers his line" not in repaired
+    assert "detective's internal monologue" not in repaired
+
+
+def test_existing_tagged_internal_monologue_also_removes_extra_speech_cue():
+    source = 'Conan thinks "Quién debe ser el asesino?".'
+    generated = """integrated_multimodal_description:
+[Shot 1] Conan speaks while maintaining intense focus. Conan (S1) says in an off-screen internal monologue: <d>[Spanish] Quién debe ser el asesino?</d>, while his lips remain closed.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert repaired.count("<d>") == 1
+    assert repaired.count("off-screen internal monologue") == 1
+    assert "Conan speaks" not in repaired
+
+
 def test_unrelated_in_phrase_is_not_misread_as_language():
     source = 'A detective with his hand in his pocket says "Proceed."'
     request = build_user_request(source, "t2va", 5.0)

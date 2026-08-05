@@ -269,6 +269,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "action and spoken line.\n"
             "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
             "otherwise prefer a motivated continuous camera move.\n"
+            "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
+            "invent inserts, cutaways, or extra shots merely to dramatize an object, impact, or already-visible action.\n"
+            "- Express absolute cut times only in [Shot N] headers. Do not add competing numeric timestamps inside a "
+            "shot, and never create another shot or vocal cue to repeat or continue the same short line.\n"
             "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
             "- Do not invent new characters, plot events, dialogue, branded objects, reference assets, or an ending that "
             "changes the user's intent."
@@ -373,6 +377,36 @@ def _source_quote_is_internal_monologue(source_prompt: str, quote_match) -> bool
     return bool(_INTERNAL_MONOLOGUE_CUE_RE.search(window))
 
 
+def _remove_internal_monologue_placeholders(text: str) -> str:
+    """Remove vague duplicate vocal cues before restoring one exact thought line."""
+    parts = re.split(r"(?<=[.!?])(?=\s+|\Z)", str(text))
+    cleaned = []
+    for sentence in parts:
+        has_dialogue = "<d>" in sentence
+        if not has_dialogue and re.search(
+            r"\b(?:speaks?|says?|utters?)\b[^.!?]*\b(?:focus|concentrat|killer|thought)",
+            sentence,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        sentence = re.sub(
+            r"\s+as\s+(?:he|she|they|the character|the detective)\s+"
+            r"(?:delivers?\s+(?:his|her|their|the)\s+line|speaks?)\s*,?\s*(?:but\s+)?",
+            " while ",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+        if not has_dialogue:
+            sentence = re.sub(
+                r"\b(?:his|her|their|the detective's|the character's)?\s*internal monologue\b",
+                "concentrated thought",
+                sentence,
+                flags=re.IGNORECASE,
+            )
+        cleaned.append(sentence)
+    return "".join(cleaned)
+
+
 def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
     """Deterministically retain spoken source quotes and their requested language tags."""
     value = str(text)
@@ -384,6 +418,9 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
         quote = match.group(1)
         language = _source_dialogue_language(source_prompt, match)
         block = f"<d>[{language}] {quote}</d>"
+        is_internal_monologue = _source_quote_is_internal_monologue(source_prompt, match)
+        if is_internal_monologue:
+            value = _remove_internal_monologue_placeholders(value)
         tagged = re.compile(
             rf"<d>\[[^\]]+\]\s*{re.escape(quote)}\s*</d>",
             flags=re.IGNORECASE,
@@ -398,7 +435,7 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
         if quote in value:
             value = value.replace(quote, block, 1)
             continue
-        if _source_quote_is_internal_monologue(source_prompt, match):
+        if is_internal_monologue:
             additions.append(
                 f"The thinking on-screen character (S1) says in an off-screen internal monologue: {block}, "
                 "while the character's lips remain completely closed."
