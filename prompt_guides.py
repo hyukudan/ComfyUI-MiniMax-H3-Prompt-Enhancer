@@ -41,10 +41,16 @@ _ROLE_REFERENCE_RE = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
+_INTERNAL_MONOLOGUE_CUE_RE = re.compile(
+    r"\b(?:think|thinks|thinking|thought|inner\s+monologue|internal\s+monologue|"
+    r"piensa|pensando|pensamiento|mon[oó]logo\s+interno|reflexiona|reflexionando)\b",
+    re.IGNORECASE,
+)
 _SPEECH_CUE_RE = re.compile(
     r"\b(?:say|says|said|saying|state|states|ask|asks|asking|shout|shouts|shouting|"
     r"whisper|whispers|whispering|speak|speaks|speaking|dice|dijo|diciendo|pregunta|"
-    r"preguntando|grita|gritando|susurra|susurrando|habla|hablando)\b",
+    r"preguntando|grita|gritando|susurra|susurrando|habla|hablando|think|thinks|thinking|"
+    r"thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
     re.IGNORECASE,
 )
 _LANGUAGE_ALIASES = {
@@ -74,7 +80,9 @@ Shared timeline rules:
 - Give each actual vocal source a stable (S1), (S2), ... ID. Put only the exact spoken words and a language tag
   inside <d>[Language] ...</d>. For voiceover say "says in an off-screen voiceover" and state that the visible
   character's lips remain closed. Never convert visible dialogue into voiceover unless the source explicitly asks
-  for voiceover or narration. Use <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
+  for voiceover or narration. Treat a quoted thought or internal monologue as audible off-screen internal monologue:
+  preserve it in <d>, identify its thinker as a speaker, and state that the character's lips remain closed. Use
+  <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
 - Put visible text in straight English double quotes exactly as supplied.
 - Positional source references are immutable bindings: image/imagen/picture N always means <Picture N>, video N
   means <Video N>, and audio N means <Audio N>. They name user-provided assets, never generated shots or moments.
@@ -316,14 +324,32 @@ def _source_dialogue_language(source_prompt: str, quote_match) -> str:
     window = (source_prompt or "")[max(0, quote_match.start() - 180):quote_match.start()]
     matches = re.findall(
         r"\b(?:in|en)\s+(?:(?:the\s+)?([\wÀ-ÿ-]+)\s+(?:language|idioma)|"
-        r"(?:language|idioma)\s+([\wÀ-ÿ-]+)|([\wÀ-ÿ-]+))",
+        r"(?:language|idioma)\s+([\wÀ-ÿ-]+))",
         window,
         flags=re.IGNORECASE,
     )
-    if not matches:
-        return "Original language"
-    raw = next((part for part in matches[-1] if part), "").strip()
-    return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
+    if matches:
+        raw = next((part for part in matches[-1] if part), "").strip()
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
+    known = re.findall(
+        r"\b(?:in|en)\s+(english|spanish|french|german|italian|portuguese|japanese|korean|"
+        r"chinese|russian|arabic|hindi|dutch|polish|turkish|catalonian|catalan|catalán|català|"
+        r"español|castilian|castellano)\b",
+        window,
+        flags=re.IGNORECASE,
+    )
+    if known:
+        raw = known[-1]
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
+    quote = quote_match.group(1)
+    if re.search(r"[¿¡]|\b(?:quién|qué|cuál|cuándo|dónde|cómo|por qué)\b", quote, re.IGNORECASE):
+        return "Spanish"
+    return "Original language"
+
+
+def _source_quote_is_internal_monologue(source_prompt: str, quote_match) -> bool:
+    window = (source_prompt or "")[max(0, quote_match.start() - 180):quote_match.start()]
+    return bool(_INTERNAL_MONOLOGUE_CUE_RE.search(window))
 
 
 def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
@@ -351,9 +377,13 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
         if quote in value:
             value = value.replace(quote, block, 1)
             continue
-        additions.append(
-            f"The on-screen speaker (S1) delivers the requested line: {block}."
-        )
+        if _source_quote_is_internal_monologue(source_prompt, match):
+            additions.append(
+                f"The thinking on-screen character (S1) says in an off-screen internal monologue: {block}, "
+                "while the character's lips remain completely closed."
+            )
+        else:
+            additions.append(f"The on-screen speaker (S1) delivers the requested line: {block}.")
     if not additions:
         return value
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
@@ -501,7 +531,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         if _SPEECH_CUE_RE.search(cue_window) and match.group(1) not in tagged_dialogue:
             errors.append(f"Quoted spoken dialogue must appear inside a language-tagged <d> block: {match.group(1)!r}")
     source_requests_voiceover = re.search(
-        r"\b(?:voice[ -]?over|narrat(?:e|es|ed|ion)|off-screen voice|voz en off|narraci[oó]n)\b",
+        r"\b(?:voice[ -]?over|narrat(?:e|es|ed|ion)|off-screen voice|voz en off|narraci[oó]n|"
+        r"think|thinks|thinking|thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
         source_prompt or "",
         flags=re.IGNORECASE,
     )

@@ -152,6 +152,39 @@ N/A"""
     assert not any("dialogue" in error.lower() or "quoted" in error.lower() for error in report["errors"])
 
 
+def test_quoted_thought_becomes_exact_spanish_internal_monologue():
+    source = (
+        'Detective Conan with his hand on his chin, thinking concentrated '
+        '"Quién debe ser el asesino?", while a murder happens behind him.'
+    )
+    request = build_user_request(source, "t2va", 5.0)
+    assert "MANDATORY DIALOGUE CONTRACT" in request
+    assert '<d>[Spanish] Quién debe ser el asesino?</d>' in request
+
+    generated = """integrated_multimodal_description:
+[Shot 1] Detective Conan thinks intensely while a murder occurs behind him.
+
+overall_soundscape:
+Muffled sounds of struggle fill the room.
+
+non_diegetic_music:
+Slow noir jazz."""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert "says in an off-screen internal monologue" in repaired
+    assert '<d>[Spanish] Quién debe ser el asesino?</d>' in repaired
+    assert "lips remain completely closed" in repaired
+    report = validate_prompt(repaired, "t2va", 5.0, source)
+    assert not any("dialogue" in error.lower() or "quoted" in error.lower() for error in report["errors"])
+    assert not any("invented voiceover" in error.lower() for error in report["errors"])
+
+
+def test_unrelated_in_phrase_is_not_misread_as_language():
+    source = 'A detective with his hand in his pocket says "Proceed."'
+    request = build_user_request(source, "t2va", 5.0)
+    assert '<d>[Original language] Proceed.</d>' in request
+    assert "[His]" not in request
+
+
 def test_only_timeline_shot_one_is_bracketed():
     raw = "integrated_multimodal_description: Shot 1 opens wide.\noverall_soundscape: Shot 1 reference.\nnon_diegetic_music: N/A"
     fixed = normalize_first_shot_marker(raw, "t2va")

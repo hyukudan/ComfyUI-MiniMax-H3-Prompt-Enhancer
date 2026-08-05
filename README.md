@@ -223,6 +223,12 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
+Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech. The enhancer preserves the
+exact words inside `<d>[Language] ...</d>`, describes them as an off-screen internal monologue, and explicitly keeps
+the on-screen character's lips closed. If an explicit language is absent, conservative recognition handles clear
+markers such as Spanish inverted punctuation and accented interrogatives; otherwise the non-translating
+`[Original language]` marker is used.
+
 ## References
 
 The enhancer cannot inspect attached images, video, or audio. Describe the assets passed downstream in `reference_context`:
