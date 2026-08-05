@@ -5,6 +5,7 @@ from prompt_guides import (
     REFERENCE_SECTIONS,
     alignment_instruction,
     build_user_request,
+    normalize_audio_policy,
     normalize_dialogue_tags,
     normalize_source_dialogue,
     normalize_first_shot_marker,
@@ -140,7 +141,7 @@ def test_catalonian_language_request_becomes_exact_catalan_dialogue_contract():
         '"A ver, cabrones, quiero flaó de ese".'
     )
     request = build_user_request(source, "t2va", 5.0)
-    assert "MANDATORY DIALOGUE CONTRACT" in request
+    assert "VOICE POLICY — AUDIBLE" in request
     assert '<d>[Catalan] A ver, cabrones, quiero flaó de ese</d>' in request
 
 
@@ -169,7 +170,7 @@ def test_quoted_thought_becomes_exact_spanish_internal_monologue():
         '"Quién debe ser el asesino?", while a murder happens behind him.'
     )
     request = build_user_request(source, "t2va", 5.0)
-    assert "MANDATORY DIALOGUE CONTRACT" in request
+    assert "VOICE POLICY — AUDIBLE" in request
     assert '<d>[Spanish] Quién debe ser el asesino?</d>' in request
 
     generated = """integrated_multimodal_description:
@@ -243,6 +244,78 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
     assert '<d>[Original language] Do not move.</d>' in enhanced
     assert '<d>[Original language] Do not move.</d>' in conservative
+
+
+def test_audio_policy_contracts_are_independent():
+    request = build_user_request(
+        'A presenter says "Hello there."', "t2va", 5.0, "", True,
+        "ensure_audible", "add_instrumental", "silent_mouth_acting_experimental",
+    )
+    assert "AMBIENCE AND FOLEY POLICY — REQUIRED" in request
+    assert "NON-DIEGETIC MUSIC POLICY — REQUIRED" in request
+    assert "VOICE POLICY — SILENT MOUTH ACTING" in request
+    assert "approximately 2 words" in request
+    assert "<d>[" not in request
+
+
+def test_silent_mouth_acting_removes_lexical_dialogue_and_speaker_ids():
+    source = 'A presenter says in Spanish "Hola amigo."'
+    generated = """integrated_multimodal_description:
+[Shot 1] The presenter (S1) says <d>[Spanish] Hola amigo.</d> while smiling.
+
+overall_soundscape:
+The presenter's audible voice carries over room tone.
+
+non_diegetic_music:
+Soft piano."""
+    silent = normalize_source_dialogue(
+        generated, source, "t2va", "silent_mouth_acting_experimental",
+    )
+    silent = normalize_audio_policy(silent, "off", "off", "silent_mouth_acting_experimental")
+    assert "<d>" not in silent
+    assert "Hola amigo" not in silent
+    assert "(S1)" not in silent
+    assert "silently performs natural speech-like lip and jaw articulation" in silent
+    assert "overall_soundscape:\nN/A" in silent
+    assert "non_diegetic_music:\nN/A" in silent
+    report = validate_prompt(
+        silent, "t2va", 5.0, source, "", "off", "off",
+        "silent_mouth_acting_experimental",
+    )
+    assert report["valid"], report
+    assert any("experimental" in item.lower() for item in report["warnings"])
+
+
+def test_voice_none_removes_speech_and_mouth_performance():
+    source = 'A presenter says "Hello."'
+    generated = """integrated_multimodal_description:
+[Shot 1] The presenter says <d>[English] Hello.</d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    quiet = normalize_source_dialogue(generated, source, "t2va", "none")
+    assert "Hello" not in quiet
+    assert "<d>" not in quiet
+    assert "speech-like mouth performance" in quiet
+    assert "silently performs" not in quiet
+
+
+def test_forced_instrumental_and_ambience_policies_are_validated():
+    prompt = """integrated_multimodal_description:
+[Shot 1] A quiet empty room.
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        prompt, "t2va", 5.0, "", "", "ensure_audible", "add_instrumental", "audible",
+    )
+    assert any("instrumental" in item for item in report["errors"])
 
 
 def test_short_simultaneous_prompt_gets_one_shot_and_visibility_contract():
@@ -326,15 +399,16 @@ non_diegetic_music: N/A"""
     assert any("invented voiceover" in item for item in report["errors"])
 
 
-def test_plain_image_numbers_become_immutable_picture_bindings():
+def test_plain_image_roles_become_independent_subjects_with_picture_provenance():
     request = build_user_request(
         "The person in image 1 reveals the Uzi in image 2.", "ref2va", 5.0, "",
     )
-    assert "<Picture 1> is the exact user-provided image 1" in request
-    assert "visible role is person" in request
-    assert "<Picture 2>" in request
-    assert "visible role is Uzi" in request
-    assert "Do not create any additional" in request
+    assert "<Subject 1> is the reusable person" in request
+    assert "come from <Picture 1>" in request
+    assert "<Subject 2> is the reusable Uzi" in request
+    assert "come from <Picture 2>" in request
+    assert "provenance appear inside a Subject definition" in request
+    assert "REQUIRED DEFINITION: <Picture 1>" not in request
 
 
 def test_positional_roles_are_generic_and_not_tied_to_the_regression_example():
@@ -342,18 +416,57 @@ def test_positional_roles_are_generic_and_not_tied_to_the_regression_example():
         "The driver in image 1 puts on the yellow racing helmet in image 2 beside the car in image 3.",
         "ref2va", 6.0, "",
     )
-    assert "<Subject 1> is the reusable driver shown in <Picture 1>" in request
-    assert "<Subject 2> is the reusable yellow racing helmet shown in <Picture 2>" in request
-    assert "<Subject 3> is the reusable car shown in <Picture 3>" in request
+    assert "<Subject 1> is the reusable driver" in request
+    assert "come from <Picture 1>" in request
+    assert "<Subject 2> is the reusable yellow racing helmet" in request
+    assert "come from <Picture 2>" in request
+    assert "<Subject 3> is the reusable car" in request
+    assert "come from <Picture 3>" in request
 
 
 def test_plain_video_and_audio_ordinals_become_exact_asset_tags():
     request = build_user_request(
         "Continue video 1 while using audio 2 as a timing and voice reference.", "ref2va", 8.0, "",
     )
-    assert "<Video 1> is the exact user-provided video 1" in request
-    assert "<Audio 2> is the exact user-provided audio 2" in request
+    assert "<Video 1> is the supplied video used for global edit" in request
+    assert "<Audio 2> is the supplied audio signal" in request
     assert "Continue <Video 1> while using <Audio 2>" in request
+
+
+def test_style_picture_becomes_attribute_transfer_subject_not_picture_definition():
+    request = build_user_request(
+        "Render a new subject using the style from image 1.", "ref2va", 5.0, "",
+    )
+    assert "<Subject 1> is the reusable visual style abstracted from <Picture 1>" in request
+    assert "<Subject 1>: attribute_transfer" in request
+    assert "REQUIRED DEFINITION: <Picture 1>" not in request
+
+
+def test_exact_first_frame_picture_remains_independent_anchor():
+    request = build_user_request(
+        "Use image 1 as the exact first frame and continue forward.", "ref2va", 5.0, "",
+    )
+    assert "REQUIRED DEFINITION: <Picture 1> is the supplied image used as an independent exact first-frame anchor" in request
+    assert "<Picture 1>: fully_preserved" in request
+    assert "<Subject 1>" not in request
+
+
+def test_picture_identity_and_video_motion_become_separate_subjects():
+    request = build_user_request(
+        "Use the motion from video 1 with the subject identity from image 2.", "ref2va", 5.0, "",
+    )
+    assert "<Subject 1> is the reusable subject identity" in request
+    assert "come from <Picture 2>" in request
+    assert "<Subject 2> is the reusable body-motion pattern from <Video 1>" in request
+    assert "REQUIRED DEFINITION: <Video 1>" not in request
+
+
+def test_copied_voice_audio_is_independent_signal_with_audio_marker():
+    request = build_user_request(
+        "Copy the voice from audio 1 as the synchronized presenter voice.", "ref2va", 5.0, "",
+    )
+    assert "<Audio 1> is the supplied audio signal copied as a synchronized audio layer" in request
+    assert "<Audio 1>: partially_copy" in request
 
 
 def test_ref2va_rejects_invented_assets_and_timeline_picture_definitions():
@@ -384,8 +497,8 @@ N/A"""
         "The person in image 1 reveals the Uzi in image 2.", "",
     )
     assert not report["valid"]
-    assert any("invented reference assets" in item for item in report["errors"])
-    assert any("timeline moment" in item for item in report["errors"])
+    assert any("invented reference labels" in item for item in report["errors"])
+    assert any("must have exactly one subject_definitions entry" in item for item in report["errors"])
 
 
 def test_retention_markers_are_not_mistaken_for_sections_but_are_validated():
@@ -409,21 +522,22 @@ non_diegetic_music:
 N/A"""
     report = validate_prompt(prompt, "ref2va", 5.0)
     assert report["sections"] == list(REFERENCE_SECTIONS)
-    assert any("Unsupported retention marker" in item for item in report["errors"])
+    assert any("retention_analysis line must begin" in item for item in report["errors"])
 
 
 def test_object_reference_cannot_appear_before_explicit_spoken_reveal_cue():
-    detail = " ".join(["The person from <Picture 1> waits beside the table."] * 50)
-    detail += " The Uzi from <Picture 2> is visible. [Shot 2] At 00:02.000, the person says <d>[Spanish] como esta?</d>"
+    detail = " ".join(["<Subject 1> waits beside the table while <Subject 2> is visibly held up."] * 50)
+    detail += " [Shot 2] At 00:02.000, <Subject 1> says <d>[Spanish] como esta?</d>"
     prompt = f"""subject_definitions:
-<Picture 1> is the provided source image 1 showing the person.
-<Picture 2> is the provided source image 2 showing the Uzi.
+<Subject 1> is the reusable person whose identity comes from <Picture 1>.
+<Subject 2> is the reusable Uzi whose exact design comes from <Picture 2>.
 
 summary:
 [reference generation] A sales advertisement.
 
 retention_analysis:
-fully_preserved: Both references.
+<Subject 1>: fully_preserved - identity retained.
+<Subject 2>: fully_preserved - design retained.
 
 detailed_description:
 [Shot 1] {detail}
@@ -439,17 +553,18 @@ N/A"""
 
 
 def test_reference_and_reveal_cue_may_share_the_same_shot():
-    detail = " ".join(["The person from <Picture 1> waits beside the table."] * 50)
-    detail += " [Shot 2] At 00:02.000, the Uzi from <Picture 2> is revealed as the person says <d>[Spanish] como esta?</d>"
+    detail = " ".join(["<Subject 1> waits beside the table while <Subject 2> remains concealed."] * 50)
+    detail += " [Shot 2] At 00:02.000, <Subject 1> reveals <Subject 2> as they say <d>[Spanish] como esta?</d>"
     prompt = f"""subject_definitions:
-<Picture 1> is the provided source image 1 showing the person.
-<Picture 2> is the provided source image 2 showing the Uzi.
+<Subject 1> is the reusable person whose identity comes from <Picture 1>.
+<Subject 2> is the reusable Uzi whose exact design comes from <Picture 2>.
 
 summary:
 [reference generation] A sales advertisement.
 
 retention_analysis:
-fully_preserved: Both references.
+<Subject 1>: fully_preserved - identity retained.
+<Subject 2>: fully_preserved - design retained.
 
 detailed_description:
 [Shot 1] {detail}
@@ -558,12 +673,57 @@ summary:
     fixed = normalize_reference_definitions(
         raw, "The person in image 1 reveals the Uzi in image 2.",
     )
-    assert "<Picture 1> is the exact user-provided image 1" in fixed
-    assert "visible role is person" in fixed
-    assert "<Picture 2> is the exact user-provided image 2" in fixed
-    assert "visible role is Uzi" in fixed
-    assert "<Subject 1> is the reusable person shown in <Picture 1>" in fixed
-    assert "<Subject 2> is the reusable Uzi shown in <Picture 2>" in fixed
+    assert "<Picture 1> The opening setup" not in fixed
+    assert "<Picture 2> The reveal moment" not in fixed
+    assert "<Subject 1> is the reusable person" in fixed
+    assert "come from <Picture 1>" in fixed
+    assert "<Subject 2> is the reusable Uzi" in fixed
+    assert "come from <Picture 2>" in fixed
+
+
+def test_inferred_reference_normalization_replaces_extra_retention_and_summary_type():
+    raw = """subject_definitions:
+<Picture 1> A generated opening moment.
+<Subject 1> A vague person.
+
+summary:
+[Visual Sequence] A presenter reveals an object.
+
+retention_analysis:
+<Subject 1>: weak_reference - vague.
+fully_preserved: The action.
+attribute_transfer: N/A
+
+detailed_description:
+[Shot 1] <Subject 1> reveals <Subject 2>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_reference_definitions(
+        raw, "The person in image 1 reveals the product in image 2.",
+    )
+    assert "[reference generation] A presenter reveals an object." in fixed
+    assert "<Picture 1> A generated opening moment." not in fixed
+    assert "fully_preserved: The action." not in fixed
+    assert "attribute_transfer: N/A" not in fixed
+    assert fixed.count("<Subject 1>: fully_preserved") == 1
+    assert fixed.count("<Subject 2>: fully_preserved") == 1
+
+
+def test_bare_decimal_event_time_inside_shot_is_rejected():
+    prompt = """integrated_multimodal_description:
+[Shot 1] A presenter waits. At 2.500, the presenter smiles.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0)
+    assert any("Numeric event times" in item for item in report["errors"])
 
 
 def test_placeholder_shot_times_are_distributed_inside_duration():
@@ -575,3 +735,67 @@ Room tone."""
     fixed = normalize_shot_timeline(raw, "ref2va", 5.0)
     assert "[Shot 2] At 00:01.667," in fixed
     assert "[Shot 3] At 00:03.333," in fixed
+
+
+def test_every_audio_policy_combination_builds_an_explicit_contract():
+    ambience_labels = {"auto": "AUTO", "ensure_audible": "REQUIRED", "off": "OFF"}
+    score_labels = {"follow_prompt": "FOLLOW SOURCE", "add_instrumental": "REQUIRED", "off": "OFF"}
+    voice_labels = {
+        "audible": "AUDIBLE",
+        "silent_mouth_acting_experimental": "SILENT MOUTH ACTING",
+        "none": "NONE",
+    }
+    for mode in ("t2va", "ref2va"):
+        for ambience in ("auto", "ensure_audible", "off"):
+            for score in ("follow_prompt", "add_instrumental", "off"):
+                for voice in ("audible", "silent_mouth_acting_experimental", "none"):
+                    request = build_user_request(
+                        'A presenter says "Hello".', mode, 5.0, "", True,
+                        ambience, score, voice,
+                    )
+                    assert f"AMBIENCE AND FOLEY POLICY — {ambience_labels[ambience]}" in request
+                    assert f"NON-DIEGETIC MUSIC POLICY — {score_labels[score]}" in request
+                    assert f"VOICE POLICY — {voice_labels[voice]}" in request
+
+
+def test_silent_voice_normalization_repairs_dangling_spoken_phrase_grammar():
+    raw = """integrated_multimodal_description:
+[Shot 1] The presenter looks into camera, their mouth forming the shape for "Hello", then smiles.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_source_dialogue(
+        raw, 'The presenter says "Hello", then smiles.', "t2va",
+        "silent_mouth_acting_experimental",
+    )
+    assert "forming the shape for" not in fixed
+    assert "Hello" not in fixed
+    assert "mouth and jaw articulating silently" in fixed
+
+
+def test_fully_copied_audio_conflicts_with_selective_audio_suppression():
+    detail = " ".join(["<Audio 1> remains synchronized with the new video."] * 65)
+    prompt = f"""subject_definitions:
+<Audio 1> is the supplied audio signal copied as a synchronized audio layer.
+
+summary:
+[audio reuse / generation] Reuse the source audio.
+
+retention_analysis:
+<Audio 1>: fully_copy - preserve the complete source signal.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        prompt, "ref2va", 5.0, "Fully copy audio 1.", "", "off", "off", "none",
+    )
+    assert any("cannot be selectively stripped" in item for item in report["errors"])

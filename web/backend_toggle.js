@@ -11,6 +11,14 @@ const LOCAL_WIDGETS = [
     "startup_timeout",
     "keep_server_loaded",
 ];
+const DISPLAY_LABELS = {
+    enhance_description: "Enhance description",
+    ambience_foley_policy: "Ambience & foley",
+    background_score_policy: "Background score",
+    voice_performance: "Voice performance",
+    use_remote_model: "Use remote model",
+    allow_remote_endpoint: "Allow non-local endpoint",
+};
 
 function setWidgetVisible(widget, visible) {
     if (!widget) return;
@@ -59,8 +67,10 @@ function refreshBackendWidgets(node) {
     }
     normalizeDynamicCombo(node, "local_model");
     normalizeDynamicCombo(node, "llama_server_path");
-    const allowRemote = node.widgets?.find((widget) => widget.name === "allow_remote_endpoint");
-    if (allowRemote) allowRemote.label = "allow non-local endpoint";
+    for (const [name, label] of Object.entries(DISPLAY_LABELS)) {
+        const widget = node.widgets?.find((candidate) => candidate.name === name);
+        if (widget) widget.label = label;
+    }
     requestAnimationFrame(() => {
         const computed = node.computeSize();
         const currentWidth = Array.isArray(node.size) ? Number(node.size[0]) : 0;
@@ -103,6 +113,27 @@ app.registerExtension({
             if (Array.isArray(this.size) && this.size[1] + 2 < requiredHeight) {
                 this.setSize([Math.max(460, this.size[0]), requiredHeight]);
             }
+            return result;
+        };
+    },
+});
+
+app.registerExtension({
+    name: "MiniMaxH3PromptEnhancer.AudioPolicyLabels",
+    beforeRegisterNodeDef(nodeType, nodeData) {
+        if (!["MiniMaxH3GGUFPromptEnhancer", "MiniMaxH3PromptGuideBuilder", "MiniMaxH3PromptValidator"].includes(nodeData.name)) return;
+        const originalCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const result = originalCreated?.apply(this, arguments);
+            for (const [name, label] of Object.entries(DISPLAY_LABELS)) {
+                const widget = this.widgets?.find((candidate) => candidate.name === name);
+                if (widget) widget.label = label;
+            }
+            requestAnimationFrame(() => {
+                const computed = this.computeSize();
+                this.setSize([Math.max(460, this.size?.[0] ?? 0, computed[0]), Math.max(320, computed[1] + 72)]);
+                this.setDirtyCanvas(true, true);
+            });
             return result;
         };
     },

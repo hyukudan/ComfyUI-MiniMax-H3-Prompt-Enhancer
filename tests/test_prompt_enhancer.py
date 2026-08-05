@@ -130,3 +130,34 @@ N/A"""
     )
     assert '<d>[Catalan] A ver, cabrones, quiero flaó de ese</d>' in result
     assert validation["valid"]
+
+
+def test_pipeline_applies_silent_audio_policy_and_records_manifest():
+    source = 'A presenter says in Spanish "Esto funciona", then smiles. No music.'
+    completion = """integrated_multimodal_description:
+[Shot 1] A presenter faces the camera and says: <d>[Spanish] Esto funciona</d>.
+
+overall_soundscape:
+The presenter voice is clear over quiet room tone.
+
+non_diegetic_music:
+A dramatic orchestral score."""
+    result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        source, "t2va", 5.0, "", lambda _messages: completion, 0, {"provider": "test"},
+        True, "off", "off", "silent_mouth_acting_experimental",
+    )
+    assert "Esto funciona" not in result
+    assert "<d>" not in result
+    assert "silently performs natural speech-like lip and jaw articulation" in result
+    assert "overall_soundscape:\nN/A" in result
+    assert "non_diegetic_music:\nN/A" in result
+    assert validation["valid"]
+    assert validation["warnings"]
+    assert manifest["referenceSemanticsVersion"] == 2
+    assert manifest["audioPolicyVersion"] == 1
+    assert manifest["ambienceFoleyPolicy"] == "off"
+    assert manifest["backgroundScorePolicy"] == "off"
+    assert manifest["voicePerformance"] == "silent_mouth_acting_experimental"
+    assert manifest["silentMouthActingExperimental"] is True
+    assert manifest["suppressedDialogueCount"] == 1
+    assert manifest["voiceControlGuarantee"] == "best_effort_prompt_only"

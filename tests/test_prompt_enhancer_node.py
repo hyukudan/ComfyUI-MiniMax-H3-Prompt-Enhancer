@@ -60,7 +60,8 @@ def test_main_enhancer_uses_dropdown_gguf_when_remote_is_disabled(monkeypatch, t
     assert result[3] == 6.0
     assert captured["args"][4] == str(server)
     assert captured["args"][5] == str(model)
-    assert captured["args"][-1] is True
+    assert captured["args"][-5] is True
+    assert captured["args"][-3:] == ("auto", "follow_prompt", "audible")
 
 
 def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
@@ -69,6 +70,9 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     inputs = MiniMaxH3PromptEnhancer.INPUT_TYPES()["optional"]
     assert inputs["use_remote_model"][1]["default"] is True
     assert inputs["enhance_description"][1]["default"] is True
+    assert inputs["ambience_foley_policy"][0] == ["auto", "ensure_audible", "off"]
+    assert inputs["background_score_policy"][0] == ["follow_prompt", "add_instrumental", "off"]
+    assert inputs["voice_performance"][0][-1] == "none"
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False

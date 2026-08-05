@@ -22,6 +22,7 @@ The package does not bundle model weights or llama.cpp, does not inspect referen
 - [Exact wiring](#exact-wiring)
 - [Prompt contracts](#prompt-contracts)
 - [Dialogue, language, and exact text](#dialogue-language-and-exact-text)
+- [Audio policies](#audio-policies)
 - [References](#references)
 - [Installation](#installation)
 - [Models and llama.cpp](#models-and-llamacpp)
@@ -42,6 +43,7 @@ MiniMax H3 responds best when actions, timing, camera, dialogue, language, and s
 | Preserve dialogue | Exact quoted text and mandatory `<d>[Language] ...</d>` blocks |
 | Reuse another LLM node | Separate system/user instructions from Prompt Guide Builder |
 | Check authored text | Model-free structural validation and repair feedback |
+| Control generated audio | Independent ambience/foley, score, and voice-performance policies |
 | Feed duration downstream | `duration_seconds` output on both enhancer nodes |
 | Reclaim VRAM before H3 | Per-run unload by default, with optional persistent mode |
 
@@ -90,7 +92,7 @@ Loopback endpoints work by default. Sending prompts to another host requires `al
 5. Select `local_model` and the detected `llama_server_path` from their dropdowns.
 6. Leave `keep_server_loaded=false` when H3 needs the VRAM immediately afterward.
 
-The frontend hides endpoint-only controls in local mode and hides GGUF-only controls in remote mode. It also refits the node so widgets and outputs remain inside its frame when old workflows are opened.
+The frontend hides endpoint-only controls in local mode and hides GGUF-only controls in remote mode. It also refits the node so widgets and outputs remain inside its frame.
 
 ## Nodes
 
@@ -121,10 +123,11 @@ Shared controls:
 | `disable_thinking` | enabled | Requests direct structured output where supported |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
+| `ambience_foley_policy` | `auto` | Follow the scene, explicitly require audible ambience/foley, or turn it off |
+| `background_score_policy` | `follow_prompt` | Follow the source, add an instrumental score, or force music off |
+| `voice_performance` | `audible` | Audible dialogue, experimental silent mouth acting, or no voice performance |
 
 Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
-
-Existing serialized workflows remain remote by default because `use_remote_model` defaults to enabled and the new output was appended after the three original outputs.
 
 ### MiniMax H3 GGUF Prompt Enhancer
 
@@ -245,22 +248,59 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
-Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech. The enhancer preserves the
+Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech when `voice_performance=audible`. The enhancer preserves the
 exact words inside `<d>[Language] ...</d>`, describes them as an off-screen internal monologue, and explicitly keeps
 the on-screen character's lips closed. If an explicit language is absent, conservative recognition handles clear
 markers such as Spanish inverted punctuation and accented interrogatives; otherwise the non-translating
 `[Original language]` marker is used.
 
+## Audio policies
+
+The three audio controls are independent and are available on the main enhancer, direct-GGUF enhancer, Guide Builder,
+and Validator:
+
+| Policy | Values | Meaning |
+|---|---|---|
+| Ambience & foley | `auto`, `ensure_audible`, `off` | Follow the scene, explicitly require physical/environmental sound, or suppress it |
+| Background score | `follow_prompt`, `add_instrumental`, `off` | Respect the source, add non-vocal music, or emit `non_diegetic_music: N/A` |
+| Voice performance | `audible`, `silent_mouth_acting_experimental`, `none` | Preserve exact spoken text, request non-verbal mouth acting, or suppress speech performance |
+
+`silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the
+final H3 prompt. It retains only non-lexical visual direction such as language rhythm, approximate length, cadence,
+and pauses. Internal thoughts keep the character's lips closed. MiniMax documents `<d>` for audible dialogue but does
+not document a phoneme, viseme, or silent-lip-sync control, so this mode is prompt-only best effort: exact lip sync and
+complete silence are not guaranteed. Use `voice_performance=none` when mouth movement is not wanted.
+
+Audio policies cannot selectively remove material embedded in an `<Audio N>` marked `fully_copy`. The Validator
+reports a conflict when a copied reference contains voice, music, or environmental sound that the selected policy
+forbids.
+
 ## References
 
-The enhancer cannot inspect attached images, video, or audio. Describe the assets passed downstream in `reference_context`:
+The enhancer cannot inspect attached images, video, or audio. Describe the assets passed downstream in
+`reference_context`. Explicit definitions there are authoritative and are never rewritten.
+
+MiniMax full-reference semantics separate reusable content from standalone media structure:
+
+- `<Subject N>` represents reusable identity, appearance, object design, style, or motion. Its definition cites the
+  source asset, for example `The person identity from <Picture 1>` or `The object design from <Picture 2>`.
+- `<Picture N>` is defined independently only when the image itself is a first/last frame, storyboard panel,
+  composition, or other frame-level anchor.
+- `<Video N>` is defined independently only for global editing, continuation, or temporal-structure use. Motion or
+  identity extracted from a video becomes a `<Subject N>`.
+- `<Audio N>` remains an audio-signal definition and uses the appropriate copy/reference retention marker.
+
+For a person in image 1 holding the exact product from image 2, use:
 
 ```text
-<Picture 1> is the exact person identity and wardrobe reference.
-<Picture 2> is the exact product reference; preserve its shape, colors, controls, and markings.
+<Subject 1> is the exact person identity and wardrobe from <Picture 1>.
+<Subject 2> is the exact product design from <Picture 2>; preserve its shape, colors, controls, and markings.
 ```
 
-Positional wording is supported generically: `image 1`, `imagen 1`, or `picture 1` maps to `<Picture 1>`; corresponding video and audio wording maps to `<Video N>` and `<Audio N>`. There is no scenario-specific production logic.
+Natural positional wording such as `the person in image 1`, `the product in image 2`, motion from `video 1`, or voice
+from `audio 1` is normalized generically. Subject numbering is independent from asset numbering: the first reusable
+entity is `<Subject 1>` even when its provenance is `<Picture 2>`. Reveal, preservation, and retention requirements
+attach to the resulting subject rather than to the source picture. There is no scenario-specific production logic.
 
 ## Installation
 

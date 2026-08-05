@@ -12,9 +12,9 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .prompt_guides import build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from prompt_guides import build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -135,23 +135,31 @@ def enhance_prompt_with_completion(
     repair_attempts: int,
     manifest: dict,
     enhance_description: bool = True,
+    ambience_foley_policy: str = "auto",
+    background_score_policy: str = "follow_prompt",
+    voice_performance: str = "audible",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
     user_request = build_user_request(
-        basic_prompt, mode, duration_seconds, reference_context, enhance_description
+        basic_prompt, mode, duration_seconds, reference_context, enhance_description,
+        ambience_foley_policy, background_score_policy, voice_performance,
     )
     resolved_mode = resolve_mode(mode, reference_context, basic_prompt)
     messages = [
         {"role": "system", "content": system_prompt_for_mode(resolved_mode)},
         {"role": "user", "content": user_request},
     ]
-    enhanced = normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+    enhanced = normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
         completion(messages)
-    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt), basic_prompt, resolved_mode)
-    validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
+    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, reference_context), basic_prompt, resolved_mode,
+    voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+    validation = validate_prompt(
+        enhanced, mode, duration_seconds, basic_prompt, reference_context,
+        ambience_foley_policy, background_score_policy, voice_performance,
+    )
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):
         attempts += 1
@@ -164,16 +172,32 @@ def enhance_prompt_with_completion(
                 + "\n- ".join(validation["errors"])
             )},
         ])
-        enhanced = normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+        enhanced = normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
             completion(messages)
-        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt), basic_prompt, resolved_mode)
-        validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
+        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, reference_context), basic_prompt, resolved_mode,
+        voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+        validation = validate_prompt(
+            enhanced, mode, duration_seconds, basic_prompt, reference_context,
+            ambience_foley_policy, background_score_policy, voice_performance,
+        )
     result_manifest = {
         **manifest,
         "mode": validation["mode"],
         "durationSeconds": float(duration_seconds),
         "repairAttemptsUsed": attempts,
         "descriptionEnhanced": bool(enhance_description),
+        "referenceSemanticsVersion": 2,
+        "audioPolicyVersion": 1,
+        "ambienceFoleyPolicy": ambience_foley_policy,
+        "backgroundScorePolicy": background_score_policy,
+        "voicePerformance": voice_performance,
+        "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
+        "suppressedDialogueCount": (
+            len(re.findall(r'[\"“][^\"”\r\n]+[\"”]', basic_prompt)) if voice_performance != "audible" else 0
+        ),
+        "voiceControlGuarantee": (
+            "best_effort_prompt_only" if voice_performance == "silent_mouth_acting_experimental" else "documented"
+        ),
         "valid": validation["valid"],
     }
     return enhanced, validation, result_manifest
@@ -184,7 +208,10 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    temperature: float, max_tokens: int, timeout: int,
                    repair_attempts: int, allow_remote_endpoint: bool,
                    disable_thinking: bool = True,
-                   enhance_description: bool = True) -> tuple[str, dict, dict]:
+                   enhance_description: bool = True,
+                   ambience_foley_policy: str = "auto",
+                   background_score_policy: str = "follow_prompt",
+                   voice_performance: str = "audible") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -215,4 +242,7 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
             "lmStudioNativePreferred": bool(disable_thinking),
         },
         enhance_description,
+        ambience_foley_policy,
+        background_score_policy,
+        voice_performance,
     )

@@ -276,6 +276,9 @@ def enhance_prompt_with_gguf_server(
     disable_thinking: bool = True,
     keep_server_loaded: bool = False,
     enhance_description: bool = True,
+    ambience_foley_policy: str = "auto",
+    background_score_policy: str = "follow_prompt",
+    voice_performance: str = "audible",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -362,6 +365,9 @@ def enhance_prompt_with_gguf_server(
                     "serverUnloadedAfterRun": not bool(keep_server_loaded),
                 },
                 enhance_description,
+                ambience_foley_policy,
+                background_score_policy,
+                voice_performance,
             )
         finally:
             if not bool(keep_server_loaded):

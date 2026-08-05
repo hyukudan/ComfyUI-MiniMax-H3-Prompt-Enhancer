@@ -44,16 +44,22 @@ class MiniMaxH3PromptGuideBuilder:
             "reference_context": ("STRING", {"multiline": True, "default": ""}),
         }, "optional": {
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Control non-vocal ambience and physically motivated sound effects"}),
+            "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Follow the source, add an instrumental score, or force no non-diegetic music"}),
+            "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Experimental silent mouth acting is visual best-effort only; exact lip sync and silence are not guaranteed"}),
         }}
 
-    def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True):
+    def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
+              ambience_foley_policy="auto", background_score_policy="follow_prompt",
+              voice_performance="audible"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt)
         return (
             system_prompt_for_mode(resolved),
             build_user_request(
-                basic_prompt, resolved, duration_seconds, reference_context, enhance_description
+                basic_prompt, resolved, duration_seconds, reference_context, enhance_description,
+                ambience_foley_policy, background_score_policy, voice_performance,
             ),
             resolved,
         )
@@ -88,6 +94,9 @@ class MiniMaxH3PromptEnhancer:
         }, "optional": {
             "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Improve staging, cinematography, pacing, transitions, and sound without changing source facts or exact dialogue"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Ambience & foley: automatic, explicitly required, or disabled"}),
+            "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
+            "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Silent mouth acting is experimental prompt guidance, not guaranteed lip sync or silence"}),
             "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
@@ -113,13 +122,17 @@ class MiniMaxH3PromptEnhancer:
                 temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking,
                 allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
                 gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
-                keep_server_loaded=False, enhance_description=True):
+                keep_server_loaded=False, enhance_description=True, ambience_foley_policy="auto",
+                background_score_policy="follow_prompt", voice_performance="audible"):
         if bool(use_remote_model):
             prompt, validation, manifest = enhance_prompt(
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
                 temperature, max_tokens, timeout_seconds, repair_attempts, allow_remote_endpoint,
                 disable_thinking,
                 enhance_description,
+                ambience_foley_policy,
+                background_score_policy,
+                voice_performance,
             )
         else:
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
@@ -127,6 +140,9 @@ class MiniMaxH3PromptEnhancer:
                 "", gpu_layers, context_size, threads, temperature, max_tokens, timeout_seconds,
                 startup_timeout, repair_attempts, disable_thinking, keep_server_loaded,
                 enhance_description,
+                ambience_foley_policy,
+                background_score_policy,
+                voice_performance,
             )
         return (
             prompt,
@@ -167,6 +183,10 @@ class MiniMaxH3GGUFPromptEnhancer:
             "disable_thinking": ("BOOLEAN", {"default": True}),
             "enhance_description": ("BOOLEAN", {"default": True}),
             "keep_server_loaded": ("BOOLEAN", {"default": False}),
+        }, "optional": {
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto"}),
+            "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt"}),
+            "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible"}),
         }}
 
     @classmethod
@@ -176,13 +196,17 @@ class MiniMaxH3GGUFPromptEnhancer:
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, llama_server_path,
                 gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
                 max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
-                enhance_description, keep_server_loaded):
+                enhance_description, keep_server_loaded, ambience_foley_policy="auto",
+                background_score_policy="follow_prompt", voice_performance="audible"):
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
             request_timeout, startup_timeout, repair_attempts, disable_thinking,
             keep_server_loaded,
             enhance_description,
+            ambience_foley_policy,
+            background_score_policy,
+            voice_performance,
         )
         return (
             prompt,
@@ -233,10 +257,19 @@ class MiniMaxH3PromptValidator:
             "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
             "source_prompt": ("STRING", {"multiline": True, "default": ""}),
             "reference_context": ("STRING", {"multiline": True, "default": ""}),
+        }, "optional": {
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto"}),
+            "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt"}),
+            "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible"}),
         }}
 
-    def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context):
-        report = validate_prompt(prompt, mode, duration_seconds, source_prompt, reference_context)
+    def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
+                 ambience_foley_policy="auto", background_score_policy="follow_prompt",
+                 voice_performance="audible"):
+        report = validate_prompt(
+            prompt, mode, duration_seconds, source_prompt, reference_context,
+            ambience_foley_policy, background_score_policy, voice_performance,
+        )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {
             "ui": {"text": [str(prompt), report_text]},
