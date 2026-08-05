@@ -11,9 +11,9 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_section_headers, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
+    from .prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_section_headers, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
+    from prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, resolve_mode, strip_markdown_fence, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -141,9 +141,10 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_request},
     ]
-    enhanced = normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+    resolved_mode = resolve_mode(mode, reference_context)
+    enhanced = normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
         _completion(root, selected_model, messages, secret, temperature, max_tokens, timeout, disable_thinking)
-    )), resolve_mode(mode, reference_context)))
+    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt)
     validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):
@@ -157,9 +158,9 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                 + "\n- ".join(validation["errors"])
             )},
         ])
-        enhanced = normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+        enhanced = normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
             _completion(root, selected_model, messages, secret, temperature, max_tokens, timeout, disable_thinking)
-        )), resolve_mode(mode, reference_context)))
+        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt)
         validation = validate_prompt(enhanced, mode, duration_seconds, basic_prompt, reference_context)
     manifest = {
         "provider": "local_chat_api",

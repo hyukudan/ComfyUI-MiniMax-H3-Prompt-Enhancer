@@ -7,7 +7,9 @@ from prompt_guides import (
     build_user_request,
     normalize_dialogue_tags,
     normalize_first_shot_marker,
+    normalize_reference_definitions,
     normalize_shot_timestamps,
+    normalize_shot_timeline,
     normalize_section_headers,
     resolve_mode,
     strip_markdown_fence,
@@ -142,3 +144,235 @@ non_diegetic_music: N/A"""
     report = validate_prompt(prompt, "t2va", 5.0, 'A detective says "Hello."')
     assert not report["valid"]
     assert any("invented voiceover" in item for item in report["errors"])
+
+
+def test_plain_image_numbers_become_immutable_picture_bindings():
+    request = build_user_request(
+        "The person in image 1 reveals the Uzi in image 2.", "ref2va", 5.0, "",
+    )
+    assert "<Picture 1> is the exact user-provided image 1" in request
+    assert "visible role is person" in request
+    assert "<Picture 2>" in request
+    assert "visible role is Uzi" in request
+    assert "Do not create any additional" in request
+
+
+def test_ref2va_rejects_invented_assets_and_timeline_picture_definitions():
+    detail = " ".join(["The person from <Picture 1> holds the Uzi from <Picture 2>."] * 55)
+    prompt = f"""subject_definitions:
+<Subject 1> is a salesperson.
+<Picture 1> The initial setup showing the salesperson.
+<Picture 2> The moment the Uzi appears.
+<Picture 3> The final shot.
+<Video 1> The whole advertisement.
+
+summary:
+[reference generation] A product advertisement.
+
+retention_analysis:
+<Picture 1>: fully_preserved. <Picture 2>: fully_preserved.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        prompt, "ref2va", 5.0,
+        "The person in image 1 reveals the Uzi in image 2.", "",
+    )
+    assert not report["valid"]
+    assert any("invented reference assets" in item for item in report["errors"])
+    assert any("timeline moment" in item for item in report["errors"])
+
+
+def test_retention_markers_are_not_mistaken_for_sections_but_are_validated():
+    detail = " ".join(["The source person remains visible."] * 70)
+    prompt = f"""subject_definitions:
+<Subject 1> is a person.
+
+summary:
+[generation] A portrait.
+
+retention_analysis:
+audio_markers_fully_copy: The generated voice.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "ref2va", 5.0)
+    assert report["sections"] == list(REFERENCE_SECTIONS)
+    assert any("Unsupported retention marker" in item for item in report["errors"])
+
+
+def test_object_reference_cannot_appear_before_explicit_spoken_reveal_cue():
+    detail = " ".join(["The person from <Picture 1> waits beside the table."] * 50)
+    detail += " The Uzi from <Picture 2> is visible. [Shot 2] At 00:02.000, the person says <d>[Spanish] como esta?</d>"
+    prompt = f"""subject_definitions:
+<Picture 1> is the provided source image 1 showing the person.
+<Picture 2> is the provided source image 2 showing the Uzi.
+
+summary:
+[reference generation] A sales advertisement.
+
+retention_analysis:
+fully_preserved: Both references.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    source = 'The person in image 1 pulls the Uzi in image 2 from under the table cuando dice "como esta?"'
+    report = validate_prompt(prompt, "ref2va", 5.0, source)
+    assert any("before the user-specified reveal cue" in item for item in report["errors"])
+
+
+def test_reference_and_reveal_cue_may_share_the_same_shot():
+    detail = " ".join(["The person from <Picture 1> waits beside the table."] * 50)
+    detail += " [Shot 2] At 00:02.000, the Uzi from <Picture 2> is revealed as the person says <d>[Spanish] como esta?</d>"
+    prompt = f"""subject_definitions:
+<Picture 1> is the provided source image 1 showing the person.
+<Picture 2> is the provided source image 2 showing the Uzi.
+
+summary:
+[reference generation] A sales advertisement.
+
+retention_analysis:
+fully_preserved: Both references.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    source = 'The person in image 1 pulls the Uzi in image 2 from under the table cuando dice "como esta?"'
+    report = validate_prompt(prompt, "ref2va", 5.0, source)
+    assert not any("before the user-specified reveal cue" in item for item in report["errors"])
+
+
+def test_bound_subject_applies_picture_without_repeating_picture_tag_in_detail():
+    detail = " ".join(["<Subject 1> waits behind the counter while facing the camera."] * 55)
+    detail += " [Shot 2] At 00:02.000, <Subject 1> reveals <Subject 2> while saying <d>[Spanish] como esta?</d>"
+    prompt = f"""subject_definitions:
+<Picture 1> is the exact provided source image 1 showing the person.
+<Picture 2> is the exact provided source image 2 showing the Uzi.
+<Subject 1> is the reusable person shown in <Picture 1>.
+<Subject 2> is the reusable Uzi shown in <Picture 2>.
+
+summary:
+[reference generation] A sales advertisement.
+
+retention_analysis:
+fully_preserved: Both supplied pictures.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    source = 'The person in image 1 pulls the Uzi in image 2 from under the table cuando dice "como esta?"'
+    report = validate_prompt(prompt, "ref2va", 5.0, source)
+    assert not any("must be applied inside detailed_description" in item for item in report["errors"])
+
+
+def test_plain_object_name_before_later_reveal_is_rejected():
+    detail = " ".join(["<Subject 1> holds the Uzi while waiting behind the counter."] * 55)
+    detail += " [Shot 2] At 00:02.000, <Subject 1> reveals <Subject 2> while saying <d>[Spanish] como esta?</d>"
+    prompt = f"""subject_definitions:
+<Picture 1> is the exact provided source image 1 showing the person.
+<Picture 2> is the exact provided source image 2 showing the Uzi.
+<Subject 1> is the reusable person shown in <Picture 1>.
+<Subject 2> is the reusable Uzi shown in <Picture 2>.
+
+summary:
+[reference generation] A sales advertisement.
+
+retention_analysis:
+fully_preserved: Both supplied pictures.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    source = 'The person in image 1 pulls the Uzi in image 2 from under the table cuando dice "como esta?"'
+    report = validate_prompt(prompt, "ref2va", 5.0, source)
+    assert any("before the user-specified reveal cue" in item for item in report["errors"])
+
+
+def test_object_name_in_dialogue_does_not_count_as_visual_reveal():
+    detail = " ".join(["<Subject 1> waits and says <d>[Spanish] Queréis una uzi...</d>."] * 40)
+    detail += " [Shot 2] At 00:02.000, <Subject 1> reveals <Subject 2> from <Picture 2> while saying <d>[Spanish] como esta?</d>"
+    prompt = f"""subject_definitions:
+<Picture 1> is the exact provided source image 1 showing the person.
+<Picture 2> is the exact provided source image 2 showing the Uzi.
+<Subject 1> is the reusable person shown in <Picture 1>.
+<Subject 2> is the reusable Uzi shown in <Picture 2>.
+
+summary:
+[reference generation] A sales advertisement.
+
+retention_analysis:
+fully_preserved: Both supplied pictures.
+
+detailed_description:
+[Shot 1] {detail}
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    source = 'The person in image 1 asks "Queréis una uzi..." and pulls the Uzi in image 2 cuando dice "como esta?"'
+    report = validate_prompt(prompt, "ref2va", 5.0, source)
+    assert not any("before the user-specified reveal cue" in item for item in report["errors"])
+
+
+def test_positional_asset_definitions_are_normalized_to_source_facts():
+    raw = """subject_definitions:
+<Picture 1> The opening setup.
+<Picture 2> The reveal moment.
+
+summary:
+..."""
+    fixed = normalize_reference_definitions(
+        raw, "The person in image 1 reveals the Uzi in image 2.",
+    )
+    assert "<Picture 1> is the exact user-provided image 1" in fixed
+    assert "visible role is person" in fixed
+    assert "<Picture 2> is the exact user-provided image 2" in fixed
+    assert "visible role is Uzi" in fixed
+    assert "<Subject 1> is the reusable person shown in <Picture 1>" in fixed
+    assert "<Subject 2> is the reusable Uzi shown in <Picture 2>" in fixed
+
+
+def test_placeholder_shot_times_are_distributed_inside_duration():
+    raw = """detailed_description:
+[Shot 1] Start. [Shot 2] At 00:0X.XXX, Middle. [Shot 3] At 00:XX.XXX, End.
+
+overall_soundscape:
+Room tone."""
+    fixed = normalize_shot_timeline(raw, "ref2va", 5.0)
+    assert "[Shot 2] At 00:01.667," in fixed
+    assert "[Shot 3] At 00:03.333," in fixed

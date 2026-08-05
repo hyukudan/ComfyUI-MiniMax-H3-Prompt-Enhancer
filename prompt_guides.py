@@ -25,9 +25,21 @@ REFERENCE_SECTIONS = (
     "non_diegetic_music",
 )
 TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va")
-_SECTION_RE = re.compile(r"(?m)^([a-z_]+):\s*")
+_ALL_SECTIONS = tuple(dict.fromkeys((*BASE_SECTIONS, *REFERENCE_SECTIONS)))
+_SECTION_PATTERN = "|".join(map(re.escape, _ALL_SECTIONS))
+_SECTION_RE = re.compile(rf"(?m)^({_SECTION_PATTERN}):\s*")
 _SHOT_RE = re.compile(r"\[Shot\s+(\d+)\](?:\s+At\s+(\d{2}):(\d{2})\.(\d{3}),)?", re.IGNORECASE)
 _REFERENCE_RE = re.compile(r"<(?:Subject|Picture|Video|Audio)\s+\d+>", re.IGNORECASE)
+_ASSET_REFERENCE_RE = re.compile(
+    r"\b(image|imagen|picture|foto|video|vídeo|audio)\s*(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\b",
+    re.IGNORECASE,
+)
+_ROLE_REFERENCE_RE = re.compile(
+    r"\b(?:the|a|an|el|la|los|las|un|una)\s+"
+    r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4})\s+"
+    r"(?:in|en|from|de)\s+(image|imagen|picture|foto)\s*(\d+)\b",
+    re.IGNORECASE,
+)
 _QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
 _SPEECH_CUE_RE = re.compile(
     r"\b(?:say|says|said|state|states|ask|asks|shout|shouts|whisper|whispers|speak|speaks|"
@@ -53,6 +65,13 @@ Shared timeline rules:
   character's lips remain closed. Never convert visible dialogue into voiceover unless the source explicitly asks
   for voiceover or narration. Use <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
 - Put visible text in straight English double quotes exactly as supplied.
+- Positional source references are immutable bindings: image/imagen/picture N always means <Picture N>, video N
+  means <Video N>, and audio N means <Audio N>. They name user-provided assets, never generated shots or moments.
+  Preserve the referenced person's identity or object's exact visible design wherever it appears. Never invent a
+  Picture, Video, or Audio label that the request/reference context did not provide. Do not reveal an object before
+  the action or spoken cue where the user explicitly says it first becomes visible.
+- Preserve concrete product nouns. In a firearm context, magazines/Spanish "cargadores" are detachable magazines,
+  never cartridges, rounds, or generic ammunition.
 - overall_soundscape is one continuous paragraph of 1-4 sentences covering ambience, physical sounds, and
   non-verbal human sounds. Do not repeat dialogue or audience-only music there.
 - non_diegetic_music is 1-3 sentences describing only audience-only music through instrumentation, tempo, rhythm,
@@ -88,6 +107,112 @@ def resolve_mode(mode: str, reference_context: str = "") -> str:
     return "ref2va" if _REFERENCE_RE.search(reference_context or "") else "t2va"
 
 
+def _plain_asset_bindings(source_prompt: str) -> dict[str, str]:
+    kind_map = {"image": "Picture", "imagen": "Picture", "picture": "Picture", "foto": "Picture",
+                "video": "Video", "vídeo": "Video", "audio": "Audio"}
+    bindings: dict[str, str] = {}
+    for kind, number in _ASSET_REFERENCE_RE.findall(source_prompt or ""):
+        label = f"<{kind_map[kind.lower()]} {int(number)}>"
+        bindings[label] = f"the exact user-provided {kind.lower()} {int(number)}"
+    for role, kind, number in _ROLE_REFERENCE_RE.findall(source_prompt or ""):
+        label = f"<Picture {int(number)}>"
+        bindings[label] = (
+            f"the exact user-provided {kind.lower()} {int(number)}, whose referenced visible role is {role.strip()}"
+        )
+    return bindings
+
+
+def _plain_picture_roles(source_prompt: str) -> dict[int, str]:
+    roles: dict[int, str] = {}
+    for role, _kind, number in _ROLE_REFERENCE_RE.findall(source_prompt or ""):
+        roles[int(number)] = role.strip()
+    return roles
+
+
+def _explicit_reveal(source_prompt: str) -> tuple[str, list[str]] | None:
+    reveal = re.search(
+        r"\b(?:when|cuando)\s+(?:[^\"“”\r\n]{0,40}?)(?:says?|dice)\s*[\"“]([^\"”\r\n]+)[\"”]",
+        source_prompt or "",
+        flags=re.IGNORECASE,
+    )
+    if not reveal:
+        return None
+    object_labels = []
+    for role, _kind, number in _ROLE_REFERENCE_RE.findall(source_prompt or ""):
+        if not re.search(r"\b(?:person|persona|man|woman|hombre|mujer|actor|actress)\b", role, re.IGNORECASE):
+            object_labels.append(f"<Picture {int(number)}>")
+    return reveal.group(1), list(dict.fromkeys(object_labels))
+
+
+def _positional_reference_contract(source_prompt: str) -> str:
+    bindings = _plain_asset_bindings(source_prompt)
+    if not bindings:
+        return ""
+    canonical = _ASSET_REFERENCE_RE.sub(
+        lambda match: f"<{ {'image': 'Picture', 'imagen': 'Picture', 'picture': 'Picture', 'foto': 'Picture', 'video': 'Video', 'vídeo': 'Video', 'audio': 'Audio'}[match.group(1).lower()] } {int(match.group(2))}>",
+        source_prompt,
+    )
+    lines = [
+        "POSITIONAL REFERENCE CONTRACT (authoritative; labels identify input assets, not timeline moments):",
+        *[f"- {label} is {description}. Preserve its identity, shape, proportions, colors, materials, markings, and distinctive details."
+          for label, description in bindings.items()],
+        *[f"- <Subject {number}> is the reusable {role} shown in <Picture {number}>. Use <Subject {number}> for that entity throughout detailed_description and <Picture {number}> as its immutable source anchor."
+          for number, role in _plain_picture_roles(source_prompt).items()],
+        "- Do not create any additional <Picture N>, <Video N>, or <Audio N> labels unless explicitly supplied.",
+        "- Clauses such as 'the person in image 1 ... the object in image 2' bind source identity/design only; "
+        "they do not make the object visible at the start. A later explicit reveal action or spoken cue overrides them.",
+        "CANONICALIZED SOURCE WORDING:\n" + canonical,
+    ]
+    reveal = _explicit_reveal(source_prompt)
+    if reveal:
+        cue, labels = reveal
+        for label in labels:
+            lines.insert(-1, (
+                f"- REVEAL LOCK: {label} must remain completely concealed and must not be named in "
+                f"detailed_description before the spoken cue {cue!r}. At that exact cue, reveal the exact source "
+                f"asset {label}; never show or present it earlier."
+            ))
+    return "\n".join(lines)
+
+
+def normalize_reference_definitions(text: str, source_prompt: str) -> str:
+    """Make positional asset definitions factual even when a small LLM turns them into story beats."""
+    bindings = _plain_asset_bindings(source_prompt)
+    if not bindings:
+        return str(text)
+    definitions = _section_body(str(text), "subject_definitions")
+    if not definitions:
+        return str(text)
+    for label, description in bindings.items():
+        canonical = (
+            f"{label} is {description}; preserve its exact visible identity/design, shape, proportions, colors, "
+            "materials, markings, and distinctive details."
+        )
+        pattern = re.compile(rf"(?im)^{re.escape(label)}\s*:?\s*.*$")
+        if pattern.search(definitions):
+            definitions = pattern.sub(canonical, definitions, count=1)
+        else:
+            definitions = canonical + "\n" + definitions
+    for number, role in _plain_picture_roles(source_prompt).items():
+        subject_label = f"<Subject {number}>"
+        canonical = (
+            f"{subject_label} is the reusable {role} shown in <Picture {number}>; preserve the exact identity/design "
+            "from that supplied source asset whenever the subject appears."
+        )
+        pattern = re.compile(rf"(?im)^{re.escape(subject_label)}\s*:?\s*.*$")
+        if pattern.search(definitions):
+            definitions = pattern.sub(canonical, definitions, count=1)
+        else:
+            definitions = canonical + "\n" + definitions
+    section_match = re.search(
+        rf"(?ms)(^subject_definitions:\s*)(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
+        str(text),
+    )
+    if not section_match:
+        return str(text)
+    return str(text)[:section_match.start()] + section_match.group(1) + definitions.strip() + "\n\n" + str(text)[section_match.end():].lstrip()
+
+
 def alignment_instruction(mode: str, duration_seconds: float, final_shot: int | str = "N") -> str:
     duration = f"{float(duration_seconds):.2f}"
     if mode == "i2va":
@@ -117,6 +242,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     ]
     if reference_context.strip():
         parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
+    positional_contract = _positional_reference_contract(basic_prompt)
+    if positional_contract:
+        parts.append(positional_contract)
     if alignment:
         label = "REQUIRED FIRST-LINE TEMPLATE (replace N with the actual final shot number):" if resolved in {"fl2va", "l2va"} else "REQUIRED FIRST LINE:"
         parts.append(label + "\n" + alignment)
@@ -177,6 +305,38 @@ def normalize_shot_timestamps(text: str) -> str:
     )
 
 
+def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> str:
+    """Replace missing/placeholder later-shot times with deterministic in-duration cut points."""
+    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
+    section_match = re.search(
+        rf"(?ms)(^{re.escape(section)}:\s*)(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
+        str(text),
+    )
+    if not section_match:
+        return str(text)
+    body = section_match.group(2)
+    markers = list(re.finditer(r"\[Shot\s+(\d+)\]", body, flags=re.IGNORECASE))
+    if len(markers) < 2:
+        return str(text)
+    shot_count = max(int(item.group(1)) for item in markers)
+    for shot_number in range(2, shot_count + 1):
+        cut = float(duration_seconds) * (shot_number - 1) / shot_count
+        minutes = int(cut // 60)
+        seconds = cut - minutes * 60
+        timestamp = f"{minutes:02d}:{seconds:06.3f}"
+        pattern = re.compile(
+            rf"\[Shot\s+{shot_number}\](?:\s+At\s+(?:\d{{2}}:[0-9Xx]{{2}}\.[0-9Xx]{{3}}|[0-9Xx]{{2}}:[0-9Xx]{{2}}\.[0-9Xx]{{3}}),?)?",
+            re.IGNORECASE,
+        )
+        match = pattern.search(body)
+        if match and not re.fullmatch(
+            rf"\[Shot\s+{shot_number}\]\s+At\s+\d{{2}}:\d{{2}}\.\d{{3}},?",
+            match.group(0), flags=re.IGNORECASE,
+        ):
+            body = body[:match.start()] + f"[Shot {shot_number}] At {timestamp}," + body[match.end():]
+    return str(text)[:section_match.start()] + section_match.group(1) + body + str(text)[section_match.end():]
+
+
 def normalize_first_shot_marker(text: str, mode: str) -> str:
     """Bracket an unambiguous timeline-leading `Shot 1` without touching keyframe prose."""
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
@@ -197,7 +357,7 @@ def _time_seconds(minutes: str, seconds: str, millis: str) -> float:
 def _section_body(text: str, section: str) -> str:
     """Return one section body so labels mentioned in analysis are not parsed as timeline shots."""
     match = re.search(
-        rf"(?ms)^{re.escape(section)}:\s*(.*?)(?=^[a-z_]+:\s*|\Z)",
+        rf"(?ms)^{re.escape(section)}:\s*(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
         text,
     )
     return match.group(1) if match else ""
@@ -271,6 +431,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         errors.append("Output invented voiceover although the source requested visible dialogue")
 
     required_refs = set(_REFERENCE_RE.findall(reference_context or ""))
+    plain_bindings = _plain_asset_bindings(source_prompt or "")
+    required_refs.update(plain_bindings)
     output_refs = set(_REFERENCE_RE.findall(text))
     absent_refs = sorted(required_refs - output_refs)
     if absent_refs:
@@ -280,6 +442,88 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             r"(?ms)^detailed_description:\s*(.*?)(?=^overall_soundscape:)", text,
         )
         detail_words = len(re.findall(r"\b[\w'-]+\b", detail_match.group(1))) if detail_match else 0
+        detail_text = detail_match.group(1) if detail_match else ""
+        picture_roles = _plain_picture_roles(source_prompt or "")
+        for label in plain_bindings:
+            applied = label.lower() in detail_text.lower()
+            picture_number = re.fullmatch(r"<Picture\s+(\d+)>", label, re.IGNORECASE)
+            if picture_number and int(picture_number.group(1)) in picture_roles:
+                applied = applied or f"<subject {int(picture_number.group(1))}>" in detail_text.lower()
+            if not applied:
+                errors.append(f"Positional reference {label} must be applied inside detailed_description")
+        explicit_assets = {
+            item.lower() for item in _REFERENCE_RE.findall(reference_context or "")
+            if not item.lower().startswith("<subject")
+        }
+        allowed_assets = explicit_assets | {item.lower() for item in plain_bindings}
+        output_assets = {
+            item.lower() for item in output_refs if not item.lower().startswith("<subject")
+        }
+        invented_assets = sorted(output_assets - allowed_assets)
+        if invented_assets:
+            errors.append(f"Output invented reference assets not supplied by the user: {invented_assets}")
+        definitions = _section_body(text, "subject_definitions")
+        for label in plain_bindings:
+            definition = re.search(
+                rf"(?im)^{re.escape(label)}\s*:?\s*(.+)$", definitions,
+            )
+            if not definition:
+                errors.append(f"{label} requires an explicit source-asset definition")
+                continue
+            line = definition.group(1)
+            if not re.search(r"\b(?:source|provided|reference|input)\s+(?:image|picture|video|audio)\b", line, re.IGNORECASE):
+                errors.append(f"{label} definition must identify it as the supplied source asset, not a generated moment")
+            if re.search(r"\b(?:moment|final shot|initial setup|scene transition)\b", line, re.IGNORECASE):
+                errors.append(f"{label} was reinterpreted as a timeline moment instead of an input asset")
+        for number, role in picture_roles.items():
+            subject_label = f"<Subject {number}>"
+            binding = re.search(
+                rf"(?im)^{re.escape(subject_label)}\s*:?\s*(.+)$", definitions,
+            )
+            if not binding or f"<picture {number}>" not in binding.group(1).lower():
+                errors.append(f"{subject_label} must bind the source role {role!r} to <Picture {number}>")
+            if subject_label.lower() not in detail_text.lower():
+                errors.append(f"{subject_label} must be used for the referenced {role!r} in detailed_description")
+        retention = _section_body(text, "retention_analysis")
+        allowed_markers = {
+            "fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference",
+            "fully_copy", "partially_copy", "reference",
+        }
+        for marker in re.findall(r"(?m)^([a-z_]+):", retention):
+            if marker not in allowed_markers:
+                errors.append(f"Unsupported retention marker {marker!r}; use only documented visual/audio markers")
+        reveal = _explicit_reveal(source_prompt or "")
+        if reveal:
+            cue, object_labels = reveal
+            cue_position = detail_text.lower().find(cue.lower().rstrip("?.!"))
+            visual_detail = re.sub(r"<d>.*?</d>", lambda match: " " * len(match.group(0)), detail_text,
+                                   flags=re.IGNORECASE | re.DOTALL)
+            for label in object_labels:
+                picture_number = int(re.search(r"\d+", label).group())
+                role = picture_roles.get(picture_number, "")
+                candidates = [
+                    position for position in (
+                        detail_text.lower().find(label.lower()),
+                        detail_text.lower().find(f"<subject {picture_number}>")
+                    ) if position >= 0
+                ]
+                role_match = re.search(rf"\b{re.escape(role)}\b", visual_detail, re.IGNORECASE) if role else None
+                if role_match:
+                    candidates.append(role_match.start())
+                first_reference = min(candidates) if candidates else -1
+                if cue_position >= 0 and 0 <= first_reference < cue_position:
+                    label_shots = list(_SHOT_RE.finditer(detail_text[:first_reference + 1]))
+                    cue_shots = list(_SHOT_RE.finditer(detail_text[:cue_position + 1]))
+                    label_shot = int(label_shots[-1].group(1)) if label_shots else 0
+                    cue_shot = int(cue_shots[-1].group(1)) if cue_shots else 0
+                    if label_shot != cue_shot:
+                        errors.append(
+                            f"{label} appears before the user-specified reveal cue {cue!r}"
+                        )
+        if re.search(r"\b(?:magazines?|cargadores?)\b", source_prompt or "", re.IGNORECASE) and re.search(
+            r"\b(?:cartridges?|rounds?)\b", detail_text, re.IGNORECASE,
+        ):
+            errors.append("Output changed firearm magazines/cargadores into cartridges or rounds")
         if detail_words and not 350 <= detail_words <= 500:
             warnings.append(f"Ref2VA detailed_description has {detail_words} words; 350-500 is recommended")
     return {
