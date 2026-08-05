@@ -14,6 +14,7 @@ from prompt_guides import (
     normalize_section_headers,
     resolve_mode,
     strip_markdown_fence,
+    system_prompt_for_mode,
     validate_prompt,
 )
 
@@ -21,6 +22,16 @@ from prompt_guides import (
 def test_auto_mode_is_conservative():
     assert resolve_mode("auto", "") == "t2va"
     assert resolve_mode("auto", "<Subject 1> comes from <Picture 1>") == "ref2va"
+    assert resolve_mode("auto", "", "The person in image 1 holds the object in image 2") == "ref2va"
+
+
+def test_system_prompt_contains_only_the_resolved_mode_contract():
+    base = system_prompt_for_mode("t2va")
+    reference = system_prompt_for_mode("ref2va")
+    assert "Base-mode output" in base
+    assert "Ref2VA output" not in base
+    assert "Ref2VA output" in reference
+    assert "Base-mode output" not in reference
 
 
 def test_build_request_carries_duration_source_and_alignment_template():
@@ -170,7 +181,7 @@ Muffled sounds of struggle fill the room.
 non_diegetic_music:
 Slow noir jazz."""
     repaired = normalize_source_dialogue(generated, source, "t2va")
-    assert "says in an off-screen internal monologue" in repaired
+    assert "says in an off-screen voiceover, as a concentrated internal monologue" in repaired
     assert '<d>[Spanish] Quién debe ser el asesino?</d>' in repaired
     assert "lips remain completely closed" in repaired
     report = validate_prompt(repaired, "t2va", 5.0, source)
@@ -194,7 +205,7 @@ Slow noir jazz."""
     repaired = normalize_source_dialogue(generated, source, "t2va")
     assert repaired.count("<d>") == 1
     assert repaired.count("Quién debe ser el asesino?") == 1
-    assert repaired.count("off-screen internal monologue") == 1
+    assert repaired.count("off-screen voiceover") == 1
     assert "Conan speaks" not in repaired
     assert "delivers his line" not in repaired
     assert "detective's internal monologue" not in repaired
@@ -212,7 +223,7 @@ non_diegetic_music:
 N/A"""
     repaired = normalize_source_dialogue(generated, source, "t2va")
     assert repaired.count("<d>") == 1
-    assert repaired.count("off-screen internal monologue") == 1
+    assert repaired.count("off-screen voiceover") == 1
     assert "Conan speaks" not in repaired
 
 
@@ -232,6 +243,63 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
     assert '<d>[Original language] Do not move.</d>' in enhanced
     assert '<d>[Original language] Do not move.</d>' in conservative
+
+
+def test_short_simultaneous_prompt_gets_one_shot_and_visibility_contract():
+    source = 'Conan thinks "Quién debe ser el asesino?" while an attack happens behind him.'
+    request = build_user_request(source, "t2va", 5.0, enhance_description=True)
+    assert "SHOT PLAN: Exactly one continuous shot" in request
+    assert "SIMULTANEITY LOCK" in request
+    assert "do not invent dialogue or music" in request
+
+
+def test_duplicate_exact_dialogue_is_reduced_to_one_block():
+    source = 'Conan thinks "Quién debe ser el asesino?".'
+    generated = """integrated_multimodal_description:
+[Shot 1] Conan (S1) says in an off-screen voiceover, as a concentrated internal monologue: <d>[Spanish] Quién debe ser el asesino?</d> while his lips remain closed. The same thought repeats: <d>[Spanish] Quién debe ser el asesino?</d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert repaired.count("<d>") == 1
+    assert repaired.count("Quién debe ser el asesino?") == 1
+
+
+def test_validator_rejects_extra_dialogue_music_inline_times_and_excess_shots():
+    source = 'Conan thinks "Quién debe ser el asesino?" while an attack happens behind him.'
+    prompt = """integrated_multimodal_description:
+[Shot 1] At 2.0 seconds, Conan thinks. Conan (S1) says in an off-screen voiceover, as a concentrated internal monologue: <d>[Spanish] Quién debe ser el asesino?</d> while his lips remain completely closed. [Shot 2] At 00:02.500, the camera cuts closer and a voice says <d>[Spanish] Otra vez.</d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+Noir jazz."""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    joined = "\n".join(report["errors"])
+    assert "exactly one continuous shot" in joined
+    assert "Numeric event times" in joined
+    assert "Invented or duplicated dialogue" in joined
+    assert "must be N/A" in joined
+
+
+def test_dialogue_in_soundscape_does_not_satisfy_spoken_contract():
+    source = 'A detective says "Stop."'
+    prompt = """integrated_multimodal_description:
+[Shot 1] A detective raises one hand.
+
+overall_soundscape:
+The detective says <d>[English] Stop.</d> over room tone.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    joined = "\n".join(report["errors"])
+    assert "Required spoken dialogue" in joined
+    assert "only inside the timeline" in joined
 
 
 def test_only_timeline_shot_one_is_bracketed():

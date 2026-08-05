@@ -7,6 +7,7 @@ T2VA/I2VA/FL2VA/L2VA and full-reference prompt-writing guides.
 
 from __future__ import annotations
 
+from collections import Counter
 import re
 from typing import Any
 
@@ -80,8 +81,9 @@ Shared timeline rules:
 - Give each actual vocal source a stable (S1), (S2), ... ID. Put only the exact spoken words and a language tag
   inside <d>[Language] ...</d>. For voiceover say "says in an off-screen voiceover" and state that the visible
   character's lips remain closed. Never convert visible dialogue into voiceover unless the source explicitly asks
-  for voiceover or narration. Treat a quoted thought or internal monologue as audible off-screen internal monologue:
-  preserve it in <d>, identify its thinker as a speaker, and state that the character's lips remain closed. Use
+  for voiceover or narration. Treat a quoted thought or internal monologue as audible voiceover: use the exact phrase
+  "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker, describe it as an internal
+  monologue outside the tag, and state that the character's lips remain closed. Use
   <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
 - Put visible text in straight English double quotes exactly as supplied.
 - Positional source references are immutable bindings: image/imagen/picture N always means <Picture N>, video N
@@ -117,13 +119,25 @@ camera, sound, and where each reference takes effect in playback order.
 """
 
 
-def resolve_mode(mode: str, reference_context: str = "") -> str:
+def system_prompt_for_mode(mode: str) -> str:
+    """Return only the output-contract rules relevant to the resolved H3 mode."""
+    base_marker = "\nBase-mode output has exactly these three sections in order:"
+    ref_marker = "\nRef2VA output has exactly these six sections in order:"
+    common, mode_rules = SYSTEM_PROMPT.split(base_marker, 1)
+    base_rules, ref_rules = mode_rules.split(ref_marker, 1)
+    if mode == "ref2va":
+        return common + ref_marker + ref_rules
+    return common + base_marker + base_rules
+
+
+def resolve_mode(mode: str, reference_context: str = "", basic_prompt: str = "") -> str:
     mode = str(mode).strip().lower()
     if mode not in TASK_MODES:
         raise ValueError(f"Unsupported MiniMax H3 prompt mode {mode!r}")
     if mode != "auto":
         return mode
-    return "ref2va" if _REFERENCE_RE.search(reference_context or "") else "t2va"
+    has_reference = _REFERENCE_RE.search(reference_context or "") or _ASSET_REFERENCE_RE.search(basic_prompt or "")
+    return "ref2va" if has_reference else "t2va"
 
 
 def _plain_asset_bindings(source_prompt: str) -> dict[str, str]:
@@ -250,9 +264,39 @@ def alignment_instruction(mode: str, duration_seconds: float, final_shot: int | 
     return ""
 
 
+def _requires_single_simultaneous_shot(source_prompt: str, duration_seconds: float) -> bool:
+    if float(duration_seconds) > 5.0:
+        return False
+    source = source_prompt or ""
+    simultaneous = re.search(
+        r"\b(?:while|whilst|mientras|simultaneously|at the same time|al mismo tiempo)\b",
+        source,
+        flags=re.IGNORECASE,
+    )
+    explicit_edit = re.search(
+        r"\b(?:cut(?:s|ting)?|shot\s+\d+|scene\s+\d+|then|afterwards|despu[eé]s|luego|"
+        r"transition|montage|insert|cutaway)\b|\d{1,2}:\d{2}(?:\.\d{1,3})?",
+        source,
+        flags=re.IGNORECASE,
+    )
+    return bool(simultaneous and not explicit_edit)
+
+
+def _source_requests_music(source_prompt: str) -> bool:
+    source = source_prompt or ""
+    if re.search(r"\b(?:no|without|sin)\s+(?:background\s+|non[- ]diegetic\s+)?m[uú]sic", source, re.IGNORECASE):
+        return False
+    return bool(re.search(
+        r"\b(?:music|m[uú]sica|song|canci[oó]n|score|soundtrack|jazz|orchestra|orchestral|"
+        r"piano|guitar|cello|violin|trumpet|drums?|synth)\b",
+        source,
+        flags=re.IGNORECASE,
+    ))
+
+
 def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        reference_context: str = "", enhance_description: bool = True) -> str:
-    resolved = resolve_mode(mode, reference_context)
+    resolved = resolve_mode(mode, reference_context, basic_prompt)
     alignment = alignment_instruction(resolved, duration_seconds)
     parts = [
         f"TASK MODE: {resolved.upper()}",
@@ -264,7 +308,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
             "- Turn terse wording into a concrete, vivid audiovisual sequence across the full target duration.\n"
             "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera motion, "
-            "action continuity, pacing, physical sound, and requested musical treatment.\n"
+            "action continuity, pacing, physical sound, and requested musical treatment. If the user did not request "
+            "music, non_diegetic_music must be N/A.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
             "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
@@ -275,7 +320,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "shot, and never create another shot or vocal cue to repeat or continue the same short line.\n"
             "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
             "- Do not invent new characters, plot events, dialogue, branded objects, reference assets, or an ending that "
-            "changes the user's intent."
+            "changes the user's intent. Do not increase gore, damage, or explicitness beyond the source."
         )
     else:
         parts.append(
@@ -295,6 +340,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         parts.append(
             "MANDATORY DIALOGUE CONTRACT (copy each block verbatim into the shot where it is spoken; "
             "do not omit, translate, censor, or move it to soundscape):\n" + "\n".join(dialogue_contracts)
+        )
+    single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
+    if single_shot:
+        parts.append(
+            "SHOT PLAN: Exactly one continuous shot. The source describes one simultaneous event; keep all requested "
+            "foreground and background actions readable together. Do not add inserts, cutaways, or additional shots.\n"
+            "SIMULTANEITY LOCK: The actions joined by while/mientras occur continuously at the same time. Camera motion, "
+            "framing, and depth of field must never isolate or obscure either requested action."
         )
     if reference_context.strip():
         parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
@@ -316,6 +369,16 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "integrated_multimodal_description:\n[Shot 1] ...\n\noverall_soundscape:\n...\n\n"
             "non_diegetic_music:\n..."
         )
+    final_checks = [
+        "preserve every immutable source fact",
+        "use each exact quoted spoken line once and only once",
+        "do not invent dialogue or music",
+        "use numeric cut times only in later [Shot N] headers",
+    ]
+    if single_shot:
+        final_checks.insert(0, "exactly one continuous shot")
+        final_checks.append("keep the simultaneous actions visible together")
+    parts.append("FINAL CHECK: " + "; ".join(final_checks) + ".")
     parts.append("Rewrite now using the exact section contract for this task mode.")
     return "\n\n".join(parts)
 
@@ -377,6 +440,42 @@ def _source_quote_is_internal_monologue(source_prompt: str, quote_match) -> bool
     return bool(_INTERNAL_MONOLOGUE_CUE_RE.search(window))
 
 
+def _source_dialogue_contracts(source_prompt: str) -> list[tuple[str, str, bool]]:
+    contracts = []
+    for match in _QUOTED_RE.finditer(source_prompt or ""):
+        cue_window = (source_prompt or "")[max(0, match.start() - 180):match.start()]
+        if _SPEECH_CUE_RE.search(cue_window):
+            contracts.append((
+                _source_dialogue_language(source_prompt, match),
+                match.group(1),
+                _source_quote_is_internal_monologue(source_prompt, match),
+            ))
+    for language, quote in re.findall(
+        r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
+    ):
+        item = (language.strip(), quote.strip(), False)
+        if item not in contracts:
+            contracts.append(item)
+    return contracts
+
+
+def _deduplicate_source_dialogue(text: str, source_prompt: str) -> str:
+    expected = {
+        f"[{language}] {quote}".casefold() for language, quote, _internal in _source_dialogue_contracts(source_prompt)
+    }
+    seen: set[str] = set()
+
+    def replace(match):
+        inner = re.sub(r"\s+", " ", match.group(1).strip()).casefold()
+        if inner in expected:
+            if inner in seen:
+                return ""
+            seen.add(inner)
+        return match.group(0)
+
+    return re.sub(r"<d>(.*?)</d>", replace, str(text), flags=re.DOTALL | re.IGNORECASE)
+
+
 def _remove_internal_monologue_placeholders(text: str) -> str:
     """Remove vague duplicate vocal cues before restoring one exact thought line."""
     parts = re.split(r"(?<=[.!?])(?=\s+|\Z)", str(text))
@@ -421,6 +520,12 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
         is_internal_monologue = _source_quote_is_internal_monologue(source_prompt, match)
         if is_internal_monologue:
             value = _remove_internal_monologue_placeholders(value)
+            value = re.sub(
+                r"says in an off-screen internal monologue",
+                "says in an off-screen voiceover, as a concentrated internal monologue",
+                value,
+                flags=re.IGNORECASE,
+            )
         tagged = re.compile(
             rf"<d>\[[^\]]+\]\s*{re.escape(quote)}\s*</d>",
             flags=re.IGNORECASE,
@@ -437,13 +542,14 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
             continue
         if is_internal_monologue:
             additions.append(
-                f"The thinking on-screen character (S1) says in an off-screen internal monologue: {block}, "
+                f"The thinking on-screen character (S1) says in an off-screen voiceover, as a concentrated internal "
+                f"monologue: {block}, "
                 "while the character's lips remain completely closed."
             )
         else:
             additions.append(f"The on-screen speaker (S1) delivers the requested line: {block}.")
     if not additions:
-        return value
+        return _deduplicate_source_dialogue(value, source_prompt)
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
     match = re.search(
         rf"(?ms)(^{re.escape(section)}:\s*)(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
@@ -451,8 +557,12 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str) -> str:
     )
     if not match:
         return value
-    body = match.group(2).rstrip() + " " + " ".join(additions)
-    return value[:match.start(2)] + body + "\n\n" + value[match.end(2):].lstrip()
+    body = match.group(2)
+    later_shot = re.search(r"\[Shot\s+[2-9]\d*\]", body, flags=re.IGNORECASE)
+    insertion = later_shot.start() if later_shot else len(body)
+    body = body[:insertion].rstrip() + " " + " ".join(additions) + " " + body[insertion:].lstrip()
+    value = value[:match.start(2)] + body.rstrip() + "\n\n" + value[match.end(2):].lstrip()
+    return _deduplicate_source_dialogue(value, source_prompt)
 
 
 def normalize_shot_timestamps(text: str) -> str:
@@ -531,7 +641,7 @@ def _section_body(text: str, section: str) -> str:
 
 def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     source_prompt: str = "", reference_context: str = "") -> dict[str, Any]:
-    resolved = resolve_mode(mode, reference_context)
+    resolved = resolve_mode(mode, reference_context, source_prompt)
     text = str(prompt).strip()
     errors: list[str] = []
     warnings: list[str] = []
@@ -563,6 +673,16 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append("Cut timestamps must be strictly increasing")
         if any(value <= 0 or value >= float(duration_seconds) for value in cut_times):
             errors.append("Every cut timestamp must fall strictly inside the target duration")
+    if _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1:
+        errors.append("The short simultaneous source requires exactly one continuous shot")
+    timeline_without_headers = _SHOT_RE.sub("", timeline)
+    invented_inline_times = re.findall(
+        r"\b(?:At|After)\s+\d+(?:\.\d+)?\s+seconds?\b",
+        timeline_without_headers,
+        flags=re.IGNORECASE,
+    )
+    if invented_inline_times and not any(item.casefold() in (source_prompt or "").casefold() for item in invented_inline_times):
+        errors.append("Numeric event times may appear only in shot headers unless supplied by the user")
     final_shot = len(shots) if shots else 1
     alignment = alignment_instruction(resolved, duration_seconds, final_shot)
     if alignment and not text.startswith(alignment + "\n\n"):
@@ -572,9 +692,41 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     if text.count("<d>") != text.count("</d>"):
         errors.append("Dialogue tags are unbalanced")
-    for dialogue in re.findall(r"<d>(.*?)</d>", text, flags=re.DOTALL):
+    all_dialogue = re.findall(r"<d>(.*?)</d>", text, flags=re.DOTALL | re.IGNORECASE)
+    timeline_dialogue = re.findall(r"<d>(.*?)</d>", timeline, flags=re.DOTALL | re.IGNORECASE)
+    for dialogue in all_dialogue:
         if not re.match(r"\[[^\]]+\]\s+\S", dialogue.strip()):
             errors.append("Every <d> block must begin with a language tag and contain dialogue")
+
+    contracts = _source_dialogue_contracts(source_prompt)
+
+    def dialogue_text(item: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", item.strip()))
+
+    normalized_expected = Counter(quote for _language, quote, _internal in contracts)
+    normalized_timeline = Counter(dialogue_text(item) for item in timeline_dialogue)
+    if normalized_timeline != normalized_expected:
+        missing = list((normalized_expected - normalized_timeline).elements())
+        extra = list((normalized_timeline - normalized_expected).elements())
+        if missing:
+            errors.append(f"Required spoken dialogue is missing or duplicated incorrectly: {missing}")
+        if extra:
+            errors.append(f"Invented or duplicated dialogue is not allowed: {extra}")
+    if Counter(dialogue_text(item) for item in all_dialogue) != normalized_timeline:
+        errors.append("Dialogue blocks must appear only inside the timeline section")
+
+    for language, quote, _internal in contracts:
+        if language == "Original language":
+            continue
+        exact = f"[{language}] {quote}"
+        if sum(re.sub(r"\s+", " ", item.strip()) == exact for item in timeline_dialogue) != 1:
+            errors.append(f"Dialogue must preserve its requested language marker exactly: {exact!r}")
+
+    if any(internal for _language, _quote, internal in contracts):
+        if "says in an off-screen voiceover" not in timeline.lower():
+            errors.append("Internal monologue must use the exact off-screen voiceover phrase")
+        if not re.search(r"lips\s+remain\s+(?:completely\s+)?closed", timeline, re.IGNORECASE):
+            errors.append("Internal monologue must state that the character's lips remain closed")
 
     missing_quotes = [quote for quote in _QUOTED_RE.findall(source_prompt or "") if quote not in text]
     if missing_quotes:
@@ -596,6 +748,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     )
     if re.search(r"\b(?:off-screen voiceover|voice[ -]?over|voz en off)\b", text, re.IGNORECASE) and not source_requests_voiceover:
         errors.append("Output invented voiceover although the source requested visible dialogue")
+
+    music = _section_body(text, "non_diegetic_music").strip()
+    if not _source_requests_music(source_prompt) and music.casefold() != "n/a":
+        errors.append("non_diegetic_music must be N/A when the source did not request music")
 
     required_refs = set(_REFERENCE_RE.findall(reference_context or ""))
     plain_bindings = _plain_asset_bindings(source_prompt or "")

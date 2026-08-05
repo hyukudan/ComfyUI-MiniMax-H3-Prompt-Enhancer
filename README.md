@@ -215,6 +215,11 @@ motion, pacing, action continuity, physical sound, and requested music. It may i
 provides a meaningful change in viewpoint, time, location, scale, or information. Otherwise it prefers a motivated
 continuous camera move.
 
+Short prompts of five seconds or less that explicitly describe simultaneous action with `while` or `mientras`
+receive a one-shot and simultaneity contract unless the source requests an edit or sequence. This prevents gratuitous
+inserts and keeps foreground and background actions readable together. Numeric event times invented inside shot prose
+are rejected; absolute cut times belong only in later `[Shot N]` headers.
+
 When disabled, it performs a conservative conversion into MiniMax H3's required structure and preserves the source's
 original level of detail. Both modes keep quoted dialogue, reference bindings, identities, requested actions, timing,
 and the intended ending authoritative.
@@ -234,6 +239,9 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 - common variants such as `Catalonian`, `Catalan`, `catalán`, and `català` normalize to `[Catalan]`;
 - every quoted spoken line is copied verbatim, without translation, censorship, or paraphrase;
 - if an LLM still omits the line, it is restored to the timeline inside `<d>` before validation.
+- each source dialogue line must occur exactly once inside the timeline;
+- duplicated or invented `<d>` blocks and dialogue placed in `overall_soundscape` are rejected;
+- absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
@@ -371,7 +379,9 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-Tests cover all H3 modes, timing, alignment, exact dialogue/language preservation, references, endpoint policy, repair, GGUF discovery, process isolation, persistent reuse, explicit unload, and failure cleanup.
+Tests cover all H3 modes, timing, alignment, single-shot simultaneity, exact-once dialogue/language preservation,
+internal voiceover, rejection of invented dialogue and music, references, endpoint policy, repair, GGUF discovery,
+process isolation, persistent reuse, explicit unload, and failure cleanup.
 
 Bug reports should include the ComfyUI version, extension commit, backend, model identifier, resolved mode, sanitized source prompt, and complete validation/error report. GGUF reports should also include the llama.cpp build and quantization. Never attach API keys or private reference content.
 

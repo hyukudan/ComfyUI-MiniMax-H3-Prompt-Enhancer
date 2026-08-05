@@ -13,7 +13,7 @@ try:
         unload_cached_server,
     )
     from .prompt_enhancer import enhance_prompt
-    from .prompt_guides import SYSTEM_PROMPT, build_user_request, resolve_mode, validate_prompt
+    from .prompt_guides import build_user_request, resolve_mode, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         unload_cached_server,
     )
     from prompt_enhancer import enhance_prompt
-    from prompt_guides import SYSTEM_PROMPT, build_user_request, resolve_mode, validate_prompt
+    from prompt_guides import build_user_request, resolve_mode, system_prompt_for_mode, validate_prompt
 
 
 class MiniMaxH3PromptGuideBuilder:
@@ -49,9 +49,9 @@ class MiniMaxH3PromptGuideBuilder:
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
-        resolved = resolve_mode(mode, reference_context)
+        resolved = resolve_mode(mode, reference_context, basic_prompt)
         return (
-            SYSTEM_PROMPT,
+            system_prompt_for_mode(resolved),
             build_user_request(
                 basic_prompt, resolved, duration_seconds, reference_context, enhance_description
             ),

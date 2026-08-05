@@ -12,9 +12,9 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, validate_prompt
+    from .prompt_guides import build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from prompt_guides import SYSTEM_PROMPT, build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, validate_prompt
+    from prompt_guides import build_user_request, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -143,11 +143,11 @@ def enhance_prompt_with_completion(
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description
     )
+    resolved_mode = resolve_mode(mode, reference_context, basic_prompt)
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt_for_mode(resolved_mode)},
         {"role": "user", "content": user_request},
     ]
-    resolved_mode = resolve_mode(mode, reference_context)
     enhanced = normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
         completion(messages)
     )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt), basic_prompt, resolved_mode)
