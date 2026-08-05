@@ -6,6 +6,7 @@ from prompt_guides import (
     alignment_instruction,
     build_user_request,
     normalize_dialogue_tags,
+    normalize_source_dialogue,
     normalize_first_shot_marker,
     normalize_reference_definitions,
     normalize_shot_timestamps,
@@ -120,6 +121,35 @@ def test_missing_dialogue_language_marker_gets_non_translating_fallback():
     assert normalize_dialogue_tags("<d>Hola.</d>") == "<d>[Original language] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish] Hola.</d>") == "<d>[Spanish] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish]Hola.</d>") == "<d>[Spanish] Hola.</d>"
+
+
+def test_catalonian_language_request_becomes_exact_catalan_dialogue_contract():
+    source = (
+        'A live action Luffy enters a restaurant and asks in catalonian language '
+        '"A ver, cabrones, quiero flaó de ese".'
+    )
+    request = build_user_request(source, "t2va", 5.0)
+    assert "MANDATORY DIALOGUE CONTRACT" in request
+    assert '<d>[Catalan] A ver, cabrones, quiero flaó de ese</d>' in request
+
+
+def test_missing_spoken_quote_is_restored_inside_language_tag():
+    source = (
+        'A live action Luffy enters a restaurant and asks in catalonian language '
+        '"A ver, cabrones, quiero flaó de ese".'
+    )
+    generated = """integrated_multimodal_description:
+[Shot 1] Live-action, Luffy enters a restaurant in Ibiza with an arrogant expression.
+
+overall_soundscape:
+Restaurant chatter and clinking dishes.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert '<d>[Catalan] A ver, cabrones, quiero flaó de ese</d>' in repaired
+    report = validate_prompt(repaired, "t2va", 5.0, source)
+    assert not any("dialogue" in error.lower() or "quoted" in error.lower() for error in report["errors"])
 
 
 def test_only_timeline_shot_one_is_bracketed():

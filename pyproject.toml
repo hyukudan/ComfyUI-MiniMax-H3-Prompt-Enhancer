@@ -1,16 +1,22 @@
 [project]
 name = "comfyui-minimax-h3-prompt-enhancer"
-version = "0.1.0"
-description = "Guide-constrained MiniMax H3 prompt enhancement and validation nodes for ComfyUI"
+version = "0.2.0"
+description = "Guide-constrained MiniMax H3 prompt enhancement with OpenAI-compatible and isolated local GGUF backends"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "GPL-3.0-only" }
+license = "GPL-3.0-only"
 dependencies = []
 keywords = ["comfyui", "minimax-h3", "prompt-enhancement", "video-generation"]
 
 [project.urls]
 Repository = "https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer"
 Issues = "https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer/issues"
+
+[tool.comfy]
+PublisherId = "hyukudan"
+DisplayName = "MiniMax H3 Prompt Enhancer"
+Icon = ""
+includes = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

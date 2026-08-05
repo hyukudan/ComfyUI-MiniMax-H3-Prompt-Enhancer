@@ -6,9 +6,21 @@ from __future__ import annotations
 import json
 
 try:
+    from .gguf_server import (
+        available_gguf_models,
+        available_llama_servers,
+        enhance_prompt_with_gguf_server,
+        unload_cached_server,
+    )
     from .prompt_enhancer import enhance_prompt
     from .prompt_guides import SYSTEM_PROMPT, build_user_request, resolve_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from gguf_server import (
+        available_gguf_models,
+        available_llama_servers,
+        enhance_prompt_with_gguf_server,
+        unload_cached_server,
+    )
     from prompt_enhancer import enhance_prompt
     from prompt_guides import SYSTEM_PROMPT, build_user_request, resolve_mode, validate_prompt
 
@@ -46,11 +58,11 @@ class MiniMaxH3PromptGuideBuilder:
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT")
+    RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds")
     DESCRIPTION = (
-        "Rewrite a basic request into MiniMax H3's documented base or full-reference structure through an "
-        "OpenAI-compatible endpoint. Local endpoints are allowed by default; remote use requires explicit opt-in."
+        "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
+        "or a local GGUF launched with an isolated llama-server process."
     )
 
     @classmethod
@@ -69,23 +81,128 @@ class MiniMaxH3PromptEnhancer:
             "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True, "tooltip": "Faster, cleaner structured output on Qwen thinking models"}),
             "allow_remote_endpoint": ("BOOLEAN", {"default": False}),
+        }, "optional": {
+            "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
+            "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
+            "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
+            "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
+            "context_size": ("INT", {"default": 16384, "min": 4096, "max": 131072, "step": 1024}),
+            "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
+            "startup_timeout": ("INT", {"default": 180, "min": 10, "max": 1800, "step": 10}),
+            "keep_server_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep the GGUF in memory for faster repeated enhancement; use the unload node before H3 if VRAM is needed"}),
         }}
 
     @classmethod
     def IS_CHANGED(cls, **_kwargs):
         return float("nan")
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, local_model=None, llama_server_path=None):
+        """Allow dynamic choices to change without breaking remote workflows.
+
+        The local backend still validates both paths strictly before launching.
+        """
+        return True
+
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
-                temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking, allow_remote_endpoint):
-        prompt, validation, manifest = enhance_prompt(
-            basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
-            temperature, max_tokens, timeout_seconds, repair_attempts, allow_remote_endpoint, disable_thinking,
+                temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking,
+                allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
+                gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
+                keep_server_loaded=False):
+        if bool(use_remote_model):
+            prompt, validation, manifest = enhance_prompt(
+                basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
+                temperature, max_tokens, timeout_seconds, repair_attempts, allow_remote_endpoint,
+                disable_thinking,
+            )
+        else:
+            prompt, validation, manifest = enhance_prompt_with_gguf_server(
+                basic_prompt, mode, duration_seconds, reference_context, llama_server_path, local_model,
+                "", gpu_layers, context_size, threads, temperature, max_tokens, timeout_seconds,
+                startup_timeout, repair_attempts, disable_thinking, keep_server_loaded,
+            )
+        return (
+            prompt,
+            json.dumps(validation, ensure_ascii=False, indent=2),
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            float(duration_seconds),
+        )
+
+
+class MiniMaxH3GGUFPromptEnhancer:
+    CATEGORY = "MiniMax H3/Prompting"
+    FUNCTION = "enhance"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT")
+    RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds")
+    DESCRIPTION = (
+        "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
+        "downloaded, and the server is terminated after every queued invocation."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "basic_prompt": ("STRING", {"multiline": True, "default": ""}),
+            "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
+            "reference_context": ("STRING", {"multiline": True, "default": ""}),
+            "llama_server_path": ("STRING", {"default": "", "tooltip": "Existing llama-server executable; never downloaded automatically"}),
+            "gguf_model_path": ("STRING", {"default": "", "tooltip": "Existing GGUF under a registered model directory"}),
+            "registered_model_dirs": ("STRING", {"default": "", "tooltip": "Optional additional roots separated by the OS path separator; ComfyUI and LM Studio model roots are automatic"}),
+            "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
+            "context_size": ("INT", {"default": 16384, "min": 4096, "max": 131072, "step": 1024}),
+            "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1, "tooltip": "0 uses llama-server's default"}),
+            "temperature": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05}),
+            "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
+            "request_timeout": ("INT", {"default": 300, "min": 10, "max": 1800, "step": 10}),
+            "startup_timeout": ("INT", {"default": 180, "min": 10, "max": 1800, "step": 10}),
+            "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
+            "disable_thinking": ("BOOLEAN", {"default": True}),
+            "keep_server_loaded": ("BOOLEAN", {"default": False}),
+        }}
+
+    @classmethod
+    def IS_CHANGED(cls, **_kwargs):
+        return float("nan")
+
+    def enhance(self, basic_prompt, mode, duration_seconds, reference_context, llama_server_path,
+                gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
+                max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
+                keep_server_loaded):
+        prompt, validation, manifest = enhance_prompt_with_gguf_server(
+            basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
+            registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
+            request_timeout, startup_timeout, repair_attempts, disable_thinking,
+            keep_server_loaded,
         )
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
             json.dumps(manifest, ensure_ascii=False, indent=2),
+            float(duration_seconds),
         )
+
+
+class MiniMaxH3UnloadGGUFServer:
+    CATEGORY = "MiniMax H3/Prompting"
+    FUNCTION = "unload"
+    OUTPUT_NODE = True
+    RETURN_TYPES = ("BOOLEAN", "STRING")
+    RETURN_NAMES = ("unloaded", "status")
+    DESCRIPTION = "Stop the persistent GGUF prompt-enhancer server and release its RAM/VRAM."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"unload": ("BOOLEAN", {"default": True})}}
+
+    @classmethod
+    def IS_CHANGED(cls, **_kwargs):
+        return float("nan")
+
+    def unload(self, unload):
+        stopped = unload_cached_server() if bool(unload) else False
+        status = "Persistent GGUF server unloaded." if stopped else "No persistent GGUF server was loaded."
+        return {"ui": {"text": [status]}, "result": (stopped, status)}
 
 
 class MiniMaxH3PromptValidator:
