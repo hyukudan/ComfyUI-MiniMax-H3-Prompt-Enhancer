@@ -29,6 +29,25 @@ function setWidgetVisible(widget, visible) {
     }
 }
 
+function normalizeDynamicCombo(node, name) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    const values = widget?.options?.values;
+    if (!widget || !Array.isArray(values) || values.length === 0) return;
+    if (!values.includes(widget.value)) widget.value = values[0];
+}
+
+function visibleWidgetHeight(node) {
+    let height = 92;
+    for (const widget of node.widgets ?? []) {
+        if (widget.type === "converted-widget") continue;
+        const computed = widget.computeSize?.(node.size?.[0] ?? 460);
+        height += Array.isArray(computed) && Number.isFinite(computed[1])
+            ? Math.max(24, computed[1])
+            : 28;
+    }
+    return height;
+}
+
 function refreshBackendWidgets(node) {
     const toggle = node.widgets?.find((widget) => widget.name === "use_remote_model");
     const useRemote = toggle?.value !== false;
@@ -38,10 +57,15 @@ function refreshBackendWidgets(node) {
     for (const name of LOCAL_WIDGETS) {
         setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !useRemote);
     }
+    normalizeDynamicCombo(node, "local_model");
+    normalizeDynamicCombo(node, "llama_server_path");
+    const allowRemote = node.widgets?.find((widget) => widget.name === "allow_remote_endpoint");
+    if (allowRemote) allowRemote.label = "allow non-local endpoint";
     requestAnimationFrame(() => {
         const computed = node.computeSize();
         const currentWidth = Array.isArray(node.size) ? Number(node.size[0]) : 0;
-        node.setSize([Math.max(420, currentWidth, computed[0]), Math.max(260, computed[1] + 48)]);
+        const requiredHeight = Math.max(computed[1] + 72, visibleWidgetHeight(node));
+        node.setSize([Math.max(460, currentWidth, computed[0]), Math.max(320, requiredHeight)]);
         node.onResize?.(node.size);
         node.setDirtyCanvas(true, true);
     });
@@ -70,6 +94,15 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const result = originalConfigured?.apply(this, arguments);
             refreshBackendWidgets(this);
+            return result;
+        };
+        const originalDrawForeground = nodeType.prototype.onDrawForeground;
+        nodeType.prototype.onDrawForeground = function () {
+            const result = originalDrawForeground?.apply(this, arguments);
+            const requiredHeight = visibleWidgetHeight(this);
+            if (Array.isArray(this.size) && this.size[1] + 2 < requiredHeight) {
+                this.setSize([Math.max(460, this.size[0]), requiredHeight]);
+            }
             return result;
         };
     },

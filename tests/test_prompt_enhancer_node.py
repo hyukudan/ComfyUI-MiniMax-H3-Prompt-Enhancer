@@ -73,3 +73,10 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["keep_server_loaded"][1]["default"] is False
     assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-1] == "duration_seconds"
     assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-1] == "FLOAT"
+
+
+def test_main_enhancer_allows_stale_hidden_dynamic_combo_values():
+    assert MiniMaxH3PromptEnhancer.VALIDATE_INPUTS(
+        local_model="stale-model.gguf",
+        llama_server_path="stale-llama-server.exe",
+    ) is True

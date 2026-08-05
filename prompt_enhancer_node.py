@@ -96,6 +96,14 @@ class MiniMaxH3PromptEnhancer:
     def IS_CHANGED(cls, **_kwargs):
         return float("nan")
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, local_model=None, llama_server_path=None):
+        """Allow dynamic choices to change without breaking remote workflows.
+
+        The local backend still validates both paths strictly before launching.
+        """
+        return True
+
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
                 temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking,
                 allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
