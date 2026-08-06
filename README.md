@@ -222,9 +222,11 @@ provides a meaningful change in viewpoint, time, location, scale, or information
 continuous camera move.
 
 Short prompts of five seconds or less that explicitly describe simultaneous action with `while` or `mientras`
-receive a one-shot and simultaneity contract unless the source requests an edit or sequence. This prevents gratuitous
-inserts and keeps foreground and background actions readable together. Numeric event times invented inside shot prose
-are rejected; absolute cut times belong only in later `[Shot N]` headers.
+receive a one-shot and simultaneity contract unless the source requests an edit or sequence. Gradual progressions such
+as materializations, reveals, or actions developing `poco a poco` also remain one continuous take at any duration when
+the source supplies no explicit cut structure. Other sources without explicit edits prefer one shot and are capped at
+two, preventing arbitrary evenly spaced three-second divisions. Numeric event times invented inside shot prose are
+rejected; absolute cut times belong only in later `[Shot N]` headers.
 
 When disabled, it performs a conservative conversion into MiniMax H3's required structure and preserves the source's
 original level of detail. Both modes keep quoted dialogue, reference bindings, identities, requested actions, timing,
@@ -247,6 +249,10 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 - if an LLM still omits the line, it is restored to the timeline inside `<d>` before validation.
 - each source dialogue line must occur exactly once inside the timeline;
 - duplicated or invented `<d>` blocks and dialogue placed in `overall_soundscape` are rejected;
+- affirmative vocal cues outside their matching `<d>` sentence are rejected, including `speaks`, `continues
+  speaking`, and `finishes speaking`; common continuation wording is deterministically converted into a silent acting
+  or exact-line timing beat;
+- after the final tagged line, the generated prompt explicitly states that no character speaks additional words;
 - absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
@@ -308,7 +314,10 @@ For a person in image 1 holding the exact product from image 2, use:
 Natural positional wording such as `the person in image 1`, `the product in image 2`, motion from `video 1`, or voice
 from `audio 1` is normalized generically. Subject numbering is independent from asset numbering: the first reusable
 entity is `<Subject 1>` even when its provenance is `<Picture 2>`. Reveal, preservation, and retention requirements
-attach to the resulting subject rather than to the source picture. There is no scenario-specific production logic.
+attach to the resulting subject rather than to the source picture. Repeated aliases for the same human/style/object
+in one asset are merged, while the most specific role phrase is retained. Phrases such as `version ... in image N`
+become alternate versions of the primary identity rather than unrelated duplicate Subjects. There is no
+scenario-specific production logic.
 
 ## Installation
 
@@ -433,9 +442,10 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-Tests cover all H3 modes, timing, alignment, single-shot simultaneity, exact-once dialogue/language preservation,
-internal voiceover, rejection of invented dialogue and music, references, endpoint policy, repair, GGUF discovery,
-process isolation, persistent reuse, explicit unload, and failure cleanup.
+Tests cover all H3 modes, timing, alignment, single-shot simultaneity and gradual progression, shot budgets,
+exact-once dialogue/language preservation, untagged vocal-cue rejection, explicit age-category retention, internal
+voiceover, reference alias/variant merging, best-candidate repair selection, rejection of invented dialogue and music,
+endpoint policy, GGUF discovery, process isolation, persistent reuse, explicit unload, and failure cleanup.
 
 Bug reports should include the ComfyUI version, extension commit, backend, model identifier, resolved mode, sanitized source prompt, and complete validation/error report. GGUF reports should also include the llama.cpp build and quantization. Never attach API keys or private reference content.
 

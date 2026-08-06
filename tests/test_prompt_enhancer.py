@@ -95,6 +95,26 @@ def test_one_repair_attempt_fixes_invalid_first_completion(monkeypatch):
     assert manifest["repairAttemptsUsed"] == 1
 
 
+def test_repair_loop_keeps_the_best_candidate_when_repair_is_worse():
+    first = """integrated_multimodal_description:
+[Shot 1] A middle-aged woman monitors a laboratory console.
+
+overall_soundscape:
+Laboratory hum.
+
+non_diegetic_music:
+N/A"""
+    completions = iter([first, "not structured at all"])
+    result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "An older woman monitors a laboratory console. No music.",
+        "t2va", 5.0, "", lambda _messages: next(completions), 1, {"provider": "test"},
+    )
+    assert result == first
+    assert len(validation["errors"]) == 1
+    assert "older woman" in validation["errors"][0]
+    assert manifest["repairAttemptsUsed"] == 1
+
+
 def test_native_lm_studio_request_turns_reasoning_off(monkeypatch):
     captured = {}
 

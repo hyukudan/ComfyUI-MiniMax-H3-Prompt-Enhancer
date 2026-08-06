@@ -17,6 +17,8 @@ from prompt_guides import (
     strip_markdown_fence,
     system_prompt_for_mode,
     validate_prompt,
+    _official_reference_model,
+    _source_dialogue_contracts,
 )
 
 
@@ -818,3 +820,80 @@ N/A"""
         prompt, "ref2va", 5.0, "Fully copy audio 1.", "", "off", "off", "none",
     )
     assert any("cannot be selectively stripped" in item for item in report["errors"])
+
+
+INTERDIMENSIONAL_SOURCE = (
+    'Escena de película de acción de superhéroes. El hombre en imagen 2 está en un laboratorio. '
+    'La mujer le dice a la persona de imagen 2, con una voz femenina: "tranquilo, no estás solo", '
+    'y le señala hacia el fondo. De entre las sombras aparecen poco a poco los hombres de imagen 1, '
+    'imagen 3, imagen 4, versiones interdimensionales distintas de él: la version ejercito nazi de '
+    'imagen 1, la version con boina que será boinaman en imagen 3, y la versión heavy que es imagen 4.'
+)
+
+
+def test_reference_aliases_and_variant_phrases_become_four_stable_subjects():
+    model = _official_reference_model(INTERDIMENSIONAL_SOURCE)
+    assert len(model["subjects"]) == 4
+    assert [item["asset"] for item in model["subjects"]] == [
+        "<Picture 2>", "<Picture 1>", "<Picture 3>", "<Picture 4>",
+    ]
+    lines = "\n".join(item["line"] for item in model["definitions"])
+    assert "reusable hombre" not in lines
+    assert "reusable la persona" not in lines
+    assert "version ejercito nazi" in lines
+    assert "version con boina" in lines
+    assert "versión heavy" in lines
+    assert "alternate version of <Subject 1>" in lines
+
+
+def test_spanish_statement_dialogue_is_tagged_spanish_without_question_words():
+    assert _source_dialogue_contracts(INTERDIMENSIONAL_SOURCE) == [
+        ("Spanish", "tranquilo, no estás solo", False),
+    ]
+
+
+def test_gradual_reveal_requires_one_shot_and_rejects_periodic_multishot_output():
+    request = build_user_request(INTERDIMENSIONAL_SOURCE, "ref2va", 15.0)
+    assert "SHOT PLAN: Exactly one continuous shot" in request
+    generated = """subject_definitions:
+<Subject 1> is the person from <Picture 2>.
+<Subject 2> is the variant from <Picture 1>.
+<Subject 3> is the variant from <Picture 3>.
+<Subject 4> is the variant from <Picture 4>.
+
+summary:
+[reference generation] A gradual laboratory reveal.
+
+retention_analysis:
+<Subject 1>: fully_preserved - preserve.
+<Subject 2>: fully_preserved - preserve.
+<Subject 3>: fully_preserved - preserve.
+<Subject 4>: fully_preserved - preserve.
+
+detailed_description:
+[Shot 1] The woman says <d>[Spanish] tranquilo, no estás solo</d>. [Shot 2] At 00:03.000, She speaks directly to the man. [Shot 3] At 00:06.000, As she finishes speaking, portals form. [Shot 4] At 00:09.000, variants emerge. [Shot 5] At 00:12.000, the reveal completes.
+
+overall_soundscape:
+Laboratory hum.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(generated, "ref2va", 15.0, INTERDIMENSIONAL_SOURCE)
+    joined = "\n".join(report["errors"])
+    assert "gradual continuous progression requires exactly one" in joined
+    assert "Affirmative speaking cues outside" in joined
+
+
+def test_dialogue_normalizer_closes_line_and_neutralizes_common_continuations():
+    raw = """integrated_multimodal_description:
+[Shot 1] A woman says <d>[Spanish] tranquilo, no estás solo</d>. [Shot 2] At 00:03.000, She speaks directly to the man, maintaining eye contact with him while gesturing. As she finishes speaking, she points into the shadows.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_source_dialogue(raw, INTERDIMENSIONAL_SOURCE, "t2va")
+    assert "speaks directly" not in fixed
+    assert "finishes speaking" not in fixed
+    assert "no character speaks any additional words" in fixed

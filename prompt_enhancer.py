@@ -161,6 +161,12 @@ def enhance_prompt_with_completion(
         enhanced, mode, duration_seconds, basic_prompt, reference_context,
         ambience_foley_policy, background_score_policy, voice_performance,
     )
+    best_enhanced = enhanced
+    best_validation = validation
+
+    def candidate_score(report: dict) -> tuple[int, int]:
+        return (len(report.get("errors", ())), len(report.get("warnings", ())))
+
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):
         attempts += 1
@@ -181,6 +187,11 @@ def enhance_prompt_with_completion(
             enhanced, mode, duration_seconds, basic_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
         )
+        if candidate_score(validation) < candidate_score(best_validation):
+            best_enhanced = enhanced
+            best_validation = validation
+    enhanced = best_enhanced
+    validation = best_validation
     result_manifest = {
         **manifest,
         "mode": validation["mode"],

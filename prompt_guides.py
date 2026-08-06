@@ -40,8 +40,9 @@ _ASSET_REFERENCE_RE = re.compile(
 )
 _ROLE_REFERENCE_RE = re.compile(
     r"\b(?:the|a|an|el|la|los|las|un|una)\s+"
-    r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4})\s+"
-    r"(?:in|en|from|de)\s+(image|imagen|picture|foto)\s*(\d+)\b",
+    r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,9}?)\s+"
+    r"(?:in|en|from|de|que\s+(?:es|aparece\s+en|corresponde\s+a))\s+"
+    r"(image|imagen|picture|foto)\s*(\d+)\b",
     re.IGNORECASE,
 )
 _QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
@@ -55,6 +56,24 @@ _SPEECH_CUE_RE = re.compile(
     r"whisper|whispers|whispering|speak|speaks|speaking|dice|dijo|diciendo|pregunta|"
     r"preguntando|grita|gritando|susurra|susurrando|habla|hablando|think|thinks|thinking|"
     r"thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
+    re.IGNORECASE,
+)
+_UNTAGGED_SPEECH_ACTION_RE = re.compile(
+    r"\b(?:speaks?|speaking|talks?|talking|says?|saying|asks?|asking|utters?|uttering|"
+    r"continues?\s+(?:to\s+)?(?:speak|talk)|finishes?\s+(?:speaking|talking)|"
+    r"delivers?\s+(?:(?:his|her|their|the|required)\s+)?(?:line|dialogue|words?))\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_CUT_RE = re.compile(
+    r"\b(?:hard\s+cut|smash\s+cut|match\s+cut|cut(?:s|ting)?\s+to|cutaway|insert\s+shot|"
+    r"montage|shot\s+\d+|scene\s+\d+|plano\s+\d+|escena\s+\d+|corta\s+a|corte\s+a)\b|"
+    r"\d{1,2}:\d{2}(?:\.\d{1,3})?",
+    re.IGNORECASE,
+)
+_CONTINUOUS_PROGRESSION_RE = re.compile(
+    r"\b(?:gradually|progressively|slowly|little\s+by\s+little|poco\s+a\s+poco|"
+    r"gradualmente|progresivamente|lentamente|emerge|emerges|emerging|aparece|aparecen|"
+    r"apareciendo|materializa|materializan|materializándose|coalesce|coalesces)\b",
     re.IGNORECASE,
 )
 _LANGUAGE_ALIASES = {
@@ -88,6 +107,9 @@ Shared timeline rules:
   "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker, describe it as an internal
   monologue outside the tag, and state that the character's lips remain closed. Use
   <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
+- Every positive speaking/talking/saying/asking/finishing-speech cue must be in the same sentence as its corresponding
+  <d> block. Outside those tagged sentences, describe gaze, gesture, expression, and silence without implying continued
+  or additional speech. A short quoted line is spoken once in one shot and ends there.
 - The explicit audio policies in the user request override the shared audible-dialogue and sound defaults. Silent
   mouth acting and voice-off modes must omit <d>, speaker IDs, lexical dialogue, narration, and voiceover entirely.
 - Put visible text in straight English double quotes exactly as supplied.
@@ -185,6 +207,18 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
     for match in _ROLE_REFERENCE_RE.finditer(source):
         role, kind, number = match.groups()
         role = role.strip()
+        # When a sentence begins with another actor ("the woman tells the person in image 2"), bind the
+        # reference to the nearest noun phrase rather than the sentence-leading subject.
+        nested_determiners = list(re.finditer(r"\b(?:the|a|an|el|la|los|las|un|una)\s+", role, re.IGNORECASE))
+        if nested_determiners:
+            role = role[nested_determiners[-1].end():].strip()
+        role = re.sub(
+            r"^.*\b(?:appear|appears|appearing|emerge|emerges|show|shows|reveal|reveals|"
+            r"aparece|aparecen|apareciendo|emerge|emergen|vemos|son)\s+",
+            "",
+            role,
+            flags=re.IGNORECASE,
+        ).strip()
         pieces = re.split(r"\s+(?:and|y)\s+", role, flags=re.IGNORECASE)
         for piece in pieces:
             if piece.strip():
@@ -193,31 +227,81 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
     picture_assets = [label for label in assets if label.lower().startswith("<picture")]
     video_assets = [label for label in assets if label.lower().startswith("<video")]
     audio_assets = [label for label in assets if label.lower().startswith("<audio")]
-    subjects = []
-    used_assets = set()
-    for role, asset in picture_roles:
+    def role_family(role: str) -> str:
         lowered = role.casefold()
         if re.search(r"\b(?:style|look|aesthetic|palette|lighting|estilo)\b", lowered):
-            contribution = "style"
+            return "style"
+        if re.search(
+            r"\b(?:person|persona|people|man|men|woman|women|boy|girl|hombre|hombres|mujer|"
+            r"actor|actress|presenter|driver|identity|face|body|character|version|versi[oó]n)\b",
+            lowered,
+        ):
+            return "identity"
+        return "design"
+
+    generic_role_words = {
+        "the", "a", "an", "el", "la", "los", "las", "un", "una", "person", "persona",
+        "people", "man", "men", "hombre", "hombres", "character", "version", "versión",
+    }
+
+    def role_specificity(role: str) -> tuple[int, int]:
+        words = [item.casefold() for item in re.findall(r"[\wÀ-ÿ'-]+", role)]
+        return (sum(item not in generic_role_words for item in words), len(words))
+
+    # Repeated aliases for the same human/style/object in one asset are one reusable Subject.  Keep the most
+    # specific source phrase (for example "version ejercito nazi" rather than the generic "hombres").
+    grouped_roles: dict[tuple[str, str], str] = {}
+    group_order: list[tuple[str, str]] = []
+    for role, asset in picture_roles:
+        key = (asset.casefold(), role_family(role))
+        if key not in grouped_roles:
+            grouped_roles[key] = role
+            group_order.append(key)
+        elif role_specificity(role) > role_specificity(grouped_roles[key]):
+            grouped_roles[key] = role
+
+    subjects = []
+    used_assets = set()
+    primary_identity_label = None
+    for key in group_order:
+        role = grouped_roles[key]
+        asset = next(item for item in picture_assets if item.casefold() == key[0])
+        contribution = key[1]
+        if contribution == "style":
             description = (
                 f"the reusable visual style abstracted from {asset}, including its palette, rendering treatment, "
                 "lighting language, and characteristic surface treatment"
             )
             marker = "attribute_transfer"
-        elif re.search(r"\b(?:person|persona|man|woman|boy|girl|hombre|mujer|actor|actress|presenter|driver|identity|face|body|character)\b", lowered):
-            contribution = "identity"
-            description = (
-                f"the reusable {role} whose identity, appearance, and wardrobe come from {asset}"
-            )
+        elif contribution == "identity":
+            informative = role_specificity(role)[0] > 0
+            if primary_identity_label is not None and re.search(r"\b(?:version|versi[oó]n)\b", role, re.IGNORECASE):
+                description = (
+                    f"an alternate version of {primary_identity_label}, identified by the source as {role!r}, whose "
+                    f"exact identity, appearance, wardrobe, proportions, colors, and markings come from {asset}"
+                )
+            else:
+                canonical_role = {
+                    "persona": "person", "personas": "people", "hombre": "person", "hombres": "people",
+                    "mujer": "woman", "mujeres": "women",
+                }.get(role.casefold(), role)
+                if not informative and canonical_role.casefold() in {"person", "people", "man", "men"}:
+                    canonical_role = "person"
+                description = (
+                    f"the reusable {canonical_role} whose identity, appearance, and wardrobe come from {asset}"
+                )
             marker = "fully_preserved"
         else:
-            contribution = "design"
             description = (
-                f"the reusable {role} whose exact visible design, proportions, materials, colors, and markings come from {asset}"
+                f"the reusable {role} whose exact visible design, proportions, materials, colors, and markings "
+                f"come from {asset}"
             )
             marker = "fully_preserved"
         subjects.append({"role": role, "asset": asset, "contribution": contribution,
                          "description": description, "marker": marker})
+        if contribution == "identity" and primary_identity_label is None:
+            # Labels are assigned in this same stable order below.
+            primary_identity_label = f"<Subject {len(subjects)}>"
         used_assets.add(asset)
 
     independent = {}
@@ -429,6 +513,22 @@ def _requires_single_simultaneous_shot(source_prompt: str, duration_seconds: flo
     return bool(simultaneous and not explicit_edit)
 
 
+def _requires_single_continuous_progression(source_prompt: str) -> bool:
+    """Keep one gradually developing place/time/action as one shot unless the user explicitly requested an edit."""
+    source = source_prompt or ""
+    return bool(_CONTINUOUS_PROGRESSION_RE.search(source) and not _EXPLICIT_CUT_RE.search(source))
+
+
+def _implicit_shot_limit(source_prompt: str) -> int | None:
+    """Limit LLM-authored cuts when the source itself supplied no editorial structure."""
+    source = source_prompt or ""
+    if _EXPLICIT_CUT_RE.search(source):
+        return None
+    if _requires_single_continuous_progression(source):
+        return 1
+    return 2
+
+
 def _source_requests_music(source_prompt: str) -> bool:
     source = source_prompt or ""
     if re.search(r"\b(?:no|without|sin)\s+(?:background\s+|non[- ]diegetic\s+)?m[uú]sic", source, re.IGNORECASE):
@@ -439,6 +539,45 @@ def _source_requests_music(source_prompt: str) -> bool:
         source,
         flags=re.IGNORECASE,
     ))
+
+
+def _explicit_age_fact_errors(source_prompt: str, output: str) -> list[str]:
+    """Protect explicit coarse age categories that small LLMs commonly soften or shift."""
+    source = source_prompt or ""
+    text = output or ""
+    requirements = (
+        (
+            r"\b(?:older|elderly|senior|aged)\s+woman\b|\bmujer\s+mayor\b|\banciana\b",
+            r"\b(?:older|elderly|senior|aged)\s+woman\b",
+            r"\b(?:young|middle-aged)\s+woman\b",
+            "older woman",
+        ),
+        (
+            r"\b(?:older|elderly|senior|aged)\s+man\b|\bhombre\s+mayor\b|\banciano\b",
+            r"\b(?:older|elderly|senior|aged)\s+man\b",
+            r"\b(?:young|middle-aged)\s+man\b",
+            "older man",
+        ),
+        (
+            r"\bmiddle-aged\s+woman\b|\bmujer\s+de\s+mediana\s+edad\b",
+            r"\bmiddle-aged\s+woman\b",
+            r"\b(?:young|older|elderly|senior|aged)\s+woman\b",
+            "middle-aged woman",
+        ),
+        (
+            r"\bmiddle-aged\s+man\b|\bhombre\s+de\s+mediana\s+edad\b",
+            r"\bmiddle-aged\s+man\b",
+            r"\b(?:young|older|elderly|senior|aged)\s+man\b",
+            "middle-aged man",
+        ),
+    )
+    errors = []
+    for source_pattern, required_pattern, forbidden_pattern, label in requirements:
+        if not re.search(source_pattern, source, re.IGNORECASE):
+            continue
+        if not re.search(required_pattern, text, re.IGNORECASE) or re.search(forbidden_pattern, text, re.IGNORECASE):
+            errors.append(f"Explicit source age category must remain {label!r}")
+    return errors
 
 
 def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
@@ -476,6 +615,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- Express absolute cut times only in [Shot N] headers. Do not add competing numeric timestamps inside a "
             "shot, and never create another shot or vocal cue to repeat or continue the same short line.\n"
             "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
+            "- Preserve explicit age category, gender, character count, identity relationships, wardrobe, object subtype, "
+            "and spatial/chronological relationships literally. For example, older/elderly must not become middle-aged "
+            "or young, and multiple variants of one person must not become unrelated people.\n"
             "- Do not invent new characters, plot events, dialogue, branded objects, reference assets, or an ending that "
             "changes the user's intent. Do not increase gore, damage, or explicitness beyond the source."
         )
@@ -490,7 +632,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     if dialogue_contracts and voice_performance == "audible":
         parts.append(
             "VOICE POLICY — AUDIBLE (official): Assign stable speaker IDs and copy each block exactly once into the "
-            "timeline. Do not omit, translate, censor, duplicate, or move it to soundscape:\n"
+            "timeline. Do not omit, translate, censor, duplicate, or move it to soundscape. Every affirmative vocal "
+            "cue (speaks, says, asks, talks, continues/finishes speaking, voice delivery) must be in the same sentence "
+            "as its matching <d> block. After the final tagged line, describe only silent facial acting, gaze, gesture, "
+            "and physical action; no character speaks additional words. Never spread one short line across shots:\n"
             + "\n".join(f"- <d>[{language}] {quote}</d>" for language, quote, _internal in dialogue_contracts)
         )
     elif dialogue_contracts and voice_performance == "silent_mouth_acting_experimental":
@@ -555,13 +700,27 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
             "singing, lyrics, or vocal samples:\n" + requested_instrumental
         )
-    single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
+    simultaneous_single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
+    continuous_progression = _requires_single_continuous_progression(basic_prompt)
+    single_shot = simultaneous_single_shot or continuous_progression
     if single_shot:
         parts.append(
-            "SHOT PLAN: Exactly one continuous shot. The source describes one simultaneous event; keep all requested "
-            "foreground and background actions readable together. Do not add inserts, cutaways, or additional shots.\n"
-            "SIMULTANEITY LOCK: The actions joined by while/mientras occur continuously at the same time. Camera motion, "
-            "framing, and depth of field must never isolate or obscure either requested action."
+            "SHOT PLAN: Exactly one continuous shot. Treat gradual reveals, sequential beats in the same place, and "
+            "camera reframing as choreography within Shot 1, not as new shots. Do not add inserts, cutaways, periodic "
+            "three-second divisions, or additional [Shot N] headers.\n"
+            + (
+                "SIMULTANEITY LOCK: The actions joined by while/mientras occur continuously at the same time. Camera "
+                "motion, framing, and depth of field must never isolate or obscure either requested action."
+                if simultaneous_single_shot else
+                "CONTINUOUS REVEAL LOCK: Preserve the gradual progression in real time. Use a motivated pan, dolly, "
+                "rack focus, or blocking change inside the same take rather than cutting at each reveal beat."
+            )
+        )
+    elif _implicit_shot_limit(basic_prompt) == 2:
+        parts.append(
+            "SHOT BUDGET: The source supplied no explicit cut or montage structure. Prefer one continuous shot and use "
+            "at most two shots only if one motivated cut materially improves viewpoint or information. Never divide the "
+            "duration into evenly spaced shots merely to fill time; actions and reveals are beats inside a shot."
         )
     if reference_context.strip():
         parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
@@ -593,7 +752,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     ]
     if single_shot:
         final_checks.insert(0, "exactly one continuous shot")
-        final_checks.append("keep the simultaneous actions visible together")
+        final_checks.append(
+            "keep the simultaneous actions visible together" if simultaneous_single_shot
+            else "keep the gradual reveal inside that single take"
+        )
     parts.append("FINAL CHECK: " + "; ".join(final_checks) + ".")
     parts.append("Rewrite now using the exact section contract for this task mode.")
     return "\n\n".join(parts)
@@ -646,7 +808,12 @@ def _source_dialogue_language(source_prompt: str, quote_match) -> str:
         raw = known[-1]
         return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
     quote = quote_match.group(1)
-    if re.search(r"[¿¡]|\b(?:quién|qué|cuál|cuándo|dónde|cómo|por qué)\b", quote, re.IGNORECASE):
+    if re.search(
+        r"[¿¡áéíóúñ]|\b(?:quién|qué|cuál|cuándo|dónde|cómo|por qué|tranquilo|tranquila|"
+        r"estás|está|quiero|queréis|cabrones|asesino|cargadores)\b",
+        quote,
+        re.IGNORECASE,
+    ):
         return "Spanish"
     return "Original language"
 
@@ -734,6 +901,70 @@ def _insert_timeline_instruction(text: str, mode: str, instruction: str) -> str:
     insertion = later_shot.start() if later_shot else len(body)
     body = body[:insertion].rstrip() + " " + instruction + " " + body[insertion:].lstrip()
     return str(text)[:match.start(2)] + body.rstrip() + "\n\n" + str(text)[match.end(2):].lstrip()
+
+
+def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
+    """Remove common implied continuations and close the exact source-dialogue envelope."""
+    value = str(text)
+    if not _source_dialogue_contracts(source_prompt):
+        return value
+    value = re.sub(
+        r"\bAs\s+(?:he|she|they|the\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,3})\s+"
+        r"(?:finishes|continues)\s+(?:speaking|talking)\b",
+        "After the exact tagged line ends",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\bwhile\s+(?:(?:he|she|they|the\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,2})\s+)?"
+        r"(?:speaks?|speaking|talks?|talking)(?:\s+(?:his|her|their|the)\s+(?:line|words?))?\b",
+        "during the exact tagged line",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\bAs\s+(?:he|she|they|the\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,3})\s+"
+        r"(?:speaks|talks)\b",
+        "During the exact tagged line",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\b(He|She|They|The\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,3})\s+speaks\s+directly\s+to\s+"
+        r"([^,.;]+),\s*(?:maintaining\s+eye\s+contact\s+with\s+(?:him|her|them)\s+)?while\s+",
+        r"\1 maintains eye contact with \2 while ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if "After the final tagged line, no character speaks any additional words." not in value:
+        matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
+        if matches:
+            end = matches[-1].end()
+            value = (
+                value[:end]
+                + " After the final tagged line, no character speaks any additional words."
+                + value[end:]
+            )
+    return value
+
+
+def _untagged_speech_actions(timeline: str) -> list[str]:
+    """Return affirmative vocal cues that are not anchored to an exact <d> block."""
+    found = []
+    for sentence in re.split(r"(?<=[.!?])\s+", timeline or ""):
+        if "<d>" in sentence.casefold():
+            continue
+        if re.search(
+            r"\b(?:no\s+(?:one|character|person)|nobody)\s+speaks?\b|"
+            r"\b(?:does|do)\s+not\s+(?:speak|talk|say)\b",
+            sentence,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        match = _UNTAGGED_SPEECH_ACTION_RE.search(sentence)
+        if match:
+            found.append(match.group(0))
+    return found
 
 
 def _normalize_suppressed_voice(text: str, source_prompt: str, mode: str, voice_performance: str) -> str:
@@ -867,7 +1098,7 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
         else:
             additions.append(f"The on-screen speaker (S1) delivers the requested line: {block}.")
     if not additions:
-        return _deduplicate_source_dialogue(value, source_prompt)
+        return _finalize_audible_dialogue(_deduplicate_source_dialogue(value, source_prompt), source_prompt)
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
     match = re.search(
         rf"(?ms)(^{re.escape(section)}:\s*)(.*?)(?=^(?:{_SECTION_PATTERN}):\s*|\Z)",
@@ -880,7 +1111,7 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
     insertion = later_shot.start() if later_shot else len(body)
     body = body[:insertion].rstrip() + " " + " ".join(additions) + " " + body[insertion:].lstrip()
     value = value[:match.start(2)] + body.rstrip() + "\n\n" + value[match.end(2):].lstrip()
-    return _deduplicate_source_dialogue(value, source_prompt)
+    return _finalize_audible_dialogue(_deduplicate_source_dialogue(value, source_prompt), source_prompt)
 
 
 def _replace_section_body(text: str, section: str, body: str) -> str:
@@ -1006,6 +1237,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         errors.append(f"Expected sections in order {expected}, observed {observed}")
     if text.startswith("```") or text.endswith("```"):
         errors.append("Output must not use a Markdown code fence")
+    errors.extend(_explicit_age_fact_errors(source_prompt, text))
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)
@@ -1030,6 +1262,13 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append("Every cut timestamp must fall strictly inside the target duration")
     if _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1:
         errors.append("The short simultaneous source requires exactly one continuous shot")
+    if _requires_single_continuous_progression(source_prompt) and len(shots) != 1:
+        errors.append("The gradual continuous progression requires exactly one continuous shot")
+    implicit_limit = _implicit_shot_limit(source_prompt)
+    if implicit_limit is not None and len(shots) > implicit_limit:
+        errors.append(
+            f"The source supplied no explicit edit structure; use at most {implicit_limit} shot(s), observed {len(shots)}"
+        )
     timeline_without_headers = _SHOT_RE.sub("", timeline)
     invented_inline_times = re.findall(
         r"\b(?:At|After)\s+(?:\d+(?:\.\d+)?\s+seconds?|\d+\.\d{2,3})\b",
@@ -1055,6 +1294,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     source_contracts = _source_dialogue_contracts(source_prompt)
     contracts = source_contracts if voice_performance == "audible" else []
+    untagged_speech = _untagged_speech_actions(timeline) if contracts else []
+    if untagged_speech:
+        errors.append(
+            "Affirmative speaking cues outside their exact <d> sentence can create extra dialogue: "
+            + repr(untagged_speech)
+        )
 
     def dialogue_text(item: str) -> str:
         return re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", item.strip()))
