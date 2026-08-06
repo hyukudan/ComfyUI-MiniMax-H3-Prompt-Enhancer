@@ -130,6 +130,8 @@ Shared controls:
 
 Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
 
+`context_size=0` and `startup_timeout=0` are migration-safe automatic values. They resolve to 16384 tokens and 180 seconds respectively. This prevents workflows saved before those local controls existed from failing ComfyUI's input-range validation.
+
 ### MiniMax H3 GGUF Prompt Enhancer
 
 The specialized direct-GGUF node exposes both model and runtime paths, extra registered model roots, GPU-layer offload, context, threads, timeouts, and the persistent-process toggle. It returns the same four outputs as the main enhancer.
@@ -401,6 +403,10 @@ Update llama.cpp. A new GGUF quantization may be newer than the selected runtime
 ### GGUF enhancement is slower than LM Studio
 
 Per-run mode includes process startup and model loading. Enable `keep_server_loaded` for repeated prompt iteration when sufficient VRAM is available, or use the already-running LM Studio endpoint.
+
+### `input out of range` after updating the node
+
+Refresh node definitions after updating. Older workflows may deserialize newly introduced local-runtime widgets as zero; zero is accepted as automatic and normalized to the safe context and startup-timeout defaults. The frontend also repairs those values when the workflow is opened.
 
 ### Dialogue disappears or has no language tag
 

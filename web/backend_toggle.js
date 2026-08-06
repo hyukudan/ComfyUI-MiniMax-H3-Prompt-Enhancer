@@ -60,6 +60,7 @@ function normalizeDynamicCombo(node, name) {
 function visibleWidgetHeight(node) {
     const width = Math.max(MIN_NODE_WIDTH, Number(node.size?.[0]) || 0);
     let height = 88 + Math.max(0, (node.outputs?.length ?? 0) - 1) * 20;
+    let renderedBottom = 0;
     for (const widget of node.widgets ?? []) {
         if (widget.type === "converted-widget") continue;
         const computed = widget.computeSize?.(width);
@@ -70,9 +71,13 @@ function visibleWidgetHeight(node) {
             Number(widget.inputEl?.getBoundingClientRect?.().height) || 0,
             Number(widget.inputEl?.scrollHeight) || 0,
         );
-        height += Math.max(24, computedHeight, domHeight) + 4;
+        const widgetHeight = Math.max(24, computedHeight, domHeight);
+        height += widgetHeight + 4;
+        if (Number.isFinite(Number(widget.last_y))) {
+            renderedBottom = Math.max(renderedBottom, Number(widget.last_y) + widgetHeight + 16);
+        }
     }
-    return height;
+    return Math.max(height, renderedBottom);
 }
 
 function fitNodeToVisibleWidgets(node) {
@@ -90,6 +95,13 @@ function fitNodeToVisibleWidgets(node) {
     }));
 }
 
+function normalizeMigratedRuntimeWidgets(node) {
+    const context = node.widgets?.find((widget) => widget.name === "context_size");
+    const startup = node.widgets?.find((widget) => widget.name === "startup_timeout");
+    if (context && Number(context.value) < 4096) context.value = 16384;
+    if (startup && Number(startup.value) < 10) startup.value = 180;
+}
+
 function applyLabels(node) {
     for (const [name, label] of Object.entries(DISPLAY_LABELS)) {
         const widget = node.widgets?.find((candidate) => candidate.name === name);
@@ -105,6 +117,7 @@ function refreshInstrumentalWidget(node) {
 }
 
 function refreshBackendWidgets(node) {
+    normalizeMigratedRuntimeWidgets(node);
     const toggle = node.widgets?.find((widget) => widget.name === "use_remote_model");
     const useRemote = toggle?.value !== false;
     for (const name of REMOTE_WIDGETS) {

@@ -86,3 +86,26 @@ def test_main_enhancer_allows_stale_hidden_dynamic_combo_values():
         local_model="stale-model.gguf",
         llama_server_path="stale-llama-server.exe",
     ) is True
+
+
+def test_zero_filled_local_runtime_widgets_migrate_to_safe_defaults(monkeypatch):
+    captured = {}
+
+    def fake_gguf(*args):
+        captured["args"] = args
+        return "local prompt", VALIDATION, {"provider": "managed_llama_server"}
+
+    monkeypatch.setattr(prompt_enhancer_node, "enhance_prompt_with_gguf_server", fake_gguf)
+    result = MiniMaxH3PromptEnhancer().enhance(
+        "idea", "t2va", 5.0, "", "", "", "", 0.2, 4096, 300, 1,
+        True, False, False, "model.gguf", "llama-server.exe", "auto", 0, 0, 0, False,
+    )
+    assert result[0] == "local prompt"
+    assert captured["args"][8] == 16384
+    assert captured["args"][13] == 180
+
+
+def test_local_runtime_zero_is_accepted_as_an_auto_migration_value():
+    optional = MiniMaxH3PromptEnhancer.INPUT_TYPES()["optional"]
+    assert optional["context_size"][1]["min"] == 0
+    assert optional["startup_timeout"][1]["min"] == 0

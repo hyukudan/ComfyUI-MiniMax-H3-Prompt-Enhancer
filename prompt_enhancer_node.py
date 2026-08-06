@@ -5,6 +5,20 @@ from __future__ import annotations
 
 import json
 
+
+DEFAULT_LOCAL_CONTEXT_SIZE = 16384
+DEFAULT_LOCAL_STARTUP_TIMEOUT = 180
+
+
+def _local_runtime_limits(context_size, startup_timeout):
+    """Migrate zero-filled widgets from workflows saved before local controls existed."""
+    context = int(context_size or 0)
+    startup = int(startup_timeout or 0)
+    return (
+        context if context >= 4096 else DEFAULT_LOCAL_CONTEXT_SIZE,
+        startup if startup >= 10 else DEFAULT_LOCAL_STARTUP_TIMEOUT,
+    )
+
 try:
     from .gguf_server import (
         available_gguf_models,
@@ -103,9 +117,9 @@ class MiniMaxH3PromptEnhancer:
             "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
-            "context_size": ("INT", {"default": 16384, "min": 4096, "max": 131072, "step": 1024}),
+            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 16384-token default (including migrated workflows)"}),
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
-            "startup_timeout": ("INT", {"default": 180, "min": 10, "max": 1800, "step": 10}),
+            "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default (including migrated workflows)"}),
             "keep_server_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep the GGUF in memory for faster repeated enhancement; use the unload node before H3 if VRAM is needed"}),
         }}
 
@@ -140,6 +154,7 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_description,
             )
         else:
+            context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
                 basic_prompt, mode, duration_seconds, reference_context, llama_server_path, local_model,
                 "", gpu_layers, context_size, threads, temperature, max_tokens, timeout_seconds,
@@ -179,12 +194,12 @@ class MiniMaxH3GGUFPromptEnhancer:
             "gguf_model_path": ("STRING", {"default": "", "tooltip": "Existing GGUF under a registered model directory"}),
             "registered_model_dirs": ("STRING", {"default": "", "tooltip": "Optional additional roots separated by the OS path separator; ComfyUI and LM Studio model roots are automatic"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
-            "context_size": ("INT", {"default": 16384, "min": 4096, "max": 131072, "step": 1024}),
+            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 16384-token default"}),
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1, "tooltip": "0 uses llama-server's default"}),
             "temperature": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05}),
             "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
             "request_timeout": ("INT", {"default": 300, "min": 10, "max": 1800, "step": 10}),
-            "startup_timeout": ("INT", {"default": 180, "min": 10, "max": 1800, "step": 10}),
+            "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default"}),
             "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True}),
             "enhance_description": ("BOOLEAN", {"default": True}),
@@ -206,6 +221,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 enhance_description, keep_server_loaded, ambience_foley_policy="auto",
                 background_score_policy="follow_prompt", voice_performance="audible",
                 instrumental_description=""):
+        context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
