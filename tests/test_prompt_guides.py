@@ -42,6 +42,25 @@ def test_build_request_carries_duration_source_and_alignment_template():
     assert "Picture 2 (from Shot N)" in request
 
 
+def test_add_instrumental_carries_the_users_music_direction():
+    request = build_user_request(
+        "A car crosses a rainy city.", "t2va", 5.0, "", True,
+        "auto", "add_instrumental", "audible",
+        "Slow muted trumpet, brushed drums, and upright bass; restrained noir mood.",
+    )
+    assert "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative)" in request
+    assert "Slow muted trumpet, brushed drums, and upright bass" in request
+    assert "no singing, lyrics, or vocal samples" in request
+
+
+def test_unused_instrumental_description_is_not_sent_to_the_model():
+    request = build_user_request(
+        "A car crosses a rainy city.", "t2va", 5.0, "", True,
+        "auto", "off", "audible", "Ignore this music description.",
+    )
+    assert "Ignore this music description" not in request
+
+
 def test_valid_t2va_contract_and_exact_quoted_content():
     source = 'A baker says "First batch." No music.'
     prompt = """integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium-wide shot frames a baker opening a shop. The baker (S1) says: <d>[English] First batch.</d>

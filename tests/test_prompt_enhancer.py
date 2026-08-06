@@ -161,3 +161,19 @@ A dramatic orchestral score."""
     assert manifest["silentMouthActingExperimental"] is True
     assert manifest["suppressedDialogueCount"] == 1
     assert manifest["voiceControlGuarantee"] == "best_effort_prompt_only"
+
+
+def test_pipeline_records_only_an_active_instrumental_description():
+    captured = {}
+
+    def complete(messages):
+        captured["request"] = messages[-1]["content"]
+        return VALID_PROMPT.replace("N/A", "A slow instrumental cello pulse with no vocals.")
+
+    _result, _validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley.", "t2va", 5.0, "", complete, 0,
+        {"provider": "test"}, True, "auto", "add_instrumental", "audible",
+        "Slow cello pulse, sparse and tense.",
+    )
+    assert "Slow cello pulse, sparse and tense." in captured["request"]
+    assert manifest["instrumentalDescription"] == "Slow cello pulse, sparse and tense."

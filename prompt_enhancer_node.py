@@ -46,12 +46,13 @@ class MiniMaxH3PromptGuideBuilder:
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Control non-vocal ambience and physically motivated sound effects"}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Follow the source, add an instrumental score, or force no non-diegetic music"}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Experimental silent mouth acting is visual best-effort only; exact lip sync and silence are not guaranteed"}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
               ambience_foley_policy="auto", background_score_policy="follow_prompt",
-              voice_performance="audible"):
+              voice_performance="audible", instrumental_description=""):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt)
@@ -60,6 +61,7 @@ class MiniMaxH3PromptGuideBuilder:
             build_user_request(
                 basic_prompt, resolved, duration_seconds, reference_context, enhance_description,
                 ambience_foley_policy, background_score_policy, voice_performance,
+                instrumental_description,
             ),
             resolved,
         )
@@ -96,6 +98,7 @@ class MiniMaxH3PromptEnhancer:
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Improve staging, cinematography, pacing, transitions, and sound without changing source facts or exact dialogue"}),
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Ambience & foley: automatic, explicitly required, or disabled"}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Silent mouth acting is experimental prompt guidance, not guaranteed lip sync or silence"}),
             "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
@@ -123,7 +126,8 @@ class MiniMaxH3PromptEnhancer:
                 allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
                 gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
                 keep_server_loaded=False, enhance_description=True, ambience_foley_policy="auto",
-                background_score_policy="follow_prompt", voice_performance="audible"):
+                background_score_policy="follow_prompt", voice_performance="audible",
+                instrumental_description=""):
         if bool(use_remote_model):
             prompt, validation, manifest = enhance_prompt(
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -133,6 +137,7 @@ class MiniMaxH3PromptEnhancer:
                 ambience_foley_policy,
                 background_score_policy,
                 voice_performance,
+                instrumental_description,
             )
         else:
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
@@ -143,6 +148,7 @@ class MiniMaxH3PromptEnhancer:
                 ambience_foley_policy,
                 background_score_policy,
                 voice_performance,
+                instrumental_description,
             )
         return (
             prompt,
@@ -186,6 +192,7 @@ class MiniMaxH3GGUFPromptEnhancer:
         }, "optional": {
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto"}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt"}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible"}),
         }}
 
@@ -197,7 +204,8 @@ class MiniMaxH3GGUFPromptEnhancer:
                 gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
                 max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
                 enhance_description, keep_server_loaded, ambience_foley_policy="auto",
-                background_score_policy="follow_prompt", voice_performance="audible"):
+                background_score_policy="follow_prompt", voice_performance="audible",
+                instrumental_description=""):
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
@@ -207,6 +215,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             ambience_foley_policy,
             background_score_policy,
             voice_performance,
+            instrumental_description,
         )
         return (
             prompt,

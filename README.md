@@ -125,6 +125,7 @@ Shared controls:
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
 | `ambience_foley_policy` | `auto` | Follow the scene, explicitly require audible ambience/foley, or turn it off |
 | `background_score_policy` | `follow_prompt` | Follow the source, add an instrumental score, or force music off |
+| `instrumental_description` | empty | When `add_instrumental` is selected, describe the score's mood, instruments, tempo, rhythm, and dynamics |
 | `voice_performance` | `audible` | Audible dialogue, experimental silent mouth acting, or no voice performance |
 
 Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
@@ -263,6 +264,11 @@ and Validator:
 |---|---|---|
 | Ambience & foley | `auto`, `ensure_audible`, `off` | Follow the scene, explicitly require physical/environmental sound, or suppress it |
 | Background score | `follow_prompt`, `add_instrumental`, `off` | Respect the source, add non-vocal music, or emit `non_diegetic_music: N/A` |
+
+Selecting `add_instrumental` reveals an **Instrumental description** text box. Its contents become authoritative musical
+direction for the enhancer (for example, instrumentation, mood, tempo, rhythm, and dynamics). Leaving it empty lets the
+model choose a scene-appropriate instrumental score. The field remains hidden and is ignored under the other score
+policies.
 | Voice performance | `audible`, `silent_mouth_acting_experimental`, `none` | Preserve exact spoken text, request non-verbal mouth acting, or suppress speech performance |
 
 `silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the

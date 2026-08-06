@@ -138,6 +138,7 @@ def enhance_prompt_with_completion(
     ambience_foley_policy: str = "auto",
     background_score_policy: str = "follow_prompt",
     voice_performance: str = "audible",
+    instrumental_description: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -145,7 +146,7 @@ def enhance_prompt_with_completion(
         raise ValueError("basic_prompt cannot be empty")
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
-        ambience_foley_policy, background_score_policy, voice_performance,
+        ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
     )
     resolved_mode = resolve_mode(mode, reference_context, basic_prompt)
     messages = [
@@ -190,6 +191,9 @@ def enhance_prompt_with_completion(
         "audioPolicyVersion": 1,
         "ambienceFoleyPolicy": ambience_foley_policy,
         "backgroundScorePolicy": background_score_policy,
+        "instrumentalDescription": (
+            str(instrumental_description).strip() if background_score_policy == "add_instrumental" else ""
+        ),
         "voicePerformance": voice_performance,
         "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
         "suppressedDialogueCount": (
@@ -211,7 +215,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    enhance_description: bool = True,
                    ambience_foley_policy: str = "auto",
                    background_score_policy: str = "follow_prompt",
-                   voice_performance: str = "audible") -> tuple[str, dict, dict]:
+                   voice_performance: str = "audible",
+                   instrumental_description: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -245,4 +250,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         ambience_foley_policy,
         background_score_policy,
         voice_performance,
+        instrumental_description,
     )

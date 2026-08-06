@@ -445,7 +445,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        reference_context: str = "", enhance_description: bool = True,
                        ambience_foley_policy: str = "auto",
                        background_score_policy: str = "follow_prompt",
-                       voice_performance: str = "audible") -> str:
+                       voice_performance: str = "audible",
+                       instrumental_description: str = "") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -546,6 +547,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         ),
     }
     parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
+    requested_instrumental = str(instrumental_description or "").strip()
+    if background_score_policy == "add_instrumental" and requested_instrumental:
+        parts.append(
+            "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
+            "audience-only score. Preserve its requested mood, instrumentation, tempo, rhythm, and dynamics; "
+            "resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
+            "singing, lyrics, or vocal samples:\n" + requested_instrumental
+        )
     single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
     if single_shot:
         parts.append(
