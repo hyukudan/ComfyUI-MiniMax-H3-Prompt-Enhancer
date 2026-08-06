@@ -253,17 +253,22 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
   speaking`, and `finishes speaking`; common continuation wording is deterministically converted into a silent acting
   or exact-line timing beat;
 - missing official `(Sx)` speaker IDs are restored for common visible-speaker forms;
+- visible dialogue is canonicalized to one isolated official-style clause, `(Sx) says: <d>...</d>`; delivery and
+  voice characteristics stay before `(Sx)`, never between the speaker ID and the dialogue block;
 - post-dialogue Ref2VA alias appositives such as `the ... version` are reduced to their canonical `<Subject N>`
   binding so H3 is less likely to vocalize descriptive reference labels as accidental narration;
 - after the final tagged line, the generated prompt closes the speaker's mouth and explicitly states that every
   character remains vocally silent through the final frame;
+- when a short line precedes a long visual continuation, validation requires at least two concrete non-verbal sounds
+  inside the remaining timeline instead of leaving an unplanned audio gap;
 - absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
-These controls constrain the prompt, not the generated waveform. H3 can still hallucinate intelligible speech during
-long post-dialogue intervals. For delivery-critical dialogue, transcribe or review the rendered audio and clean any
-unwanted vocal interval in post-production.
+These controls constrain the prompt, not the generated waveform, so delivery-critical renders should still be
+reviewed or transcribed. The strict canonical structure was verified on a 15-second Ref2VA render containing a
+two-second Spanish line followed by a long portal reveal: the raw H3 output contained the requested line once and no
+additional intelligible speech, without audio post-processing.
 
 Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech when `voice_performance=audible`. The enhancer preserves the
 exact words inside `<d>[Language] ...</d>`, describes them as an off-screen internal monologue, and explicitly keeps

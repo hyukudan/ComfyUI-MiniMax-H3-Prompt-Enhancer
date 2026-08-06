@@ -107,6 +107,10 @@ Shared timeline rules:
   "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker, describe it as an internal
   monologue outside the tag, and state that the character's lips remain closed. Use
   <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
+- For visible audible dialogue, write one short standalone canonical vocal clause in exactly this form:
+  "The [identity and voice description] (S1) says: <d>[Language] exact words</d>." Put delivery, timbre, pitch,
+  accent, and emotion before the speaker ID. Do not use "speaks", "delivers the line", a trailing action clause,
+  or descriptive prose between (S1) and <d>. Begin a new sentence immediately after </d>.
 - Every positive speaking/talking/saying/asking/finishing-speech cue must be in the same sentence as its corresponding
   <d> block. Outside those tagged sentences, describe gaze, gesture, expression, and silence without implying continued
   or additional speech. A short quoted line is spoken once in one shot and ends there.
@@ -633,9 +637,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         parts.append(
             "VOICE POLICY — AUDIBLE (official): Assign stable speaker IDs and copy each block exactly once into the "
             "timeline. Do not omit, translate, censor, duplicate, or move it to soundscape. Every affirmative vocal "
-            "cue (speaks, says, asks, talks, continues/finishes speaking, voice delivery) must be in the same sentence "
-            "as its matching <d> block. After the final tagged line, describe only silent facial acting, gaze, gesture, "
-            "and physical action; no character speaks additional words. Never spread one short line across shots:\n"
+            "cue must be in the same sentence as its matching <d> block. For visible dialogue, isolate each vocal "
+            "event as a short canonical sentence: 'The [identity plus voice description] (S1) says: <d>[Language] "
+            "exact words</d>.' Never use 'speaks', 'delivers the line', or put descriptive prose between the speaker "
+            "ID and <d>. Begin a new sentence after </d>. After the final tagged line, describe only silent facial "
+            "acting, gaze, gesture, and physical action. When a short line is followed by a long visual continuation, "
+            "explicitly state that the speaker closes their lips or leaves the frame, then name at least two concrete "
+            "non-verbal sounds that continuously occupy the remainder of the timeline. No character speaks additional "
+            "words. Never spread one short line across shots:\n"
             + "\n".join(f"- <d>[{language}] {quote}</d>" for language, quote, _internal in dialogue_contracts)
         )
     elif dialogue_contracts and voice_performance == "silent_mouth_acting_experimental":
@@ -969,6 +978,28 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
                     flags=re.IGNORECASE,
                 )
             value = value[:sentence_start] + repaired + value[dialogue.start():]
+
+    def canonical_visible_cue(match: re.Match[str]) -> str:
+        cue = match.group(2)
+        if re.search(r"off-screen\s+voiceover|internal\s+monologue", cue, flags=re.IGNORECASE):
+            return match.group(0)
+        if re.search(
+            r"\b(?:says?|speaks?|asks?|replies|exclaims|shouts?|whispers?|talks?|delivers?)\b",
+            cue,
+            flags=re.IGNORECASE,
+        ):
+            return match.group(1) + " says: "
+        return match.group(0)
+
+    # Keep the visible vocal event short and syntactically identical to the
+    # official examples. Long action/delivery clauses between (Sx) and <d> are
+    # a strong source of accidental prefix/suffix speech in H3 audio.
+    value = re.sub(
+        r"(\(S\d+(?:,S\d+)*\))\s+((?:(?!<d>)[^.!?]){1,220}?):\s*(?=<d>)",
+        canonical_visible_cue,
+        value,
+        flags=re.IGNORECASE,
+    )
     if "After the final tagged line, no character speaks any additional words." not in value:
         matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
         if matches:
@@ -1361,6 +1392,36 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     source_contracts = _source_dialogue_contracts(source_prompt)
     contracts = source_contracts if voice_performance == "audible" else []
+    dialogue_match_objects = list(re.finditer(r"<d>.*?</d>", timeline, flags=re.DOTALL | re.IGNORECASE))
+    for contract, dialogue_match in zip(contracts, dialogue_match_objects):
+        _language, _quote, internal = contract
+        if internal:
+            continue
+        sentence_start = max(
+            timeline.rfind(".", 0, dialogue_match.start()),
+            timeline.rfind("!", 0, dialogue_match.start()),
+            timeline.rfind("?", 0, dialogue_match.start()),
+            timeline.rfind("[Shot", 0, dialogue_match.start()),
+        )
+        prefix = timeline[(0 if sentence_start < 0 else sentence_start + 1):dialogue_match.start()]
+        if not re.search(r"\(S\d+(?:,S\d+)*\)\s+says:\s*$", prefix, flags=re.IGNORECASE):
+            errors.append(
+                "Visible dialogue must use an isolated canonical '(Sx) says: <d>...</d>' vocal clause"
+            )
+    if contracts and dialogue_match_objects and float(duration_seconds) >= 8.0:
+        post_dialogue = timeline[dialogue_match_objects[-1].end():]
+        if len(re.findall(r"\b[\wÀ-ÿ'-]+\b", post_dialogue)) >= 35:
+            sound_cues = set(re.findall(
+                r"\b(?:hum|crackle|static|whoosh|wind|rain|traffic|footsteps?|rustle|impact|machinery|"
+                r"metallic|vibration|room\s+tone|ambience|breathing|panting|airflow|engine|alarm|buzz)\w*\b",
+                post_dialogue,
+                flags=re.IGNORECASE,
+            ))
+            if len(sound_cues) < 2:
+                errors.append(
+                    "A long visual continuation after short dialogue must name at least two concrete non-verbal "
+                    "sounds in the remaining timeline"
+                )
     untagged_speech = _untagged_speech_actions(timeline) if contracts else []
     if untagged_speech:
         errors.append(
