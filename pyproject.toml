@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-minimax-h3-prompt-enhancer"
-version = "0.4.1"
+version = "0.4.2"
 description = "Guide-constrained MiniMax H3 prompt enhancement with OpenAI-compatible and isolated local GGUF backends"
 readme = "README.md"
 requires-python = ">=3.10"

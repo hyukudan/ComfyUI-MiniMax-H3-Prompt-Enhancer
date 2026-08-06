@@ -18,7 +18,7 @@ const LOCAL_WIDGETS = [
     "keep_server_loaded",
 ];
 const INSTRUMENTAL_WIDGET = "instrumental_description";
-const MIN_NODE_WIDTH = 520;
+const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
 const DISPLAY_LABELS = {
     enhance_description: "Enhance description",
@@ -28,6 +28,7 @@ const DISPLAY_LABELS = {
     voice_performance: "Voice performance",
     use_remote_model: "Use remote model",
     allow_remote_endpoint: "Allow non-local endpoint",
+    keep_server_loaded: "Keep local model loaded",
 };
 
 function setWidgetVisible(widget, visible) {
@@ -74,7 +75,7 @@ function visibleWidgetHeight(node) {
         const widgetHeight = Math.max(24, computedHeight, domHeight);
         height += widgetHeight + 4;
         if (Number.isFinite(Number(widget.last_y))) {
-            renderedBottom = Math.max(renderedBottom, Number(widget.last_y) + widgetHeight + 16);
+            renderedBottom = Math.max(renderedBottom, Number(widget.last_y) + widgetHeight + 28);
         }
     }
     return Math.max(height, renderedBottom);
@@ -95,11 +96,33 @@ function fitNodeToVisibleWidgets(node) {
     }));
 }
 
-function normalizeMigratedRuntimeWidgets(node) {
+function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = false) {
     const context = node.widgets?.find((widget) => widget.name === "context_size");
     const startup = node.widgets?.find((widget) => widget.name === "startup_timeout");
+    const instrumental = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET);
+    const displacedContext = String(instrumental?.value ?? "").trim();
+    if (repairDisplacedDescription && /^\d{4,6}$/.test(displacedContext) && Number(displacedContext) >= 4096) {
+        if (context) context.value = Number(displacedContext);
+        instrumental.value = "";
+    }
     if (context && Number(context.value) < 4096) context.value = 16384;
     if (startup && Number(startup.value) < 10) startup.value = 180;
+    const voice = node.widgets?.find((widget) => widget.name === "voice_performance");
+    if (voice && !["audible", "silent_mouth_acting_experimental", "none"].includes(voice.value)) {
+        voice.value = "audible";
+    }
+    if (instrumental?.inputEl) {
+        instrumental.inputEl.placeholder = "Describe mood, instruments, tempo, rhythm and dynamics…";
+        instrumental.inputEl.setAttribute("aria-label", "Instrumental score description");
+    }
+}
+
+function enforceConditionalVisibility(node) {
+    const useRemote = node.widgets?.find((widget) => widget.name === "use_remote_model")?.value !== false;
+    for (const name of REMOTE_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), useRemote);
+    for (const name of LOCAL_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !useRemote);
+    const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
+    setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET), score?.value === "add_instrumental");
 }
 
 function applyLabels(node) {
@@ -157,6 +180,7 @@ app.registerExtension({
         const originalCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = originalCreated?.apply(this, arguments);
+            this.__minimaxWidgetMigrationComplete = false;
             wrapRefreshCallback(this, "use_remote_model", refreshBackendWidgets);
             configureAudioNode(this);
             refreshBackendWidgets(this);
@@ -165,6 +189,7 @@ app.registerExtension({
         const originalConfigured = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const result = originalConfigured?.apply(this, arguments);
+            this.__minimaxWidgetMigrationComplete = false;
             wrapRefreshCallback(this, "use_remote_model", refreshBackendWidgets);
             configureAudioNode(this);
             refreshBackendWidgets(this);
@@ -172,6 +197,11 @@ app.registerExtension({
         };
         const originalDrawForeground = nodeType.prototype.onDrawForeground;
         nodeType.prototype.onDrawForeground = function () {
+            if (!this.__minimaxWidgetMigrationComplete) {
+                normalizeMigratedRuntimeWidgets(this, true);
+                this.__minimaxWidgetMigrationComplete = true;
+            }
+            enforceConditionalVisibility(this);
             const result = originalDrawForeground?.apply(this, arguments);
             const requiredHeight = Math.max(MIN_NODE_HEIGHT, visibleWidgetHeight(this));
             if (Array.isArray(this.size) && this.size[1] + 2 < requiredHeight) {

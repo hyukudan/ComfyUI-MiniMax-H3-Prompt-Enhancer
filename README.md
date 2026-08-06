@@ -408,6 +408,8 @@ Per-run mode includes process startup and model loading. Enable `keep_server_loa
 
 Refresh node definitions after updating. Older workflows may deserialize newly introduced local-runtime widgets as zero; zero is accepted as automatic and normalized to the safe context and startup-timeout defaults. The frontend also repairs those values when the workflow is opened.
 
+The frontend also detects the historical case where a serialized context value was shifted into the later `instrumental_description` field. It restores the context, clears the accidental description, reapplies remote/local visibility after ComfyUI finishes configuring the node, and fits the frame to the actual last rendered widget.
+
 ### Dialogue disappears or has no language tag
 
 Update to the latest node version and inspect `validation_report`. Spoken quoted source content should be present verbatim inside `<d>[Language] ...</d>`. Include an explicit phrase such as `says in Catalan` when the language matters.
