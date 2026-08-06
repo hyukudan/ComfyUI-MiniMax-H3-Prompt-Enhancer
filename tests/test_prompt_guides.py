@@ -246,6 +246,65 @@ N/A"""
     repaired = normalize_source_dialogue(generated, source, "t2va")
     assert repaired.count("<d>") == 1
     assert repaired.count("off-screen voiceover") == 1
+
+
+def test_audible_dialogue_adds_speaker_id_and_closes_the_vocal_envelope():
+    source = 'La mujer dice "tranquilo, no estás solo" y señala hacia los portales.'
+    generated = """subject_definitions:
+<Subject 1> is the person from <Picture 1>.
+
+summary:
+[reference generation] A laboratory reveal.
+
+retention_analysis:
+<Subject 1>: fully_preserved - preserve the person.
+
+detailed_description:
+[Shot 1] An elderly woman delivers the line: <d>[Spanish] tranquilo, no estás solo</d>. She points toward three figures emerging from portals.
+
+overall_soundscape:
+Machinery hums and the portals crackle.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "ref2va")
+    assert "elderly woman (S1) delivers the line" in repaired
+    assert "The speaker immediately closes their mouth." in repaired
+    assert "every character keeps their mouth closed" in repaired
+    assert "single tagged line is the only intelligible voice" in repaired
+    assert repaired.count("<d>[Spanish] tranquilo, no estás solo</d>") == 1
+
+
+def test_post_dialogue_reference_aliases_cannot_become_accidental_narration():
+    source = 'La mujer dice "tranquilo, no estás solo" y aparecen las versiones de imagen 1, imagen 2 e imagen 3.'
+    generated = """subject_definitions:
+<Subject 1> is the person from <Picture 1>.
+<Subject 2> is a military alternate from <Picture 2>.
+<Subject 3> is a beret-wearing alternate from <Picture 3>.
+
+summary:
+[reference generation] A portal reveal.
+
+retention_analysis:
+<Subject 1>: fully_preserved - preserve the person.
+<Subject 2>: fully_preserved - preserve the military alternate.
+<Subject 3>: fully_preserved - preserve the beret-wearing alternate.
+
+detailed_description:
+[Shot 1] As the camera moves, the elderly woman speaks calmly: <d>[Spanish] tranquilo, no estás solo</d>. First <Subject 2>, the Nazi army version, appears. Then <Subject 3>, the version wearing a beret, emerges. The figures remain still.
+
+overall_soundscape:
+The portal crackles.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "ref2va")
+    detail = repaired.split("detailed_description:", 1)[1].split("overall_soundscape:", 1)[0]
+    assert "woman (S1) speaks calmly" in detail
+    assert "Nazi army version" not in detail
+    assert "version wearing a beret" not in detail
+    assert "First <Subject 2> appears" in detail
+    assert "Then <Subject 3> emerges" in detail
     assert "Conan speaks" not in repaired
 
 

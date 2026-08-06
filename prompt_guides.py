@@ -936,15 +936,82 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         value,
         flags=re.IGNORECASE,
     )
+    # MiniMax's official format assigns a stable speaker ID to every audible
+    # source. Small local LLMs sometimes preserve <d> perfectly but omit the
+    # ID, which makes the audio model more prone to treating later descriptive
+    # prose as another voice. Repair the common visible-speaker forms here.
+    dialogue_matches = list(re.finditer(r"<d>.*?</d>", value, flags=re.DOTALL | re.IGNORECASE))
+    for speaker_index, dialogue in reversed(list(enumerate(dialogue_matches, start=1))):
+        sentence_start = max(
+            value.rfind(".", 0, dialogue.start()),
+            value.rfind("!", 0, dialogue.start()),
+            value.rfind("?", 0, dialogue.start()),
+            value.rfind("[Shot", 0, dialogue.start()),
+        )
+        sentence_start = 0 if sentence_start < 0 else sentence_start + 1
+        prefix = value[sentence_start:dialogue.start()]
+        if not re.search(r"\(S\d+(?:,S\d+)*\)", prefix, flags=re.IGNORECASE):
+            repaired = re.sub(
+                r"\b(He|She|They)\s+(?=(?:says?|asks?|replies|exclaims|shouts?|whispers?|"
+                r"speaks?|delivers?\s+(?:the\s+)?(?:line|words?)))",
+                rf"\1 (S{speaker_index}) ",
+                prefix,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            if repaired == prefix:
+                repaired = re.sub(
+                    r"\b((?:The|An?|This)\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4})\s+"
+                    r"(?=(?:says?|asks?|replies|exclaims|shouts?|whispers?|speaks?|delivers?))",
+                    rf"\1 (S{speaker_index}) ",
+                    prefix,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            value = value[:sentence_start] + repaired + value[dialogue.start():]
     if "After the final tagged line, no character speaks any additional words." not in value:
         matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
         if matches:
             end = matches[-1].end()
             value = (
                 value[:end]
-                + " After the final tagged line, no character speaks any additional words."
+                + " The speaker immediately closes their mouth. After the final tagged line, no character speaks "
+                  "any additional words. From this point through the final frame, every character keeps their mouth "
+                  "closed; the tagged line is the only intelligible speech in the video."
                 + value[end:]
             )
+    # In Ref2VA prompts, a local LLM may repeat human-readable reference aliases
+    # after dialogue (for example "the beret-wearing version"). H3 can mistake
+    # those timeline labels for narration even though they are outside <d>.
+    # The canonical <Subject N> already carries the exact visual binding, so
+    # remove only meta alias appositives after the last spoken line.
+    timeline_section = "detailed_description" if "detailed_description:" in value else "integrated_multimodal_description"
+    timeline = _section_body(value, timeline_section)
+    final_dialogue = list(re.finditer(r"</d>", timeline, flags=re.IGNORECASE))
+    if final_dialogue:
+        split = final_dialogue[-1].end()
+        before, after = timeline[:split], timeline[split:]
+
+        def drop_vocalizable_alias(match: re.Match[str]) -> str:
+            alias = match.group(2)
+            if re.search(r"\b(?:version|variant|identified|called|named|known)\b", alias, flags=re.IGNORECASE):
+                return match.group(1) + ("." if match.group(3) == "." else "")
+            return match.group(0)
+
+        after = re.sub(
+            r"(<Subject\s+\d+>)\s*,\s*((?:(?!<Subject\s+\d+>)[^,.]){1,120})([,.])",
+            drop_vocalizable_alias,
+            after,
+            flags=re.IGNORECASE,
+        )
+        value = _replace_section_body(value, timeline_section, before + after)
+    soundscape = _section_body(value, "overall_soundscape").strip()
+    only_line = (
+        "The single tagged line is the only intelligible voice; after it ends, only non-verbal ambience and physical "
+        "sounds remain, with no narration, whispers, or additional words."
+    )
+    if soundscape and "single tagged line is the only intelligible voice" not in soundscape:
+        value = _replace_section_body(value, "overall_soundscape", soundscape + " " + only_line)
     return value
 
 

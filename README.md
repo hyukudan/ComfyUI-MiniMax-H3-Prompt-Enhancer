@@ -252,10 +252,18 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 - affirmative vocal cues outside their matching `<d>` sentence are rejected, including `speaks`, `continues
   speaking`, and `finishes speaking`; common continuation wording is deterministically converted into a silent acting
   or exact-line timing beat;
-- after the final tagged line, the generated prompt explicitly states that no character speaks additional words;
+- missing official `(Sx)` speaker IDs are restored for common visible-speaker forms;
+- post-dialogue Ref2VA alias appositives such as `the ... version` are reduced to their canonical `<Subject N>`
+  binding so H3 is less likely to vocalize descriptive reference labels as accidental narration;
+- after the final tagged line, the generated prompt closes the speaker's mouth and explicitly states that every
+  character remains vocally silent through the final frame;
 - absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
+
+These controls constrain the prompt, not the generated waveform. H3 can still hallucinate intelligible speech during
+long post-dialogue intervals. For delivery-critical dialogue, transcribe or review the rendered audio and clean any
+unwanted vocal interval in post-production.
 
 Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech when `voice_performance=audible`. The enhancer preserves the
 exact words inside `<d>[Language] ...</d>`, describes them as an off-screen internal monologue, and explicitly keeps
