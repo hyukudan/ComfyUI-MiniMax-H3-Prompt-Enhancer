@@ -908,12 +908,35 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         for label, lock in locks:
             if str(lock).strip():
                 parts.append(f"{label} (repeat verbatim in every prompt item):\n{str(lock).strip()}")
+        shot_segments = _explicit_shot_segments(basic_prompt)
+        if shot_segments and (not count or len(shot_segments) == count):
+            parts.append(
+                "AUTHORITATIVE MULTISHOT ITEM PLAN: Each source cut creates the next independent prompt item. "
+                "Do not move actions, dialogue occurrences, reactions, transformations, or wardrobe states between "
+                "items. Develop each span audiovisually while preserving its causal order:\n"
+                + "\n".join(
+                    f"- Prompt item {index}: {segment}"
+                    for index, segment in enumerate(shot_segments, start=1)
+                )
+            )
+        dialogue_contracts = _source_dialogue_contracts(basic_prompt)
+        dialogue_items = _source_dialogue_shot_indices(basic_prompt)
+        if dialogue_contracts and len(dialogue_items) == len(dialogue_contracts):
+            parts.append(
+                "MULTISHOT DIALOGUE LEDGER: Keep every occurrence in its assigned item. Terminal punctuation such as "
+                "an exclamation mark controls emphasis and may be expressed through forceful delivery, but never omit "
+                "or change the lexical words:\n"
+                + "\n".join(
+                    f"- Prompt item {item}: <d>[{language}] {quote}</d>"
+                    for item, (language, quote, _internal) in zip(dialogue_items, dialogue_contracts)
+                )
+            )
         parts.extend([
             "CHAINED MULTISHOT CONTRACT:\n"
             "- Each JSON array item is an independent H3 conditioning pass and must be self-contained fluent prose.\n"
             "- Repeat supplied stable identity, wardrobe, environment, style, and voice facts verbatim where applicable.\n"
             "- End each segment in a concrete chainable visual state and make the following segment compatible with it.\n"
-            "- Preserve exact dialogue once; include coherent physical audio in every segment; use no section/shot labels.\n"
+            "- Preserve every intended dialogue occurrence; include coherent physical audio in every segment; use no section/shot labels.\n"
             "- Treat 2.5 spoken words per second only as a diagnostic planning heuristic, never as permission to invent dialogue.",
             (f"OUTPUT EXACTLY {count} PROMPT ITEMS." if count else
              "Infer the smallest useful number of prompt items from explicit scene/segment structure; default to one."),
@@ -1914,14 +1937,55 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         common = [token for token in dict.fromkeys(source_facts) if all(token in item.casefold() for item in prompts)]
         if len(common) < min(4, len(set(source_facts))):
             warnings.append("Few concrete source attributes repeat across independent prompts; identity or scene continuity may drift")
+    source_contracts = _source_dialogue_contracts(source_prompt)
+    spoken_keys = {_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts}
+
+    def item_spoken_keys(item: str) -> list[str]:
+        raw = [_dialogue_lexical_key(quote) for quote in _QUOTED_RE.findall(item)]
+        tagged = [
+            _dialogue_lexical_key(re.sub(r"^\s*\[[^\]]+\]\s*", "", inner))
+            for inner in re.findall(r"<d>(.*?)</d>", item, flags=re.DOTALL | re.IGNORECASE)
+        ]
+        return [key for key in raw + tagged if key in spoken_keys]
+
+    expected_spoken = Counter(_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts)
+    observed_spoken = Counter(key for item in prompts for key in item_spoken_keys(item))
+    if observed_spoken != expected_spoken:
+        missing = list((expected_spoken - observed_spoken).elements())
+        extra = list((observed_spoken - expected_spoken).elements())
+        if missing:
+            errors.append(f"Chained prompts omitted or changed spoken dialogue occurrences: {missing}")
+        if extra:
+            errors.append(f"Chained prompts invented or duplicated spoken dialogue occurrences: {extra}")
+
+    dialogue_items = _source_dialogue_shot_indices(source_prompt)
+    if prompts and len(dialogue_items) == len(source_contracts) and _explicit_shot_segments(source_prompt):
+        expected_by_item: dict[int, Counter[str]] = {}
+        for item_number, (_language, quote, _internal) in zip(dialogue_items, source_contracts):
+            expected_by_item.setdefault(item_number, Counter())[_dialogue_lexical_key(quote)] += 1
+        for item_number, item in enumerate(prompts, start=1):
+            observed = Counter(item_spoken_keys(item))
+            expected = expected_by_item.get(item_number, Counter())
+            if observed != expected:
+                errors.append(
+                    f"Chained prompt item {item_number} must retain its source-authored dialogue occurrences: "
+                    f"expected {dict(expected)}, observed {dict(observed)}"
+                )
+
+    # Non-spoken quoted text remains exact; punctuation flexibility applies only
+    # to dialogue delivery, never to visible titles, signs, or labels.
     source_quotes = Counter(_QUOTED_RE.findall(source_prompt or ""))
-    output_quotes = Counter(quote for item in prompts for quote in _QUOTED_RE.findall(item))
-    missing_quotes = list((source_quotes - output_quotes).elements())
-    extra_quotes = list((output_quotes - source_quotes).elements())
-    if missing_quotes:
-        errors.append(f"Chained prompts omitted or changed exact quoted text: {missing_quotes}")
-    if extra_quotes:
-        errors.append(f"Chained prompts invented quoted dialogue or visible text: {extra_quotes}")
+    source_visible_quotes = source_quotes - Counter(quote for _language, quote, _internal in source_contracts)
+    output_visible_quotes = Counter(
+        quote for item in prompts for quote in _QUOTED_RE.findall(item)
+        if _dialogue_lexical_key(quote) not in spoken_keys
+    )
+    missing_visible = list((source_visible_quotes - output_visible_quotes).elements())
+    extra_visible = list((output_visible_quotes - source_visible_quotes).elements())
+    if missing_visible:
+        errors.append(f"Chained prompts omitted or changed exact visible quoted text: {missing_visible}")
+    if extra_visible:
+        errors.append(f"Chained prompts invented quoted visible text: {extra_visible}")
     return {"valid": not errors, "mode": "chained_multishot", "errors": errors, "warnings": warnings, "promptCount": len(prompts)}
 
 

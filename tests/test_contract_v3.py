@@ -135,7 +135,7 @@ def test_multishot_continuity_locks_are_applied_deterministically():
     )["valid"]
 
 
-def test_multishot_preserves_exact_quoted_text_without_invention():
+def test_multishot_preserves_spoken_words_without_invention():
     assert validate_prompt(
         '{"prompts":["She says \\"Exact line.\\""]}', "chained_multishot", 5,
         'She says "Exact line."', multishot_shot_count=1,
@@ -143,6 +143,19 @@ def test_multishot_preserves_exact_quoted_text_without_invention():
     assert not validate_prompt(
         '{"prompts":["She says \\"Changed.\\""]}', "chained_multishot", 5,
         'She says "Exact line."', multishot_shot_count=1,
+    )["valid"]
+
+
+def test_multishot_allows_delivery_punctuation_but_preserves_dialogue_allocation():
+    source = 'A god says "power up!". Cut scene. The god says "power up!" again.'
+    correctly_allocated = '{"prompts":["A god forcefully says \\"power up\\".","The god says \\"power up!\\" again."]}'
+    assert validate_prompt(
+        correctly_allocated, "chained_multishot", 10, source, multishot_shot_count=2,
+    )["valid"]
+
+    moved_to_first_item = '{"prompts":["A god says \\"power up!\\" and repeats \\"power up!\\".","The god remains silent."]}'
+    assert not validate_prompt(
+        moved_to_first_item, "chained_multishot", 10, source, multishot_shot_count=2,
     )["valid"]
 
 

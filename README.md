@@ -46,7 +46,7 @@ MiniMax H3 responds best when actions, timing, camera, dialogue, language, and s
 | Check authored text | Model-free structural validation and repair feedback |
 | Control generated audio | Independent ambience/foley, score, and voice-performance policies |
 | Feed duration downstream | `duration_seconds` output on both enhancer nodes |
-| Drive chained multishot samplers | `chained_multishot` mode plus Chained Multishot Output |
+| Plan independent chained generations | `chained_multishot` mode plus Chained Multishot Output |
 | Ground prompts in connected media metadata | Optional JSON media manifest and Manifest Validator |
 | Reclaim VRAM before H3 | Per-run unload by default, with optional persistent mode |
 
@@ -193,7 +193,7 @@ Normalizes a JSON media inventory, assigns effective `<Picture N>`, `<Video N>`,
 
 ### MiniMax H3 Chained Multishot Output
 
-Validates canonical `{"prompts":[...]}` output from `chained_multishot`, produces the `---`-separated script accepted by chained H3 samplers, and reports total planned duration. Each item is an independent conditioning pass, not a `[Shot N]` inside one generation.
+Validates canonical `{"prompts":[...]}` output from `chained_multishot`, produces a convenient `---`-separated script, and reports total planned duration. Each item is an independent conditioning pass, not a `[Shot N]` inside one generation. The installed H3 samplers do not currently queue that script automatically: generate each item separately and use the previous segment's last frame as the next segment's first-frame anchor.
 
 ## Exact wiring
 
@@ -260,7 +260,7 @@ Shot 1 has no timestamp. Later shots use `[Shot N] At MM:SS.mmm,` with strictly 
 
 The current Ref2VA summary task names are `keyframe completion`, `reference generation`, `video editing`, `video continuation`, `audio reuse`, and `audio reference`; multiple relationships use the exact ` + ` separator. Dialogue validation accepts the official natural vocal forms (`says`, `replies`, group shouts, singing, and compound speaker IDs) while still enforcing stable sources, exact text, language tags, and no invented speech.
 
-`chained_multishot` deliberately does not use the three- or six-section single-generation contracts. It repeats supplied identity, wardrobe, setting, style, and voice facts in each autonomous prompt and treats the often-cited ~2.5 spoken words/second only as a warning heuristic. It never invents dialogue to fill silence.
+`chained_multishot` deliberately does not use the three- or six-section single-generation contracts. It repeats supplied identity, wardrobe, setting, style, and voice facts in each autonomous prompt and treats the often-cited ~2.5 spoken words/second only as a warning heuristic. Explicit cuts define authoritative item boundaries, and every source dialogue occurrence stays assigned to its original item. Spoken terminal punctuation may be expressed through delivery (for example, forcefully saying `power up` instead of retaining the exclamation mark), but the lexical words and occurrence count remain mandatory. Visible quoted text remains exact. It never invents dialogue to fill silence.
 
 ## Description enhancement
 
