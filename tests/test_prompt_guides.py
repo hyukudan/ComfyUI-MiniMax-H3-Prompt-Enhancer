@@ -10,6 +10,7 @@ from prompt_guides import (
     normalize_source_dialogue,
     normalize_first_shot_marker,
     normalize_reference_definitions,
+    normalize_unassigned_subjects,
     normalize_shot_timestamps,
     normalize_shot_timeline,
     normalize_section_headers,
@@ -155,6 +156,15 @@ def test_missing_dialogue_language_marker_gets_non_translating_fallback():
     assert normalize_dialogue_tags("<d>Hola.</d>") == "<d>[Original language] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish] Hola.</d>") == "<d>[Spanish] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish]Hola.</d>") == "<d>[Spanish] Hola.</d>"
+
+
+def test_inline_section_content_is_moved_below_its_header():
+    fixed = normalize_section_headers(
+        "integrated_multimodal_description:\n[Shot 1] Action.\n"
+        "overall_soundscape:Gym ambience.\nnon_diegetic_music:N/A"
+    )
+    assert "overall_soundscape:\nGym ambience." in fixed
+    assert "non_diegetic_music:\nN/A" in fixed
 
 
 def test_catalonian_language_request_becomes_exact_catalan_dialogue_contract():
@@ -442,6 +452,79 @@ N/A"""
     repaired = normalize_source_dialogue(generated, source, "t2va")
     assert repaired.count("<d>") == 1
     assert repaired.count("Quién debe ser el asesino?") == 1
+
+
+def test_repeated_heard_line_and_cut_scene_commands_remain_distinct_beats():
+    source = (
+        'After two repetitions, a godlike voice is heard saying "power up!" in English. '
+        'Cut scene to a close-up. After two more repetitions we hear the "power up!" again. '
+        'He does more repetitions and we hear the "power up!" again. Then cut scene, and his face transforms.'
+    )
+    contracts = _source_dialogue_contracts(source)
+    assert contracts == [
+        ("English", "power up!", False),
+        ("English", "power up!", False),
+        ("English", "power up!", False),
+    ]
+
+    request = build_user_request(source, "t2va", 15.0)
+    assert "EXPLICIT EDIT PLAN: Use exactly 3 shots" in request
+    assert "Occurrence 1 of 3" in request
+    assert "Occurrence 2 of 3" in request
+    assert "Occurrence 3 of 3" in request
+    assert "state ladder" in request
+    assert "Shot 1 authoritative source span" in request
+    assert "Shot 2 authoritative source span" in request
+    assert "Shot 3 authoritative source span" in request
+
+
+def test_repeated_source_dialogue_keeps_expected_count_but_removes_true_extra_copy():
+    source = (
+        'A voice says "power up!" in English. We hear "power up!" again. '
+        'We hear "power up!" again.'
+    )
+    blocks = " ".join(
+        f"A divine voice (S1) booms: <d>[English] power up!</d>." for _ in range(4)
+    )
+    generated = f"""integrated_multimodal_description:
+[Shot 1] {blocks}
+overall_soundscape:
+Echo and gym ambience.
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(generated, source, "t2va")
+    assert repaired.count("<d>[English] power up!</d>") == 3
+    assert repaired.count("After the final tagged line") == 1
+
+
+def test_validator_rejects_collapsing_explicit_cut_scene_commands_into_one_shot():
+    source = "He lifts. Cut scene to a close-up. He lifts again. Then cut scene, his face transforms."
+    prompt = """integrated_multimodal_description:
+[Shot 1] He lifts, the camera moves closer, then his face transforms.
+overall_soundscape:
+Gym ambience.
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 15.0, source)
+    assert any("requires exactly 3 shots" in item for item in report["errors"])
+
+
+def test_repeated_dialogue_cannot_move_across_explicit_cut_boundaries():
+    source = (
+        'A divine voice says "power up!". Cut scene to a close-up. '
+        'We hear "power up!" again and then "power up!" again. Then cut scene, he transforms.'
+    )
+    prompt = """integrated_multimodal_description:
+[Shot 1] A divine voice (S1) booms: <d>[Original language] power up!</d>. The divine voice (S1) booms: <d>[Original language] power up!</d>. The divine voice (S1) booms: <d>[Original language] power up!</d>.
+[Shot 2] At 00:05.000, The camera moves close.
+[Shot 3] At 00:10.000, He transforms.
+overall_soundscape:
+Echo, breathing, and transformation sounds.
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 15.0, source)
+    assert any("source-authored shot 1" in item for item in report["errors"])
+    assert any("source-authored shot 2" in item for item in report["errors"])
 
 
 def test_validator_rejects_extra_dialogue_music_inline_times_and_excess_shots():
@@ -808,7 +891,7 @@ N/A"""
     fixed = normalize_reference_definitions(
         raw, "The person in image 1 reveals the product in image 2.",
     )
-    assert "[reference generation] A presenter reveals an object." in fixed
+    assert "summary:\n[reference generation]\n" in fixed
     assert "<Picture 1> A generated opening moment." not in fixed
     assert "fully_preserved: The action." not in fixed
     assert "attribute_transfer: N/A" not in fixed
@@ -1029,6 +1112,19 @@ def test_unassigned_picture_is_not_promoted_to_a_generic_subject():
     assert "wardrobe, styling, pose, and state follow explicit source instructions" in model["definitions"][0]["line"]
 
 
+def test_orphan_subject_for_generated_child_becomes_literal_source_description():
+    source = (
+        "The man in image 1 kicks a little 8 year old girl with golden locks in a wheelchair, "
+        "while he shouts."
+    )
+    raw = "<Subject 1> kicks <Subject 2>. <Subject 2> flies offscreen."
+    fixed = normalize_unassigned_subjects(
+        raw, source, "Connected reference <Picture 2> has no declared role.",
+    )
+    assert "<Subject 2>" not in fixed
+    assert "the little 8 year old girl with golden locks in a wheelchair" in fixed
+
+
 def test_reference_summary_drops_stale_task_list_from_llm_body():
     raw = """subject_definitions:
 <Subject 1> is a person from <Picture 1>.
@@ -1097,3 +1193,28 @@ non_diegetic_music:
 N/A"""
     report = validate_prompt(prompt, "t2va", 5, 'A voice in off says "Hola".')
     assert any("identify its source" in item for item in report["errors"])
+
+
+def test_named_godlike_offscreen_voice_is_not_treated_as_unresolved():
+    prompt = """integrated_multimodal_description:
+[Shot 1] An off-screen godlike voice (S1) booms: <d>[English] power up!</d>.
+overall_soundscape:
+Divine echo and room ambience.
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5, 'A godlike voice is heard saying "power up!" in English.')
+    assert not any("identify its source" in item for item in report["errors"])
+
+
+def test_speaker_placeholder_uses_first_free_id_and_names_narrator():
+    source = 'A voice in off says "First". Then the man says "Second".'
+    generated = """integrated_multimodal_description:
+[Shot 1] An off-screen voiceover (Sx) says in an off-screen voiceover <d>[Original language] First</d>. The man (S2) says <d>[Original language] Second</d>.
+overall_soundscape:
+Room tone.
+non_diegetic_music:
+N/A"""
+    fixed = normalize_source_dialogue(generated, source, "t2va")
+    assert "An off-screen narrator (S1) says in an off-screen voiceover" in fixed
+    assert "(Sx)" not in fixed
+    assert "The two tagged lines are the only intelligible speech" in fixed

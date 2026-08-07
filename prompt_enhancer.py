@@ -14,10 +14,10 @@ from urllib.request import Request, urlopen
 
 try:
     from .media_manifest import manifest_context
-    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from media_manifest import manifest_context
-    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -181,11 +181,18 @@ def enhance_prompt_with_completion(
             return normalize_multishot_output(candidate, (
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             ))
-        return normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
-            candidate
-        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, effective_reference_context), basic_prompt, resolved_mode,
-        voice_performance), ambience_foley_policy, background_score_policy, voice_performance,
-        basic_prompt + "\n" + effective_reference_context)
+        value = normalize_section_headers(candidate)
+        value = normalize_dialogue_tags(value)
+        value = normalize_first_shot_marker(value, resolved_mode)
+        value = normalize_shot_timestamps(value)
+        value = normalize_shot_timeline(value, resolved_mode, duration_seconds)
+        value = normalize_reference_definitions(value, basic_prompt, effective_reference_context)
+        value = normalize_unassigned_subjects(value, basic_prompt, effective_reference_context)
+        value = normalize_source_dialogue(value, basic_prompt, resolved_mode, voice_performance)
+        return normalize_audio_policy(
+            value, ambience_foley_policy, background_score_policy, voice_performance,
+            basic_prompt + "\n" + effective_reference_context,
+        )
 
     enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(

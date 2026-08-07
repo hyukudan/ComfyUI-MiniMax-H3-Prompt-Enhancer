@@ -307,8 +307,14 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
   natural forms such as replies, asks, group shouts, singing, and compound `(S1,S2)` IDs remain valid;
 - post-dialogue Ref2VA alias appositives such as `the ... version` are reduced to their canonical `<Subject N>`
   binding so H3 is less likely to vocalize descriptive reference labels as accidental narration;
-- after the final tagged line, the generated prompt closes the speaker's mouth and explicitly states that every
-  character remains vocally silent through the final frame;
+- intentionally repeated quoted lines remain separate occurrences at their original causal beats, reuse the same
+  recurring speaker ID, and may differ only in authored terminal punctuation without being nested or deduplicated;
+- literal edit commands such as `cut scene`/`cut to` create mandatory ordered shot spans; actions, dialogue,
+  transformations, wardrobe states, and reactions cannot migrate across those boundaries;
+- repeated action/trigger/transformation cycles are expanded as a visible state ladder with countable full-motion
+  repetitions and explicit body, wardrobe, expression, camera, and sound changes at every stage;
+- after the final tagged line, the generated prompt adds one idempotent no-extra-dialogue closure, keeps every
+  character vocally silent through the final frame, and describes the correct number of tagged lines;
 - when a short line precedes a long visual continuation, validation requires at least two concrete non-verbal sounds
   inside the remaining timeline instead of leaving an unplanned audio gap;
 - absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
@@ -418,7 +424,8 @@ MiniMax full-reference semantics separate reusable content from standalone media
 For a person in image 1 holding the exact product from image 2, use:
 
 ```text
-<Subject 1> is the exact person identity and wardrobe from <Picture 1>.
+<Subject 1> is the exact person identity and intrinsic physical appearance from <Picture 1>; explicit wardrobe
+instructions in the source prompt take precedence.
 <Subject 2> is the exact product design from <Picture 2>; preserve its shape, colors, controls, and markings.
 ```
 
@@ -428,7 +435,9 @@ entity is `<Subject 1>` even when its provenance is `<Picture 2>`. Reveal, prese
 attach to the resulting subject rather than to the source picture. Repeated aliases for the same human/style/object
 in one asset are merged, while the most specific role phrase is retained. Phrases such as `version ... in image N`
 become alternate versions of the primary identity rather than unrelated duplicate Subjects. There is no
-scenario-specific production logic.
+scenario-specific production logic. Connected pictures without a declared role are not silently converted into
+subjects; if a model nevertheless invents an orphan `<Subject N>`, the enhancer replaces it with the strongly
+specified ordinary-character description from the source prompt when one is available.
 
 ### Exact frames and duration
 
@@ -587,7 +596,7 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-The current suite contains 103 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
+The current suite contains 121 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
 media manifests and limits, chained multishot output, alignment, single-shot simultaneity and gradual progression, shot budgets,
 exact-once dialogue/language preservation, untagged vocal-cue rejection, explicit age-category retention, internal
 voiceover, reference alias/variant merging, best-candidate repair selection, rejection of invented dialogue and music,
