@@ -557,10 +557,12 @@ Refresh node definitions after updating. Older workflows may deserialize newly i
 
 The frontend also repairs two historical serialization cases: a context value shifted into
 `instrumental_description`, and the former serialized refresh/model-picker helpers shifting later widget values. It
-also type-checks every hidden local-runtime value: invalid or displaced context, thread, startup-timeout, GPU-layer,
-policy, and boolean values are restored to safe defaults before ComfyUI builds the execution request. This matters
-even in remote mode because ComfyUI validates hidden widgets too. It reapplies remote/local visibility after ComfyUI
-finishes configuring the node.
+also type-checks the complete enhancer form: modes, durations, model-generation limits, timeouts, policies, booleans,
+text fields, and every hidden local-runtime value. Invalid or displaced values are restored to documented defaults
+before ComfyUI builds the execution request. This matters even in remote mode because ComfyUI validates hidden widgets
+too. Semantic mistakes that reflect real user input—such as malformed manifest JSON or a nonzero frame count outside
+H3's grid—remain visible validation errors instead of being silently rewritten. The frontend reapplies remote/local
+visibility after ComfyUI finishes configuring the node.
 
 ### Dialogue disappears or has no language tag
 

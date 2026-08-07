@@ -222,6 +222,20 @@ function sanitizeIntegerWidget(node, name, fallback, min, max) {
     return assignMigratedValue(widget, value);
 }
 
+function sanitizeNumberWidget(node, name, fallback, min, max) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return false;
+    const parsed = typeof widget.value === "number" ? widget.value : Number(widget.value);
+    const value = Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+    return assignMigratedValue(widget, value);
+}
+
+function sanitizeStringWidget(node, name, fallback = "") {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return false;
+    return assignMigratedValue(widget, typeof widget.value === "string" ? widget.value : fallback);
+}
+
 function sanitizeEnumWidget(node, name, allowed, fallback) {
     const widget = node.widgets?.find((candidate) => candidate.name === name);
     if (!widget) return false;
@@ -370,6 +384,17 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         if (context) context.value = Number(displacedContext);
         instrumental.value = "";
     }
+    if (["auto", "follow_prompt", "audible", "(no local models found)", "(no GGUF models found)"].includes(displacedContext)
+        || /(?:llama-server|\.gguf$)/i.test(displacedContext)) {
+        assignMigratedValue(instrumental, "");
+    }
+    sanitizeEnumWidget(node, "mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"], "auto");
+    sanitizeNumberWidget(node, "duration_seconds", 5, 4, 15);
+    sanitizeNumberWidget(node, "temperature", 0.2, 0, 2);
+    sanitizeIntegerWidget(node, "max_tokens", 4096, 512, 32768);
+    sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);
+    sanitizeIntegerWidget(node, "request_timeout", 300, 10, 1800);
+    sanitizeIntegerWidget(node, "repair_attempts", 1, 0, 2);
     sanitizeIntegerWidget(node, "context_size", 16384, 4096, 131072);
     sanitizeIntegerWidget(node, "threads", 0, 0, 256);
     sanitizeIntegerWidget(node, "startup_timeout", 180, 10, 1800);
@@ -381,11 +406,20 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeBooleanWidget(node, "use_remote_model", true);
     sanitizeBooleanWidget(node, "enhance_description", true);
+    sanitizeBooleanWidget(node, "disable_thinking", true);
+    sanitizeBooleanWidget(node, "allow_remote_endpoint", false);
     sanitizeBooleanWidget(node, "keep_server_loaded", false);
     sanitizeBooleanWidget(node, "show_advanced_controls", false);
+    for (const name of [
+        "basic_prompt", "prompt", "source_prompt", "reference_context", "endpoint", "model", "api_key",
+        "instrumental_description", "media_manifest", "multishot_identity_lock", "multishot_voice_lock",
+        "multishot_setting_lock", "llama_server_path", "gguf_model_path", "registered_model_dirs",
+    ]) sanitizeStringWidget(node, name);
     const gpuLayers = node.widgets?.find((widget) => widget.name === "gpu_layers");
     const gpuValue = String(gpuLayers?.value ?? "").trim().toLowerCase();
-    if (!/^(auto|all|-1|\d+)$/.test(gpuValue)) assignMigratedValue(gpuLayers, "auto");
+    if (typeof gpuLayers?.value !== "string" || !/^(auto|all|-1|\d+)$/.test(gpuValue)) {
+        assignMigratedValue(gpuLayers, "auto");
+    }
     widgetTextElement(instrumental)?.setAttribute("aria-label", "Instrumental score description");
     const reference = node.widgets?.find((widget) => widget.name === "reference_context");
     widgetTextElement(reference)?.setAttribute("aria-label", "Optional reference notes");
