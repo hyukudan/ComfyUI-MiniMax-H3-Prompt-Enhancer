@@ -141,7 +141,7 @@ class MiniMaxH3PromptEnhancer:
             "temperature": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05}),
             "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
             "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 1800, "step": 10}),
-            "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
+            "repair_attempts": ("INT", {"default": 2, "min": 0, "max": 4, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True, "tooltip": "Faster, cleaner structured output on Qwen thinking models"}),
             "allow_remote_endpoint": ("BOOLEAN", {"default": False}),
         }, "optional": {
@@ -257,7 +257,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
             "request_timeout": ("INT", {"default": 300, "min": 10, "max": 1800, "step": 10}),
             "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default"}),
-            "repair_attempts": ("INT", {"default": 1, "min": 0, "max": 2, "step": 1}),
+            "repair_attempts": ("INT", {"default": 2, "min": 0, "max": 4, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True}),
             "enhance_description": ("BOOLEAN", {"default": True}),
             "keep_server_loaded": ("BOOLEAN", {"default": False}),

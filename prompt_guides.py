@@ -127,6 +127,9 @@ Shared timeline rules:
   <d> block in one sentence. Natural official forms include says, replies, asks, shouts, whispers, sings, and group
   speech with compound IDs such as (S1,S2). Put only language plus exact words inside <d>; keep all action and
   delivery outside it. Do not use vague "speaks" or "delivers the line" cues that imply unspecified extra words.
+- Name every off-screen vocal source explicitly. If the referenced character owns the voiceover, write
+  "<Subject N> (Sx) says in an off-screen voiceover" and reuse that same Sx for the character's later visible
+  dialogue. Otherwise write "An off-screen narrator (Sx)". Never use an unresolved phrase such as "the voice in off".
 - Every positive speaking/talking/saying/asking/finishing-speech cue must be in the same sentence as its corresponding
   <d> block. Outside those tagged sentences, describe gaze, gesture, expression, and silence without implying continued
   or additional speech. A short quoted line is spoken once in one shot and ends there.
@@ -138,8 +141,15 @@ Shared timeline rules:
   Preserve the referenced person's identity or object's exact visible design wherever it appears. Never invent a
   Picture, Video, or Audio label that the request/reference context did not provide. Do not reveal an object before
   the action or spoken cue where the user explicitly says it first becomes visible.
+- A generated character or object that is not explicitly bound to a supplied asset remains ordinary descriptive
+  content. Never assign it a new <Subject N>, <Picture N>, <Video N>, or <Audio N> label merely because it appears in
+  the story.
 - Preserve every referenced object's concrete noun, subtype, visible attributes, materials, markings, proportions,
   and identity. Do not silently replace a supplied object with a generic or semantically related alternative.
+- When the source explicitly requires someone or something to fly, be propelled, or move off-screen/out of frame,
+  stage the complete consequence as visible motion in a sufficiently wide shot. Name the moving subject, show a
+  readable airborne or displaced trajectory, and keep the camera on that action until the subject fully exits the
+  frame. Do not replace the requested movement with a cut, disappearance, implied aftermath, close-up, or mere fall.
 - overall_soundscape is one continuous paragraph of 1-4 sentences covering ambience, physical sounds, and
   non-verbal human sounds. Do not repeat dialogue or audience-only music there.
 - non_diegetic_music is 1-3 sentences describing only audience-only music through instrumentation, tempo, rhythm,
@@ -246,7 +256,8 @@ def _asset_label(kind: str, number: str | int) -> str:
 
 def _definition_labels(text: str) -> list[str]:
     return list(dict.fromkeys(re.findall(
-        r"(?im)^\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)\s*(?::|\bis\b)", text or "",
+        r"(?im)^\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)\s*(?::|\bis\b|\bcomes?\s+from\b|\bfrom\b)",
+        text or "",
     )))
 
 
@@ -356,7 +367,8 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             if primary_identity_label is not None and re.search(r"\b(?:version|versi[oó]n)\b", role, re.IGNORECASE):
                 description = (
                     f"an alternate version of {primary_identity_label}, identified by the source as {role!r}, whose "
-                    f"exact identity, appearance, wardrobe, proportions, colors, and markings come from {asset}"
+                    f"identity and intrinsic physical appearance come from {asset}; wardrobe, styling, pose, and "
+                    "state follow explicit source instructions whenever they override the reference"
                 )
             else:
                 canonical_role = {
@@ -366,7 +378,9 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
                 if not informative and canonical_role.casefold() in {"person", "people", "man", "men"}:
                     canonical_role = "person"
                 description = (
-                    f"the reusable {canonical_role} whose identity, appearance, and wardrobe come from {asset}"
+                    f"the reusable {canonical_role} whose identity and intrinsic physical appearance come from "
+                    f"{asset}; wardrobe, styling, pose, and state follow explicit source instructions whenever they "
+                    "override the reference"
                 )
             marker = "fully_preserved"
         else:
@@ -443,14 +457,11 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         }
         used_assets.add(asset)
 
-    for asset in picture_assets:
-        if asset not in used_assets:
-            subjects.append({
-                "role": "referenced visual content", "asset": asset, "contribution": "visual",
-                "description": f"the reusable visual content derived from {asset} without treating its composition as a frame anchor",
-                "marker": "fully_preserved",
-            })
-            used_assets.add(asset)
+    # A connected image without an authoritative role is not automatically a
+    # person/object Subject. Guessing here can silently bind an unrelated image
+    # to a source character. Keep it available but unassigned until the source,
+    # reference notes, or media manifest states the relationship.
+    unassigned_assets = {asset for asset in picture_assets if asset not in used_assets}
 
     definitions = []
     for index, subject in enumerate(subjects, 1):
@@ -484,8 +495,9 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         "assets": assets,
         "definitions": definitions,
         "definition_labels": [item["label"] for item in definitions],
-        "provenance_assets": set(assets) - set(independent),
+        "provenance_assets": {subject["asset"] for subject in subjects},
         "independent_assets": set(independent),
+        "unassigned_assets": unassigned_assets,
         "subjects": subjects,
         "reveal": reveal,
     }
@@ -513,6 +525,11 @@ def _official_reference_contract(source_prompt: str, reference_context: str = ""
           for item in model["definitions"]],
         "- Use every defined Subject in detailed_description. Do not invent labels or reinterpret source assets as generated moments.",
     ]
+    for asset in sorted(model.get("unassigned_assets", ())):
+        lines.append(
+            f"- UNASSIGNED ASSET: {asset} has no authoritative role. Do not invent a Subject or bind it to a "
+            "character/object unless the source or reference context supplies that relationship."
+        )
     if model["reveal"]:
         cue, labels = model["reveal"]
         for label in labels:
@@ -574,6 +591,19 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
     task_type = " + ".join(dict.fromkeys(task_types or ["reference generation"]))
     summary = _section_body(value, "summary").strip()
     summary = re.sub(r"^\[[^\]\r\n]+\]\s*", "", summary)
+    summary = re.sub(
+        r"^(?:\s*\+?\s*\[(?:reference generation|keyframe completion|video editing|video continuation|"
+        r"audio reuse|audio reference)\]\s*)+",
+        "",
+        summary,
+        flags=re.IGNORECASE,
+    )
+    if re.fullmatch(
+        r"(?:reference generation|keyframe completion|video editing|video continuation|audio reuse|audio reference)"
+        r"(?:\s*\+\s*(?:reference generation|keyframe completion|video editing|video continuation|audio reuse|audio reference))*",
+        summary, flags=re.IGNORECASE,
+    ):
+        summary = ""
     value = _replace_section_body(value, "summary", f"[{task_type}] {summary}".rstrip())
     return value
 
@@ -681,6 +711,86 @@ def _explicit_age_fact_errors(source_prompt: str, output: str) -> list[str]:
     return errors
 
 
+def _explicit_source_fact_errors(source_prompt: str, output: str) -> list[str]:
+    """Protect concrete source attributes and terminal consequences from silent omission."""
+    source = source_prompt or ""
+    text = output or ""
+    errors = _explicit_age_fact_errors(source, text)
+
+    for age in re.findall(r"\b(\d{1,3})\s*[- ]?\s*years?\s*[- ]?\s*old\b", source, re.IGNORECASE):
+        if not re.search(rf"\b{re.escape(age)}\s*[- ]?\s*years?\s*[- ]?\s*old\b", text, re.IGNORECASE):
+            errors.append(f"Explicit numeric age must remain {age}-year-old")
+
+    hair_facts = re.findall(
+        r"\b(golden|blond(?:e)?|black|brown|red|white|gr[ae]y|silver)\s+"
+        r"((?:(?:long|short|curly|straight|wavy)\s+)?(?:hair|locks|curls|braids))\b",
+        source,
+        flags=re.IGNORECASE,
+    )
+    for color, hair in hair_facts:
+        hair_noun = re.search(r"(?:hair|locks|curls|braids)$", hair, re.IGNORECASE).group(0)
+        if not re.search(
+            rf"\b{re.escape(color)}\b.{{0,30}}\b(?:{re.escape(hair_noun)}|hair|locks|curls|braids)\b",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            errors.append(f"Explicit hair attribute must remain {color} {hair}")
+
+    for aid in ("wheelchair", "crutches", "walker", "cane"):
+        if re.search(rf"\b{aid}\b", source, re.IGNORECASE) and not re.search(rf"\b{aid}\b", text, re.IGNORECASE):
+            errors.append(f"Explicit mobility aid must remain {aid!r}")
+
+    source_has_forced_exit = re.search(
+        r"\b(?:fly|flies|flying|goes?\s+flying|is\s+sent|propelled|hurled|flung|knocked|thrown)\b"
+        r".{0,140}\b(?:off[- ]?screen|out\s+of\s+(?:the\s+)?frame)\b",
+        source,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    output_has_forced_exit = re.search(
+        r"\b(?:fly|flies|flying|goes?\s+flying|is\s+sent|propelled|hurled|flung|knocked|thrown)\b"
+        r".{0,140}\b(?:off[- ]?screen|out\s+of\s+(?:the\s+)?frame)\b",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if source_has_forced_exit and not output_has_forced_exit:
+        errors.append("Explicit terminal consequence must preserve the forced movement out of frame")
+    return errors
+
+
+def _source_fidelity_contract(source_prompt: str) -> str:
+    """Expose easily dropped immutable facts to the writer before prose expansion."""
+    source = source_prompt or ""
+    facts: list[str] = []
+    for match in re.finditer(r"\b\d{1,3}\s*[- ]?\s*years?\s*[- ]?\s*old\b", source, re.IGNORECASE):
+        facts.append(f"Preserve the exact numeric age: {match.group(0)!r}.")
+    for match in re.finditer(
+        r"\b(?:golden|blond(?:e)?|black|brown|red|white|gr[ae]y|silver)\s+"
+        r"(?:(?:long|short|curly|straight|wavy)\s+)?(?:hair|locks|curls|braids)\b",
+        source,
+        flags=re.IGNORECASE,
+    ):
+        facts.append(f"Preserve the exact hair attribute: {match.group(0)!r}.")
+    for aid in ("wheelchair", "crutches", "walker", "cane"):
+        if re.search(rf"\b{aid}\b", source, re.IGNORECASE):
+            facts.append(f"Preserve the explicit mobility aid: {aid!r}.")
+    for sentence in re.split(r"(?<=[.!?])\s+", source):
+        if re.search(
+            r"\b(?:off[- ]?screen|out\s+of\s+(?:the\s+)?frame)\b",
+            sentence,
+            flags=re.IGNORECASE,
+        ):
+            facts.append(
+                "Preserve this terminal consequence in visible action: "
+                f"{sentence.strip()!r} Keep the named subject and its trajectory readable in a wide enough shot, "
+                "and do not cut away or move to a close-up until the subject has fully exited the frame."
+            )
+    if not facts:
+        return ""
+    return "MANDATORY LOSSLESS SOURCE FACTS (all must appear in the visual timeline):\n- " + "\n- ".join(
+        dict.fromkeys(facts)
+    )
+
+
 def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        reference_context: str = "", enhance_description: bool = True,
                        ambience_foley_policy: str = "auto",
@@ -713,6 +823,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET ASPECT RATIO: {aspect_ratio}",
         "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
     ]
+    fidelity_contract = _source_fidelity_contract(basic_prompt)
+    if fidelity_contract:
+        parts.append(fidelity_contract)
     parsed_manifest = parse_media_manifest(media_manifest)
     connected_context = manifest_context(media_manifest)
     if connected_context:
@@ -750,6 +863,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "music, non_diegetic_music must be N/A.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
+            "- For an explicit fly/propel/move-offscreen consequence, keep a sufficiently wide view on the named "
+            "subject's readable trajectory until it fully exits the frame; a cut, disappearance, close-up, implied "
+            "aftermath, or simple fall does not satisfy that requested action.\n"
             "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
             "otherwise prefer a motivated continuous camera move.\n"
             "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
@@ -931,7 +1047,15 @@ def normalize_dialogue_tags(text: str) -> str:
         str(text),
         flags=re.IGNORECASE,
     )
-    return re.sub(r"(<d>\[[^\]]+\])\s*", r"\1 ", value, flags=re.IGNORECASE)
+    value = re.sub(r"(<d>\[[^\]]+\])\s*", r"\1 ", value, flags=re.IGNORECASE)
+    # The official <d> block is the quotation boundary. Extra prose quotes
+    # around it can trap later repair text inside a spoken string.
+    return re.sub(
+        r'["“]\s*(<d>.*?</d>)([.!?,;:]?)\s*["”]',
+        r"\1\2",
+        value,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
 
 
 def _source_dialogue_language(source_prompt: str, quote_match) -> str:
@@ -1127,8 +1251,15 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
 
         explicit = re.search(r"\(S(\d+)(?:\s*,\s*S\d+)*\)", prefix, flags=re.IGNORECASE)
         if explicit:
+            original_prefix = prefix
+            repair_recorded = False
             explicit_id = int(explicit.group(1))
-            identity_ids.setdefault(identity, explicit_id)
+            canonical_id = identity_ids.get(identity)
+            if canonical_id is None:
+                identity_ids[identity] = explicit_id
+            elif canonical_id != explicit_id:
+                prefix = prefix[:explicit.start()] + f"(S{canonical_id})" + prefix[explicit.end():]
+                explicit_id = canonical_id
             action_match = re.search(vocal_action, prefix, flags=re.IGNORECASE)
             if action_match and explicit.start() > action_match.start() and (subject_matches or actor_match):
                 cleaned = (prefix[:explicit.start()] + prefix[explicit.end():]).rstrip() + " "
@@ -1148,6 +1279,9 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
                     repaired = prefix
                 if repaired != prefix:
                     repairs.append((sentence_start, dialogue.start(), repaired))
+                    repair_recorded = True
+            if not repair_recorded and prefix != original_prefix:
+                repairs.append((sentence_start, dialogue.start(), prefix))
             continue
         speaker_id = identity_ids.get(identity)
         if speaker_id is None:
@@ -1166,20 +1300,31 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
     for start, end, repaired in reversed(repairs):
         value = value[:start] + repaired + value[end:]
 
-    # Preserve the requested vocal action and delivery. The official guide
-    # explicitly allows says/replies/asks/shouts/whispers/sings plus natural
-    # delivery clauses before <d>; collapsing them all to "says" loses intent.
-    if "After the final tagged line, no character speaks any additional words." not in value:
-        matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
-        if matches:
-            end = matches[-1].end()
-            value = (
-                value[:end]
-                + " The speaker immediately closes their mouth. After the final tagged line, no character speaks "
-                  "any additional words. From this point through the final frame, every character keeps their mouth "
-                  "closed; the tagged line is the only intelligible speech in the video."
-                + value[end:]
-            )
+    # Replace earlier repair/template closure prose with one minimal,
+    # idempotent boundary. Do not force every mouth closed: voiceover and
+    # non-verbal vocalizations remain compatible with no additional dialogue.
+    value = re.sub(
+        r"\s*The speaker immediately closes their mouth\.", "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s*After the final tagged line, no character speaks any additional words[.;]?",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s*From this point through the final frame, every character keeps their mouth closed"
+        r"(?:;\s*the (?:single )?tagged lines? (?:is|are) the only intelligible speech in the video)?[.;]?",
+        "", value, flags=re.IGNORECASE,
+    )
+    value = re.sub(r"\s*,\s*and the scene\b", " The scene", value, flags=re.IGNORECASE)
+    matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
+    canonical_boundary = "After the final tagged line, no character speaks any additional words."
+    if matches and canonical_boundary not in value:
+        end = matches[-1].end()
+        value = (
+            value[:end]
+            + " " + canonical_boundary
+            + value[end:]
+        )
     # In Ref2VA prompts, a local LLM may repeat human-readable reference aliases
     # after dialogue (for example "the beret-wearing version"). H3 can mistake
     # those timeline labels for narration even though they are outside <d>.
@@ -1206,12 +1351,24 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         )
         value = _replace_section_body(value, timeline_section, before + after)
     soundscape = _section_body(value, "overall_soundscape").strip()
-    only_line = (
-        "The single tagged line is the only intelligible voice; after it ends, only non-verbal ambience and physical "
-        "sounds remain, with no narration, whispers, or additional words."
-    )
-    if soundscape and "single tagged line is the only intelligible voice" not in soundscape:
-        value = _replace_section_body(value, "overall_soundscape", soundscape + " " + only_line)
+    soundscape = re.sub(
+        r"\s*The (?:single|one|two|three|four|five|\d+) tagged lines? (?:is|are) the only intelligible "
+        r"(?:voice|speech); after (?:it|they|the final line) ends?, only non-verbal ambience and physical sounds remain, "
+        r"with no narration, whispers, or additional words\.",
+        "",
+        soundscape,
+        flags=re.IGNORECASE,
+    ).strip()
+    dialogue_count = len(re.findall(r"<d>.*?</d>", value, flags=re.DOTALL | re.IGNORECASE))
+    if soundscape and dialogue_count:
+        count_label = {1: "The tagged line is", 2: "The two tagged lines are", 3: "The three tagged lines are"}.get(
+            dialogue_count, f"The {dialogue_count} tagged lines are",
+        )
+        boundary = (
+            f"{count_label} the only intelligible speech; after the final line ends, only non-verbal ambience and "
+            "physical sounds remain, with no narration, whispers, or additional words."
+        )
+        value = _replace_section_body(value, "overall_soundscape", (soundscape + " " + boundary).strip())
     return value
 
 
@@ -1392,9 +1549,13 @@ def _replace_section_body(text: str, section: str, body: str) -> str:
 
 def normalize_audio_policy(text: str, ambience_foley_policy: str = "auto",
                            background_score_policy: str = "follow_prompt",
-                           voice_performance: str = "audible") -> str:
+                           voice_performance: str = "audible",
+                           source_context: str = "") -> str:
     value = str(text)
-    if background_score_policy == "off":
+    force_no_music = background_score_policy == "off" or (
+        background_score_policy == "follow_prompt" and not _source_requests_music(source_context)
+    )
+    if force_no_music and _section_body(value, "non_diegetic_music").strip().casefold() != "n/a":
         value = _replace_section_body(value, "non_diegetic_music", "N/A")
     if ambience_foley_policy == "off":
         soundscape = (
@@ -1599,7 +1760,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         errors.append(f"Expected sections in order {expected}, observed {observed}")
     if text.startswith("```") or text.endswith("```"):
         errors.append("Output must not use a Markdown code fence")
-    errors.extend(_explicit_age_fact_errors(source_prompt, text))
+    errors.extend(_explicit_source_fact_errors(source_prompt, text))
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)
@@ -1706,7 +1867,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             sound_cues = set(re.findall(
                 r"\b(?:hum|crackle|static|whoosh|wind|rain|traffic|footsteps?|rustle|impact|machinery|"
                 r"metallic|vibration|room\s+tone|ambience|breathing|panting|airflow|engine|alarm|buzz)\w*\b",
-                post_dialogue,
+                post_dialogue + " " + _section_body(text, "overall_soundscape"),
                 flags=re.IGNORECASE,
             ))
             if len(sound_cues) < 2:
@@ -1797,13 +1958,28 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append(f"Quoted spoken dialogue must appear inside a language-tagged <d> block: {match.group(1)!r}")
     source_requests_voiceover = re.search(
         r"\b(?:voice[ -]?over|narrat(?:e|es|ed|ion)|off-screen voice|voz en off|narraci[oó]n|"
-        r"think|thinks|thinking|thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
+        r"voice\s+in\s+off|think|thinks|thinking|thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
         source_prompt or "",
         flags=re.IGNORECASE,
     )
     if (re.search(r"\b(?:off-screen voiceover|voice[ -]?over|voz en off)\b", text, re.IGNORECASE)
             and (not source_requests_voiceover or voice_performance != "audible")):
         errors.append("Output invented voiceover although the source requested visible dialogue")
+    if source_requests_voiceover and voice_performance == "audible" and not re.search(
+        r"says\s+in\s+an\s+off-screen\s+voiceover",
+        timeline,
+        flags=re.IGNORECASE,
+    ):
+        errors.append("Requested voiceover must use the exact phrase 'says in an off-screen voiceover' and name its source")
+    if re.search(
+        r"\b(?:(?:an?\s+)?(?:unseen|unidentified|anonymous|off-screen)?\s*voice|"
+        r"voice\s+from\s+off-screen)\s*\(S\d+\)",
+        timeline,
+        flags=re.IGNORECASE,
+    ):
+        errors.append(
+            "Every off-screen voice must identify its source as a named narrator or referenced Subject, not an unresolved voice"
+        )
 
     music = _section_body(text, "non_diegetic_music").strip()
     if background_score_policy == "off" and music.casefold() != "n/a":
@@ -1865,10 +2041,19 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         invented = sorted(output_refs - allowed_refs)
         if invented:
             errors.append(f"Output invented reference labels not supplied or derived by the contract: {invented}")
-        required_refs = allowed_refs
+        required_refs = {
+            item.casefold()
+            for item in (*reference_model["definition_labels"], *reference_model["provenance_assets"])
+        }
         absent = sorted(required_refs - output_refs)
         if absent:
             errors.append(f"Reference labels missing from output: {absent}")
+        for label in sorted(reference_model.get("unassigned_assets", ())):
+            if label.casefold() in output_refs:
+                warnings.append(
+                    f"Unassigned connected reference {label} is mentioned without an authoritative role; "
+                    "provide Reference notes or media_manifest metadata before binding it to a Subject"
+                )
 
         defined_labels = [item.casefold() for item in _definition_labels(definitions)]
         for label in reference_model["definition_labels"]:
@@ -1957,6 +2142,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                 warnings.append("Legacy Ref2VA summary task names/separator should be normalized to current names joined by ' + '")
             else:
                 errors.append("summary must begin with documented bracketed Ref2VA task type(s)")
+        elif re.search(
+            r"\[(?:reference generation|keyframe completion|video editing|video continuation|audio reuse|audio reference)\]",
+            summary[official_prefix.end():],
+            flags=re.IGNORECASE,
+        ):
+            errors.append("summary must use one canonical bracketed task prefix, not multiple bracket groups")
 
         reveal = reference_model["reveal"]
         if reveal:

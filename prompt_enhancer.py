@@ -184,7 +184,8 @@ def enhance_prompt_with_completion(
         return normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
             candidate
         )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, effective_reference_context), basic_prompt, resolved_mode,
-        voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+        voice_performance), ambience_foley_policy, background_score_policy, voice_performance,
+        basic_prompt + "\n" + effective_reference_context)
 
     enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(
@@ -197,7 +198,16 @@ def enhance_prompt_with_completion(
     best_validation = validation
 
     def candidate_score(report: dict) -> tuple[int, int]:
-        return (len(report.get("errors", ())), len(report.get("warnings", ())))
+        errors = report.get("errors", ())
+        critical_markers = (
+            "Explicit ", "Quoted source", "Required spoken dialogue", "invented reference labels",
+            "missing from output", "must remain", "terminal consequence",
+        )
+        weighted_errors = sum(
+            10 if any(marker.casefold() in str(error).casefold() for marker in critical_markers) else 1
+            for error in errors
+        )
+        return (weighted_errors, len(report.get("warnings", ())))
 
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):

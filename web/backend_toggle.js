@@ -504,7 +504,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeIntegerWidget(node, "max_tokens", 4096, 512, 32768);
     sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);
     sanitizeIntegerWidget(node, "request_timeout", 300, 10, 1800);
-    sanitizeIntegerWidget(node, "repair_attempts", 1, 0, 2);
+    sanitizeIntegerWidget(node, "repair_attempts", 2, 0, 4);
     sanitizeIntegerWidget(node, "context_size", 16384, 4096, 131072);
     sanitizeIntegerWidget(node, "threads", 0, 0, 256);
     sanitizeIntegerWidget(node, "startup_timeout", 180, 10, 1800);

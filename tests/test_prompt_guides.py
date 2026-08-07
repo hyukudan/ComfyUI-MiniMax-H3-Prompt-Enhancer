@@ -18,6 +18,7 @@ from prompt_guides import (
     system_prompt_for_mode,
     validate_prompt,
     _official_reference_model,
+    _explicit_source_fact_errors,
     _source_dialogue_contracts,
 )
 
@@ -270,9 +271,9 @@ non_diegetic_music:
 N/A"""
     repaired = normalize_source_dialogue(generated, source, "ref2va")
     assert "elderly woman (S1) delivers the line:" in repaired
-    assert "The speaker immediately closes their mouth." in repaired
-    assert "every character keeps their mouth closed" in repaired
-    assert "single tagged line is the only intelligible voice" in repaired
+    assert repaired.count("After the final tagged line, no character speaks any additional words.") == 1
+    assert "every character keeps their mouth closed" not in repaired
+    assert "The tagged line is the only intelligible speech" in repaired
     assert repaired.count("<d>[Spanish] tranquilo, no estás solo</d>") == 1
 
 
@@ -978,3 +979,121 @@ N/A"""
     assert "speaks directly" not in fixed
     assert "finishes speaking" not in fixed
     assert "no character speaks any additional words" in fixed
+
+
+def test_two_dialogues_use_stable_subject_id_and_plural_audio_boundary():
+    source = 'The man says in an off-screen voiceover "First line". Then the man shouts "Second line".'
+    generated = """subject_definitions:
+<Subject 1> is the man from <Picture 1>.
+summary:
+[reference generation] A two-line scene.
+retention_analysis:
+<Subject 1>: fully_preserved - preserve him.
+detailed_description:
+[Shot 1] <Subject 1> (S1) says in an off-screen voiceover <d>[Original language] First line</d>. [Shot 2] At 00:03.000, <Subject 1> (S2) shouts <d>[Original language] Second line</d>. The speaker immediately closes their mouth. After the final tagged line, no character speaks any additional words. From this point through the final frame, every character keeps their mouth closed; the tagged line is the only intelligible speech in the video. The speaker immediately closes their mouth.
+overall_soundscape:
+Wind and footsteps. The single tagged line is the only intelligible voice; after it ends, only non-verbal ambience and physical sounds remain, with no narration, whispers, or additional words.
+non_diegetic_music:
+N/A"""
+    fixed = normalize_source_dialogue(generated, source, "ref2va")
+    assert fixed.count("<Subject 1> (S1)") == 2
+    assert "<Subject 1> (S2)" not in fixed
+    assert fixed.count("After the final tagged line, no character speaks any additional words.") == 1
+    assert "The two tagged lines are the only intelligible speech" in fixed
+    assert "single tagged line" not in fixed
+    assert "keeps their mouth closed" not in fixed
+
+
+def test_follow_prompt_normalizes_blank_music_to_na_when_source_has_no_music():
+    prompt = """integrated_multimodal_description:
+[Shot 1] A runner crosses a courtyard.
+overall_soundscape:
+Footsteps on concrete.
+non_diegetic_music:
+"""
+    fixed = normalize_audio_policy(prompt, "auto", "follow_prompt", "audible", "A runner crosses a courtyard.")
+    assert "non_diegetic_music:\nN/A" in fixed
+
+
+def test_dialogue_tag_normalizer_removes_redundant_outer_quotes():
+    fixed = normalize_dialogue_tags('She shouts "<d>[Spanish] Hola</d>."')
+    assert fixed == "She shouts <d>[Spanish] Hola</d>."
+
+
+def test_unassigned_picture_is_not_promoted_to_a_generic_subject():
+    source = "The man in image 1 wears a green ninja costume."
+    context = "Connected reference <Picture 2> has no declared role."
+    model = _official_reference_model(source, context)
+    assert [item["label"] for item in model["subjects"]] == ["<Subject 1>"]
+    assert model["unassigned_assets"] == {"<Picture 2>"}
+    assert "wardrobe, styling, pose, and state follow explicit source instructions" in model["definitions"][0]["line"]
+
+
+def test_reference_summary_drops_stale_task_list_from_llm_body():
+    raw = """subject_definitions:
+<Subject 1> is a person from <Picture 1>.
+<Subject 2> is generic content from <Picture 2>.
+summary:
+[reference generation] video continuation + reference generation
+retention_analysis:
+<Subject 1>: fully_preserved - preserve.
+<Subject 2>: fully_preserved - preserve.
+detailed_description:
+[Shot 1] <Subject 1> waits beside <Subject 2>.
+overall_soundscape:
+Room tone.
+non_diegetic_music:
+N/A"""
+    fixed = normalize_reference_definitions(
+        raw,
+        "The man in image 1 waits.",
+        "Connected reference <Picture 2> has no declared role.",
+    )
+    assert "summary:\n[reference generation]\n" in fixed
+    assert "<Subject 2>" not in fixed.split("summary:", 1)[0]
+
+    bracketed = raw.replace(
+        "[reference generation] video continuation + reference generation",
+        "[reference generation] + [video continuation]",
+    )
+    fixed_bracketed = normalize_reference_definitions(
+        bracketed,
+        "The man in image 1 waits.",
+        "Connected reference <Picture 2> has no declared role.",
+    )
+    assert "summary:\n[reference generation]\n" in fixed_bracketed
+
+
+def test_explicit_child_attributes_and_forced_exit_are_critical_source_facts():
+    source = (
+        "He hits a little 8 year old girl with golden locks in a wheelchair. "
+        "The girl goes flying hard offscreen after the hit."
+    )
+    incomplete = "He strikes a girl seated in her wheelchair."
+    errors = _explicit_source_fact_errors(source, incomplete)
+    assert any("8-year-old" in item for item in errors)
+    assert any("golden locks" in item for item in errors)
+    assert any("forced movement out of frame" in item for item in errors)
+
+
+def test_forced_offscreen_outcome_contract_requires_visible_trajectory_before_cut():
+    request = build_user_request(
+        "The girl goes flying hard offscreen after the hit.",
+        "t2va",
+        6.0,
+    )
+
+    assert "trajectory readable in a wide enough shot" in request
+    assert "do not cut away or move to a close-up" in request
+    assert "until it fully exits the frame" in request
+
+
+def test_unresolved_offscreen_voice_is_rejected():
+    prompt = """integrated_multimodal_description:
+[Shot 1] An unseen voice (S1) says in an off-screen voiceover <d>[Original language] Hola</d>.
+overall_soundscape:
+Room tone.
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5, 'A voice in off says "Hola".')
+    assert any("identify its source" in item for item in report["errors"])

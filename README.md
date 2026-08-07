@@ -147,7 +147,7 @@ Shared controls:
 | `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
 | `temperature` | `0.2` | Low variance for structured rewriting |
 | `max_tokens` | `4096` | Completion budget |
-| `repair_attempts` | `1` | Re-prompts with validator errors |
+| `repair_attempts` | `2` | Re-prompts with validator errors (0-4); source-fidelity errors receive priority |
 | `disable_thinking` | enabled | Requests direct structured output where supported |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
