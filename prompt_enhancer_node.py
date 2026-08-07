@@ -21,8 +21,14 @@ VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 
 def _local_runtime_limits(context_size, startup_timeout):
     """Migrate zero-filled widgets from workflows saved before local controls existed."""
-    context = int(context_size or 0)
-    startup = int(startup_timeout or 0)
+    try:
+        context = int(context_size or 0)
+    except (TypeError, ValueError):
+        context = 0
+    try:
+        startup = int(startup_timeout or 0)
+    except (TypeError, ValueError):
+        startup = 0
     return (
         context if context >= 4096 else DEFAULT_LOCAL_CONTEXT_SIZE,
         startup if startup >= 10 else DEFAULT_LOCAL_STARTUP_TIMEOUT,

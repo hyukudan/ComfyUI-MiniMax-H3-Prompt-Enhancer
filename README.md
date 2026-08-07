@@ -557,7 +557,10 @@ Refresh node definitions after updating. Older workflows may deserialize newly i
 
 The frontend also repairs two historical serialization cases: a context value shifted into
 `instrumental_description`, and the former serialized refresh/model-picker helpers shifting later widget values. It
-reapplies remote/local visibility after ComfyUI finishes configuring the node.
+also type-checks every hidden local-runtime value: invalid or displaced context, thread, startup-timeout, GPU-layer,
+policy, and boolean values are restored to safe defaults before ComfyUI builds the execution request. This matters
+even in remote mode because ComfyUI validates hidden widgets too. It reapplies remote/local visibility after ComfyUI
+finishes configuring the node.
 
 ### Dialogue disappears or has no language tag
 

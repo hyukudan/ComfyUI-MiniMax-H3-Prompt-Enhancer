@@ -124,3 +124,9 @@ def test_local_runtime_zero_is_accepted_as_an_auto_migration_value():
     optional = MiniMaxH3PromptEnhancer.INPUT_TYPES()["optional"]
     assert optional["context_size"][1]["min"] == 0
     assert optional["startup_timeout"][1]["min"] == 0
+
+
+def test_non_numeric_shifted_local_runtime_values_fall_back_safely():
+    assert prompt_enhancer_node._local_runtime_limits(
+        r"D:\models\llama-server.exe", "follow_prompt",
+    ) == (16384, 180)

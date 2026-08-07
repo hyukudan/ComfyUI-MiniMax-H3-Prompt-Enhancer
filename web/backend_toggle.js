@@ -205,6 +205,35 @@ function normalizeDynamicCombo(node, name) {
     if (!values.includes(widget.value)) widget.value = values[0];
 }
 
+function assignMigratedValue(widget, value) {
+    if (!widget || Object.is(widget.value, value)) return false;
+    widget.value = value;
+    const input = widgetTextElement(widget);
+    if (input && typeof value === "string") input.value = value;
+    widget.callback?.(value);
+    return true;
+}
+
+function sanitizeIntegerWidget(node, name, fallback, min, max) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return false;
+    const parsed = typeof widget.value === "number" ? widget.value : Number(widget.value);
+    const value = Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+    return assignMigratedValue(widget, value);
+}
+
+function sanitizeEnumWidget(node, name, allowed, fallback) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return false;
+    return assignMigratedValue(widget, allowed.includes(widget.value) ? widget.value : fallback);
+}
+
+function sanitizeBooleanWidget(node, name, fallback) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return false;
+    return assignMigratedValue(widget, typeof widget.value === "boolean" ? widget.value : fallback);
+}
+
 function notifyModelDiscoveryError(message) {
     const toast = app.extensionManager?.toast;
     if (toast?.add) {
@@ -335,19 +364,28 @@ function fitNodeToVisibleWidgets(node) {
 
 function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = false) {
     const context = node.widgets?.find((widget) => widget.name === "context_size");
-    const startup = node.widgets?.find((widget) => widget.name === "startup_timeout");
     const instrumental = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET);
     const displacedContext = String(instrumental?.value ?? "").trim();
     if (repairDisplacedDescription && /^\d{4,6}$/.test(displacedContext) && Number(displacedContext) >= 4096) {
         if (context) context.value = Number(displacedContext);
         instrumental.value = "";
     }
-    if (context && Number(context.value) < 4096) context.value = 16384;
-    if (startup && Number(startup.value) < 10) startup.value = 180;
-    const voice = node.widgets?.find((widget) => widget.name === "voice_performance");
-    if (voice && !["audible", "silent_mouth_acting_experimental", "none"].includes(voice.value)) {
-        voice.value = "audible";
-    }
+    sanitizeIntegerWidget(node, "context_size", 16384, 4096, 131072);
+    sanitizeIntegerWidget(node, "threads", 0, 0, 256);
+    sanitizeIntegerWidget(node, "startup_timeout", 180, 10, 1800);
+    sanitizeIntegerWidget(node, "multishot_shot_count", 0, 0, 64);
+    sanitizeIntegerWidget(node, "frame_count", 0, 0, 4096);
+    sanitizeEnumWidget(node, "ambience_foley_policy", ["auto", "ensure_audible", "off"], "auto");
+    sanitizeEnumWidget(node, "background_score_policy", ["follow_prompt", "add_instrumental", "off"], "follow_prompt");
+    sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
+    sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
+    sanitizeBooleanWidget(node, "use_remote_model", true);
+    sanitizeBooleanWidget(node, "enhance_description", true);
+    sanitizeBooleanWidget(node, "keep_server_loaded", false);
+    sanitizeBooleanWidget(node, "show_advanced_controls", false);
+    const gpuLayers = node.widgets?.find((widget) => widget.name === "gpu_layers");
+    const gpuValue = String(gpuLayers?.value ?? "").trim().toLowerCase();
+    if (!/^(auto|all|-1|\d+)$/.test(gpuValue)) assignMigratedValue(gpuLayers, "auto");
     widgetTextElement(instrumental)?.setAttribute("aria-label", "Instrumental score description");
     const reference = node.widgets?.find((widget) => widget.name === "reference_context");
     widgetTextElement(reference)?.setAttribute("aria-label", "Optional reference notes");
