@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -12,9 +13,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .media_manifest import manifest_context
+    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from media_manifest import manifest_context
+    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -56,6 +59,14 @@ def available_models(root: str, api_key: str = "", timeout: int = 30) -> list[st
     payload = _request_json(root + "/models", None, api_key, timeout)
     ids = [str(item.get("id", "")).strip() for item in (payload.get("data") or [])]
     return [item for item in ids if item and not any(token in item.lower() for token in ("embedding", "embed-", "rerank"))]
+
+
+def discover_models(endpoint: str, api_key: str = "", allow_remote_endpoint: bool = False,
+                    timeout: int = 15) -> list[str]:
+    """Safely discover selectable chat models for the ComfyUI frontend."""
+    root = _api_root(endpoint)
+    _require_allowed_endpoint(root, bool(allow_remote_endpoint))
+    return available_models(root, str(api_key or ""), max(3, min(int(timeout), 60)))
 
 
 def _compact_model_rank(model_id: str) -> tuple[int, int]:
@@ -139,6 +150,13 @@ def enhance_prompt_with_completion(
     background_score_policy: str = "follow_prompt",
     voice_performance: str = "audible",
     instrumental_description: str = "",
+    aspect_ratio: str = "auto",
+    media_manifest: str = "",
+    multishot_shot_count: int = 0,
+    frame_count: int = 0,
+    multishot_identity_lock: str = "",
+    multishot_voice_lock: str = "",
+    multishot_setting_lock: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -147,19 +165,33 @@ def enhance_prompt_with_completion(
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
+        aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+        multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
     )
-    resolved_mode = resolve_mode(mode, reference_context, basic_prompt)
+    resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    effective_reference_context = "\n".join(
+        part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
+    )
     messages = [
         {"role": "system", "content": system_prompt_for_mode(resolved_mode)},
         {"role": "user", "content": user_request},
     ]
-    enhanced = normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
-        completion(messages)
-    )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, reference_context), basic_prompt, resolved_mode,
-    voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+    def normalize_candidate(candidate: str) -> str:
+        if resolved_mode == "chained_multishot":
+            return normalize_multishot_output(candidate, (
+                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+            ))
+        return normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
+            candidate
+        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, effective_reference_context), basic_prompt, resolved_mode,
+        voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+
+    enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(
-        enhanced, mode, duration_seconds, basic_prompt, reference_context,
+        enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
         ambience_foley_policy, background_score_policy, voice_performance,
+        aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+        multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -174,18 +206,16 @@ def enhance_prompt_with_completion(
             {"role": "assistant", "content": enhanced},
             {"role": "user", "content": (
                 "Repair the prompt. Return the complete corrected prompt only. Preserve all source facts and exact "
-                "quoted content. A timeline must begin with literal [Shot 1] and every later shot must use literal "
-                "[Shot N] At MM:SS.mmm. Every section name must end in a colon. Fix these validation errors:\n- "
+                "quoted content. Follow the selected mode's exact output contract. Fix these validation errors:\n- "
                 + "\n- ".join(validation["errors"])
             )},
         ])
-        enhanced = normalize_audio_policy(normalize_source_dialogue(normalize_reference_definitions(normalize_shot_timeline(normalize_shot_timestamps(normalize_first_shot_marker(normalize_dialogue_tags(normalize_section_headers(
-            completion(messages)
-        )), resolved_mode)), resolved_mode, duration_seconds), basic_prompt, reference_context), basic_prompt, resolved_mode,
-        voice_performance), ambience_foley_policy, background_score_policy, voice_performance)
+        enhanced = normalize_candidate(completion(messages))
         validation = validate_prompt(
-            enhanced, mode, duration_seconds, basic_prompt, reference_context,
+            enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
+            aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -200,6 +230,19 @@ def enhance_prompt_with_completion(
         "descriptionEnhanced": bool(enhance_description),
         "referenceSemanticsVersion": 2,
         "audioPolicyVersion": 1,
+        "promptContractVersion": 3,
+        "mediaManifestSchemaVersion": 1,
+        "mediaManifestDigest": (
+            hashlib.sha256(str(media_manifest).encode("utf-8")).hexdigest()
+            if str(media_manifest).strip() else ""
+        ),
+        "aspectRatio": aspect_ratio,
+        "multishotPromptCount": validation.get("promptCount", 0),
+        "frameCount": int(frame_count or 0),
+        "effectiveDurationSeconds": validation.get("generationProfile", {}).get("effectiveDurationSeconds", float(duration_seconds)),
+        "multishotLocksApplied": sum(bool(str(value).strip()) for value in (
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+        )),
         "ambienceFoleyPolicy": ambience_foley_policy,
         "backgroundScorePolicy": background_score_policy,
         "instrumentalDescription": (
@@ -227,7 +270,10 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    ambience_foley_policy: str = "auto",
                    background_score_policy: str = "follow_prompt",
                    voice_performance: str = "audible",
-                   instrumental_description: str = "") -> tuple[str, dict, dict]:
+                   instrumental_description: str = "", aspect_ratio: str = "auto",
+                   media_manifest: str = "", multishot_shot_count: int = 0,
+                   frame_count: int = 0, multishot_identity_lock: str = "",
+                   multishot_voice_lock: str = "", multishot_setting_lock: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -262,4 +308,11 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         background_score_policy,
         voice_performance,
         instrumental_description,
+        aspect_ratio,
+        media_manifest,
+        multishot_shot_count,
+        frame_count,
+        multishot_identity_lock,
+        multishot_voice_lock,
+        multishot_setting_lock,
     )

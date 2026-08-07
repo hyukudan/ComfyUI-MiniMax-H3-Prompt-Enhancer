@@ -269,8 +269,7 @@ Machinery hums and the portals crackle.
 non_diegetic_music:
 N/A"""
     repaired = normalize_source_dialogue(generated, source, "ref2va")
-    assert "elderly woman (S1) says:" in repaired
-    assert "delivers the line" not in repaired
+    assert "elderly woman (S1) delivers the line:" in repaired
     assert "The speaker immediately closes their mouth." in repaired
     assert "every character keeps their mouth closed" in repaired
     assert "single tagged line is the only intelligible voice" in repaired
@@ -302,8 +301,7 @@ non_diegetic_music:
 N/A"""
     repaired = normalize_source_dialogue(generated, source, "ref2va")
     detail = repaired.split("detailed_description:", 1)[1].split("overall_soundscape:", 1)[0]
-    assert "woman (S1) says:" in detail
-    assert "speaks calmly" not in detail
+    assert "woman (S1) speaks calmly:" in detail
     assert "Nazi army version" not in detail
     assert "version wearing a beret" not in detail
     assert "First <Subject 2> appears" in detail

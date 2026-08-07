@@ -8,6 +8,15 @@ import json
 
 DEFAULT_LOCAL_CONTEXT_SIZE = 16384
 DEFAULT_LOCAL_STARTUP_TIMEOUT = 180
+BASIC_PROMPT_PLACEHOLDER = "Describe the video: subject, action, setting, camera, dialogue and sound…"
+REFERENCE_PLACEHOLDER = "Example: Picture 1 supplies the identity; Audio 1 supplies the Spanish voice…"
+INSTRUMENTAL_PLACEHOLDER = "Example: low strings, 90 BPM, sparse percussion, gradual crescendo…"
+MANIFEST_PLACEHOLDER = '{"items":[{"type":"picture","role":"identity"}]}'
+IDENTITY_LOCK_PLACEHOLDER = "Identity, wardrobe and appearance every chained prompt must preserve…"
+VOICE_LOCK_PLACEHOLDER = "Voice, language and delivery every chained prompt must preserve…"
+SETTING_LOCK_PLACEHOLDER = "Location, lighting and continuity every chained prompt must preserve…"
+SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dialogue and visible text…"
+VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 
 
 def _local_runtime_limits(context_size, startup_timeout):
@@ -19,6 +28,10 @@ def _local_runtime_limits(context_size, startup_timeout):
         startup if startup >= 10 else DEFAULT_LOCAL_STARTUP_TIMEOUT,
     )
 
+
+def _effective_duration(validation, requested):
+    return float(validation.get("generationProfile", {}).get("effectiveDurationSeconds", requested))
+
 try:
     from .gguf_server import (
         available_gguf_models,
@@ -27,7 +40,8 @@ try:
         unload_cached_server,
     )
     from .prompt_enhancer import enhance_prompt
-    from .prompt_guides import build_user_request, resolve_mode, system_prompt_for_mode, validate_prompt
+    from .media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
+    from .prompt_guides import build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -36,7 +50,11 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         unload_cached_server,
     )
     from prompt_enhancer import enhance_prompt
-    from prompt_guides import build_user_request, resolve_mode, system_prompt_for_mode, validate_prompt
+    from media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
+    from prompt_guides import build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
+
+
+MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
 
 
 class MiniMaxH3PromptGuideBuilder:
@@ -52,30 +70,43 @@ class MiniMaxH3PromptGuideBuilder:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "basic_prompt": ("STRING", {"multiline": True, "default": ""}),
-            "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
-            "reference_context": ("STRING", {"multiline": True, "default": ""}),
+            "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
+            "mode": (MODE_CHOICES, {"default": "auto"}),
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
-            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Control non-vocal ambience and physically motivated sound effects"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Follow the source, add an instrumental score, or force no non-diegetic music"}),
-            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Experimental silent mouth acting is visual best-effort only; exact lip sync and silence are not guaranteed"}),
+            "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
+            "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced alternative to reference notes: structured JSON describing connected media, roles, analysis, subjects, and transcripts."}),
+            "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1, "tooltip": "Chained multishot only: 0 infers the count"}),
+            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
               ambience_foley_policy="auto", background_score_policy="follow_prompt",
-              voice_performance="audible", instrumental_description=""):
+              voice_performance="audible", instrumental_description="", aspect_ratio="auto",
+              media_manifest="", multishot_shot_count=0, frame_count=0,
+              multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
+              show_advanced_controls=False):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
-        resolved = resolve_mode(mode, reference_context, basic_prompt)
+        resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
         return (
             system_prompt_for_mode(resolved),
             build_user_request(
                 basic_prompt, resolved, duration_seconds, reference_context, enhance_description,
                 ambience_foley_policy, background_score_policy, voice_performance,
                 instrumental_description,
+                aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             ),
             resolved,
         )
@@ -94,10 +125,10 @@ class MiniMaxH3PromptEnhancer:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "basic_prompt": ("STRING", {"multiline": True, "default": ""}),
-            "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
-            "reference_context": ("STRING", {"multiline": True, "default": ""}),
+            "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
+            "mode": (MODE_CHOICES, {"default": "auto"}),
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
             "endpoint": ("STRING", {"default": "http://127.0.0.1:1234/v1"}),
             "model": ("STRING", {"default": "", "tooltip": "Blank excludes embedding models and prefers a compact local instruct model from /v1/models"}),
             "api_key": ("STRING", {"default": "", "password": True}),
@@ -110,9 +141,9 @@ class MiniMaxH3PromptEnhancer:
         }, "optional": {
             "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Improve staging, cinematography, pacing, transitions, and sound without changing source facts or exact dialogue"}),
-            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Ambience & foley: automatic, explicitly required, or disabled"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
-            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Silent mouth acting is experimental prompt guidance, not guaranteed lip sync or silence"}),
             "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
@@ -121,6 +152,14 @@ class MiniMaxH3PromptEnhancer:
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
             "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default (including migrated workflows)"}),
             "keep_server_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep the GGUF in memory for faster repeated enhancement; use the unload node before H3 if VRAM is needed"}),
+            "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
+            "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced alternative to reference notes: structured JSON describing connected media and roles."}),
+            "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
+            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
         }}
 
     @classmethod
@@ -141,9 +180,11 @@ class MiniMaxH3PromptEnhancer:
                 gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
                 keep_server_loaded=False, enhance_description=True, ambience_foley_policy="auto",
                 background_score_policy="follow_prompt", voice_performance="audible",
-                instrumental_description=""):
+                instrumental_description="", aspect_ratio="auto", media_manifest="",
+                multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
+                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
         if bool(use_remote_model):
-            prompt, validation, manifest = enhance_prompt(
+            remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
                 temperature, max_tokens, timeout_seconds, repair_attempts, allow_remote_endpoint,
                 disable_thinking,
@@ -153,9 +194,14 @@ class MiniMaxH3PromptEnhancer:
                 voice_performance,
                 instrumental_description,
             )
+            if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
+                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)):
+                remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+            prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
-            prompt, validation, manifest = enhance_prompt_with_gguf_server(
+            local_args = (
                 basic_prompt, mode, duration_seconds, reference_context, llama_server_path, local_model,
                 "", gpu_layers, context_size, threads, temperature, max_tokens, timeout_seconds,
                 startup_timeout, repair_attempts, disable_thinking, keep_server_loaded,
@@ -165,11 +211,16 @@ class MiniMaxH3PromptEnhancer:
                 voice_performance,
                 instrumental_description,
             )
+            if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
+                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)):
+                local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+                               multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+            prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
             json.dumps(manifest, ensure_ascii=False, indent=2),
-            float(duration_seconds),
+            _effective_duration(validation, duration_seconds),
         )
 
 
@@ -186,10 +237,10 @@ class MiniMaxH3GGUFPromptEnhancer:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "basic_prompt": ("STRING", {"multiline": True, "default": ""}),
-            "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
-            "reference_context": ("STRING", {"multiline": True, "default": ""}),
+            "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
+            "mode": (MODE_CHOICES, {"default": "auto"}),
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
             "llama_server_path": ("STRING", {"default": "", "tooltip": "Existing llama-server executable; never downloaded automatically"}),
             "gguf_model_path": ("STRING", {"default": "", "tooltip": "Existing GGUF under a registered model directory"}),
             "registered_model_dirs": ("STRING", {"default": "", "tooltip": "Optional additional roots separated by the OS path separator; ComfyUI and LM Studio model roots are automatic"}),
@@ -205,10 +256,18 @@ class MiniMaxH3GGUFPromptEnhancer:
             "enhance_description": ("BOOLEAN", {"default": True}),
             "keep_server_loaded": ("BOOLEAN", {"default": False}),
         }, "optional": {
-            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: ambience plus physical action sounds such as footsteps, clothing, doors, impacts, and engines."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt"}),
-            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Shown when Add instrumental is selected. Describe the desired mood, instruments, tempo, rhythm, and dynamics."}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible"}),
+            "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
+            "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced structured JSON for connected reference media."}),
+            "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
+            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
         }}
 
     @classmethod
@@ -220,7 +279,9 @@ class MiniMaxH3GGUFPromptEnhancer:
                 max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
                 enhance_description, keep_server_loaded, ambience_foley_policy="auto",
                 background_score_policy="follow_prompt", voice_performance="audible",
-                instrumental_description=""):
+                instrumental_description="", aspect_ratio="auto", media_manifest="",
+                multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
+                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
@@ -232,12 +293,14 @@ class MiniMaxH3GGUFPromptEnhancer:
             background_score_policy,
             voice_performance,
             instrumental_description,
+            aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         )
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
             json.dumps(manifest, ensure_ascii=False, indent=2),
-            float(duration_seconds),
+            _effective_duration(validation, duration_seconds),
         )
 
 
@@ -263,6 +326,67 @@ class MiniMaxH3UnloadGGUFServer:
         return {"ui": {"text": [status]}, "result": (stopped, status)}
 
 
+class MiniMaxH3MediaManifestValidator:
+    CATEGORY = "MiniMax H3/Prompting"
+    FUNCTION = "validate"
+    OUTPUT_NODE = True
+    RETURN_TYPES = ("STRING", "BOOLEAN", "STRING", "STRING")
+    RETURN_NAMES = ("normalized_manifest", "valid", "validation_report", "reference_context")
+    DESCRIPTION = "Validate and normalize an optional H3 reference-media manifest before prompt enhancement."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"media_manifest": ("STRING", {
+            "multiline": True, "default": '{"items":[]}', "dynamicPrompts": False,
+        })}}
+
+    def validate(self, media_manifest):
+        parsed = parse_media_manifest(media_manifest)
+        normalized = json.dumps({key: value for key, value in parsed.items() if key not in {"warnings", "errors"}}, ensure_ascii=False, indent=2)
+        report = {"valid": not parsed["errors"], "errors": parsed["errors"], "warnings": parsed["warnings"], "counts": parsed.get("counts", {})}
+        report_text = json.dumps(report, ensure_ascii=False, indent=2)
+        return {"ui": {"text": [report_text]}, "result": (normalized, report["valid"], report_text, manifest_context(media_manifest))}
+
+
+class MiniMaxH3ChainedMultishotOutput:
+    CATEGORY = "MiniMax H3/Prompting"
+    FUNCTION = "format"
+    RETURN_TYPES = ("STRING", "STRING", "BOOLEAN", "STRING", "FLOAT")
+    RETURN_NAMES = ("multishot_script", "prompts_json", "valid", "validation_report", "total_duration_seconds")
+    DESCRIPTION = "Validate canonical chained-multishot JSON and emit the --- separated script accepted by H3 multishot samplers."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "prompts_json": ("STRING", {"multiline": True, "default": '{"prompts":[]}'}),
+            "duration_per_shot": ("FLOAT", {"default": 10.1, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "source_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": SOURCE_PROMPT_PLACEHOLDER}),
+        }, "optional": {
+            "expected_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
+            "identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER}),
+            "voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER}),
+            "setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER}),
+        }}
+
+    def format(self, prompts_json, duration_per_shot, source_prompt, expected_shot_count=0,
+               identity_lock="", voice_lock="", setting_lock=""):
+        canonical = normalize_multishot_output(prompts_json, (identity_lock, voice_lock, setting_lock))
+        report = validate_prompt(
+            canonical, "chained_multishot", duration_per_shot, source_prompt,
+            multishot_shot_count=expected_shot_count,
+            multishot_identity_lock=identity_lock,
+            multishot_voice_lock=voice_lock,
+            multishot_setting_lock=setting_lock,
+        )
+        try:
+            prompts = json.loads(canonical).get("prompts", [])
+        except (json.JSONDecodeError, AttributeError):
+            prompts = []
+        script = "\n---\n".join(str(item).strip() for item in prompts if str(item).strip())
+        report_text = json.dumps(report, ensure_ascii=False, indent=2)
+        return (script, canonical, bool(report["valid"]), report_text, float(duration_per_shot) * len(prompts))
+
+
 class MiniMaxH3PromptValidator:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "validate"
@@ -277,23 +401,35 @@ class MiniMaxH3PromptValidator:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "prompt": ("STRING", {"multiline": True, "default": ""}),
-            "mode": (["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"], {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 60.0, "step": 0.01}),
-            "source_prompt": ("STRING", {"multiline": True, "default": ""}),
-            "reference_context": ("STRING", {"multiline": True, "default": ""}),
+            "prompt": ("STRING", {"multiline": True, "default": "", "placeholder": VALIDATION_PROMPT_PLACEHOLDER}),
+            "mode": (MODE_CHOICES, {"default": "auto"}),
+            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "source_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": SOURCE_PROMPT_PLACEHOLDER}),
+            "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
-            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto"}),
+            "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: ambience plus physical action sounds such as footsteps, clothing, doors, impacts, and engines."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt"}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible"}),
+            "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
+            "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced structured JSON for connected reference media."}),
+            "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
+            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
+            "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
                  ambience_foley_policy="auto", background_score_policy="follow_prompt",
-                 voice_performance="audible"):
+                 voice_performance="audible", aspect_ratio="auto", media_manifest="",
+                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
+                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
+            aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {

@@ -280,6 +280,13 @@ def enhance_prompt_with_gguf_server(
     background_score_policy: str = "follow_prompt",
     voice_performance: str = "audible",
     instrumental_description: str = "",
+    aspect_ratio: str = "auto",
+    media_manifest: str = "",
+    multishot_shot_count: int = 0,
+    frame_count: int = 0,
+    multishot_identity_lock: str = "",
+    multishot_voice_lock: str = "",
+    multishot_setting_lock: str = "",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -370,6 +377,13 @@ def enhance_prompt_with_gguf_server(
                 background_score_policy,
                 voice_performance,
                 instrumental_description,
+                aspect_ratio,
+                media_manifest,
+                multishot_shot_count,
+                frame_count,
+                multishot_identity_lock,
+                multishot_voice_lock,
+                multishot_setting_lock,
             )
         finally:
             if not bool(keep_server_loaded):

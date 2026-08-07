@@ -81,6 +81,21 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-1] == "FLOAT"
 
 
+def test_empty_multiline_controls_expose_non_serialized_ux_placeholders():
+    inputs = MiniMaxH3PromptEnhancer.INPUT_TYPES()
+    required = inputs["required"]
+    optional = inputs["optional"]
+    assert "Describe the video" in required["basic_prompt"][1]["placeholder"]
+    assert "Picture 1" in required["reference_context"][1]["placeholder"]
+    assert "90 BPM" in optional["instrumental_description"][1]["placeholder"]
+    assert '"items"' in optional["media_manifest"][1]["placeholder"]
+    assert "Identity" in optional["multishot_identity_lock"][1]["placeholder"]
+    for field in ("basic_prompt", "reference_context"):
+        assert required[field][1]["default"] == ""
+    for field in ("instrumental_description", "media_manifest", "multishot_identity_lock"):
+        assert optional[field][1]["default"] == ""
+
+
 def test_main_enhancer_allows_stale_hidden_dynamic_combo_values():
     assert MiniMaxH3PromptEnhancer.VALIDATE_INPUTS(
         local_model="stale-model.gguf",

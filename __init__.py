@@ -2,12 +2,15 @@
 """Standalone MiniMax H3 prompt enhancement nodes for ComfyUI."""
 
 if __package__:
+    from . import api_routes as _api_routes  # noqa: F401 - registers same-origin frontend routes
     from .prompt_enhancer_node import (
         MiniMaxH3GGUFPromptEnhancer,
         MiniMaxH3PromptEnhancer,
         MiniMaxH3PromptGuideBuilder,
         MiniMaxH3PromptValidator,
         MiniMaxH3UnloadGGUFServer,
+        MiniMaxH3MediaManifestValidator,
+        MiniMaxH3ChainedMultishotOutput,
     )
 
     NODE_CLASS_MAPPINGS = {
@@ -16,6 +19,8 @@ if __package__:
         "MiniMaxH3GGUFPromptEnhancer": MiniMaxH3GGUFPromptEnhancer,
         "MiniMaxH3PromptValidator": MiniMaxH3PromptValidator,
         "MiniMaxH3UnloadGGUFServer": MiniMaxH3UnloadGGUFServer,
+        "MiniMaxH3MediaManifestValidator": MiniMaxH3MediaManifestValidator,
+        "MiniMaxH3ChainedMultishotOutput": MiniMaxH3ChainedMultishotOutput,
     }
     NODE_DISPLAY_NAME_MAPPINGS = {
         "MiniMaxH3PromptGuideBuilder": "MiniMax H3 Prompt Guide Builder",
@@ -23,6 +28,8 @@ if __package__:
         "MiniMaxH3GGUFPromptEnhancer": "MiniMax H3 GGUF Prompt Enhancer",
         "MiniMaxH3PromptValidator": "MiniMax H3 Prompt Validator",
         "MiniMaxH3UnloadGGUFServer": "MiniMax H3 Unload GGUF Prompt Model",
+        "MiniMaxH3MediaManifestValidator": "MiniMax H3 Media Manifest Validator",
+        "MiniMaxH3ChainedMultishotOutput": "MiniMax H3 Chained Multishot Output",
     }
 else:  # pragma: no cover
     NODE_CLASS_MAPPINGS = {}

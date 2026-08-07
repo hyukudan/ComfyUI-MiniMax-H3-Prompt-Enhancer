@@ -81,6 +81,21 @@ def test_remote_endpoint_requires_explicit_opt_in():
         )
 
 
+def test_frontend_model_discovery_filters_models_and_enforces_endpoint_policy(monkeypatch):
+    monkeypatch.setattr(
+        prompt_enhancer,
+        "_request_json",
+        lambda *_args, **_kwargs: {"data": [
+            {"id": "text-embedding-model"},
+            {"id": "qwen-chat"},
+            {"id": "reranker"},
+        ]},
+    )
+    assert prompt_enhancer.discover_models("http://127.0.0.1:1234/v1") == ["qwen-chat"]
+    with pytest.raises(ValueError, match="Remote LLM endpoints are disabled"):
+        prompt_enhancer.discover_models("https://example.com/v1")
+
+
 def test_one_repair_attempt_fixes_invalid_first_completion(monkeypatch):
     payloads = iter([
         {"output": [{"type": "message", "content": "not structured"}]},

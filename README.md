@@ -18,6 +18,7 @@ The package does not bundle model weights or llama.cpp, does not inspect referen
 - [Why use it?](#why-use-it)
 - [Backend design](#backend-design)
 - [Quick start](#quick-start)
+- [Interface behavior](#interface-behavior)
 - [Nodes](#nodes)
 - [Exact wiring](#exact-wiring)
 - [Prompt contracts](#prompt-contracts)
@@ -45,6 +46,8 @@ MiniMax H3 responds best when actions, timing, camera, dialogue, language, and s
 | Check authored text | Model-free structural validation and repair feedback |
 | Control generated audio | Independent ambience/foley, score, and voice-performance policies |
 | Feed duration downstream | `duration_seconds` output on both enhancer nodes |
+| Drive chained multishot samplers | `chained_multishot` mode plus Chained Multishot Output |
+| Ground prompts in connected media metadata | Optional JSON media manifest and Manifest Validator |
 | Reclaim VRAM before H3 | Per-run unload by default, with optional persistent mode |
 
 Validation is a structural gate. It cannot guarantee visual quality, identity fidelity, physical correctness, or diffusion-model compliance.
@@ -78,8 +81,9 @@ The trade-off is model startup time when `keep_server_loaded` is disabled. Users
 2. Start an OpenAI-compatible server. LM Studio commonly uses `http://127.0.0.1:1234/v1`.
 3. Add **MiniMax H3 Prompt Enhancer** from `MiniMax H3 → Prompting`.
 4. Leave `use_remote_model=true`.
-5. Enter the endpoint and optionally an exact API model ID.
-6. Connect `enhanced_prompt` to H3 conditioning and `duration_seconds` to the downstream duration control.
+5. Enter the endpoint and API key if required, then press **Refresh API model list**.
+6. Choose the model under **Available API models**, or type its exact server ID into **API model ID**. Leaving the ID blank asks the node to choose a suitable chat/instruct model automatically.
+7. Connect `enhanced_prompt` to H3 conditioning and `duration_seconds` to the downstream duration control.
 
 Loopback endpoints work by default. Sending prompts to another host requires `allow_remote_endpoint=true`.
 
@@ -92,7 +96,24 @@ Loopback endpoints work by default. Sending prompts to another host requires `al
 5. Select `local_model` and the detected `llama_server_path` from their dropdowns.
 6. Leave `keep_server_loaded=false` when H3 needs the VRAM immediately afterward.
 
-The frontend hides endpoint-only controls in local mode and hides GGUF-only controls in remote mode. It also refits the node so widgets and outputs remain inside its frame.
+## Interface behavior
+
+The main node presents only the controls relevant to the current selection:
+
+- **Use LM Studio / API model** enabled: shows endpoint, API model ID, API key, remote-host permission, model picker, and refresh button.
+- **Use LM Studio / API model** disabled: shows local GGUF, llama.cpp server, GPU layers, context, threads, startup timeout, and model-retention controls.
+- `add_instrumental`: reveals **Instrumental description**.
+- `chained_multishot`: reveals the multishot count and identity/voice/setting locks.
+- `ref2va`: reveals **Reference notes**. **Show advanced controls** additionally reveals media metadata JSON and exact frame count.
+
+Hidden fields retain their saved values, but only the selected backend is executed. The discovery picker and refresh button are UI helpers and are deliberately not serialized into the workflow. This prevents them from shifting saved widget values when the extension is updated.
+
+Reference and manifest text areas keep a fixed layout contribution. Refreshing a model list does not resize the node, avoiding the previous feedback loop in which multiline fields grew after every refresh.
+
+Multiline inputs have a persistent title above the field plus a short example placeholder inside it for the video
+request, reference notes, media JSON, instrumental direction, and multishot continuity locks. Placeholders disappear
+as soon as you type and are never submitted to the model or saved as workflow values. The headings are presentation
+only and do not add serialized widgets to the workflow.
 
 ## Nodes
 
@@ -109,26 +130,42 @@ Outputs:
 | `enhanced_prompt` | Normalized prompt for H3 conditioning |
 | `validation_report` | Resolved mode, errors, and recommendations |
 | `enhancement_manifest` | Backend/model/mode/memory metadata; never contains an API key |
-| `duration_seconds` | Unchanged requested duration for downstream wiring |
+| `duration_seconds` | Effective downstream duration; when exact frames are set this is `frame_count / 24` |
 
 Shared controls:
 
 | Control | Default | Behavior |
 |---|---:|---|
-| `mode` | `auto` | T2VA unless reference context contains H3 reference labels |
-| `duration_seconds` | `5.0` | Constrains prompt timing and is forwarded as an output |
+| `mode` | `auto` | Chooses from explicit manifest mode/roles first, then reference labels, otherwise T2VA |
+| `duration_seconds` | `5.0` | H3 generation duration (4–15 s); frame count becomes the effective downstream duration when supplied |
+| `reference_context` | blank | Optional plain-language descriptions of supplied reference assets and their roles; this does not contain the media itself |
+| `aspect_ratio` | `auto` | Adds target geometry to the rewrite request without inventing an H3 section |
+| `frame_count` | `0` | Advanced exact H3 frame count on the `17 × n + 5` grid; zero means “derive generation length from duration” |
+| `media_manifest` | blank | Advanced authoritative JSON inventory of supplied files, roles, durations, subject mappings, analyses, and transcripts |
+| `show_advanced_controls` | disabled | Reveals media metadata JSON and exact-frame controls without changing their saved values |
+| `multishot_shot_count` | `0` | Exact autonomous prompt count for `chained_multishot`; zero infers it |
+| `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
 | `temperature` | `0.2` | Low variance for structured rewriting |
 | `max_tokens` | `4096` | Completion budget |
 | `repair_attempts` | `1` | Re-prompts with validator errors |
 | `disable_thinking` | enabled | Requests direct structured output where supported |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
-| `ambience_foley_policy` | `auto` | Follow the scene, explicitly require audible ambience/foley, or turn it off |
+| `ambience_foley_policy` | `auto` | Controls non-musical, non-spoken scene sound: environment plus physical action sounds |
 | `background_score_policy` | `follow_prompt` | Follow the source, add an instrumental score, or force music off |
-| `instrumental_description` | empty | When `add_instrumental` is selected, describe the score's mood, instruments, tempo, rhythm, and dynamics |
+| `instrumental_description` | empty | When `add_instrumental` is selected, describe instrumentation, tempo, rhythm, and dynamics; mood wording is translated into audible parameters |
 | `voice_performance` | `audible` | Audible dialogue, experimental silent mouth acting, or no voice performance |
 
-Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`, `threads`, `startup_timeout`, and `keep_server_loaded`.
+Remote-only controls include `endpoint`, `model`, `api_key`, and `allow_remote_endpoint`. Their values remain saved in
+the workflow when hidden. Local-only controls include `local_model`, `llama_server_path`, `gpu_layers`, `context_size`,
+`threads`, `startup_timeout`, and `keep_server_loaded`.
+
+In remote mode, press **Refresh API model list** after entering the endpoint and API key. ComfyUI requests the
+endpoint's `/models` resource through its own same-origin backend, avoiding browser CORS restrictions. It filters
+obvious embedding and reranking models and fills **Available API models**. Selecting an entry copies its exact model
+ID into the saved **API model ID** field. The model string must be the ID reported by the server, not a model file path
+or a display name invented by this extension. Manual IDs and blank automatic selection remain available for servers
+that do not implement discovery. Non-local endpoints still require the explicit safety toggle.
 
 `context_size=0` and `startup_timeout=0` are migration-safe automatic values. They resolve to 16384 tokens and 180 seconds respectively. This prevents workflows saved before those local controls existed from failing ComfyUI's input-range validation.
 
@@ -149,6 +186,14 @@ Builds `system_prompt`, `user_prompt`, and `resolved_mode` without calling an LL
 ### MiniMax H3 Prompt Validator
 
 Validates enhanced or manually authored prompts without running an LLM. It checks section order, alignment instructions, shot numbering and timing, language-tagged dialogue, exact quoted content, reference labels, and full-reference definitions.
+
+### MiniMax H3 Media Manifest Validator
+
+Normalizes a JSON media inventory, assigns effective `<Picture N>`, `<Video N>`, and `<Audio N>` labels in input order, and checks the documented reference limits. Enabled video soundtracks consume an audio ordinal before later standalone audio. It also emits text context suitable for the enhancer.
+
+### MiniMax H3 Chained Multishot Output
+
+Validates canonical `{"prompts":[...]}` output from `chained_multishot`, produces the `---`-separated script accepted by chained H3 samplers, and reports total planned duration. Each item is an independent conditioning pass, not a `[Shot N]` inside one generation.
 
 ## Exact wiring
 
@@ -189,7 +234,8 @@ basic prompt → Prompt Guide Builder.system_prompt ─┐
 | `FL2VA` | First/last-frame-guided generation | Dual alignment instruction plus base format |
 | `L2VA` | Last-frame-guided generation | Final-frame alignment plus base format |
 | `Ref2VA` | Multimodal reference generation | Six-section reference format |
-| `auto` | Conservative automatic choice | Ref2VA only when reference context contains an H3 label; otherwise T2VA |
+| `auto` | Media-aware automatic choice | Uses an explicit manifest mode/roles first, then reference labels, otherwise T2VA |
+| `chained_multishot` | Independent chained H3 passes | Canonical JSON containing autonomous fluent prompt strings |
 
 Base output sections:
 
@@ -211,6 +257,10 @@ non_diegetic_music:
 ```
 
 Shot 1 has no timestamp. Later shots use `[Shot N] At MM:SS.mmm,` with strictly increasing cut times inside `duration_seconds`.
+
+The current Ref2VA summary task names are `keyframe completion`, `reference generation`, `video editing`, `video continuation`, `audio reuse`, and `audio reference`; multiple relationships use the exact ` + ` separator. Dialogue validation accepts the official natural vocal forms (`says`, `replies`, group shouts, singing, and compound speaker IDs) while still enforcing stable sources, exact text, language tags, and no invented speech.
+
+`chained_multishot` deliberately does not use the three- or six-section single-generation contracts. It repeats supplied identity, wardrobe, setting, style, and voice facts in each autonomous prompt and treats the often-cited ~2.5 spoken words/second only as a warning heuristic. It never invents dialogue to fill silence.
 
 ## Description enhancement
 
@@ -253,8 +303,8 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
   speaking`, and `finishes speaking`; common continuation wording is deterministically converted into a silent acting
   or exact-line timing beat;
 - missing official `(Sx)` speaker IDs are restored for common visible-speaker forms;
-- visible dialogue is canonicalized to one isolated official-style clause, `(Sx) says: <d>...</d>`; delivery and
-  voice characteristics stay before `(Sx)`, never between the speaker ID and the dialogue block;
+- visible dialogue keeps a stable `(Sx)` source and explicit vocal action in the same sentence as `<d>`; official
+  natural forms such as replies, asks, group shouts, singing, and compound `(S1,S2)` IDs remain valid;
 - post-dialogue Ref2VA alias appositives such as `the ... version` are reduced to their canonical `<Subject N>`
   binding so H3 is less likely to vocalize descriptive reference labels as accidental narration;
 - after the final tagged line, the generated prompt closes the speaker's mouth and explicitly states that every
@@ -266,7 +316,7 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
 These controls constrain the prompt, not the generated waveform, so delivery-critical renders should still be
-reviewed or transcribed. The strict canonical structure was verified on a 15-second Ref2VA render containing a
+reviewed or transcribed. The strict source and dialogue-envelope controls were verified on a 15-second Ref2VA render containing a
 two-second Spanish line followed by a long portal reveal: the raw H3 output contained the requested line once and no
 additional intelligible speech, without audio post-processing.
 
@@ -283,14 +333,21 @@ and Validator:
 
 | Policy | Values | Meaning |
 |---|---|---|
-| Ambience & foley | `auto`, `ensure_audible`, `off` | Follow the scene, explicitly require physical/environmental sound, or suppress it |
+| Scene sounds (ambience & foley) | `auto`, `ensure_audible`, `off` | Follow the scene, explicitly require environmental/physical sound, or suppress it |
 | Background score | `follow_prompt`, `add_instrumental`, `off` | Respect the source, add non-vocal music, or emit `non_diegetic_music: N/A` |
+| Voice performance | `audible`, `silent_mouth_acting_experimental`, `none` | Preserve exact spoken text, request non-verbal mouth acting, or suppress speech performance |
+
+**Ambience** is the environmental sound bed: rain, wind, waves, traffic, room tone, crowd murmur, forest insects, or
+the hum of machinery. **Foley** is sound caused by visible physical action: footsteps, cloth movement, handling an
+object, a door closing, an impact, an engine starting, or breathing. It is neither dialogue nor background music.
+`auto` lets the enhancer describe sounds naturally implied by the scene; `ensure_audible` makes concrete scene sounds
+an explicit requirement; `off` asks for no ambience or foley. For example, a rainy chase can have rain and traffic as
+ambience, shoes striking wet pavement and clothes moving as foley, dialogue as voice, and an orchestral cue as score.
 
 Selecting `add_instrumental` reveals an **Instrumental description** text box. Its contents become authoritative musical
-direction for the enhancer (for example, instrumentation, mood, tempo, rhythm, and dynamics). Leaving it empty lets the
-model choose a scene-appropriate instrumental score. The field remains hidden and is ignored under the other score
-policies.
-| Voice performance | `audible`, `silent_mouth_acting_experimental`, `none` | Preserve exact spoken text, request non-verbal mouth acting, or suppress speech performance |
+direction for the enhancer (instrumentation, tempo, rhythm, and dynamics). Abstract mood wording is converted to those
+audible parameters rather than repeated in the final field. Leaving it empty lets the model choose concrete musical
+parameters. The field remains hidden and is ignored under the other score policies.
 
 `silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the
 final H3 prompt. It retains only non-lexical visual direction such as language rhythm, approximate length, cadence,
@@ -304,8 +361,49 @@ forbids.
 
 ## References
 
-The enhancer cannot inspect attached images, video, or audio. Describe the assets passed downstream in
-`reference_context`. Explicit definitions there are authoritative and are never rewritten.
+The enhancer cannot inspect attached images, video, or audio tensors. These two inputs only tell the prompt writer what
+the downstream H3 workflow will receive:
+
+- `reference_context` is the easy option: plain-language notes such as `Picture 1 supplies the woman's identity;
+  Video 1 supplies her movement; Audio 1 supplies her Spanish voice.` Explicit definitions are authoritative.
+- `media_manifest` is the advanced option: structured JSON for workflows that know the exact media inventory, order,
+  roles, durations, subject relationships, analyses, and transcripts. It contains metadata, not paths, API keys, or
+  encoded media.
+
+Use reference notes for normal manual workflows. Use a manifest when another node or workflow builder can provide
+reliable structured facts and you want those facts validated and normalized. If both are present, their generated
+context is combined; do not give them contradictory definitions.
+
+The minimal manifest form is:
+
+```json
+{
+  "mode": "ref2va",
+  "items": [
+    {"type": "picture", "role": "identity", "analysis": "person in a red coat"},
+    {"type": "video", "role": "motion", "duration": 6, "audio_mode": "paired"},
+    {"type": "audio", "role": "voice", "duration": 4,
+     "transcript": {"language": "Spanish", "text": "Hola."}}
+  ],
+  "subjects": [
+    {"id": 1, "description": "the same person in the red coat",
+     "sources": ["<Picture 1>", "<Picture 2>"]}
+  ]
+}
+```
+
+Supported item types are `picture`/`image`, `video`, and `audio`. Optional fields include `role`, `analysis`,
+`duration_seconds`, `audio_mode` (`off`, `paired`, `alone`), and `transcript`. Known video/audio durations must be
+2–15 seconds and each media-type total must not exceed 15 seconds. A video transcript is imported only when its
+soundtrack is enabled. Optional `subjects` entries provide authoritative many-to-many identity mappings: one asset
+may define several subjects and one subject may cite several assets. The manifest is metadata supplied by the
+workflow; the enhancer does not pretend to analyze media tensors itself.
+
+The Manifest Validator enforces the documented Ref2VA envelope: at most 9 pictures, 3 videos, 3 audio references
+(enabled video soundtracks count as audio), and 12 media files overall. Known video and audio items must each be 2–15
+seconds; total referenced video and total referenced audio must each be at most 15 seconds. Audio cannot be the only
+reference modality. Labels are assigned by input order, with an enabled video soundtrack consuming its `<Audio N>`
+number before later standalone audio.
 
 MiniMax full-reference semantics separate reusable content from standalone media structure:
 
@@ -331,6 +429,22 @@ attach to the resulting subject rather than to the source picture. Repeated alia
 in one asset are merged, while the most specific role phrase is retained. Phrases such as `version ... in image N`
 become alternate versions of the primary identity rather than unrelated duplicate Subjects. There is no
 scenario-specific production logic.
+
+### Exact frames and duration
+
+`frame_count=0` is the normal setting: the node uses `duration_seconds` (4–15 seconds). A nonzero frame count is for a
+downstream H3 workflow that requires the exact `17 × n + 5` grid:
+
+```text
+5, 22, 39, 56, 73, 90, 107, ...
+```
+
+The `17` is the step between valid latent lengths, `n` is any non-negative integer, and `+5` is the grid offset. Thus
+`90 = 17 × 5 + 5`; it is an exact frame count, not “17k plus 5 thousand.” At H3's 24 fps timing convention, a supplied
+frame count becomes the authoritative effective duration (`frame_count / 24`) returned by the node. The validator
+reports an error when the effective duration falls outside 4–15 seconds, and warns when it differs from the entered
+duration by more than 0.5 seconds. In practice, leave it at zero unless the sampler or workflow explicitly asks for an
+exact frame value.
 
 ## Installation
 
@@ -416,7 +530,18 @@ Place text GGUF files in `ComfyUI/models/llm_gguf`. Put `llama-server` on `PATH`
 
 ### Widgets or outputs extend beyond the node frame
 
-Reload the browser after updating the extension. The frontend recalculates the node size when it is created, configured, or switched between remote and local modes. Old saved dimensions are expanded automatically.
+Reload the browser with `Ctrl+F5` after updating the extension. The frontend recalculates the node size when it is
+created, configured, or switched between remote and local modes. Model discovery itself does not resize the node, and
+multiline fields are not measured from their stretched DOM height; this prevents repeated refreshes from making
+Reference notes or Media metadata grow indefinitely.
+
+### Model discovery fails or returns non-JSON
+
+Confirm that the endpoint is the OpenAI-compatible API root (for LM Studio, commonly
+`http://127.0.0.1:1234/v1`), not its web page and not the full `/chat/completions` URL. Restart ComfyUI once after
+installing a version that introduces the discovery backend, then use `Ctrl+F5`. A 404/405 generally means that route
+has not been loaded yet. A server that does not implement `/models` can still be used: type the exact server model ID
+manually, or leave **API model ID** blank for automatic selection.
 
 ### GGUF reports an unsupported tensor type
 
@@ -430,7 +555,9 @@ Per-run mode includes process startup and model loading. Enable `keep_server_loa
 
 Refresh node definitions after updating. Older workflows may deserialize newly introduced local-runtime widgets as zero; zero is accepted as automatic and normalized to the safe context and startup-timeout defaults. The frontend also repairs those values when the workflow is opened.
 
-The frontend also detects the historical case where a serialized context value was shifted into the later `instrumental_description` field. It restores the context, clears the accidental description, reapplies remote/local visibility after ComfyUI finishes configuring the node, and fits the frame to the actual last rendered widget.
+The frontend also repairs two historical serialization cases: a context value shifted into
+`instrumental_description`, and the former serialized refresh/model-picker helpers shifting later widget values. It
+reapplies remote/local visibility after ComfyUI finishes configuring the node.
 
 ### Dialogue disappears or has no language tag
 
@@ -455,16 +582,20 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-Tests cover all H3 modes, timing, alignment, single-shot simultaneity and gradual progression, shot budgets,
+The current suite contains 103 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
+media manifests and limits, chained multishot output, alignment, single-shot simultaneity and gradual progression, shot budgets,
 exact-once dialogue/language preservation, untagged vocal-cue rejection, explicit age-category retention, internal
 voiceover, reference alias/variant merging, best-candidate repair selection, rejection of invented dialogue and music,
-endpoint policy, GGUF discovery, process isolation, persistent reuse, explicit unload, and failure cleanup.
+independent audio policies, endpoint/model discovery policy, GGUF discovery, process isolation, persistent reuse,
+explicit unload, and failure cleanup.
 
 Bug reports should include the ComfyUI version, extension commit, backend, model identifier, resolved mode, sanitized source prompt, and complete validation/error report. GGUF reports should also include the llama.cpp build and quantization. Never attach API keys or private reference content.
 
 ## Guide basis
 
-The implementation is based on MiniMax's public base and full-reference Video Prompt Writing Guides. It is an original implementation and is not an official MiniMax or ComfyUI product.
+The implementation is based on MiniMax's public base and full-reference Video Prompt Writing Guides and the official
+H3 prompt-writing skill, with additional defensive validation and workflow-oriented controls. It is an original
+implementation and is not an official MiniMax or ComfyUI product.
 
 ## Project status and license
 
