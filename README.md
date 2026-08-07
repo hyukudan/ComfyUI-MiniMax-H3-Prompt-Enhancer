@@ -108,7 +108,7 @@ The main node presents only the controls relevant to the current selection:
 
 Hidden fields retain their saved values, but only the selected backend is executed. The discovery picker and refresh button are UI helpers and are deliberately not serialized into the workflow. This prevents them from shifting saved widget values when the extension is updated.
 
-Reference and manifest text areas keep a fixed layout contribution. Refreshing a model list does not resize the node, avoiding the previous feedback loop in which multiline fields grew after every refresh.
+Long text areas such as Video description, Reference notes, and Media metadata JSON have a draggable resize handle below the field. Their chosen heights are saved with the workflow; double-clicking the handle restores the default height, and keyboard users can resize with Up/Down (Shift for a larger step). Refreshing a model list does not resize them, avoiding the previous feedback loop in which multiline fields grew after every refresh.
 
 Multiline inputs have a persistent title above the field plus a short example placeholder inside it for the video
 request, reference notes, media JSON, instrumental direction, and multishot continuity locks. Placeholders disappear

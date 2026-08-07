@@ -31,6 +31,9 @@ const LOCAL_WIDGETS = [
 const INSTRUMENTAL_WIDGET = "instrumental_description";
 const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
+const MIN_MULTILINE_HEIGHT = 72;
+const MAX_MULTILINE_HEIGHT = 720;
+const MULTILINE_HEIGHTS_PROPERTY = "minimaxH3MultilineHeights";
 const DISPLAY_LABELS = {
     basic_prompt: "Describe your video",
     duration_seconds: "Duration (seconds)",
@@ -80,6 +83,17 @@ const MULTILINE_TITLES = {
     multishot_voice_lock: "Voice continuity (optional)",
     multishot_setting_lock: "Setting continuity (optional)",
 };
+const DEFAULT_MULTILINE_HEIGHTS = {
+    basic_prompt: 190,
+    prompt: 190,
+    source_prompt: 190,
+    reference_context: 130,
+    instrumental_description: 110,
+    media_manifest: 150,
+    multishot_identity_lock: 110,
+    multishot_voice_lock: 110,
+    multishot_setting_lock: 110,
+};
 const FIELD_STYLE_ID = "minimax-h3-field-styles";
 
 function ensureFieldTitleStyles() {
@@ -114,7 +128,29 @@ function ensureFieldTitleStyles() {
             width: 100%;
             height: auto;
             min-height: 0;
+            resize: none;
             box-sizing: border-box;
+        }
+        .minimax-h3-field-resizer {
+            position: relative;
+            flex: 0 0 10px;
+            height: 10px;
+            cursor: ns-resize;
+            touch-action: none;
+        }
+        .minimax-h3-field-resizer::after {
+            position: absolute;
+            top: 4px;
+            left: 38%;
+            width: 24%;
+            height: 2px;
+            border-radius: 2px;
+            background: color-mix(in srgb, var(--descrip-text, #aaa) 55%, transparent);
+            content: "";
+        }
+        .minimax-h3-field-resizer:hover::after,
+        .minimax-h3-field-resizer:focus-visible::after {
+            background: var(--p-button-text-primary-color, #ddd);
         }
         .widget-item .minimax-h3-field-title {
             display: none;
@@ -130,12 +166,30 @@ function widgetTextElement(widget) {
     return null;
 }
 
-function addMultilineTitle(widget, title) {
+function clampMultilineHeight(value) {
+    return Math.min(MAX_MULTILINE_HEIGHT, Math.max(MIN_MULTILINE_HEIGHT, Math.round(value)));
+}
+
+function setMultilineHeight(node, widget, height, persist = true) {
+    const preferredHeight = clampMultilineHeight(height);
+    widget.__minimaxPreferredHeight = preferredHeight;
+    if (persist) {
+        if (!node.properties) node.properties = {};
+        const heights = node.properties[MULTILINE_HEIGHTS_PROPERTY] ?? {};
+        node.properties[MULTILINE_HEIGHTS_PROPERTY] = { ...heights, [widget.name]: preferredHeight };
+    }
+    node.graph?.setDirtyCanvas?.(true, true);
+    node.setDirtyCanvas?.(true, true);
+}
+
+function addMultilineTitle(node, widget, title) {
     const textarea = widgetTextElement(widget);
     if (!textarea) return;
     ensureFieldTitleStyles();
     if (widget.__minimaxFieldWrapper) {
         widget.__minimaxFieldTitle.textContent = title;
+        const restoredHeight = Number(node.properties?.[MULTILINE_HEIGHTS_PROPERTY]?.[widget.name]);
+        if (Number.isFinite(restoredHeight)) setMultilineHeight(node, widget, restoredHeight, false);
         return;
     }
     const wrapper = document.createElement("div");
@@ -146,12 +200,68 @@ function addMultilineTitle(widget, title) {
     const headingId = `minimax-h3-field-${widget.name}-${Math.random().toString(36).slice(2)}`;
     heading.id = headingId;
     textarea.setAttribute("aria-labelledby", headingId);
+    const resizer = document.createElement("div");
+    resizer.className = "minimax-h3-field-resizer";
+    resizer.tabIndex = 0;
+    resizer.setAttribute("role", "separator");
+    resizer.setAttribute("aria-orientation", "horizontal");
+    resizer.title = "Drag to resize. Double-click to restore the default height.";
     const parent = textarea.parentNode;
     if (parent) parent.replaceChild(wrapper, textarea);
-    wrapper.append(heading, textarea);
+    wrapper.append(heading, textarea, resizer);
     widget.__minimaxTextInput = textarea;
     widget.__minimaxFieldTitle = heading;
     widget.__minimaxFieldWrapper = wrapper;
+    widget.__minimaxFieldResizer = resizer;
+    const originalComputeSize = widget.computeSize?.bind(widget);
+    widget.__minimaxOriginalComputeSize = originalComputeSize;
+    const savedHeight = Number(node.properties?.[MULTILINE_HEIGHTS_PROPERTY]?.[widget.name]);
+    const defaultHeight = DEFAULT_MULTILINE_HEIGHTS[widget.name] ?? 110;
+    setMultilineHeight(node, widget, Number.isFinite(savedHeight) ? savedHeight : defaultHeight, false);
+    widget.computeSize = (width) => {
+        const original = originalComputeSize?.(width);
+        const originalWidth = Array.isArray(original) && Number.isFinite(original[0]) ? original[0] : width;
+        return [originalWidth, widget.__minimaxPreferredHeight];
+    };
+    resizer.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const startY = event.clientY;
+        const startHeight = widget.__minimaxPreferredHeight;
+        const startNodeHeight = Number(node.size?.[1]) || MIN_NODE_HEIGHT;
+        resizer.setPointerCapture?.(event.pointerId);
+        const onMove = (moveEvent) => {
+            const nextHeight = clampMultilineHeight(startHeight + moveEvent.clientY - startY);
+            const delta = nextHeight - startHeight;
+            setMultilineHeight(node, widget, nextHeight);
+            node.setSize?.([Math.max(MIN_NODE_WIDTH, node.size?.[0] ?? MIN_NODE_WIDTH), Math.max(MIN_NODE_HEIGHT, startNodeHeight + delta)]);
+        };
+        const onEnd = () => {
+            window.removeEventListener("pointermove", onMove, true);
+            window.removeEventListener("pointerup", onEnd, true);
+            window.removeEventListener("pointercancel", onEnd, true);
+            fitNodeToVisibleWidgets(node);
+        };
+        window.addEventListener("pointermove", onMove, true);
+        window.addEventListener("pointerup", onEnd, true);
+        window.addEventListener("pointercancel", onEnd, true);
+    });
+    resizer.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setMultilineHeight(node, widget, defaultHeight);
+        fitNodeToVisibleWidgets(node);
+    });
+    resizer.addEventListener("keydown", (event) => {
+        if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        const step = event.shiftKey ? 60 : 20;
+        setMultilineHeight(node, widget, widget.__minimaxPreferredHeight + direction * step);
+        fitNodeToVisibleWidgets(node);
+    });
     // ComfyUI positions/mounts widget.element. The value callbacks still close
     // over the original textarea, so wrapping changes presentation only.
     widget.element = wrapper;
@@ -160,7 +270,7 @@ function addMultilineTitle(widget, title) {
 function applyMultilineTitles(node) {
     for (const [name, title] of Object.entries(MULTILINE_TITLES)) {
         const widget = node.widgets?.find((candidate) => candidate.name === name);
-        if (widget) addMultilineTitle(widget, title);
+        if (widget) addMultilineTitle(node, widget, title);
     }
 }
 
