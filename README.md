@@ -319,6 +319,10 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
   inside the remaining timeline instead of leaving an unplanned audio gap;
 - absent non-diegetic music requests resolve to `N/A` instead of invented scoring.
 
+When the source explicitly asks the enhancer to **generate, write, or invent dialogue**, audible mode performs a bounded planning pass before the normal enhancement. This also covers scenario wording such as a character who “explains in Spanish what she sees” when no exact words were supplied. The planner returns a compact dialogue ledger constrained by duration (about 2.5 spoken words per second), requested language, line count and existing quoted speech. The main pass must place every planned line exactly once in a valid `<d>[Language] ...</d>` block; changed, omitted, duplicated or additional lines trigger the normal repair loop. Chained multishot output applies the same ledger across its autonomous prompts without losing a line at a cut.
+
+The extra completion is used only when dialogue authoring was requested. Descriptions of silent action and prompts that merely contain no dialogue still use one completion and do not acquire invented speech. If the planner cannot return valid concrete dialogue within `repair_attempts`, generation stops with a clear planning error before spending the main completion. The manifest records `dialogueLedgerLineCount`, a non-plaintext `dialogueLedgerDigest`, and `dialoguePlanningRepairAttemptsUsed` for reproducibility.
+
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
 These controls constrain the prompt, not the generated waveform, so delivery-critical renders should still be

@@ -158,6 +158,70 @@ def test_missing_dialogue_language_marker_gets_non_translating_fallback():
     assert normalize_dialogue_tags("<d>[Spanish]Hola.</d>") == "<d>[Spanish] Hola.</d>"
 
 
+def test_explicit_dialogue_authoring_request_gets_a_concrete_spanish_contract():
+    source = (
+        "An arabic influencer with her cellphone goes back in time to the Alhambra at Granada during 1492, "
+        "and explains in spanish what she sees. She walks around the garden and the fountain, although some "
+        "muslim men look at her suspiciously. Generate the dialogue for her based on the scenario."
+    )
+    request = build_user_request(source, "t2va", 8.0)
+    assert "DIALOGUE AUTHORING REQUEST — AUDIBLE" in request
+    assert "<d>[Spanish] concrete authored words</d>" in request
+    assert "dialogue beats in the shots where the corresponding speech occurs" in request
+
+    literal_request = build_user_request('She explains in Spanish: "Hola."', "t2va", 5.0)
+    assert "DIALOGUE AUTHORING REQUEST" not in literal_request
+    assert "<d>[Spanish] Hola.</d>" in literal_request
+
+
+def test_authored_dialogue_is_allowed_only_when_explicitly_requested():
+    source = "Write natural Spanish narration for a named off-screen historian describing the Alhambra gardens."
+    prompt = """integrated_multimodal_description:
+[Shot 1] A named off-screen historian (S1) says in an off-screen voiceover: <d>[Spanish] El agua guía la mirada por todo el jardín.</d>, while the empty garden remains on screen.
+
+overall_soundscape:
+Water trickles through the channels while leaves rustle softly.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    assert report["valid"], report
+
+    unrequested = validate_prompt(
+        prompt, "t2va", 5.0,
+        "A silent camera move crosses the empty Alhambra gardens.",
+    )
+    assert any("Invented or duplicated dialogue" in error for error in unrequested["errors"])
+
+    visible_source = "Generate short Spanish dialogue for a visible presenter, with no narration or voiceover."
+    visible_prompt = """integrated_multimodal_description:
+[Shot 1] The visible presenter (S1) says warmly: <d>[Spanish] Bienvenidos al jardín.</d>.
+
+overall_soundscape:
+Water trickles nearby.
+
+non_diegetic_music:
+N/A"""
+    visible_report = validate_prompt(visible_prompt, "t2va", 5.0, visible_source)
+    assert visible_report["valid"], visible_report
+
+
+def test_explicit_no_dialogue_does_not_become_a_narration_request():
+    source = "A woman silently tours the garden. No dialogue, narration, voiceover, or intelligible speech."
+    request = build_user_request(source, "t2va", 5.0)
+    assert "DIALOGUE AUTHORING REQUEST" not in request
+    prompt = """integrated_multimodal_description:
+[Shot 1] A woman silently walks around the garden fountain with her lips closed.
+
+overall_soundscape:
+Water trickles and leaves rustle.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    assert report["valid"], report
+
+
 def test_inline_section_content_is_moved_below_its_header():
     fixed = normalize_section_headers(
         "integrated_multimodal_description:\n[Shot 1] Action.\n"
@@ -468,6 +532,7 @@ def test_repeated_heard_line_and_cut_scene_commands_remain_distinct_beats():
     ]
 
     request = build_user_request(source, "t2va", 15.0)
+    assert "DIALOGUE AUTHORING REQUEST" not in request
     assert "EXPLICIT EDIT PLAN: Use exactly 3 shots" in request
     assert "Occurrence 1 of 3" in request
     assert "Occurrence 2 of 3" in request
@@ -484,7 +549,7 @@ def test_repeated_source_dialogue_keeps_expected_count_but_removes_true_extra_co
         'We hear "power up!" again.'
     )
     blocks = " ".join(
-        f"A divine voice (S1) booms: <d>[English] power up!</d>." for _ in range(4)
+        "A divine voice (S1) booms: <d>[English] power up!</d>." for _ in range(4)
     )
     generated = f"""integrated_multimodal_description:
 [Shot 1] {blocks}

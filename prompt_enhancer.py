@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from collections.abc import Callable
@@ -13,11 +14,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .media_manifest import manifest_context
-    from .prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .media_manifest import generation_profile, manifest_context
+    from .prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from media_manifest import manifest_context
-    from prompt_guides import build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from media_manifest import generation_profile, manifest_context
+    from prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -137,6 +138,112 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
         raise RuntimeError("LLM endpoint returned no choices[0].message.content") from exc
 
 
+def _parse_dialogue_ledger(candidate: str, requested_language: str, max_lines: int,
+                           max_words: int, source_prompt: str) -> tuple[tuple[str, str], ...]:
+    try:
+        data = json.loads(strip_markdown_fence(candidate))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"ledger must be valid JSON: {exc.msg}") from exc
+    lines = data.get("lines") if isinstance(data, dict) else None
+    if not isinstance(lines, list) or not lines:
+        raise ValueError('ledger must be an object with a non-empty "lines" array')
+    if len(lines) > max_lines:
+        raise ValueError(f"ledger has {len(lines)} lines; maximum is {max_lines}")
+    source_keys = {
+        _dialogue_lexical_key(text) for _language, text, _internal in _source_dialogue_contracts(source_prompt)
+    }
+    seen = set()
+    ledger = []
+    total_words = 0
+    for index, item in enumerate(lines, start=1):
+        if isinstance(item, str):
+            language = requested_language
+            text = item
+            tagged = re.match(r"^\s*\[([^\]]+)\]\s+(.+)$", text, flags=re.DOTALL)
+            if tagged:
+                language, text = tagged.groups()
+        elif isinstance(item, dict):
+            language = str(item.get("language") or requested_language).strip()
+            text = next((str(item[key]) for key in ("text", "line", "dialogue") if item.get(key)), "")
+        else:
+            raise ValueError(f"ledger line {index} must be a string or object")
+        language = language.strip()
+        text = re.sub(r"\s+", " ", text).strip()
+        if not language or "[" in language or "]" in language:
+            raise ValueError(f"ledger line {index} has an invalid language")
+        if requested_language != "Original language" and language.casefold() != requested_language.casefold():
+            raise ValueError(
+                f"ledger line {index} must use {requested_language}, observed {language or 'no language'}"
+            )
+        if requested_language != "Original language":
+            language = requested_language
+        if not text or "<d>" in text.casefold() or "</d>" in text.casefold():
+            raise ValueError(f"ledger line {index} must contain plain spoken words without <d> tags")
+        if re.fullmatch(
+            r"(?:\[.*?\]|<.*?>|dialogue|dialog|line|speech|spoken words?|to be (?:written|generated)|"
+            r"di[aá]logo|l[ií]nea|frase|palabras)",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            raise ValueError(f"ledger line {index} is a placeholder, not concrete dialogue")
+        key = _dialogue_lexical_key(text)
+        if key in source_keys:
+            raise ValueError(f"ledger line {index} duplicates source-provided dialogue")
+        if key in seen:
+            raise ValueError(f"ledger line {index} duplicates another planned line")
+        seen.add(key)
+        total_words += len(re.findall(r"\b[\wÀ-ÿ'-]+\b", text))
+        ledger.append((language, text))
+    if total_words > max_words:
+        raise ValueError(f"ledger has {total_words} spoken words; maximum is {max_words}")
+    return tuple(ledger)
+
+
+def _plan_dialogue_ledger(basic_prompt: str, requested_language: str, duration_seconds: float,
+                          segment_count: int, completion: Callable[[list[dict]], str],
+                          repair_attempts: int) -> tuple[tuple[tuple[str, str], ...], int]:
+    segments = max(1, int(segment_count or 1))
+    source_words = sum(
+        len(re.findall(r"\b[\wÀ-ÿ'-]+\b", text))
+        for _language, text, _internal in _source_dialogue_contracts(basic_prompt)
+    )
+    max_lines = min(12, max(1, math.ceil(float(duration_seconds) / 4.0) * segments))
+    max_words = max(1, round(float(duration_seconds) * 2.5) * segments - source_words)
+    messages = [
+        {"role": "system", "content": (
+            "You are a dialogue planner. Return only compact valid JSON, with no Markdown or explanation, shaped "
+            'exactly as {"lines":[{"language":"Spanish","text":"Natural spoken line."}]}. Write only the new '
+            "concrete words requested by the scenario. Do not include camera directions, speaker labels, delivery, "
+            "<d> tags, placeholders, or source-provided quoted lines."
+        )},
+        {"role": "user", "content": (
+            f"SCENARIO:\n{basic_prompt}\n\nREQUESTED LANGUAGE: {requested_language}\n"
+            f"MAXIMUM LINES: {max_lines}\nMAXIMUM TOTAL SPOKEN WORDS: {max_words}\n"
+            "Plan the smallest useful set of concise natural lines, in causal scenario order."
+        )},
+    ]
+    last_error = ""
+    repairs = max(0, int(repair_attempts))
+    for attempt in range(repairs + 1):
+        candidate = completion(messages)
+        try:
+            ledger = _parse_dialogue_ledger(
+                candidate, requested_language, max_lines, max_words, basic_prompt,
+            )
+            return ledger, attempt
+        except ValueError as exc:
+            last_error = str(exc)
+            if attempt >= repairs:
+                break
+            messages.extend([
+                {"role": "assistant", "content": candidate},
+                {"role": "user", "content": (
+                    "Repair the dialogue ledger. Return the complete JSON object only. Fix this error: " + last_error
+                )},
+            ])
+    raise RuntimeError(f"Dialogue planning failed: {last_error}")
+
+
 def enhance_prompt_with_completion(
     basic_prompt: str,
     mode: str,
@@ -162,13 +269,32 @@ def enhance_prompt_with_completion(
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
+    resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
     )
-    resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    dialogue_ledger: tuple[tuple[str, str], ...] = ()
+    dialogue_planning_repairs = 0
+    if dialogue_authoring and voice_performance == "audible":
+        effective_duration = generation_profile(duration_seconds, aspect_ratio, frame_count)["effectiveDurationSeconds"]
+        dialogue_ledger, dialogue_planning_repairs = _plan_dialogue_ledger(
+            basic_prompt,
+            dialogue_language,
+            effective_duration,
+            multishot_shot_count if resolved_mode == "chained_multishot" else 1,
+            completion,
+            repair_attempts,
+        )
+        user_request = build_user_request(
+            basic_prompt, mode, duration_seconds, reference_context, enhance_description,
+            ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
+            aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
+        )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
@@ -199,7 +325,7 @@ def enhance_prompt_with_completion(
         enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
         ambience_foley_policy, background_score_policy, voice_performance,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
-        multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+        multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -208,7 +334,8 @@ def enhance_prompt_with_completion(
         errors = report.get("errors", ())
         critical_markers = (
             "Explicit ", "Quoted source", "Required spoken dialogue", "invented reference labels",
-            "missing from output", "must remain", "terminal consequence",
+            "Planned dialogue", "outside the planned ledger", "missing from output", "must remain",
+            "terminal consequence",
         )
         weighted_errors = sum(
             10 if any(marker.casefold() in str(error).casefold() for marker in critical_markers) else 1
@@ -219,12 +346,34 @@ def enhance_prompt_with_completion(
     attempts = 0
     while validation["errors"] and attempts < int(repair_attempts):
         attempts += 1
+        dialogue_authoring_repair = ""
+        if dialogue_ledger:
+            dialogue_authoring_repair = (
+                "\nMANDATORY DIALOGUE LEDGER REPAIR: Copy each of these exact blocks once, with no changes or "
+                "additional spoken words:\n"
+                + "\n".join(f"- <d>[{language}] {text}</d>" for language, text in dialogue_ledger)
+            )
+        elif any(
+            "explicit dialogue authoring request" in str(error).casefold()
+            or "affirmative speaking cues outside" in str(error).casefold()
+            for error in validation["errors"]
+        ):
+            dialogue_authoring_repair = (
+                "\nMANDATORY DIALOGUE AUTHORING REPAIR: The user explicitly authorized you to write the spoken "
+                "content. Replace every vague description such as 'speaks', 'explains', or 'continues speaking' "
+                "with actual natural utterances. Emit at least one concrete <d>[requested language] actual words"
+                "</d> block, and use a stable (S1) plus an explicit vocal action in that same sentence. The words "
+                "inside <d> must be newly written for the supplied scenario, not a placeholder, summary, or "
+                "description of speech. If speech occurs in multiple timeline beats, write a distinct concise line "
+                "at each relevant beat. This requirement overrides the default rule against unrequested dialogue."
+            )
         messages.extend([
             {"role": "assistant", "content": enhanced},
             {"role": "user", "content": (
                 "Repair the prompt. Return the complete corrected prompt only. Preserve all source facts and exact "
                 "quoted content. Follow the selected mode's exact output contract. Fix these validation errors:\n- "
                 + "\n- ".join(validation["errors"])
+                + dialogue_authoring_repair
             )},
         ])
         enhanced = normalize_candidate(completion(messages))
@@ -232,7 +381,7 @@ def enhance_prompt_with_completion(
             enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
-            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+            multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -267,6 +416,12 @@ def enhance_prompt_with_completion(
         ),
         "voicePerformance": voice_performance,
         "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
+        "dialogueLedgerLineCount": len(dialogue_ledger),
+        "dialogueLedgerDigest": (
+            hashlib.sha256(json.dumps(dialogue_ledger, ensure_ascii=False).encode("utf-8")).hexdigest()
+            if dialogue_ledger else ""
+        ),
+        "dialoguePlanningRepairAttemptsUsed": dialogue_planning_repairs,
         "suppressedDialogueCount": (
             len(re.findall(r'[\"“][^\"”\r\n]+[\"”]', basic_prompt)) if voice_performance != "audible" else 0
         ),

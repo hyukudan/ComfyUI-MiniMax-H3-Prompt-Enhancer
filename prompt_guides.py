@@ -68,8 +68,10 @@ _SPEECH_CUE_RE = re.compile(
     r"\b(?:say|says|said|saying|state|states|ask|asks|asking|shout|shouts|shouting|"
     r"reply|replies|replied|replying|respond|responds|sing|sings|singing|chant|chants|"
     r"call|calls|exclaim|exclaims|whisper|whispers|whispering|speak|speaks|speaking|"
+    r"explain|explains|explaining|narrate|narrates|narrating|describe|describes|describing|comment|comments|commenting|"
     r"dice|dijo|diciendo|responde|contest[ao]|canta|cantando|pregunta|"
     r"preguntando|grita|gritando|susurra|susurrando|habla|hablando|think|thinks|thinking|"
+    r"explica|explicando|narra|narrando|describe|describiendo|comenta|comentando|cuenta|contando|"
     r"thought|hear|hears|heard|hearing|piensa|pensando|pensamiento|reflexiona|reflexionando|"
     r"mon[oó]logo|oye|oyen|o[ií]r|escucha|escuchan)\b",
     re.IGNORECASE,
@@ -77,6 +79,7 @@ _SPEECH_CUE_RE = re.compile(
 _UNTAGGED_SPEECH_ACTION_RE = re.compile(
     r"\b(?:speaks?|speaking|talks?|talking|says?|saying|asks?|asking|repl(?:y|ies|ying)|"
     r"responds?|repeats?|repeating|sing(?:s|ing)?|chants?|exclaims?|booms?|booming|utters?|uttering|"
+    r"explains?|explaining|narrates?|narrating|describes?|describing|comments?|commenting|"
     r"continues?\s+(?:to\s+)?(?:speak|talk)|finishes?\s+(?:speaking|talking)|"
     r"delivers?\s+(?:(?:his|her|their|the|required)\s+)?(?:line|dialogue|words?))\b",
     re.IGNORECASE,
@@ -108,6 +111,110 @@ _LANGUAGE_ALIASES = {
     "castellano": "Spanish",
     "español": "Spanish",
 }
+_DIALOGUE_LANGUAGE_PATTERN = (
+    r"english|spanish|french|german|italian|portuguese|japanese|korean|chinese|russian|arabic|"
+    r"hindi|dutch|polish|turkish|catalonian|catalan|catalán|català|español|castilian|castellano"
+)
+_DIALOGUE_AUTHORING_RE = re.compile(
+    r"\b(?:generate|write|create|invent|compose|provide|draft|author|make\s+up|come\s+up\s+with|"
+    r"genera(?:r)?|escribe|escribir|crea(?:r)?|inventa(?:r)?|comp[oó]n|componer|redacta(?:r)?|"
+    r"proporciona(?:r)?|a[nñ]ade|a[nñ]adir|haz)\b"
+    r"(?:(?![.!?]).){0,96}\b(?:dialogue|dialog|lines?|spoken\s+words?|speech|script|voice[ -]?over|"
+    r"narration|di[aá]logo|l[ií]neas?|frases?|palabras|discurso|gui[oó]n|voz\s+en\s+off|narraci[oó]n)\b",
+    re.IGNORECASE,
+)
+_UNSCRIPTED_SPEECH_RE = re.compile(
+    r"\b(?:explains?|narrates?|describes?|comments?|reports?|tells?\s+(?:the\s+viewer|the\s+audience|us)\b|"
+    r"talks?\s+(?:about|through)|speaks?\s+about|explica|narra|describe|comenta|relata|cuenta\s+(?:al\s+"
+    r"espectador|al\s+p[uú]blico|lo\s+que)|habla\s+(?:de|sobre))\b",
+    re.IGNORECASE,
+)
+_DIALOGUE_PROHIBITION_RE = re.compile(
+    r"\b(?:no|without|zero|omit|avoid|never|sin|ning[uú]n|ninguna|omite|evita|nunca)\b"
+    r"(?:(?![.!?]).){0,48}\b(?:dialogue|dialog|speech|spoken\s+words?|voice[ -]?over|narration|"
+    r"di[aá]logo|habla|voz\s+en\s+off|narraci[oó]n|palabras\s+inteligibles)\b",
+    re.IGNORECASE,
+)
+
+
+def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
+    """Return whether the source authorizes new spoken words and their requested language."""
+    source = str(source_prompt or "")
+
+    def negated(match: re.Match[str]) -> bool:
+        prefix = source[max(0, match.start() - 40):match.start()]
+        matched = match.group(0)
+        return bool(
+            re.search(
+                r"(?:\b(?:do\s+not|don't|never|avoid|omit|without|no\s+need\s+to|"
+                r"no|nunca|evita|omite|sin|no\s+hace\s+falta)\s*)$",
+                prefix,
+                flags=re.IGNORECASE,
+            )
+            or re.search(
+                r"\b(?:generate|write|create|provide|genera(?:r)?|escribe|crea(?:r)?|proporciona(?:r)?)\s+"
+                r"(?:absolutely\s+|ning[uú]n\s+|ninguna\s+)?(?:no|zero|ning[uú]n|ninguna|sin)\s+",
+                matched,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def already_scripted(match: re.Match[str]) -> bool:
+        following = []
+        quote = _QUOTED_RE.search(source, match.end())
+        tagged = re.search(r"<d>.*?</d>", source[match.end():], flags=re.DOTALL | re.IGNORECASE)
+        if quote:
+            following.append(quote.start())
+        if tagged:
+            following.append(match.end() + tagged.start())
+        if not following:
+            return False
+        return not re.search(r"[.!?;]", source[match.end():min(following)])
+
+    direct = [match for match in _DIALOGUE_AUTHORING_RE.finditer(source) if not negated(match)]
+    unscripted = [
+        match for match in _UNSCRIPTED_SPEECH_RE.finditer(source)
+        if not negated(match) and not already_scripted(match)
+    ]
+    if not direct and (_DIALOGUE_PROHIBITION_RE.search(source) or not unscripted):
+        return False, "Original language"
+
+    language_mentions = []
+    language_patterns = (
+        rf"\b(?:in|en)\s+(?:(?:the\s+)?(?:language|idioma)\s+)?({_DIALOGUE_LANGUAGE_PATTERN})\b",
+        rf"\b({_DIALOGUE_LANGUAGE_PATTERN})\s+(?:language\s+)?(?:dialogue|dialog|lines?|voice[ -]?over|"
+        rf"narration|speech|di[aá]logo|l[ií]neas?|voz\s+en\s+off|narraci[oó]n)\b",
+    )
+    for pattern in language_patterns:
+        for match in re.finditer(pattern, source, flags=re.IGNORECASE):
+            language_mentions.append((match.start(), match.group(1)))
+    if not language_mentions:
+        return True, "Original language"
+    raw = max(language_mentions, key=lambda item: item[0])[1]
+    return True, _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
+
+
+def _source_requests_offscreen_voice(source_prompt: str) -> bool:
+    """Recognize positive narration/voiceover/thought cues without treating prohibitions as requests."""
+    source = str(source_prompt or "")
+    cue = re.compile(
+        r"\b(?:voice[ -]?over|narrat(?:e|es|ed|ing|ion)|off-screen\s+(?:voice|narrator)|voz\s+en\s+off|"
+        r"narraci[oó]n|voice\s+in\s+off|mon[oó]logo)\b",
+        re.IGNORECASE,
+    )
+    for match in cue.finditer(source):
+        clause_start = 0
+        for boundary in re.finditer(r"[.!?;]|\b(?:but|however|except|pero|sino)\b", source[:match.start()], re.IGNORECASE):
+            clause_start = boundary.end()
+        prefix = source[clause_start:match.start()]
+        if re.search(
+            r"\b(?:no|not|without|never|avoid|omit|exclude|sin|nunca|evita|omite|excluye)\b",
+            prefix,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        return True
+    return False
 
 
 SYSTEM_PROMPT = """You rewrite basic user requests into production-ready MiniMax H3 audiovisual prompts.
@@ -115,7 +222,11 @@ SYSTEM_PROMPT = """You rewrite basic user requests into production-ready MiniMax
 Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation. Write
 all structural prose in English. Preserve the original language only inside dialogue/lyrics and visible on-screen
 text. Never translate, paraphrase, censor, soften, or extend quoted dialogue, lyrics, or visible text. Do not invent
-new dialogue. Keep requested identities, actions, camera behavior, timing, reference roles, and ending intact.
+new dialogue unless the authoritative user prompt explicitly asks you to write/generate dialogue or gives an
+unscripted speech/narration brief such as what a character explains. In that case, write concrete, natural,
+speakable lines in the requested language; do not return a dialogue placeholder or merely describe that speech
+happens. If the request includes an AUTHORITATIVE DIALOGUE LEDGER, copy every ledger line exactly once and author no
+additional words. Keep requested identities, actions, camera behavior, timing, reference roles, and ending intact.
 
 Shared timeline rules:
 - Shot 1 has no timestamp. Later shots are sequential and begin with strictly increasing [Shot N] At MM:SS.mmm,
@@ -131,14 +242,18 @@ Shared timeline rules:
   <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
 - For visible audible dialogue, keep the identity, stable speaker ID, explicit vocal action, delivery, and matching
   <d> block in one sentence. Natural official forms include says, replies, asks, shouts, whispers, sings, and group
-  speech with compound IDs such as (S1,S2). Put only language plus exact words inside <d>; keep all action and
+  speech with compound IDs such as (S1,S2). Explains and narrates are also valid when they name the requested
+  informational delivery. Put only language plus exact words inside <d>; keep all action and
   delivery outside it. Do not use vague "speaks" or "delivers the line" cues that imply unspecified extra words.
 - Name every off-screen vocal source explicitly. If the referenced character owns the voiceover, write
   "<Subject N> (Sx) says in an off-screen voiceover" and reuse that same Sx for the character's later visible
   dialogue. Otherwise write "An off-screen narrator (Sx)". Never use an unresolved phrase such as "the voice in off".
 - Every positive speaking/talking/saying/asking/booming/finishing-speech cue must be in the same sentence as its corresponding
   <d> block. Outside those tagged sentences, describe gaze, gesture, expression, and silence without implying continued
-  or additional speech. A short quoted line is spoken once in one shot and ends there.
+  or additional speech. A source-provided short quoted line is spoken once in its assigned shot. When dialogue
+  authoring was explicitly requested, distribute distinct concrete lines among the corresponding timeline beats;
+  do not collapse them all into the opening/final shot, repeat a line as filler, or insert a no-more-speech closure
+  before a later authored line.
 - The explicit audio policies in the user request override the shared audible-dialogue and sound defaults. Silent
   mouth acting and voice-off modes must omit <d>, speaker IDs, lexical dialogue, narration, and voiceover entirely.
 - Put visible text in straight English double quotes exactly as supplied.
@@ -196,8 +311,11 @@ separate H3 conditioning pass, so write it as fluent standalone English prose an
 
 Repeat the stable identity, wardrobe, environment, visual style, and voice description verbatim in every segment
 where they remain applicable. Prefer six to eight concrete identity attributes when the source provides enough
-facts, but never invent attributes merely to reach a count. Preserve exact dialogue and visible text. Allocate
-spoken material to the requested segment only; do not duplicate it. End each segment in a concrete visible state
+facts, but never invent attributes merely to reach a count. Preserve exact source-provided dialogue and visible text.
+Author new spoken words only when the user explicitly requests dialogue writing or supplies an unscripted
+speech/narration brief; then write concrete natural lines in the requested language and place each line in its
+corresponding segment. An AUTHORITATIVE DIALOGUE LEDGER fixes the exact new words: copy every ledger line once and
+author no others. Allocate spoken material to the requested segment only; do not duplicate it. End each segment in a concrete visible state
 that can serve as the chained first frame of the next segment, and begin the next segment compatibly with that state.
 Include coherent ambience and physical sound naturally in each segment. Do not use the base three-section or Ref2VA
 six-section formats: those contracts describe a single generation, while this output drives independent passes.
@@ -869,7 +987,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        frame_count: int = 0,
                        multishot_identity_lock: str = "",
                        multishot_voice_lock: str = "",
-                       multishot_setting_lock: str = "") -> str:
+                       multishot_setting_lock: str = "",
+                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -879,6 +998,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(basic_prompt)
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = profile["effectiveDurationSeconds"]
     alignment = alignment_instruction(resolved, effective_duration)
@@ -898,6 +1018,37 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         parts.append(connected_context)
     if parsed_manifest["errors"]:
         parts.append("MEDIA MANIFEST ERRORS (do not conceal or work around these):\n- " + "\n- ".join(parsed_manifest["errors"]))
+    if dialogue_authoring and voice_performance == "audible":
+        if authored_dialogue_ledger:
+            parts.append(
+                "AUTHORITATIVE DIALOGUE LEDGER — AUDIBLE: A dedicated planning pass already wrote the new dialogue. "
+                "Copy every block below exactly once into the audiovisual timeline, including its language and "
+                "punctuation. Give each vocal source a stable (Sx), an explicit vocal action, and natural delivery in "
+                "the same sentence. Place the blocks at their corresponding scenario beats; they may occur in early, "
+                "middle, or final shots. Do not translate, paraphrase, omit, duplicate, merge, extend, or add any "
+                "other spoken words. Do not insert a no-more-speech closure before a later ledger block. Exact "
+                "source-provided quotations remain separate immutable anchors.\n"
+                + "\n".join(f"- <d>[{language}] {text}</d>" for language, text in authored_dialogue_ledger)
+            )
+        else:
+            parts.append(
+                "DIALOGUE AUTHORING REQUEST — AUDIBLE (explicit user authorization): The user asked you to write the "
+                "spoken content rather than merely describe a speaking performance. Create concise, concrete, natural "
+                f"lines based only on the supplied scenario. Use <d>[{dialogue_authoring_language}] concrete authored "
+                "words</d> for every new line, replacing 'concrete authored words' with the actual speakable text. Give "
+                "each vocal source a stable (Sx), an explicit vocal action, and natural delivery in the same sentence. "
+                "Place dialogue beats in the shots where the corresponding speech occurs and keep their causal order; "
+                "a line may occur in an early, middle, or final shot. Do not use placeholders, summarize what the person "
+                "would say, repeat lines as filler, move every line to the first/final shot, or add a closure that forbids "
+                "later requested speech. Exact source-provided quotations remain immutable and do not consume this "
+                "authorization to write the additionally requested lines."
+            )
+    elif dialogue_authoring:
+        parts.append(
+            "DIALOGUE AUTHORING REQUEST — SUPPRESSED BY VOICE POLICY: The source asks for authored spoken content, "
+            "but the selected voice policy overrides it. Emit no lexical dialogue, <d> blocks, speaker IDs, "
+            "narration, voiceover, or intelligible vocal sound."
+        )
     if resolved == "chained_multishot":
         count = max(0, int(multishot_shot_count or 0))
         locks = [
@@ -937,7 +1088,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- Repeat supplied stable identity, wardrobe, environment, style, and voice facts verbatim where applicable.\n"
             "- End each segment in a concrete chainable visual state and make the following segment compatible with it.\n"
             "- Preserve every intended dialogue occurrence; include coherent physical audio in every segment; use no section/shot labels.\n"
-            "- Treat 2.5 spoken words per second only as a diagnostic planning heuristic, never as permission to invent dialogue.",
+            "- Treat 2.5 spoken words per second only as a diagnostic planning heuristic, never as permission to "
+            + ("write beyond the explicit dialogue-authoring brief." if dialogue_authoring else "invent dialogue."),
             (f"OUTPUT EXACTLY {count} PROMPT ITEMS." if count else
              "Infer the smallest useful number of prompt items from explicit scene/segment structure; default to one."),
             "Return only valid JSON shaped exactly as {\"prompts\":[\"...\"]}.",
@@ -970,8 +1122,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- Preserve explicit age category, gender, character count, identity relationships, wardrobe, object subtype, "
             "and spatial/chronological relationships literally. For example, older/elderly must not become middle-aged "
             "or young, and multiple variants of one person must not become unrelated people.\n"
-            "- Do not invent new characters, plot events, dialogue, branded objects, reference assets, or an ending that "
-            "changes the user's intent. Do not increase gore, damage, or explicitness beyond the source."
+            "- Do not invent new characters, plot events, branded objects, reference assets, or an ending that "
+            "changes the user's intent. "
+            + (
+                "Author dialogue only within the explicit dialogue-writing brief above. "
+                if dialogue_authoring and voice_performance == "audible" else
+                "Do not invent dialogue. "
+            )
+            + "Do not increase gore, damage, or explicitness beyond the source."
         )
     else:
         parts.append(
@@ -997,17 +1155,23 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                 if dialogue_totals[dialogue_key] > 1 else ""
             )
             dialogue_lines.append(f"- {occurrence}<d>[{language}] {quote}</d>")
+        authored_dialogue_note = (
+            " The listed source blocks are immutable anchors, but do not add a no-more-speech closure: the explicit "
+            "dialogue-authoring contract may place additional concrete lines at later requested beats."
+            if dialogue_authoring else
+            " After the final tagged line, describe only silent facial acting, gaze, gesture, and physical action. "
+            "When a short line is followed by a long visual continuation, explicitly state that the speaker closes "
+            "their lips or leaves the frame, then name at least two concrete non-verbal sounds that continuously "
+            "occupy the remainder of the timeline. No character speaks additional words."
+        )
         parts.append(
             "VOICE POLICY — AUDIBLE (official): Assign stable speaker IDs and copy each block exactly once into the "
             "timeline. Do not omit, translate, censor, duplicate, or move it to soundscape. Every affirmative vocal "
             "cue must be in the same sentence as its matching <d> block. For visible dialogue, use a short natural "
             "official vocal sentence with identity, stable ID, action/delivery, and <d>; says, replies, asks, shouts, "
-            "whispers, sings, booms, and compound group IDs are valid. Never use vague 'speaks' or 'delivers the line' cues. "
-            "After the final tagged line, describe only silent facial "
-            "acting, gaze, gesture, and physical action. When a short line is followed by a long visual continuation, "
-            "explicitly state that the speaker closes their lips or leaves the frame, then name at least two concrete "
-            "non-verbal sounds that continuously occupy the remainder of the timeline. No character speaks additional "
-            "words. Never spread one short line across shots. Repeated identical blocks listed below are intentional "
+            "whispers, sings, booms, and compound group IDs are valid. Never use vague 'speaks' or 'delivers the line' cues."
+            + authored_dialogue_note +
+            " Never spread one short line across shots. Repeated identical blocks listed below are intentional "
             "separate utterances at their distinct source beats, not duplicates; keep their recurring source on the "
             "same stable speaker ID:\n" + "\n".join(dialogue_lines)
         )
@@ -1137,12 +1301,32 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "integrated_multimodal_description:\n[Shot 1] ...\n\noverall_soundscape:\n...\n\n"
             "non_diegetic_music:\n..."
         )
+    dialogue_check = (
+        "preserve every exact source-provided line and copy every dialogue-ledger line exactly once"
+        if authored_dialogue_ledger and voice_performance == "audible" else
+        "preserve every exact source-provided line and write the additionally requested concrete dialogue"
+        if dialogue_authoring and voice_performance == "audible" else
+        "use each exact quoted spoken line once and only once"
+        if voice_performance == "audible" else
+        "emit zero audible dialogue and zero lexical source-dialogue text"
+    )
+    dialogue_scope_check = (
+        "author no dialogue beyond the exact ledger and do not invent music"
+        if authored_dialogue_ledger and voice_performance == "audible" and background_score_policy != "add_instrumental" else
+        "author no dialogue beyond the exact ledger and do not invent musical vocals"
+        if authored_dialogue_ledger and voice_performance == "audible" else
+        "write dialogue only within the explicit authoring brief and do not invent music"
+        if dialogue_authoring and voice_performance == "audible" and background_score_policy != "add_instrumental" else
+        "write dialogue only within the explicit authoring brief and do not invent musical vocals"
+        if dialogue_authoring and voice_performance == "audible" else
+        "do not invent dialogue or music"
+        if background_score_policy != "add_instrumental" else
+        "do not invent dialogue or musical vocals"
+    )
     final_checks = [
         "preserve every immutable source fact",
-        ("use each exact quoted spoken line once and only once" if voice_performance == "audible"
-         else "emit zero audible dialogue and zero lexical source-dialogue text"),
-        ("do not invent dialogue or music" if background_score_policy != "add_instrumental"
-         else "do not invent dialogue or musical vocals"),
+        dialogue_check,
+        dialogue_scope_check,
         "use numeric cut times only in later [Shot N] headers",
     ]
     if required_explicit_shots:
@@ -1340,10 +1524,11 @@ def _insert_timeline_instruction(text: str, mode: str, instruction: str) -> str:
 
 
 def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
-    """Remove common implied continuations and close the exact source-dialogue envelope."""
+    """Repair audible dialogue and close only a literal source-dialogue envelope."""
     value = str(text)
     source_contracts = _source_dialogue_contracts(source_prompt)
-    if not source_contracts:
+    dialogue_authoring, _language = _dialogue_authoring_request(source_prompt)
+    if not source_contracts and not dialogue_authoring:
         return value
     # Resolve model-authored speaker placeholders before identity tracking.
     # Use the smallest free positive ID so an existing (S2) does not turn an
@@ -1405,7 +1590,8 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
     repairs: list[tuple[int, int, str]] = []
     vocal_action = (
         r"(?:says?|asks?|replies|responds?|exclaims?|shouts?|whispers?|sings?|chants?|calls?|"
-        r"booms?|repeats?|speaks?|delivers?\s+(?:the\s+)?(?:line|words?))"
+        r"booms?|repeats?|speaks?|explains?|narrates?|describes?|comments?|"
+        r"delivers?\s+(?:the\s+)?(?:line|words?))"
     )
     for dialogue in dialogue_matches:
         sentence_start = max(
@@ -1542,7 +1728,7 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
     )
     matches = list(re.finditer(r"</d>(?:[.,])?", value, flags=re.IGNORECASE))
     canonical_boundary = "After the final tagged line, no character speaks any additional words."
-    if matches and canonical_boundary not in value:
+    if matches and not dialogue_authoring and canonical_boundary not in value:
         end = matches[-1].end()
         value = (
             value[:end]
@@ -1584,7 +1770,7 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         flags=re.IGNORECASE,
     ).strip()
     dialogue_count = len(re.findall(r"<d>.*?</d>", value, flags=re.DOTALL | re.IGNORECASE))
-    if soundscape and dialogue_count:
+    if soundscape and dialogue_count and not dialogue_authoring:
         count_label = {1: "The tagged line is", 2: "The two tagged lines are", 3: "The three tagged lines are"}.get(
             dialogue_count, f"The {dialogue_count} tagged lines are",
         )
@@ -1643,6 +1829,7 @@ def _normalize_suppressed_voice(text: str, source_prompt: str, mode: str, voice_
     )
     value = re.sub(
         r"\b(?:says?|speaks?|speaking|talks?|talking|asks?|shouts?|whispers?|utters?|"
+        r"explains?|explaining|narrates?|narrating|describes?|describing|comments?|commenting|"
         r"delivers?\s+(?:(?:his|her|their|the|required)\s+)?(?:line|phrase))\b\s*:?,?",
         "",
         value,
@@ -1908,7 +2095,9 @@ def normalize_multishot_output(text: str, required_locks: tuple[str, ...] = ()) 
 
 
 def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str,
-                        shot_count: int = 0, required_locks: tuple[str, ...] = ()) -> dict[str, Any]:
+                        shot_count: int = 0, required_locks: tuple[str, ...] = (),
+                        voice_performance: str = "audible",
+                        authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     try:
@@ -1939,6 +2128,8 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
             warnings.append("Few concrete source attributes repeat across independent prompts; identity or scene continuity may drift")
     source_contracts = _source_dialogue_contracts(source_prompt)
     spoken_keys = {_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts}
+    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(source_prompt)
+    dialogue_authoring = dialogue_authoring and voice_performance == "audible"
 
     def item_spoken_keys(item: str) -> list[str]:
         raw = [_dialogue_lexical_key(quote) for quote in _QUOTED_RE.findall(item)]
@@ -1957,6 +2148,62 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
             errors.append(f"Chained prompts omitted or changed spoken dialogue occurrences: {missing}")
         if extra:
             errors.append(f"Chained prompts invented or duplicated spoken dialogue occurrences: {extra}")
+
+    authored_blocks = []
+    unexpected_blocks = []
+    for item_number, item in enumerate(prompts, start=1):
+        for match in re.finditer(r"<d>(.*?)</d>", item, flags=re.DOTALL | re.IGNORECASE):
+            inner = match.group(1).strip()
+            spoken = re.sub(r"^\[[^\]]+\]\s*", "", inner)
+            if _dialogue_lexical_key(spoken) in spoken_keys:
+                continue
+            if dialogue_authoring:
+                authored_blocks.append((item_number, inner))
+            else:
+                unexpected_blocks.append(spoken)
+    if unexpected_blocks:
+        errors.append(f"Chained prompts invented dialogue without an explicit authoring request: {unexpected_blocks}")
+    if dialogue_authoring and not authored_blocks:
+        errors.append(
+            "Explicit dialogue authoring request requires at least one concrete language-tagged <d> line in the "
+            "chained prompts"
+        )
+    for item_number, inner in authored_blocks:
+        match = re.match(r"\[([^\]]+)\]\s+(.*)", inner, flags=re.DOTALL)
+        if not match:
+            errors.append(f"Authored dialogue in chained prompt item {item_number} requires a language tag")
+            continue
+        language, words = match.groups()
+        if (dialogue_authoring_language != "Original language"
+                and language.strip().casefold() != dialogue_authoring_language.casefold()):
+            errors.append(
+                f"Authored dialogue in chained prompt item {item_number} must use "
+                f"[{dialogue_authoring_language}], observed [{language.strip()}]"
+            )
+        if re.fullmatch(
+            r"(?:\[.*?\]|<.*?>|dialogue|dialog|line|speech|spoken words?|concrete authored words|"
+            r"to be (?:written|generated)|di[aá]logo|l[ií]nea|frase|palabras)",
+            re.sub(r"\s+", " ", words).strip(),
+            flags=re.IGNORECASE,
+        ):
+            errors.append(f"Authored dialogue in chained prompt item {item_number} must use concrete speakable words")
+    if authored_dialogue_ledger:
+        expected_ledger = Counter(
+            (language.casefold(), re.sub(r"\s+", " ", text).strip())
+            for language, text in authored_dialogue_ledger
+        )
+        observed_ledger = Counter()
+        for _item_number, inner in authored_blocks:
+            match = re.match(r"\[([^\]]+)\]\s+(.*)", inner, flags=re.DOTALL)
+            if match:
+                observed_ledger[(match.group(1).strip().casefold(), re.sub(r"\s+", " ", match.group(2)).strip())] += 1
+        if observed_ledger != expected_ledger:
+            missing = list((expected_ledger - observed_ledger).elements())
+            extra = list((observed_ledger - expected_ledger).elements())
+            if missing:
+                errors.append(f"Planned dialogue ledger lines are missing or changed in chained prompts: {missing}")
+            if extra:
+                errors.append(f"Chained prompts added dialogue outside the planned ledger: {extra}")
 
     dialogue_items = _source_dialogue_shot_indices(source_prompt)
     if prompts and len(dialogue_items) == len(source_contracts) and _explicit_shot_segments(source_prompt):
@@ -2000,7 +2247,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     frame_count: int = 0,
                     multishot_identity_lock: str = "",
                     multishot_voice_lock: str = "",
-                    multishot_setting_lock: str = "") -> dict[str, Any]:
+                    multishot_setting_lock: str = "",
+                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
     reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -2010,6 +2258,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         locks = (multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
         report = _validate_multishot(
             prompt, profile["effectiveDurationSeconds"], source_prompt, multishot_shot_count, locks,
+            voice_performance, authored_dialogue_ledger,
         )
         parsed = parse_media_manifest(media_manifest)
         report["errors"].extend(parsed["errors"])
@@ -2127,10 +2376,27 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     source_contracts = _source_dialogue_contracts(source_prompt)
     contracts = source_contracts if voice_performance == "audible" else []
+    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(source_prompt)
+    reference_dialogue = manifest_dialogue(media_manifest)
+
+    def dialogue_text(item: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", item.strip()))
+
     dialogue_match_objects = list(re.finditer(r"<d>.*?</d>", timeline, flags=re.DOTALL | re.IGNORECASE))
-    for contract, dialogue_match in zip(contracts, dialogue_match_objects):
-        _language, _quote, internal = contract
-        if internal:
+    internal_remaining = Counter(
+        _dialogue_lexical_key(quote) for _language, quote, internal in contracts if internal
+    )
+    reference_remaining = Counter(
+        _dialogue_lexical_key(transcript) for _source, _language, transcript in reference_dialogue
+    )
+    for dialogue_match in dialogue_match_objects:
+        spoken = dialogue_text(re.sub(r"^<d>|</d>$", "", dialogue_match.group(0), flags=re.IGNORECASE))
+        spoken_key = _dialogue_lexical_key(spoken)
+        if internal_remaining[spoken_key]:
+            internal_remaining[spoken_key] -= 1
+            continue
+        if reference_remaining[spoken_key]:
+            reference_remaining[spoken_key] -= 1
             continue
         sentence_start = max(
             timeline.rfind(".", 0, dialogue_match.start()),
@@ -2139,16 +2405,21 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             timeline.rfind("[Shot", 0, dialogue_match.start()),
         )
         prefix = timeline[(0 if sentence_start < 0 else sentence_start + 1):dialogue_match.start()]
+        if re.search(r"says\s+in\s+an\s+off-screen\s+voiceover", prefix, flags=re.IGNORECASE):
+            if not re.search(r"\(S\d+\).*?says\s+in\s+an\s+off-screen\s+voiceover", prefix, flags=re.IGNORECASE):
+                errors.append("Every authored off-screen voiceover must keep a stable (Sx) ID beside its named source")
+            continue
         if not re.search(
             r"\(S\d+(?:\s*,\s*S\d+)*\).*?\b(?:say|says|reply|replies|shout|shouts|whisper|whispers|"
             r"ask|asks|sing|sings|chant|chants|call|calls|exclaim|exclaims|respond|responds|"
-            r"boom|booms|repeat|repeats|speak|speaks|deliver|delivers)\b[^.!?]*$",
+            r"boom|booms|repeat|repeats|speak|speaks|explain|explains|narrate|narrates|describe|describes|"
+            r"comment|comments|deliver|delivers)\b[^.!?]*$",
             prefix, flags=re.IGNORECASE,
         ):
             errors.append(
                 "Visible dialogue must keep a stable (Sx) ID and an explicit vocal action in the same sentence as <d>"
             )
-    if contracts and dialogue_match_objects and float(duration_seconds) >= 8.0:
+    if contracts and not dialogue_authoring and dialogue_match_objects and float(duration_seconds) >= 8.0:
         post_dialogue = timeline[dialogue_match_objects[-1].end():]
         if len(re.findall(r"\b[\wÀ-ÿ'-]+\b", post_dialogue)) >= 35:
             sound_cues = set(re.findall(
@@ -2163,21 +2434,88 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     "A long visual continuation after short dialogue must name at least two concrete non-verbal "
                     "sounds in the remaining timeline"
                 )
-    untagged_speech = _untagged_speech_actions(timeline) if contracts else []
+    untagged_speech = _untagged_speech_actions(timeline) if (contracts or dialogue_authoring) else []
     if untagged_speech:
         errors.append(
             "Affirmative speaking cues outside their exact <d> sentence can create extra dialogue: "
             + repr(untagged_speech)
         )
 
-    def dialogue_text(item: str) -> str:
-        return re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", item.strip()))
-
-    reference_dialogue = manifest_dialogue(media_manifest)
     normalized_expected = Counter(quote for _language, quote, _internal in contracts)
     normalized_expected.update(text for _source, _language, text in reference_dialogue)
     normalized_timeline = Counter(dialogue_text(item) for item in timeline_dialogue)
-    if normalized_timeline != normalized_expected:
+    if dialogue_authoring and voice_performance == "audible":
+        missing = list((normalized_expected - normalized_timeline).elements())
+        if missing:
+            errors.append(f"Required spoken dialogue is missing or duplicated incorrectly: {missing}")
+        duplicated_required = [
+            text
+            for text, observed_count in normalized_timeline.items()
+            if text in normalized_expected and observed_count > normalized_expected[text]
+            for _index in range(observed_count - normalized_expected[text])
+        ]
+        if duplicated_required:
+            errors.append(
+                "Required source/reference dialogue was duplicated beyond its authored occurrences: "
+                f"{duplicated_required}"
+            )
+        remaining_expected = normalized_expected.copy()
+        authored_blocks = []
+        for item in timeline_dialogue:
+            spoken = dialogue_text(item)
+            if remaining_expected[spoken]:
+                remaining_expected[spoken] -= 1
+            elif spoken not in normalized_expected:
+                authored_blocks.append(item)
+        if not authored_blocks:
+            errors.append(
+                "Explicit dialogue authoring request requires at least one concrete language-tagged <d> line"
+            )
+        requested_tag = dialogue_authoring_language.casefold()
+        wrong_language = []
+        placeholders = []
+        for item in authored_blocks:
+            match = re.match(r"\[([^\]]+)\]\s+(.*)", item.strip(), flags=re.DOTALL)
+            if not match:
+                continue
+            if requested_tag != "original language" and match.group(1).strip().casefold() != requested_tag:
+                wrong_language.append(match.group(1).strip())
+            words = re.sub(r"\s+", " ", match.group(2)).strip()
+            if re.fullmatch(
+                r"(?:\[.*?\]|<.*?>|dialogue|dialog|line|speech|spoken words?|concrete authored words|"
+                r"to be (?:written|generated)|di[aá]logo|l[ií]nea|frase|palabras)",
+                words,
+                flags=re.IGNORECASE,
+            ):
+                placeholders.append(words)
+        if wrong_language:
+            errors.append(
+                f"Explicit dialogue authoring request requires [{dialogue_authoring_language}] on every newly "
+                f"authored line; observed {wrong_language}"
+            )
+        if placeholders:
+            errors.append(f"Authored dialogue must contain concrete speakable words, not placeholders: {placeholders}")
+        if authored_dialogue_ledger:
+            expected_ledger = Counter(
+                (language.casefold(), re.sub(r"\s+", " ", text).strip())
+                for language, text in authored_dialogue_ledger
+            )
+            observed_ledger = Counter()
+            for item in authored_blocks:
+                match = re.match(r"\[([^\]]+)\]\s+(.*)", item.strip(), flags=re.DOTALL)
+                if match:
+                    observed_ledger[(
+                        match.group(1).strip().casefold(),
+                        re.sub(r"\s+", " ", match.group(2)).strip(),
+                    )] += 1
+            if observed_ledger != expected_ledger:
+                missing = list((expected_ledger - observed_ledger).elements())
+                extra = list((observed_ledger - expected_ledger).elements())
+                if missing:
+                    errors.append(f"Planned dialogue ledger lines are missing or changed: {missing}")
+                if extra:
+                    errors.append(f"Dialogue outside the planned ledger is not allowed: {extra}")
+    elif normalized_timeline != normalized_expected:
         missing = list((normalized_expected - normalized_timeline).elements())
         extra = list((normalized_timeline - normalized_expected).elements())
         if missing:
@@ -2266,11 +2604,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         cue_window = (source_prompt or "")[max(0, match.start() - 100):match.start()]
         if voice_performance == "audible" and _SPEECH_CUE_RE.search(cue_window) and match.group(1) not in tagged_dialogue:
             errors.append(f"Quoted spoken dialogue must appear inside a language-tagged <d> block: {match.group(1)!r}")
-    source_requests_voiceover = re.search(
-        r"\b(?:voice[ -]?over|narrat(?:e|es|ed|ion)|off-screen voice|voz en off|narraci[oó]n|"
-        r"voice\s+in\s+off|think|thinks|thinking|thought|piensa|pensando|pensamiento|reflexiona|reflexionando|mon[oó]logo)\b",
-        source_prompt or "",
-        flags=re.IGNORECASE,
+    source_requests_voiceover = (
+        _source_requests_offscreen_voice(source_prompt)
+        or any(internal for _language, _quote, internal in source_contracts)
     )
     if (re.search(r"\b(?:off-screen voiceover|voice[ -]?over|voz en off)\b", text, re.IGNORECASE)
             and (not source_requests_voiceover or voice_performance != "audible")):

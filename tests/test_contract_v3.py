@@ -159,6 +159,30 @@ def test_multishot_allows_delivery_punctuation_but_preserves_dialogue_allocation
     )["valid"]
 
 
+def test_multishot_authors_requested_spanish_dialogue_in_its_scene_beats():
+    source = (
+        "In scene 1 an influencer explains the Alhambra garden in Spanish. Cut scene to the fountain, where she "
+        "explains why the water matters in Spanish. Generate concrete dialogue for both scenes."
+    )
+    prompt = json.dumps({"prompts": [
+        "The influencer (S1) says brightly: <d>[Spanish] Este jardín parece tejido con agua y luz.</d>.",
+        "Beside the fountain, the influencer (S1) explains softly: <d>[Spanish] El agua refresca y ordena todo el patio.</d>.",
+    ]})
+    report = validate_prompt(
+        prompt, "chained_multishot", 8, source, multishot_shot_count=2,
+    )
+    assert report["valid"], report
+
+    missing_tags = json.dumps({"prompts": [
+        'The influencer says "Este jardín es precioso."',
+        "She silently studies the fountain.",
+    ]})
+    report = validate_prompt(
+        missing_tags, "chained_multishot", 8, source, multishot_shot_count=2,
+    )
+    assert any("dialogue authoring request" in error.lower() for error in report["errors"])
+
+
 def test_dialogue_repair_reuses_speaker_id_for_same_named_actor_and_pronoun():
     source = 'The woman says "One." Then she replies "Two."'
     generated = """integrated_multimodal_description:

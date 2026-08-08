@@ -167,6 +167,116 @@ N/A"""
     assert validation["valid"]
 
 
+def test_pipeline_repairs_omitted_requested_dialogue_and_keeps_multiple_shot_beats():
+    source = (
+        "An arabic influencer with her cellphone goes back in time to the Alhambra at Granada during 1492, "
+        "and explains in spanish what she sees. She walks around the garden and the fountain, although some "
+        "muslim men look at her suspiciously. Generate the dialogue for her based on the scenario."
+    )
+    omitted = """integrated_multimodal_description:
+[Shot 1] An Arabic influencer records herself while walking through the Alhambra gardens in 1492. Several local men watch her suspiciously.
+
+overall_soundscape:
+Water trickles through the fountain and leaves rustle.
+
+non_diegetic_music:
+N/A"""
+    repaired = """integrated_multimodal_description:
+[Shot 1] An Arabic influencer records herself beside the Alhambra garden fountain in 1492. The influencer (S1) says brightly: <d>[Spanish] Estoy en la Alhambra, en pleno 1492.</d>.
+[Shot 2] At 00:04.000, she walks past the fountain as several local Muslim men watch her suspiciously. The influencer (S1) whispers: <d>[Spanish] Esta fuente es increíble; creo que me están observando.</d>.
+
+overall_soundscape:
+Water trickles, leaves rustle, and footsteps cross the stone path.
+
+non_diegetic_music:
+N/A"""
+    ledger = json.dumps({"lines": [
+        {"language": "Spanish", "text": "Estoy en la Alhambra, en pleno 1492."},
+        {"language": "Spanish", "text": "Esta fuente es increíble; creo que me están observando."},
+    ]}, ensure_ascii=False)
+    completions = iter((ledger, omitted, repaired))
+    requests = []
+
+    def complete(messages):
+        requests.append(messages[-1]["content"])
+        return next(completions)
+
+    result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        source, "t2va", 8.0, "", complete, 1, {"provider": "test"},
+    )
+    assert validation["valid"], validation
+    assert manifest["repairAttemptsUsed"] == 1
+    assert manifest["dialogueLedgerLineCount"] == 2
+    assert manifest["dialoguePlanningRepairAttemptsUsed"] == 0
+    assert result.count("<d>[Spanish]") == 2
+    assert "[Shot 2] At 00:04.000," in result
+    assert "After the final tagged line" not in result
+    assert "MAXIMUM LINES: 2" in requests[0]
+    assert "AUTHORITATIVE DIALOGUE LEDGER" in requests[1]
+    assert "MANDATORY DIALOGUE LEDGER REPAIR" in requests[-1]
+
+
+def test_invalid_dialogue_ledger_fails_before_a_silent_main_prompt_can_be_accepted():
+    calls = []
+
+    def complete(messages):
+        calls.append(messages)
+        return "not json"
+
+    with pytest.raises(RuntimeError, match="Dialogue planning failed: ledger must be valid JSON"):
+        prompt_enhancer.enhance_prompt_with_completion(
+            "Generate short Spanish dialogue for a presenter.",
+            "t2va", 5.0, "", complete, 0, {"provider": "test"},
+        )
+    assert len(calls) == 1
+
+
+def test_dialogue_ledger_can_repair_once_before_the_main_generation():
+    ledger = '{"lines":[{"language":"Spanish","text":"Bienvenidos al jardín."}]}'
+    final_prompt = """integrated_multimodal_description:
+[Shot 1] A presenter (S1) says warmly: <d>[Spanish] Bienvenidos al jardín.</d>.
+
+overall_soundscape:
+Water trickles nearby.
+
+non_diegetic_music:
+N/A"""
+    completions = iter(("invalid ledger", ledger, final_prompt))
+    result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "Generate short Spanish dialogue for a presenter. No music.",
+        "t2va", 5.0, "", lambda _messages: next(completions), 1, {"provider": "test"},
+    )
+    assert validation["valid"], validation
+    assert "<d>[Spanish] Bienvenidos al jardín.</d>" in result
+    assert manifest["dialoguePlanningRepairAttemptsUsed"] == 1
+    assert manifest["repairAttemptsUsed"] == 0
+
+
+def test_dialogue_ledger_cannot_relabel_a_source_quote_as_new_authored_text():
+    with pytest.raises(ValueError, match="duplicates source-provided dialogue"):
+        prompt_enhancer._parse_dialogue_ledger(
+            '{"lines":[{"language":"Spanish","text":"Hola."}]}',
+            "Spanish", 2, 10,
+            'The presenter says in Spanish "Hola." Then generate another Spanish line.',
+        )
+
+
+def test_non_authoring_pipeline_keeps_the_original_single_completion_path():
+    calls = []
+
+    def complete(messages):
+        calls.append(messages)
+        return VALID_PROMPT
+
+    _result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley. No music.",
+        "t2va", 5.0, "", complete, 0, {"provider": "test"},
+    )
+    assert validation["valid"]
+    assert len(calls) == 1
+    assert manifest["dialogueLedgerLineCount"] == 0
+
+
 def test_pipeline_applies_silent_audio_policy_and_records_manifest():
     source = 'A presenter says in Spanish "Esto funciona", then smiles. No music.'
     completion = """integrated_multimodal_description:
