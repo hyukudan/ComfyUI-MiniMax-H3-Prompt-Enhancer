@@ -389,6 +389,10 @@ function ensureFieldTitleStyles() {
         .widget-item .minimax-h3-field-title {
             display: none;
         }
+        .minimax-h3-panel-suspended {
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
         .minimax-h3-creative-panel {
             display: flex;
             flex-direction: column;
@@ -1555,9 +1559,38 @@ function rebalanceExactDurations(node, state = node.__minimaxShotPlanState) {
     });
 }
 
+function syncCreativePanelSuspension(node) {
+    // A collapsed node keeps its DOM widget mounted (hideOnZoom: false keeps it
+    // interactive at every zoom), and frontends have shipped versions that do not
+    // hide DOM widgets of collapsed nodes. An invisible panel would then keep
+    // capturing clicks over whatever sits behind the node's expanded footprint.
+    // Suspend interactivity explicitly whenever the node is collapsed.
+    const root = node.__minimaxCreativePanel?.root;
+    if (root) root.classList.toggle("minimax-h3-panel-suspended", Boolean(node.flags?.collapsed));
+}
+
+function installCreativePanelCollapseGuard(node) {
+    if (node.__minimaxPanelCollapseGuard) return;
+    node.__minimaxPanelCollapseGuard = true;
+    const originalCollapse = node.collapse;
+    node.collapse = function () {
+        const result = originalCollapse?.apply(this, arguments);
+        syncCreativePanelSuspension(this);
+        return result;
+    };
+    const originalConfigure = node.onConfigure;
+    node.onConfigure = function () {
+        const result = originalConfigure?.apply(this, arguments);
+        // Workflows saved with the node collapsed restore flags after creation.
+        syncCreativePanelSuspension(this);
+        return result;
+    };
+}
+
 function updateCreativePanelHeight(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel) return;
+    syncCreativePanelSuspension(node);
     let preferredHeight = 12;
     for (const details of panel.root.querySelectorAll(":scope > details")) {
         if (details.classList.contains("minimax-h3-section-hidden")) continue;
@@ -1616,6 +1649,7 @@ function releaseCreativeDirectionPanel(node) {
         if (panelIndex >= 0) node.widgets.splice(panelIndex, 1);
     }
     node.__minimaxCreativePanel = null;
+    node.__minimaxPanelCollapseGuard = false;
     node.__minimaxCreativeTreatmentState = null;
     node.__minimaxCinematographyState = null;
     node.__minimaxShotPlanState = null;
@@ -2756,6 +2790,8 @@ function addCreativeDirectionPanel(node) {
     };
     observeCreativePanelLayout(node);
     installCreativePanelCleanup(node);
+    installCreativePanelCollapseGuard(node);
+    syncCreativePanelSuspension(node);
     const managedNames = new Set([
         ...(modelSetup?.canonicalNames ?? []),
         ...(chainedSettings?.canonicalNames ?? []),
