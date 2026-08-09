@@ -173,7 +173,8 @@ def test_discovery_lists_comfy_gguf_models_and_llama_server(monkeypatch, tmp_pat
     model = llm_root / "model.gguf"
     model.write_bytes(b"GGUF")
     (llm_root / "mmproj-model.gguf").write_bytes(b"GGUF")
-    server = tmp_path / "prompt_enhancers" / "runtimes" / "llama" / "llama-server.exe"
+    server_name = "llama-server.exe" if gguf_server.os.name == "nt" else "llama-server"
+    server = tmp_path / "prompt_enhancers" / "runtimes" / "llama" / server_name
     server.parent.mkdir(parents=True)
     server.write_bytes(b"runtime")
     monkeypatch.setitem(sys.modules, "folder_paths", types.SimpleNamespace(

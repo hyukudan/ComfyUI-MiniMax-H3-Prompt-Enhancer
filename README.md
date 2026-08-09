@@ -8,7 +8,7 @@ Guide-constrained prompt enhancement, repair, and validation nodes for MiniMax H
 
 The main node turns a short request into MiniMax H3's documented audiovisual prompt structure. It can use either:
 
-1. an OpenAI-compatible endpoint such as LM Studio; or
+1. an OpenAI-compatible endpoint, including services exposed by Ollama, LM Studio, or another provider; or
 2. a local GGUF selected from `ComfyUI/models/llm_gguf`, launched through an isolated `llama-server` process.
 
 The package does not bundle model weights or llama.cpp, does not inspect reference pixels, and does not replace H3 conditioning. It prepares and validates text for native or custom H3 workflows.
@@ -66,7 +66,7 @@ Validation is a structural gate. It cannot guarantee visual quality, identity fi
 | Route | Runtime | Best for | Memory lifecycle |
 |---|---|---|---|
 | OpenAI-compatible | LM Studio, Ollama, or another compatible API | Existing local/remote LLM services | Controlled by that service |
-| Local GGUF | Standalone `llama-server` | Direct use of GGUF files without LM Studio running | Close after every prompt by default, or keep loaded on request |
+| Local GGUF | Standalone `llama-server` | Direct use of GGUF files without a separate API server | Close after every prompt by default, or keep loaded on request |
 | Existing ComfyUI LLM node | QwenVL/GGUF/other node plus Guide Builder | Reusing a loader already present in the graph | Controlled by that node |
 
 ### Why standalone llama-server?
@@ -87,10 +87,10 @@ have placed a compatible runtime under the discovered directory; that runtime ca
 
 ## Quick start
 
-### Remote or LM Studio
+### OpenAI-compatible server
 
 1. Install the node pack and restart ComfyUI.
-2. Start an OpenAI-compatible server. LM Studio commonly uses `http://127.0.0.1:1234/v1`.
+2. Start an OpenAI-compatible server. Common local API roots include Ollama's `http://127.0.0.1:11434/v1` and LM Studio's `http://127.0.0.1:1234/v1`.
 3. Add **MiniMax H3 Prompt Enhancer** from `MiniMax H3 → Prompting`.
 4. Open **Model setup** and select **OpenAI-compatible API**.
 5. Enter the endpoint and API key if required, then press **Refresh API model list**.
@@ -106,7 +106,7 @@ have placed a compatible runtime under the discovered directory; that runtime ca
 
 Loopback endpoints work by default. Sending prompts to another host requires `allow_remote_endpoint=true`.
 
-### Local GGUF without LM Studio
+### Local GGUF without a separate API server
 
 1. Install a current official llama.cpp build containing `llama-server` or `llama-server.exe`.
 2. Place one or more text-generation GGUF files in `ComfyUI/models/llm_gguf/`.
@@ -1036,7 +1036,7 @@ and `autonomous=false`.
 MiniMax's guide requires spoken content inside a dialogue block:
 
 ```text
-The speaker (S1) says: <d>[Catalan] A ver, cabrones, quiero flaó de ese</d>.
+The speaker (S1) says warmly: <d>[Catalan] Bon dia, m'alegra molt veure't.</d>.
 ```
 
 The enhancer now creates an explicit mandatory-dialogue contract before generation and performs deterministic post-normalization:
@@ -1598,8 +1598,8 @@ route the fragment around the guard.
 
 ### Model discovery fails or returns non-JSON
 
-Confirm that the endpoint is the OpenAI-compatible API root (for LM Studio, commonly
-`http://127.0.0.1:1234/v1`), not its web page and not the full `/chat/completions` URL. Restart ComfyUI once after
+Confirm that the endpoint is the OpenAI-compatible API root (commonly `http://127.0.0.1:11434/v1` for Ollama or
+`http://127.0.0.1:1234/v1` for LM Studio), not its web page and not the full `/chat/completions` URL. Restart ComfyUI once after
 installing a version that introduces the discovery backend, then use `Ctrl+F5`. A 404/405 generally means that route
 has not been loaded yet. A server that does not implement `/models` can still be used: type the exact server model ID
 manually. Blank **API model ID** requires a working `/models` response.
@@ -1608,9 +1608,9 @@ manually. Blank **API model ID** requires a working `/models` response.
 
 Update llama.cpp. A new GGUF quantization may be newer than the selected runtime. This is one reason the extension does not pin an in-process `llama-cpp-python` wheel.
 
-### GGUF enhancement is slower than LM Studio
+### Managed GGUF enhancement is slower than an already-running API server
 
-Per-run mode includes process startup and model loading. Enable `keep_server_loaded` for repeated prompt iteration when sufficient VRAM is available, or use the already-running LM Studio endpoint.
+Per-run mode includes process startup and model loading. Enable `keep_server_loaded` for repeated prompt iteration when sufficient VRAM is available, or use an already-running OpenAI-compatible endpoint such as Ollama or LM Studio.
 
 ### `input out of range` after updating the node
 
