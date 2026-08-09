@@ -18,6 +18,7 @@ The package does not bundle model weights or llama.cpp, does not inspect referen
 - [Why use it?](#why-use-it)
 - [Backend design](#backend-design)
 - [Quick start](#quick-start)
+- [Get the best result](#get-the-best-result)
 - [Interface behavior](#interface-behavior)
 - [Nodes](#nodes)
 - [Exact wiring](#exact-wiring)
@@ -96,8 +97,10 @@ have placed a compatible runtime under the discovered directory; that runtime ca
 6. Choose the model under **Available API models**, or type its exact server ID into **API model ID**. Leaving the ID blank asks the node to choose a suitable chat/instruct model automatically.
 7. Start with `mode=auto`, `enhance_description=true`, and the default audio policies. Select a creative treatment or
    add explicit shot rows only when you want those constraints.
-8. Connect `enhanced_prompt` to H3 conditioning, `duration_seconds` to the downstream duration control, and optionally
-   route `aspect_ratio` to geometry-selection logic. Inspect
+8. In normal modes, connect `enhanced_prompt` to H3 conditioning, `duration_seconds` to the downstream duration
+   control, and optionally route `aspect_ratio` to geometry-selection logic. In `chained_multishot`, do not send the
+   whole JSON object to H3: select or iterate its individual `prompts` and run one H3 generation per item.
+   Inspect
    `validation_report.valid` before a costly render; a completed LLM request can still return a structurally invalid
    best candidate.
 
@@ -116,6 +119,113 @@ Loopback endpoints work by default. Sending prompts to another host requires `al
 The direct-GGUF route is text-only. Select the language-model GGUF, not an `mmproj` file. `gpu_layers=auto`,
 `context_size=16384`, `threads=0`, and `startup_timeout=180` are safe starting values. The first request includes
 model startup; later requests are faster only when `keep_server_loaded=true`.
+
+## Get the best result
+
+### Choose the mode by the role of the supplied media
+
+`auto` can resolve from explicit labels and media metadata, but an explicit mode is clearer when the media's role is
+already known. The same image file can require different modes depending on how H3 should use it:
+
+| What H3 receives | Use |
+|---|---|
+| No reference media | `t2va` |
+| One image that must be the exact first frame | `i2va` |
+| Exact first and last frames | `fl2va` |
+| One image that must be the exact last frame | `l2va` |
+| Identity, appearance, object, style, motion, camera, video-edit, continuation, or audio references | `ref2va` |
+| Several autonomous H3 generations that will be assembled or chained later | `chained_multishot` |
+
+An identity image is not automatically I2VA: use Ref2VA when it supplies who or what should appear but is not the
+literal opening frame. `reference_context` and `media_manifest` describe roles; this node never inspects connected
+pixels, frames, or waveforms.
+
+### Write a source prompt that gives the enhancer facts to preserve
+
+The enhancer can develop direction, but it should not invent the central content. For demanding scenes, state as many
+of these as matter:
+
+- subject count, identity, age category, appearance, wardrobe, and which reference supplies each element;
+- location, time, weather, important props, and initial spatial relationships;
+- actions in causal order, including actor, limb or manipulated object, contact point, physical response, and resulting
+  state when interaction matters;
+- the required final visible state, especially ownership, position, open/closed state, damage, or transformation;
+- whether the scene is one continuous take or where literal cuts occur;
+- any indispensable shot scale, viewpoint, camera move, or point-of-view owner;
+- exact spoken words and their language, and exact visible text;
+- required ambience, physical sounds, music, or explicit absence of them.
+
+Use straight double quotes only for literal dialogue, lyrics, or visible text, not for emphasis. Structural prompt prose
+is written in English because that is the official H3 contract; dialogue, lyrics, and visible text retain their exact
+authored language.
+
+Example source prompt:
+
+```text
+One continuous 8-second shot. The same adult mechanic from image 1, wearing the supplied blue coveralls, approaches
+the left-hand-drive red coupe from its driver's side. She grips the exterior handle with her right hand, pulls the
+door fully open, steps in left leg first, sits behind the steering wheel, brings her right leg inside, and closes the
+door. Keep the car, handle, door hinge, her hands, and both feet readable during contact. She ends seated behind the
+wheel with the door closed, looks at camera, and says in Spanish: "Vamos." No background music.
+```
+
+This is more useful than a longer list of adjectives because it gives H3 observable geometry, contacts, continuity,
+causality, and an exact ending.
+
+### Understand precedence
+
+The controls resolve by domain rather than through one ambiguous global ranking:
+
+1. Content facts come from the Basic prompt, connected-reference metadata, exact text/dialogue, explicit shot rows,
+   and chained identity/voice/setting locks. The enhancer cannot replace them.
+2. Audio policies are absolute gates for ambience/foley, audience-only score, and voice performance. Creative profiles
+   cannot turn a disabled layer back on.
+3. A specific instruction in a shot row or source/reference description overrides a conflicting global presentation
+   preference for that shot.
+4. Global Cinematography overrides conflicting Creative direction advice in the same presentation domain.
+5. Creative direction and active description enhancement fill only compatible unspecified direction.
+
+Examples: `action + Static shot` retains action staging without camera movement; `dark + high-key` keeps the explicit
+high-key exposure while dark can still influence pacing or performance; a reference-authoritative red jacket remains
+red even if monochrome treatment would otherwise apply.
+
+### What Enhance description changes
+
+| Behavior | Enabled | Disabled |
+|---|---|---|
+| Convert to the documented H3 structure | yes | yes |
+| Preserve source facts, exact text, references, timing, and audio gates | yes | yes |
+| Creative direction | applied to unspecified direction | stored but not applied |
+| Cinematography | applied | applied |
+| Explicit Shot/Segment plan | applied | applied |
+| Develop composition, blocking, performance, light, materials, camera, continuity, and permitted sound | active | minimum needed for coherence |
+| Chained items | richly developed autonomous segments | conservative autonomous adaptation |
+
+When enabled, the LLM is instructed to make every addition visibly observable or audibly motivated. It establishes
+shot scale, composition, positions, orientation, eyelines, prop state, actions/reactions, state changes, material
+response, permitted sound, and a concrete ending in playback order. It preserves screen direction, handed contact,
+object possession, and open/closed or intact/changed states across cuts. It prefers specific geometry, material,
+position, motion, and cause-and-effect over generic cinematic adjectives.
+
+`max_tokens=4096` is normally ample. If the result is complete but shallow, supply more concrete facts, use only the
+profiles that add useful direction, select a stronger instruct model explicitly, and inspect warnings. Increasing the
+token ceiling alone does not force depth, and a Ref2VA result below the recommended 350 words is a warning rather than
+an automatic repair trigger. Increase both output and context capacity only for genuinely truncated output,
+dialogue-dense Ref2VA, or large chained packages; repairs also need context for the previous complete candidate.
+
+### Practical recipes
+
+- **Simple T2VA:** describe the event and ending, keep `mode=auto` or `t2va`, enable description enhancement, and leave
+  optional panels neutral until the basic result is stable.
+- **Exact first-frame animation:** use `i2va`, describe what must develop after Picture 1, and avoid re-describing a
+  conflicting opening composition.
+- **Identity + motion + voice:** use Ref2VA; define which Picture supplies identity, which Video supplies motion, and
+  which Audio supplies voice. Use a media manifest when those bindings must be machine-validated.
+- **Precise edit:** add Shot plan rows in exact narrative order. Use exact timing only when the boundary matters;
+  otherwise let the LLM distribute the effective duration.
+- **Long sequence:** use `chained_multishot`, give each Segment plan row one autonomous causal unit, repeat only stable
+  facts through the locks, and generate each returned JSON item separately. The schema limit of 64 items is not a
+  practical recommendation; split very large sequences into manageable batches.
 
 ## Interface behavior
 
@@ -164,10 +274,10 @@ Outputs:
 
 | Output | Meaning |
 |---|---|
-| `enhanced_prompt` | Normalized prompt for H3 conditioning |
+| `enhanced_prompt` | Normalized prompt for H3 conditioning in normal modes; canonical `{"prompts":[...]}` in `chained_multishot` |
 | `validation_report` | Resolved mode, errors, and recommendations |
 | `enhancement_manifest` | Backend/model/mode/memory metadata; never contains an API key |
-| `duration_seconds` | Effective downstream duration; when exact frames are set this is `frame_count / 24` |
+| `duration_seconds` | Effective downstream duration; in chained mode this is the duration of each independent segment, not their combined runtime |
 | `aspect_ratio` | Selected target geometry (`auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, or `9:16`) for downstream routing; it does not calculate pixels |
 
 Shared controls:
@@ -267,7 +377,7 @@ model is loaded. With `unload=true` it returns `unloaded=true` only when a cache
 
 Builds `system_prompt`, `user_prompt`, and `resolved_mode` without calling an LLM. Connect the two prompt outputs to an
 existing QwenVL, GGUF, Ollama, or other text-generation node, preserving their system/user roles, then validate its
-result. It exposes the same mode, duration, reference, creative, shot-plan, audio, aspect, frame, and chained-lock
+result. It exposes the same mode, duration, reference, creative, cinematography, shot-plan, audio, aspect, frame, and chained-lock
 controls as the enhancer, but no model/runtime or repair controls. It does not normalize or repair the external
 model's answer.
 
@@ -275,14 +385,20 @@ model's answer.
 
 Validates enhanced or manually authored prompts without running an LLM. It returns the original `prompt` unchanged,
 a `valid` boolean, and a JSON `validation_report`. Set `source_prompt` to the original request and mirror the same
-mode, duration, reference, media, audio, aspect, frame, chained-lock, creative-treatment, and shot-plan controls used
+mode, duration, reference, media, audio, aspect, frame, chained-lock, creative-treatment, cinematography, and shot-plan controls used
 to build the text. Omitting that context prevents source-fidelity checks from knowing what must be preserved.
 
 The Validator checks section order, exact keyframe alignment, shot numbering/timing, explicit-plan boundaries,
 language-tagged dialogue, exact quoted and visible text, audio policies, reference labels, retention markers, media
-limits, and generation geometry. It checks creative-treatment JSON for a valid supported configuration, but it
-cannot prove that free-form prose aesthetically realizes a selected profile. Errors make `valid=false`; warnings are
+limits, and generation geometry. It checks creative-treatment and cinematography JSON for valid supported
+configurations, but it cannot prove that free-form prose aesthetically realizes either selection. Errors make
+`valid=false`; warnings are
 advisory, such as recommended Ref2VA length, sound-section sentence counts, dialogue budget, or continuity risk.
+
+`valid=true` confirms the documented structure and literal invariants that the validator knows how to check. It does
+not prove rendered visual quality, physical correctness, every semantic quantity or state, compliance with a shot-row
+description, identity fidelity in pixels, or aesthetic adherence to Creative direction or Cinematography. Likewise,
+`applied=true` in a manifest means that a control was injected into the LLM request, not that the LLM or H3 obeyed it.
 
 ### MiniMax H3 Media Manifest Validator
 
@@ -329,6 +445,10 @@ basic prompt → MiniMax H3 Prompt Enhancer → enhanced_prompt → H3 condition
                                       └──→ aspect_ratio → downstream geometry routing
 ```
 
+This direct connection is for T2VA, I2VA, FL2VA, L2VA, and Ref2VA. In `chained_multishot`, parse
+`enhanced_prompt.prompts` and send each string through an independent H3 conditioning pass; the JSON wrapper is not an
+H3 prompt.
+
 Set `use_remote_model=true` for an endpoint or `false` for the selected GGUF. Do not chain both backends.
 
 ### Persistent GGUF with explicit unload
@@ -351,8 +471,8 @@ LLM text output → Prompt Validator.prompt ── prompt → H3 conditioning
 basic prompt ───→ Prompt Validator.source_prompt
 ```
 
-Use the same mode, duration, reference metadata, frame/aspect settings, audio policies, creative treatment, explicit
-shot plan, and chained locks on Guide Builder and Validator. `resolved_mode` is a string output for inspection or
+Use the same mode, duration, reference metadata, frame/aspect settings, audio policies, creative treatment,
+cinematography, explicit shot plan, and chained locks on Guide Builder and Validator. `resolved_mode` is a string output for inspection or
 routing; if your external LLM node has only one text input, use a node that can preserve the system/user distinction
 or combine them in a way that keeps the system instructions first.
 
@@ -632,7 +752,7 @@ Color treatment must preserve authoritative wardrobe, object, skin, brand, and r
 presentation only; it must not be interpreted as a new diegetic lamp, sunrise, weather transition, transformation, or
 story beat. The Validator checks the treatment configuration and structural prompt contract, but it cannot prove that
 the LLM or video model aesthetically realized a grade, lens character, lighting ratio, or texture. In manifest terms,
-`creativeTreatment.applied=true` means that the resolved directions were injected into the LLM request; it is not a
+`cinematography.applied=true` means that the resolved directions were injected into the LLM request; it is not a
 visual-adherence score.
 
 The Cinematography panel uses its own strict serialized object:
@@ -652,6 +772,25 @@ The Cinematography panel uses its own strict serialized object:
   "motionRendering": "natural_blur"
 }
 ```
+
+Exact serialized values for API-format workflows:
+
+| Field | Values after the neutral/default value |
+|---|---|
+| `colorPalette` | `none`, `natural`, `warm`, `cool`, `restrained`, `vibrant`, `monochrome` |
+| `exposureContrast` | `none`, `high_key`, `balanced`, `low_key`, `high_contrast`, `soft_contrast` |
+| `cameraMotion` | `none`, `static`, `zoom_in`, `zoom_out`, `push_in`, `pull_out`, `pan_left`, `pan_right`, `truck_left`, `truck_right`, `tilt_up`, `tilt_down`, `pedestal_up`, `pedestal_down`, `arc`, `tracking`, `pov`, `shake_slightly`, `shake_strongly`, `roll_clockwise`, `roll_counterclockwise` |
+| `cameraAmplitude` | `auto`, `small`, `medium`, `large` |
+| `cameraSpeed` | `auto`, `slow`, `normal`, `fast` |
+| `optics` | `none`, `wide_perspective`, `natural_perspective`, `compressed_telephoto` |
+| `depthOfField` | `none`, `deep`, `balanced`, `shallow` |
+| `imageTexture` | `none`, `clean_digital`, `subtle_stable_grain`, `film_16mm`, `film_35mm` |
+| `lensEffects` | `none`, `clean`, `subtle_diffusion`, `restrained_halation` |
+| `motionRendering` | `none`, `crisp`, `natural_blur`, `energetic_blur` |
+
+Amplitude and speed must remain `auto` for `none`, `static`, and `pov`. Name the POV owner or the Arc/Tracking focal
+subject in the Basic prompt or shot row. Cinematography is global unless a more specific source, reference, or row
+instruction overrides it.
 
 Unknown or duplicate keys, unsupported values, and orphaned camera amplitude/speed modifiers are rejected before an
 LLM call. In chained multishot mode the resolved presentation is restated for every independent segment. The manifest
@@ -834,8 +973,10 @@ particular mode/timing are omitted. The representative shape is:
 }
 ```
 
-`complete` means that every planned row was matched to extracted enhanced text. It does not mean every row is safe to
-run independently; check `sourcePromptValid`, each `autonomous`, and `allAutonomous`. `enhancedPrompt` may exist for
+`complete` means that the output yielded the same number of non-empty positional fragments as the plan. It does not
+prove that each fragment performs the semantic request in its row, and it does not mean every row is safe to run
+independently; check `sourcePromptValid`, each `autonomous`, and `allAutonomous`. These fields report structural and
+reference-routing safety, not rendered identity, action, or visual quality. `enhancedPrompt` may exist for
 inspection even when `autonomous=false`; only `autonomousPrompt` is the safe routing field.
 
 Autonomy is deliberately conservative:
@@ -947,6 +1088,13 @@ voiceover” are treated as prohibitions, not as dialogue-writing requests.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
+Advanced official dialogue markers are preserved when used correctly. A line that continues across a cut uses
+`<scenetrans>` at both connected points and explicitly states that its audio continues across the transition.
+`<cutoff>` belongs only inside the final `<d>` block when the video intentionally ends before that utterance finishes.
+Singing and lyrics use a stable vocal source plus `<d>[Language] exact lyrics</d>`. Keep dialogue, lyrics, and
+shot-synchronized diegetic sound in the timeline; `overall_soundscape` is one paragraph of 1–4 English sentences, and
+`non_diegetic_music` is 1–3 English sentences or `N/A`.
+
 These controls constrain the prompt, not the generated waveform, so delivery-critical renders should still be
 reviewed or transcribed. The strict source and dialogue-envelope controls were verified on a 15-second Ref2VA render containing a
 two-second Spanish line followed by a long portal reveal: the raw H3 output contained the requested line once and no
@@ -1019,7 +1167,7 @@ The minimal manifest form is:
   ],
   "subjects": [
     {"id": 1, "description": "the same person in the red coat",
-     "sources": ["<Picture 1>", "<Picture 2>"]}
+     "sources": ["<Picture 1>", "<Video 1>"]}
   ]
 }
 ```
@@ -1220,7 +1368,7 @@ The manifest combines reproducibility and lifecycle information. Common fields i
 | `ambienceFoleyPolicy`, `backgroundScorePolicy`, `voicePerformance` | Applied audio controls |
 | `instrumentalDescription` | Present as text only when `add_instrumental` was active; otherwise empty |
 | `multishotPromptCount`, `multishotLocksApplied` | Chained item count and number of non-empty locks |
-| `creativeTreatment`, `shotPlan`, `shotsPackage` | Canonical new-feature metadata described above |
+| `creativeTreatment`, `cinematography`, `shotPlan`, `shotsPackage` | Canonical creative, presentation, planning, and per-shot metadata described above |
 | `mediaManifestDigest` | SHA-256 of the raw non-empty manifest JSON; the raw manifest itself is not copied here |
 | `dialogueLedgerLineCount`, `dialogueLedgerDigest` | Planned-dialogue count and non-plaintext digest |
 | `dialoguePlanningRepairAttemptsUsed` | Dedicated ledger repair count |
@@ -1353,8 +1501,8 @@ Keeping a model loaded saves startup time but reserves its VRAM. It does not imp
 
 ## Workflow compatibility and migration
 
-Creative direction was added without reordering the v0.5.0 positional inputs. `creative_treatment_json` and
-`shot_plan_json` are optional neutral fields appended after every legacy input on the main enhancer, specialized GGUF
+Creative direction was added without reordering the v0.5.0 positional inputs. `creative_treatment_json`,
+`shot_plan_json`, and `cinematography_json` are optional neutral fields appended after every legacy input on the main enhancer, specialized GGUF
 enhancer, Guide Builder, and Validator. Existing output names/order are unchanged; per-shot extraction uses the new
 Shot Selector node instead of changing enhancer outputs. Old workflows therefore retain their backend, audio,
 duration, reference, and output connections.
@@ -1366,7 +1514,8 @@ On load, the frontend repairs known historical serialization shifts:
 - zero or non-numeric migrated context/startup values resolve to 16384/180;
 - enums, booleans, strings, timeouts, token limits, frame counts, local paths, and hidden runtime values are
   type/range checked before ComfyUI builds the execution request;
-- the visual creative panel is reconstructed from the two persistent JSON fields and is itself non-persistent;
+- the visual Creative direction, Cinematography, and Shot/Segment plan panels are reconstructed from three persistent
+  JSON fields and are themselves non-persistent;
 - imported creative state is reduced to supported schema-v1 selections; imported incomplete exact timing is
   downgraded as a whole to automatic timing, never left half timed.
 
@@ -1411,18 +1560,22 @@ Reference notes or Media metadata grow indefinitely.
 ### Creative controls are missing or still show old labels
 
 Restart ComfyUI, hard-refresh with `Ctrl+F5`, then reopen the workflow. The browser extension supplies the English
-**Model setup**, **Creative direction**, **Shot plan**, **Segment plan**, **Advanced settings**, **+ Add shot**, and
+**Model setup**, **Creative direction**, **Cinematography**, **Shot plan**, **Segment plan**, **Advanced settings**, **+ Add shot**, and
 **+ Add independent segment** UI. The
-canonical values are still stored in `creative_treatment_json` and `shot_plan_json`; do not add duplicate manual
+canonical values are still stored in `creative_treatment_json`, `cinematography_json`, and `shot_plan_json`; do not add duplicate manual
 widgets to compensate for a stale browser bundle.
 
-### Creative-treatment or shot-plan JSON is rejected
+### Creative-treatment, Cinematography, or shot-plan JSON is rejected
 
 Use `schemaVersion: 1`, the exact camelCase keys, and only tokens listed in this README. Remove comments and trailing
 commas because the fields require standard JSON. Automatic timing must contain no `durationSeconds`; exact timing
 must contain a positive numeric value on every row. Ensure IDs are unique, descriptions are non-empty, the row count
 does not conflict with literal source cuts or `multishot_shot_count`, and exact durations use the effective
 frame-derived duration when `frame_count` is nonzero.
+
+`cinematography_json` accepts at most 32,768 characters. `cameraAmplitude` and `cameraSpeed` must remain `auto` when
+`cameraMotion` is `none`, `static`, or `pov`; Arc, Tracking, and POV also work best when the Basic prompt or shot row
+names an unambiguous focal subject or point-of-view owner.
 
 The visual editor repairs unsupported imported presentation state, but values injected directly through API-format
 workflows are intentionally strict and fail before an LLM call.
@@ -1476,6 +1629,18 @@ visibility after ComfyUI finishes configuring the node.
 
 Update to the latest node version and inspect `validation_report`. Spoken quoted source content should be present verbatim inside `<d>[Language] ...</d>`. Include an explicit phrase such as `says in Catalan` when the language matters.
 
+### The result is valid but the description is shallow
+
+Do not increase `max_tokens` first. A complete short answer usually reflects model capability, sparse source facts, or
+too many competing style instructions rather than output truncation. Select a stronger chat/instruct model explicitly,
+add concrete subject/position/action/contact/final-state facts, provide reliable reference analysis, add shot rows where
+boundaries matter, and use only the Creative/Cinematography choices that contribute useful direction. Ref2VA below the
+recommended 350-word depth produces a warning; warnings do not trigger the repair loop.
+
+If the output instead ends abruptly, omits required final sections, or contains malformed JSON, increase
+`max_tokens` and ensure `context_size` can hold the complete system/user instructions plus the answer. Large chained
+packages may need a 32k context or smaller batches because a repair call also includes the previous complete candidate.
+
 ### The validator still reports errors
 
 On an enhancer, increase `repair_attempts` to one or two. Structural validity does not guarantee that a small model
@@ -1507,7 +1672,7 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-The current suite contains 211 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
+The current suite contains 217 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
 media manifests and limits, chained multishot output, alignment, single-shot simultaneity and gradual progression, shot
 budgets, all four creative-profile catalogs, cinematography controls and H3 camera grammar, anime inheritance and deduplication, strict JSON and shot-plan limits,
 exact cut normalization, no-op compatibility, legacy positional/widget layouts, manifest digests, autonomous shot

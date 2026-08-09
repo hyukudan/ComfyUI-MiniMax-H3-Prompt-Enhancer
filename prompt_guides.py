@@ -337,13 +337,14 @@ separate H3 conditioning pass, so write it as fluent standalone English prose an
 
 Repeat the stable identity, wardrobe, environment, visual style, and voice description verbatim in every segment
 where they remain applicable. Prefer six to eight concrete identity attributes when the source provides enough
-facts, but never invent attributes merely to reach a count. Preserve exact source-provided dialogue and visible text.
-Author new spoken words only when the user explicitly requests dialogue writing or supplies an unscripted
+facts, but never invent attributes merely to reach a count. Preserve exact source-provided dialogue only when the
+explicit voice policy permits audible speech; always preserve exact visible text. Author new spoken words only when
+the voice policy is audible and the user explicitly requests dialogue writing or supplies an unscripted
 speech/narration brief; then write concrete natural lines in the requested language and place each line in its
 corresponding segment. An AUTHORITATIVE DIALOGUE LEDGER fixes the exact new words: copy every ledger line once and
 author no others. Allocate spoken material to the requested segment only; do not duplicate it. End each segment in a concrete visible state
 that can serve as the chained first frame of the next segment, and begin the next segment compatibly with that state.
-Include coherent ambience and physical sound naturally in each segment. Do not use the base three-section or Ref2VA
+    Apply ambience, physical sound, score, and voice only as permitted by the explicit user policies. Do not use the base three-section or Ref2VA
 six-section formats: those contracts describe a single generation, while this output drives independent passes.
 """
 
@@ -1058,6 +1059,13 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET ASPECT RATIO: {aspect_ratio}",
         "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
     ]
+    if aspect_ratio != "auto":
+        parts.append(
+            f"AUTHORITATIVE COMPOSITION FRAME — {aspect_ratio}: Compose every shot or autonomous segment for this "
+            "target frame. Keep required subjects, interactions, contact points, movement paths, and visible text "
+            "readable inside the frame; choose shot scale, placement, and negative space that use this geometry. "
+            "Do not invent letterboxing, cropping, a second canvas, or story changes to fill the aspect ratio."
+        )
     fidelity_contract = _source_fidelity_contract(basic_prompt)
     if fidelity_contract:
         parts.append(fidelity_contract)
@@ -1113,7 +1121,77 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
     if explicit_plan_contract:
         parts.append(explicit_plan_contract)
+    if reference_context.strip():
+        parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
+    positional_contract = _official_reference_contract(basic_prompt, reference_context)
+    if positional_contract:
+        parts.append(positional_contract)
+
+    ambience_contracts = {
+        "auto": (
+            "AMBIENCE AND FOLEY POLICY — AUTO: Preserve requested ambience, physical sounds, and non-verbal human "
+            "sounds. With description enhancement, add only coherent physically motivated non-vocal sounds."
+        ),
+        "ensure_audible": (
+            "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
+            "room tone, environmental ambience, physically motivated foley, impacts, movement, and appropriate "
+            "non-verbal human sounds. Do not invent intelligible background speech."
+        ),
+        "off": (
+            "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "
+            "breathing, laughter, crowd chatter, or other non-musical sound."
+        ),
+    }
+    score_contracts = {
+        "follow_prompt": (
+            "NON-DIEGETIC MUSIC POLICY — FOLLOW SOURCE: Preserve explicitly requested audience-only music. If the "
+            "source does not request it, generate no audience-only music: use non_diegetic_music: N/A in structured "
+            "single-generation output and omit score from autonomous chained prose. Never invent a score."
+        ),
+        "add_instrumental": (
+            "NON-DIEGETIC MUSIC POLICY — REQUIRED: Create an audience-only instrumental score appropriate to the "
+            "scene and describe instrumentation, tempo, rhythm, and dynamics. Add no vocals or lyrics."
+        ),
+        "off": (
+            "NON-DIEGETIC MUSIC POLICY — OFF: No audience-only background music, score, or instrumental underscore "
+            "is audible anywhere in the output. Use non_diegetic_music: N/A in structured single-generation output."
+        ),
+    }
+    parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
+    requested_instrumental = str(instrumental_description or "").strip()
+    if background_score_policy == "add_instrumental" and requested_instrumental:
+        parts.append(
+            "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
+            "audience-only score. Preserve concrete instrumentation, tempo, rhythm, and dynamics. Translate any "
+            "abstract mood wording into those audible musical parameters instead of repeating the mood label. "
+            "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
+            "singing, lyrics, or vocal samples:\n" + requested_instrumental
+        )
     if resolved == "chained_multishot":
+        if bool(enhance_description):
+            parts.append(
+                "ACTIVE DIRECTORIAL ENHANCEMENT — AUTONOMOUS SEGMENTS (develop the request, without changing it):\n"
+                "- Turn each terse item into concrete, vivid standalone audiovisual prose across its full target "
+                "duration. Every added detail must be visibly observable or audibly motivated.\n"
+                "- Establish visual style and opening composition, then source-supported subject appearance and frame "
+                "position, environment and key props, blocking, actions and reactions, observable state changes, "
+                "lighting, material response, atmosphere, camera behavior, and physical sound permitted by the selected "
+                "audio policy in playback "
+                "order. Preserve spatial relationships, causality, action count, and the requested ending.\n"
+                "- Make action mechanics, contacts, weight transfer, eyelines, expressions, and consequences readable "
+                "where the source supports them. Allocate enough screen time for every requested action and spoken line; "
+                "do not pad the segment with generic cinematic adjectives or unrelated background activity.\n"
+                "- Begin from a concrete opening state and finish in a concrete visible state suitable for chaining. "
+                "Develop camera movement and staging inside the item without inventing an edit, extra event, dialogue, "
+                "character, prop, reference, light source, weather change, damage, or stronger explicitness."
+            )
+        else:
+            parts.append(
+                "CONSERVATIVE FORMAT ADAPTATION — AUTONOMOUS SEGMENTS:\n"
+                "Convert each requested item into self-contained H3 prose with only the detail needed for continuity "
+                "and valid chaining. Preserve the source's level of specificity; do not creatively expand staging, "
+                "performance, production design, camera, lighting, atmosphere, story, or sound."
+            )
         count = (
             explicit_shot_plan["shotCount"]
             if explicit_shot_plan["provided"] else max(0, int(multishot_shot_count or 0))
@@ -1139,7 +1217,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             )
         dialogue_contracts = _source_dialogue_contracts(basic_prompt)
         dialogue_items = _source_dialogue_shot_indices(basic_prompt)
-        if dialogue_contracts and len(dialogue_items) == len(dialogue_contracts):
+        if (voice_performance == "audible" and dialogue_contracts
+                and len(dialogue_items) == len(dialogue_contracts)):
             parts.append(
                 "MULTISHOT DIALOGUE LEDGER: Keep every occurrence in its assigned item. Terminal punctuation such as "
                 "an exclamation mark controls emphasis and may be expressed through forceful delivery, but never omit "
@@ -1149,12 +1228,42 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                     for item, (language, quote, _internal) in zip(dialogue_items, dialogue_contracts)
                 )
             )
+        if voice_performance == "audible":
+            parts.append(
+                "VOICE POLICY — AUDIBLE: Preserve every exact source or planned dialogue occurrence once in its "
+                "assigned item using a stable vocal source and <d>[Language] exact words</d>. Author no additional "
+                "speech unless the explicit dialogue-authoring contract permits it."
+            )
+        elif voice_performance == "silent_mouth_acting_experimental":
+            profiles = []
+            for language, quote, internal in dialogue_contracts:
+                word_count = len(re.findall(r"\b[\wÀ-ÿ'-]+\b", quote))
+                pauses = len(re.findall(r"[,;:…]|\.\.\.", quote))
+                profiles.append(
+                    f"- {'Internal/off-screen thought' if internal else 'Visible speech'}: {language}; approximately "
+                    f"{word_count} words; {pauses} marked pause(s)."
+                )
+            profile_text = ("\n" + "\n".join(profiles)) if profiles else ""
+            parts.append(
+                "VOICE POLICY — SILENT MOUTH ACTING (EXPERIMENTAL): Emit no dialogue words, quotations, <d> blocks, "
+                "speaker IDs, narration, voiceover, singing, whispering, or intelligible vocal sound. For visible "
+                "source speech, describe only silent natural mouth/jaw acting through language, approximate word "
+                "count, cadence, and pauses; internal or off-screen speech keeps lips closed."
+                + profile_text
+            )
+        else:
+            parts.append(
+                "VOICE POLICY — NONE: Emit no dialogue words, quotations, <d> blocks, speaker IDs, narration, "
+                "voiceover, singing, whispering, intelligible background speech, or speech-like mouth performance. "
+                "Preserve only associated non-vocal visible actions and expressions."
+            )
         parts.extend([
             "CHAINED MULTISHOT CONTRACT:\n"
             "- Each JSON array item is an independent H3 conditioning pass and must be self-contained fluent prose.\n"
             "- Repeat supplied stable identity, wardrobe, environment, style, and voice facts verbatim where applicable.\n"
             "- End each segment in a concrete chainable visual state and make the following segment compatible with it.\n"
-            "- Preserve every intended dialogue occurrence; include coherent physical audio in every segment; use no section/shot labels.\n"
+            "- Preserve every dialogue occurrence permitted by the voice policy; obey the ambience, score, and voice "
+            "policies independently in every segment; use no section/shot labels.\n"
             "- Treat 2.5 spoken words per second only as a diagnostic planning heuristic, never as permission to "
             + ("write beyond the explicit dialogue-authoring brief." if dialogue_authoring else "invent dialogue."),
             (f"OUTPUT EXACTLY {count} PROMPT ITEMS." if count else
@@ -1178,9 +1287,19 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         parts.append(
             "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
             "- Turn terse wording into a concrete, vivid audiovisual sequence across the full target duration.\n"
-            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera motion, "
-            "action continuity, pacing, physical sound, and requested musical treatment. If the user did not request "
-            "music, non_diegetic_music must be N/A.\n"
+            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera behavior, "
+            "action continuity, and pacing only within explicit source, shot-plan, reference, Cinematography, and audio "
+            "constraints. Develop physical sound only as permitted by the ambience/foley policy; musical treatment is "
+            "governed exclusively by the background-score policy.\n"
+            "- At the beginning of every shot, establish a useful shot scale and the current frame positions, "
+            "orientation, eyelines, and relevant prop states. Across cuts preserve screen direction, handed contact, "
+            "object possession, pose continuity, and states such as open/closed or intact/changed unless the requested "
+            "action visibly changes them.\n"
+            "- When the source contains physical interaction, describe the actor, limb or manipulated object, point of "
+            "contact, physically readable response, and resulting state. Complete requested actions and let their "
+            "visible results register before the final frame unless the source explicitly requests interruption.\n"
+            "- Prefer observable geometry, materials, position, movement, and cause-and-effect over generic cinematic "
+            "adjectives or unrelated background activity.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
             "- Treat repeated action/trigger/transformation cycles as a state ladder. For every cycle, preserve the "
@@ -1282,45 +1401,6 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "actions and expressions associated with the source."
         )
 
-    ambience_contracts = {
-        "auto": (
-            "AMBIENCE AND FOLEY POLICY — AUTO: Preserve requested ambience, physical sounds, and non-verbal human "
-            "sounds. With description enhancement, add only coherent physically motivated non-vocal sounds."
-        ),
-        "ensure_audible": (
-            "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
-            "room tone, environmental ambience, physically motivated foley, impacts, movement, and appropriate "
-            "non-verbal human sounds. Do not invent intelligible background speech."
-        ),
-        "off": (
-            "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "
-            "breathing, laughter, crowd chatter, or other non-musical sound."
-        ),
-    }
-    score_contracts = {
-        "follow_prompt": (
-            "NON-DIEGETIC MUSIC POLICY — FOLLOW SOURCE: Preserve explicitly requested audience-only music. If the "
-            "source does not request it, non_diegetic_music must be N/A. Never invent a score."
-        ),
-        "add_instrumental": (
-            "NON-DIEGETIC MUSIC POLICY — REQUIRED: Create an audience-only instrumental score appropriate to the "
-            "scene and describe instrumentation, tempo, rhythm, and dynamics. Add no vocals or lyrics."
-        ),
-        "off": (
-            "NON-DIEGETIC MUSIC POLICY — OFF: No audience-only background music is audible. non_diegetic_music must "
-            "be exactly N/A, with no score or instrumental underscore elsewhere."
-        ),
-    }
-    parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
-    requested_instrumental = str(instrumental_description or "").strip()
-    if background_score_policy == "add_instrumental" and requested_instrumental:
-        parts.append(
-            "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
-            "audience-only score. Preserve concrete instrumentation, tempo, rhythm, and dynamics. Translate any "
-            "abstract mood wording into those audible musical parameters instead of repeating the mood label. "
-            "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
-            "singing, lyrics, or vocal samples:\n" + requested_instrumental
-        )
     required_explicit_shots = _required_explicit_shot_count(basic_prompt)
     simultaneous_single_shot = (
         False if explicit_shot_plan["provided"]
@@ -1368,11 +1448,6 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "at most two shots only if one motivated cut materially improves viewpoint or information. Never divide the "
             "duration into evenly spaced shots merely to fill time; actions and reveals are beats inside a shot."
         )
-    if reference_context.strip():
-        parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
-    positional_contract = _official_reference_contract(basic_prompt, reference_context)
-    if positional_contract:
-        parts.append(positional_contract)
     if alignment:
         label = "REQUIRED FIRST-LINE TEMPLATE (replace N with the actual final shot number):" if resolved in {"fl2va", "l2va"} else "REQUIRED FIRST LINE:"
         parts.append(label + "\n" + alignment)
@@ -2226,6 +2301,7 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         if len(common) < min(4, len(set(source_facts))):
             warnings.append("Few concrete source attributes repeat across independent prompts; identity or scene continuity may drift")
     source_contracts = _source_dialogue_contracts(source_prompt)
+    expected_source_contracts = source_contracts if voice_performance == "audible" else []
     spoken_keys = {_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts}
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(source_prompt)
     dialogue_authoring = dialogue_authoring and voice_performance == "audible"
@@ -2238,7 +2314,9 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         ]
         return [key for key in raw + tagged if key in spoken_keys]
 
-    expected_spoken = Counter(_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts)
+    expected_spoken = Counter(
+        _dialogue_lexical_key(quote) for _language, quote, _internal in expected_source_contracts
+    )
     observed_spoken = Counter(key for item in prompts for key in item_spoken_keys(item))
     if observed_spoken != expected_spoken:
         missing = list((expected_spoken - observed_spoken).elements())
@@ -2305,7 +2383,8 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
                 errors.append(f"Chained prompts added dialogue outside the planned ledger: {extra}")
 
     dialogue_items = _source_dialogue_shot_indices(source_prompt)
-    if prompts and len(dialogue_items) == len(source_contracts) and _explicit_shot_segments(source_prompt):
+    if (voice_performance == "audible" and prompts and len(dialogue_items) == len(source_contracts)
+            and _explicit_shot_segments(source_prompt)):
         expected_by_item: dict[int, Counter[str]] = {}
         for item_number, (_language, quote, _internal) in zip(dialogue_items, source_contracts):
             expected_by_item.setdefault(item_number, Counter())[_dialogue_lexical_key(quote)] += 1

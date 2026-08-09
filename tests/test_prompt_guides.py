@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
+import json
+
 from prompt_guides import (
     BASE_SECTIONS,
     REFERENCE_SECTIONS,
@@ -421,6 +423,95 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
     assert '<d>[Original language] Do not move.</d>' in enhanced
     assert '<d>[Original language] Do not move.</d>' in conservative
+
+
+def test_chained_description_enhancement_toggle_controls_segment_depth():
+    source = "A mechanic walks to a car, opens the driver's door, and sits down."
+    enhanced = build_user_request(
+        source, "chained_multishot", 8.0, enhance_description=True, multishot_shot_count=2,
+    )
+    conservative = build_user_request(
+        source, "chained_multishot", 8.0, enhance_description=False, multishot_shot_count=2,
+    )
+    assert "ACTIVE DIRECTORIAL ENHANCEMENT — AUTONOMOUS SEGMENTS" in enhanced
+    assert "subject appearance and frame position" in enhanced
+    assert "observable state changes" in enhanced
+    assert "CONSERVATIVE FORMAT ADAPTATION — AUTONOMOUS SEGMENTS" not in enhanced
+    assert "CONSERVATIVE FORMAT ADAPTATION — AUTONOMOUS SEGMENTS" in conservative
+    assert "Preserve the source's level of specificity" in conservative
+    assert "ACTIVE DIRECTORIAL ENHANCEMENT — AUTONOMOUS SEGMENTS" not in conservative
+    assert 'OUTPUT EXACTLY 2 PROMPT ITEMS.' in enhanced
+    assert 'OUTPUT EXACTLY 2 PROMPT ITEMS.' in conservative
+
+
+def test_chained_receives_reference_and_independent_audio_voice_policies():
+    request = build_user_request(
+        'The woman in image 1 says in Spanish "Hola." while opening a door.',
+        "chained_multishot",
+        6.0,
+        reference_context="Picture 1 supplies the woman's identity.",
+        ambience_foley_policy="off",
+        background_score_policy="add_instrumental",
+        voice_performance="none",
+        instrumental_description="Low strings, 80 BPM, sparse pulse, gradual crescendo.",
+        multishot_shot_count=2,
+    )
+    assert "REFERENCE CONTEXT (authoritative labels and roles)" in request
+    assert "Picture 1 supplies the woman's identity." in request
+    assert "<Picture 1>" in request
+    assert "AMBIENCE AND FOLEY POLICY — OFF" in request
+    assert "NON-DIEGETIC MUSIC POLICY — REQUIRED" in request
+    assert "USER-SPECIFIED INSTRUMENTAL SCORE" in request
+    assert "VOICE POLICY — NONE" in request
+    assert "MULTISHOT DIALOGUE LEDGER" not in request
+    assert "synchronized physical sound" not in request
+
+
+def test_chained_voice_none_accepts_omitted_source_dialogue_and_rejects_leakage():
+    source = 'A woman says in Spanish "Hola." and then closes the door.'
+    silent_output = json.dumps({"prompts": ["The woman silently closes the door."]})
+    silent_report = validate_prompt(
+        silent_output, "chained_multishot", 6.0, source, voice_performance="none",
+        multishot_shot_count=1,
+    )
+    assert silent_report["valid"], silent_report
+
+    leaked_output = json.dumps({"prompts": ["The woman says <d>[Spanish] Hola.</d> and closes the door."]})
+    leaked_report = validate_prompt(
+        leaked_output, "chained_multishot", 6.0, source, voice_performance="none",
+        multishot_shot_count=1,
+    )
+    assert not leaked_report["valid"]
+    assert any("invented or duplicated spoken dialogue" in error for error in leaked_report["errors"])
+
+
+def test_enhancement_respects_static_camera_audio_off_and_required_score():
+    cinematography = json.dumps({
+        "schemaVersion": 1,
+        "cameraMotion": "static",
+    })
+    request = build_user_request(
+        "A woman studies a map.", "t2va", 5.0,
+        enhance_description=True,
+        ambience_foley_policy="off",
+        background_score_policy="add_instrumental",
+        cinematography_json=cinematography,
+    )
+    assert "The camera holds a Static Shot" in request
+    assert "AMBIENCE AND FOLEY POLICY — OFF" in request
+    assert "NON-DIEGETIC MUSIC POLICY — REQUIRED" in request
+    assert "physical sound only as permitted" in request
+    assert "musical treatment is governed exclusively" in request
+    assert "If the user did not request music" not in request
+
+
+def test_explicit_aspect_ratio_adds_composition_contract_but_auto_does_not():
+    explicit = build_user_request("Two dancers cross paths.", "t2va", 5.0, aspect_ratio="9:16")
+    automatic = build_user_request("Two dancers cross paths.", "t2va", 5.0, aspect_ratio="auto")
+    assert "AUTHORITATIVE COMPOSITION FRAME — 9:16" in explicit
+    assert "contact points, movement paths, and visible text" in explicit
+    assert "Do not invent letterboxing" in explicit
+    assert "AUTHORITATIVE COMPOSITION FRAME" not in automatic
 
 
 def test_audio_policy_contracts_are_independent():

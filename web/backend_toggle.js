@@ -1744,10 +1744,10 @@ function addCreativeDirectionPanel(node) {
     const treatmentSummary = createPanelElement(
         "summary",
         "",
-        isValidator ? "Creative direction to validate" : "Creative direction · No preferences",
+        isValidator ? "Creative direction context" : "Creative direction · No preferences",
     );
     treatmentSummary.title = isValidator
-        ? "Expected context used to verify that the prompt follows the treatment without changing its story."
+        ? "Parses the expected treatment and enables supported literal contract checks; it cannot score aesthetic adherence."
         : "Adds creative direction without rewriting the story or creating cuts.";
     const treatmentBody = createPanelElement("div", "minimax-h3-panel-body");
     const treatmentControls = createPanelElement("div", "minimax-h3-treatment-controls");
@@ -1755,7 +1755,7 @@ function addCreativeDirectionPanel(node) {
         "p",
         "minimax-h3-panel-help",
         isValidator
-            ? "Define the expected treatment for consistency validation. It does not rewrite the prompt or invent content."
+            ? "Supply the treatment used to build the prompt. The Validator checks configuration and supported literal invariants, not whether the prose aesthetically realizes the style."
             : "Adds directing emphasis for the LLM. It never invents story, dialogue, characters, actions, or cuts.",
     );
     const treatmentGrid = createPanelElement("div", "minimax-h3-treatment-grid");
@@ -1789,7 +1789,9 @@ function addCreativeDirectionPanel(node) {
     const cinematographyHelp = createPanelElement(
         "p",
         "minimax-h3-panel-help",
-        "Optional explicit presentation controls. H3 camera movement follows motion type + amplitude + speed. Source facts, references, shot rows, and explicit colors remain authoritative.",
+        isValidator
+            ? "Supply the Cinematography configuration used to build the prompt. The Validator checks its schema and supported literal invariants, not rendered or aesthetic adherence."
+            : "Optional explicit presentation controls. H3 camera movement follows motion type + amplitude + speed. Source facts, references, shot rows, and explicit colors remain authoritative.",
     );
     const cinematographyGrid = createPanelElement("div", "minimax-h3-treatment-grid");
     const cinematographySelects = {};

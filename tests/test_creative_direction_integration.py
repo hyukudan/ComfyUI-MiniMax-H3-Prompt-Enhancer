@@ -58,7 +58,7 @@ CINEMATOGRAPHY_JSON = json.dumps({
 })
 
 
-def test_neutral_controls_preserve_the_pre_feature_user_request_byte_for_byte():
+def test_neutral_controls_preserve_the_current_user_request_byte_for_byte():
     legacy_call = build_user_request("A woman crosses a quiet station.", "t2va", 5.0, "")
     explicit_neutral = build_user_request(
         "A woman crosses a quiet station.", "t2va", 5.0, "",
@@ -73,7 +73,7 @@ def test_neutral_controls_preserve_the_pre_feature_user_request_byte_for_byte():
     )
     assert legacy_call == explicit_neutral
     assert hashlib.sha256(legacy_call.encode("utf-8")).hexdigest() == (
-        "0a5aff42c67d0c9b8896e0281de6472ade3320d4711483072eebe54ccb768a83"
+        "95d614244d5cf911b8cead44fe58d71351446ed55a4e559d4b6276d839fc8635"
     )
 
 

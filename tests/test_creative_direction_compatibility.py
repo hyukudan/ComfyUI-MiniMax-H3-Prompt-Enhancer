@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 from pathlib import Path
 
 import gguf_server
 import prompt_enhancer
 import prompt_enhancer_node
+from media_manifest import parse_media_manifest
 from prompt_enhancer_node import (
     MiniMaxH3GGUFPromptEnhancer,
     MiniMaxH3PromptEnhancer,
@@ -20,6 +22,7 @@ from prompt_guides import build_user_request
 
 FIXTURE = Path(__file__).with_name("fixtures") / "legacy_node_inputs_v050.json"
 FRONTEND = Path(__file__).parents[1] / "web" / "backend_toggle.js"
+README = Path(__file__).parents[1] / "README.md"
 NEW_FIELDS = ["creative_treatment_json", "shot_plan_json", "cinematography_json"]
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 CREATIVE = '{"schemaVersion":1,"genre":"action","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
@@ -30,6 +33,15 @@ CINEMATOGRAPHY = '{"schemaVersion":1,"colorPalette":"warm","cameraMotion":"push_
 def _input_names(node_class):
     inputs = node_class.INPUT_TYPES()
     return [*inputs["required"], *inputs.get("optional", {})]
+
+
+def test_readme_minimal_media_manifest_example_is_valid():
+    text = README.read_text(encoding="utf-8")
+    match = re.search(r"The minimal manifest form is:\s*```json\s*(.*?)\s*```", text, flags=re.DOTALL)
+    assert match, "README minimal media-manifest example is missing"
+    example = json.loads(match.group(1))
+    report = parse_media_manifest(example)
+    assert report["errors"] == []
 
 
 def test_new_serialized_inputs_are_appended_after_every_legacy_node_input():
