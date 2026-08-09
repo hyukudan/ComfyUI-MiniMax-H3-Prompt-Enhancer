@@ -19,7 +19,7 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 14
+CREATIVE_PROFILE_CATALOG_VERSION = 15
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 4
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -542,6 +542,28 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=(
             "Spectacle, action, danger, romance, glamour, slow motion, speed ramps, drones, cranes, anamorphic flares, letterbox bars, film grain, trailer editing, voice-over, dialogue, or score merely because the profile is cinematic.",
         ),
+    ),
+    "live_action_classic_black_and_white": _profile(
+        editing_and_pacing=(
+            "Present the supplied scene as photographed classic black-and-white narrative cinema with complete entrances and exits, measured dramatic beats, clean continuity, and deliberate transitions without turning it into silent film or forcing period pacing.",
+        ),
+        camera_and_framing=(
+            "Use disciplined classic-cinema composition, stable screen direction, sculpted foreground and background planes, purposeful profile and three-quarter staging, and smooth physically plausible dolly, pan, tilt, or locked-camera operation only where the requested scene supports it.",
+            "Preserve the selected aspect ratio; classic monochrome styling must not add a 4:3 frame, letterbox bars, iris transitions, intertitles, or theatrical proscenium framing.",
+        ),
+        lighting_and_color=(
+            "Render a true high-contrast black-and-white photographic image with dense neutral blacks, luminous protected faces and highlights, crisp midtone separation, readable shadow detail, and sculptural hard-to-soft tonal modeling motivated only by illumination already compatible with the scene.",
+            "Translate supplied local colors into stable differentiated grayscale luminance without tinting, sepia, selective color, clipped whites, crushed required detail, or frame-to-frame exposure breathing.",
+        ),
+        production_design=(
+            "Preserve the supplied era, location, wardrobe, architecture, objects, materials, brands, and technology; use surface reflectance, texture, silhouette, and tonal separation to keep every authoritative element readable in monochrome instead of replacing it with period décor.",
+        ),
+        blocking_and_performance=(
+            "Use precise eyelines, composed body angles, readable hand placement, measured reaction holds, and physically complete interaction while preserving the supplied performance intensity and avoiding automatic theatrical exaggeration.",
+        ),
+        sound_treatment=("Black-and-white visuals grant no mono filtering, hiss, crackle, projector noise, old-fashioned speech, silence, narration, or orchestral score; follow only the supplied audio and selected audio policies.",),
+        may_fill_unspecified=("High-contrast grayscale hierarchy, dense neutral blacks, luminous protected faces, sculptural tonal modeling, classic composed staging, smooth restrained camera operation, and stable monochrome material separation."),
+        must_not_invent=("An old era, 1930s–1950s setting, detectives, crime, noir plot, femme fatale, trench coats, hats, cigarettes, fog, rain, venetian-blind shadows, period cars, vintage props, 4:3 framing, letterbox bars, intertitles, silent-film acting, sepia, tinting, scratches, dust, flicker, gate weave, projector artifacts, mono audio, hiss, crackle, narration, or period music."),
     ),
     "live_action_gritty": _profile(
         editing_and_pacing=(

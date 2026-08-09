@@ -33,6 +33,7 @@ CANONICAL_CHOICES = {
         "american_comic_pastel",
         "animation_2d", "pixel_art_16bit",
         "documentary_observational", "live_action_naturalistic", "live_action_cinematic",
+        "live_action_classic_black_and_white",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
         "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
         "live_action_midcentury_technicolor_epic",
@@ -322,6 +323,7 @@ def test_every_3d_variant_has_a_distinct_complete_rendering_contract():
 def test_live_action_variants_are_distinct_and_do_not_invent_genre_content():
     checks = {
         "live_action_cinematic": ("photographed cinematic live action", "teal-orange", "Spectacle"),
+        "live_action_classic_black_and_white": ("classic black-and-white narrative cinema", "dense neutral blacks", "An old era"),
         "live_action_gritty": ("immediate textured live action", "gratuitous shake", "gore"),
         "live_action_expressionist": ("expressionist live action", "graphic shadow structure", "hallucinations"),
         "live_action_visceral_horror": ("visceral practical-effects horror language", "material cause-and-effect", "Blood"),

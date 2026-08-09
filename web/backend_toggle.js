@@ -176,6 +176,7 @@ const CREATIVE_CHOICES = {
         ["stop_motion_handcrafted", "Handcrafted stop motion"],
         ["live_action_naturalistic", "Naturalistic live action"],
         ["live_action_cinematic", "Cinematic narrative live action"],
+        ["live_action_classic_black_and_white", "Classic high-contrast black-and-white cinema"],
         ["live_action_gritty", "Gritty immediate live action"],
         ["live_action_expressionist", "Expressionist live action"],
         ["live_action_visceral_horror", "Visceral practical-effects horror"],
@@ -232,7 +233,7 @@ const VISUAL_LANGUAGE_GROUPS = [
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
     ["Physical animation", ["stop_motion_handcrafted"]],
-    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
+    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_classic_black_and_white", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
     ["Commercial & presentation", ["clean_commercial"]],
 ];
 const CINEMATOGRAPHY_CHOICES = {
@@ -2244,8 +2245,14 @@ function enforceConditionalVisibility(node) {
     for (const name of REMOTE_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !managed.has(name) && useRemote);
     for (const name of LOCAL_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !managed.has(name) && !useRemote);
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
-    setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET), score?.value === "add_instrumental");
-    setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET), score?.value === "add_instrumental");
+    const instrumentalActive = score?.value === "add_instrumental";
+    const styleProxy = node.__minimaxInstrumentalStyleProxy;
+    setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET), instrumentalActive);
+    setWidgetVisible(
+        node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET),
+        instrumentalActive && !styleProxy,
+    );
+    if (styleProxy) setWidgetVisible(styleProxy.widget, instrumentalActive);
     const modeWidget = node.widgets?.find((widget) => widget.name === "mode");
     if (modeWidget) {
         const multishot = modeWidget.value === "chained_multishot";
@@ -2291,31 +2298,31 @@ function refreshInstrumentalWidget(node) {
     if (styleProxy) {
         setWidgetVisible(style, false);
         setWidgetVisible(styleProxy.widget, active);
-        styleProxy.control.value = String(style?.value ?? "none");
+        styleProxy.widget.value = styleProxy.valueToLabel.get(String(style?.value ?? "none"))
+            ?? INSTRUMENTAL_STYLE_CHOICES[0][1];
     }
     fitNodeToVisibleWidgets(node);
 }
 
 function addInstrumentalStyleProxy(node) {
-    if (node.__minimaxInstrumentalStyleProxy || typeof node.addDOMWidget !== "function") return;
+    if (node.__minimaxInstrumentalStyleProxy || typeof node.addWidget !== "function") return;
     const canonical = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     if (!canonical || !score) return;
-    const root = createPanelElement("label", "minimax-h3-setting-field");
-    root.appendChild(createPanelElement("span", "", "Music genre / style"));
-    const control = createPanelElement("select", "");
-    addSelectOptions(control, INSTRUMENTAL_STYLE_CHOICES);
-    control.value = String(canonical.value ?? "none");
-    control.title = canonical.options?.tooltip ?? "Adapt the instrumental arrangement while preserving compatible user direction.";
-    control.setAttribute("aria-label", "Music genre / style");
-    control.addEventListener("change", () => setCanonicalValue(node, canonical, control.value));
-    root.appendChild(control);
-    const proxyWidget = node.addDOMWidget(
+    const valueToLabel = new Map(INSTRUMENTAL_STYLE_CHOICES);
+    const labelToValue = new Map(INSTRUMENTAL_STYLE_CHOICES.map(([value, label]) => [label, value]));
+    const proxyWidget = node.addWidget(
+        "combo",
         INSTRUMENTAL_STYLE_PROXY_WIDGET,
-        "minimaxH3InstrumentalStyle",
-        root,
-        { serialize: false, hideOnZoom: false },
+        valueToLabel.get(String(canonical.value ?? "none")) ?? INSTRUMENTAL_STYLE_CHOICES[0][1],
+        (label) => setCanonicalValue(node, canonical, labelToValue.get(String(label)) ?? "none"),
+        {
+            values: INSTRUMENTAL_STYLE_CHOICES.map(([, label]) => label),
+            serialize: false,
+            tooltip: canonical.options?.tooltip ?? "Adapt the instrumental arrangement while preserving compatible user direction.",
+        },
     );
+    proxyWidget.label = "Music genre / style";
     markPanelWidgetNonPersistent(proxyWidget);
     const currentIndex = node.widgets.indexOf(proxyWidget);
     const scoreIndex = node.widgets.indexOf(score);
@@ -2323,7 +2330,9 @@ function addInstrumentalStyleProxy(node) {
         node.widgets.splice(currentIndex, 1);
         node.widgets.splice(scoreIndex + 1, 0, proxyWidget);
     }
-    node.__minimaxInstrumentalStyleProxy = { widget: proxyWidget, control, canonical };
+    node.__minimaxInstrumentalStyleProxy = {
+        widget: proxyWidget, canonical, valueToLabel, labelToValue,
+    };
     setWidgetVisible(canonical, false);
 }
 

@@ -212,6 +212,7 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
         "american_comic_pastel", "animation_2d", "pixel_art_16bit",
         "stylized_3d_animation", "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d",
         "cel_shaded_3d", "documentary_observational", "live_action_cinematic",
+        "live_action_classic_black_and_white",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
         "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
         "live_action_midcentury_technicolor_epic", "midcentury_dye_transfer",
@@ -273,6 +274,8 @@ def test_frontend_places_nonpersistent_music_style_proxy_below_background_score(
     proxy = source.split("function addInstrumentalStyleProxy", 1)[1].split(
         "function refreshBackendWidgets", 1,
     )[0]
+    assert 'node.addWidget(\n        "combo"' in proxy
+    assert "node.addDOMWidget" not in proxy
     assert 'node.widgets.indexOf(score)' in proxy
     assert 'node.widgets.splice(scoreIndex + 1, 0, proxyWidget)' in proxy
     assert "markPanelWidgetNonPersistent(proxyWidget)" in proxy
