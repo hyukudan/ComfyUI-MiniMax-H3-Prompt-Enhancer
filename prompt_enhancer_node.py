@@ -19,6 +19,7 @@ SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dia
 VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":1,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOT_PLAN_PLACEHOLDER = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"..."}]}'
+CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":1,"colorPalette":"none","cameraMotion":"none"}'
 
 
 def _local_runtime_limits(context_size, startup_timeout):
@@ -98,6 +99,7 @@ class MiniMaxH3PromptGuideBuilder:
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for the four optional creative-treatment selectors. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -105,7 +107,8 @@ class MiniMaxH3PromptGuideBuilder:
               voice_performance="audible", instrumental_description="", aspect_ratio="auto",
               media_manifest="", multishot_shot_count=0, frame_count=0,
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
-              show_advanced_controls=False, creative_treatment_json="", shot_plan_json=""):
+              show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
+              cinematography_json=""):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -117,7 +120,7 @@ class MiniMaxH3PromptGuideBuilder:
                 instrumental_description,
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                (), creative_treatment_json, shot_plan_json,
+                (), creative_treatment_json, shot_plan_json, cinematography_json,
             ),
             resolved,
         )
@@ -175,6 +178,7 @@ class MiniMaxH3PromptEnhancer:
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     @classmethod
@@ -198,7 +202,7 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                creative_treatment_json="", shot_plan_json=""):
+                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -212,10 +216,10 @@ class MiniMaxH3PromptEnhancer:
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                    creative_treatment_json, shot_plan_json)):
+                    creative_treatment_json, shot_plan_json, cinematography_json)):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                                creative_treatment_json, shot_plan_json)
+                                creative_treatment_json, shot_plan_json, cinematography_json)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -231,10 +235,10 @@ class MiniMaxH3PromptEnhancer:
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                    creative_treatment_json, shot_plan_json)):
+                    creative_treatment_json, shot_plan_json, cinematography_json)):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                               creative_treatment_json, shot_plan_json)
+                               creative_treatment_json, shot_plan_json, cinematography_json)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -293,6 +297,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     @classmethod
@@ -307,7 +312,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                creative_treatment_json="", shot_plan_json=""):
+                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
@@ -321,7 +326,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-            creative_treatment_json, shot_plan_json,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
         return (
             prompt,
@@ -508,6 +513,7 @@ class MiniMaxH3PromptValidator:
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -515,13 +521,13 @@ class MiniMaxH3PromptValidator:
                  voice_performance="audible", aspect_ratio="auto", media_manifest="",
                  multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                  multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                 creative_treatment_json="", shot_plan_json=""):
+                 creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-            (), creative_treatment_json, shot_plan_json,
+            (), creative_treatment_json, shot_plan_json, cinematography_json,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {

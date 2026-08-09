@@ -20,10 +20,11 @@ from prompt_guides import build_user_request
 
 FIXTURE = Path(__file__).with_name("fixtures") / "legacy_node_inputs_v050.json"
 FRONTEND = Path(__file__).parents[1] / "web" / "backend_toggle.js"
-NEW_FIELDS = ["creative_treatment_json", "shot_plan_json"]
+NEW_FIELDS = ["creative_treatment_json", "shot_plan_json", "cinematography_json"]
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 CREATIVE = '{"schemaVersion":1,"genre":"action","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOTS = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"One shot."}]}'
+CINEMATOGRAPHY = '{"schemaVersion":1,"colorPalette":"warm","cameraMotion":"push_in","cameraAmplitude":"small","cameraSpeed":"slow"}'
 
 
 def _input_names(node_class):
@@ -48,7 +49,7 @@ def test_new_serialized_inputs_are_appended_after_every_legacy_node_input():
 def test_new_serialized_inputs_have_neutral_migration_defaults():
     for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer, MiniMaxH3PromptGuideBuilder):
         optional = node_class.INPUT_TYPES()["optional"]
-        assert list(optional)[-2:] == NEW_FIELDS
+        assert list(optional)[-len(NEW_FIELDS):] == NEW_FIELDS
         for name in NEW_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -86,8 +87,8 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
-        assert [parameter.name for parameter in parameters[-2:]] == NEW_FIELDS
-        assert [parameter.default for parameter in parameters[-2:]] == ["", ""]
+        assert [parameter.name for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELDS
+        assert [parameter.default for parameter in parameters[-len(NEW_FIELDS):]] == [""] * len(NEW_FIELDS)
 
 
 def test_legacy_guide_builder_positional_call_still_uses_neutral_behavior():
@@ -155,8 +156,8 @@ def test_main_and_specialized_nodes_forward_both_new_fields_without_positional_s
         0.2, 4096, 300, 180, 0, True, True, False,
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert remote_calls[0][-2:] == (CREATIVE, SHOTS)
-    assert gguf_calls[0][-2:] == (CREATIVE, SHOTS)
+    assert remote_calls[0][-3:] == (CREATIVE, SHOTS, "")
+    assert gguf_calls[0][-3:] == (CREATIVE, SHOTS, "")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
@@ -172,6 +173,7 @@ def test_frontend_panel_is_non_persistent_while_both_json_storage_widgets_remain
     source = FRONTEND.read_text(encoding="utf-8")
     assert 'const CREATIVE_TREATMENT_WIDGET = "creative_treatment_json"' in source
     assert 'const SHOT_PLAN_WIDGET = "shot_plan_json"' in source
+    assert 'const CINEMATOGRAPHY_WIDGET = "cinematography_json"' in source
     assert '"MiniMaxH3PromptEnhancer"' in source
     assert '"MiniMaxH3GGUFPromptEnhancer"' in source
     assert '"MiniMaxH3PromptGuideBuilder"' in source
@@ -222,6 +224,8 @@ def test_frontend_uses_collapsed_non_persistent_accordions_and_keeps_advanced_la
         "const panelWidget", 1,
     )[0]
     assert append_block.index("modelSetup.details") < append_block.index("treatmentDetails")
+    assert append_block.index("treatmentDetails") < append_block.index("cinematographyDetails")
+    assert append_block.index("cinematographyDetails") < append_block.index("shotDetails")
     assert append_block.index("shotDetails") < append_block.index("advancedSettings.details")
     assert "node.__minimaxProxyManagedWidgets = managedNames" in source
     assert "setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false)" in source

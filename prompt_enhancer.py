@@ -14,11 +14,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .creative_treatments import build_shots_package, parse_creative_treatment, parse_shot_plan
+    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
     from .media_manifest import generation_profile, manifest_context
     from .prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from creative_treatments import build_shots_package, parse_creative_treatment, parse_shot_plan
+    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
     from media_manifest import generation_profile, manifest_context
     from prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
@@ -268,6 +268,7 @@ def enhance_prompt_with_completion(
     multishot_setting_lock: str = "",
     creative_treatment_json: str = "",
     shot_plan_json: str = "",
+    cinematography_json: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -279,6 +280,7 @@ def enhance_prompt_with_completion(
     creative_treatment = parse_creative_treatment(
         creative_treatment_json, enabled=bool(enhance_description),
     )
+    cinematography = parse_cinematography(cinematography_json)
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved_mode,
     )
@@ -288,7 +290,7 @@ def enhance_prompt_with_completion(
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-        (), creative_treatment_json, shot_plan_json,
+        (), creative_treatment_json, shot_plan_json, cinematography_json,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -310,7 +312,7 @@ def enhance_prompt_with_completion(
             ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
-            creative_treatment_json, shot_plan_json,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -343,7 +345,7 @@ def enhance_prompt_with_completion(
         ambience_foley_policy, background_score_policy, voice_performance,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
-        creative_treatment_json, shot_plan_json,
+        creative_treatment_json, shot_plan_json, cinematography_json,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -400,7 +402,7 @@ def enhance_prompt_with_completion(
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
-            creative_treatment_json, shot_plan_json,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -421,6 +423,8 @@ def enhance_prompt_with_completion(
         "promptContractVersion": 3,
         "creativeTreatmentSchemaVersion": creative_treatment["schemaVersion"],
         "creativeProfileCatalogVersion": creative_treatment["catalogVersion"],
+        "cinematographySchemaVersion": cinematography["schemaVersion"],
+        "cinematographyCatalogVersion": cinematography["catalogVersion"],
         "shotPlanSchemaVersion": explicit_shot_plan["schemaVersion"],
         "shotsPackageSchemaVersion": shots_package.get("schemaVersion", 1),
         "mediaManifestSchemaVersion": 1,
@@ -431,6 +435,7 @@ def enhance_prompt_with_completion(
         "aspectRatio": aspect_ratio,
         "multishotPromptCount": validation.get("promptCount", 0),
         "creativeTreatment": creative_treatment,
+        "cinematography": cinematography,
         "shotPlan": explicit_shot_plan,
         "shotsPackage": shots_package,
         "frameCount": int(frame_count or 0),
@@ -475,7 +480,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    media_manifest: str = "", multishot_shot_count: int = 0,
                    frame_count: int = 0, multishot_identity_lock: str = "",
                    multishot_voice_lock: str = "", multishot_setting_lock: str = "",
-                   creative_treatment_json: str = "", shot_plan_json: str = "") -> tuple[str, dict, dict]:
+                   creative_treatment_json: str = "", shot_plan_json: str = "",
+                   cinematography_json: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -519,4 +525,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         multishot_setting_lock,
         creative_treatment_json,
         shot_plan_json,
+        cinematography_json,
     )

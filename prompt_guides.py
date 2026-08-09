@@ -15,7 +15,9 @@ from typing import Any
 
 try:
     from .creative_treatments import (
+        cinematography_instruction,
         creative_treatment_instruction,
+        parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
         shot_plan_instruction,
@@ -23,7 +25,9 @@ try:
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from creative_treatments import (
+        cinematography_instruction,
         creative_treatment_instruction,
+        parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
         shot_plan_instruction,
@@ -242,6 +246,12 @@ happens. If the request includes an AUTHORITATIVE DIALOGUE LEDGER, copy every le
 additional words. Keep requested identities, actions, camera behavior, timing, reference roles, and ending intact.
 
 Shared timeline rules:
+- Make every added detail concretely visible or audible. Develop the timeline in playback order through style,
+  initial composition, subject appearance and position, environment and key props, actions and reactions, observable
+  state changes, camera, and synchronized diegetic sound. Preserve concrete spatial relationships and causality.
+- At a subject's first clear appearance, establish only source-supported identity, appearance, frame position, and
+  current action; later mentions must remain consistent without repeatedly redefining the subject. Allocate detail
+  according to each shot's information load rather than padding every shot equally.
 - Shot 1 has no timestamp. Later shots are sequential and begin with strictly increasing [Shot N] At MM:SS.mmm,
   cut times inside the requested duration.
 - Describe style and initial composition at Shot 1. Write camera motion naturally using motion type and, only when
@@ -293,9 +303,12 @@ Base-mode output has exactly these three sections in order:
 integrated_multimodal_description, overall_soundscape, non_diegetic_music.
 Each section name must be followed by a literal colon, for example integrated_multimodal_description:.
 T2VA begins directly with the sections. I2VA begins with the exact first-frame alignment sentence supplied in the
-request. FL2VA begins with the exact first/last alignment sentence supplied in the request and normally uses one
-continuous shot that visibly connects both anchors. L2VA begins with the exact last-frame alignment sentence supplied
-in the request and converges toward that final frame.
+request, establishes the referenced style, subjects, composition, and scene anchors, then follows first-frame anchor
+to action onset, continuous development, and visible result or reaction. FL2VA begins with the exact first/last
+alignment sentence supplied in the request and normally uses one continuous shot that moves through observable
+intermediate changes, progressively narrows the differences, and visibly reaches the last-frame anchor. L2VA begins
+with the exact last-frame alignment sentence supplied in the request and moves from a plausible preceding state
+through an explicit transition path to gradual convergence and a visible final-frame landing.
 
 Ref2VA output has exactly these six sections in order:
 subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.
@@ -1003,7 +1016,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        multishot_setting_lock: str = "",
                        authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
                        creative_treatment_json: str = "",
-                       shot_plan_json: str = "") -> str:
+                       shot_plan_json: str = "",
+                       cinematography_json: str = "") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -1019,6 +1033,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     creative_treatment = parse_creative_treatment(
         creative_treatment_json, enabled=bool(enhance_description),
     )
+    cinematography = parse_cinematography(cinematography_json)
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved,
     )
@@ -1092,6 +1107,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             f"background_score_policy={background_score_policy}; "
             f"voice_performance={voice_performance}."
         )
+    cinematography_contract = cinematography_instruction(cinematography)
+    if cinematography_contract:
+        parts.append(cinematography_contract)
     explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
     if explicit_plan_contract:
         parts.append(explicit_plan_contract)
@@ -2331,7 +2349,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     multishot_setting_lock: str = "",
                     authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
                     creative_treatment_json: str = "",
-                    shot_plan_json: str = "") -> dict[str, Any]:
+                    shot_plan_json: str = "",
+                    cinematography_json: str = "") -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
     reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -2339,6 +2358,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     configuration_errors: list[str] = []
     try:
         parse_creative_treatment(creative_treatment_json)
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+    try:
+        parse_cinematography(cinematography_json)
     except ValueError as exc:
         configuration_errors.append(str(exc))
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)

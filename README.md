@@ -51,6 +51,7 @@ MiniMax H3 responds best when actions, timing, camera, dialogue, language, and s
 | Check authored text | Model-free structural validation and repair feedback |
 | Control generated audio | Independent ambience/foley, score, and voice-performance policies |
 | Apply a reusable creative treatment | Independent genre, visual-language, world-aesthetic, and tone profiles |
+| Set presentation without rewriting the story | Optional color, exposure, camera, optics, depth, texture, lens-effect, and motion-rendering controls |
 | Author exact cuts or chained segments | A visual shot-plan editor with automatic or exact timing |
 | Feed duration downstream | `duration_seconds` output on both enhancer nodes |
 | Plan independent chained generations | `chained_multishot` mode plus Chained Multishot Output |
@@ -127,6 +128,9 @@ start closed and expand downward; their open/closed state is saved in node prope
   setting continuity. Every segment uses the global Duration; incompatible per-row duration controls are disabled.
 - **Creative direction** contains Narrative genre, Visual language, World / aesthetic, and Tone. Its summary lists only
   active choices and reads **No preferences** when neutral.
+- **Cinematography** contains optional presentation controls for color palette, exposure/contrast, camera motion plus
+  amplitude and speed, optics, depth of field, image texture, lens effects, and motion rendering. Its summary lists
+  only active choices and reads **No preferences** when neutral.
 - **Shot plan** becomes **Segment plan** in chained mode. Its summary shows row count and Auto or Exact timing.
   **+ Add shot** becomes **+ Add independent segment** in chained mode.
 - **Advanced settings** is always the last section. It contains exact frames, structured media metadata, generation
@@ -137,8 +141,8 @@ start closed and expand downward; their open/closed state is saved in node prope
 
 The accordion controls are non-persistent presentation proxies over the original canonical widgets. Hidden canonical
 fields retain and serialize their saved values, and only the selected backend is executed. The model picker, refresh
-button, and visual direction/planning controls are deliberately not serialized as extra widgets. The two hidden JSON
-storage fields behind Creative direction and Shot plan remain normal serialized inputs. This separation allows visual
+button, and visual direction/planning controls are deliberately not serialized as extra widgets. The three hidden JSON
+storage fields behind Creative direction, Shot plan, and Cinematography remain normal serialized inputs. This separation allows visual
 reordering without shifting positional workflow values when the extension is updated.
 
 Long text areas such as Video description, Reference notes, and Media metadata JSON have a draggable resize handle below the field. Their chosen heights are saved with the workflow; double-clicking the handle restores the default height, and keyboard users can resize with Up/Down (Shift for a larger step). Refreshing a model list does not resize them, avoiding the previous feedback loop in which multiline fields grew after every refresh.
@@ -181,6 +185,7 @@ Shared controls:
 | `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
 | `creative_treatment_json` | blank | Canonical storage for the four optional creative-direction selectors; blank is completely neutral |
 | `shot_plan_json` | blank | Canonical storage for ordered explicit shots or autonomous chained segments; blank preserves automatic planning |
+| `cinematography_json` | blank | Canonical storage for optional non-narrative image-presentation and camera controls; blank is completely neutral |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
 | `ambience_foley_policy` | `auto` | Controls non-musical, non-spoken scene sound: environment plus physical action sounds |
@@ -220,6 +225,12 @@ Main-node local controls:
 | `keep_server_loaded` | disabled | Reuse the same compatible private server instead of releasing the prompt-model memory after the call |
 
 Remote and local values remain saved when hidden, but only the route selected by `use_remote_model` executes.
+
+The 4096-token default is an output ceiling, not a target length. It is comfortably above MiniMax's normal
+350–500-word Ref2VA generation description and does not make ordinary T2VA/I2VA/FL2VA/L2VA prompts terse. Increase it
+for unusually large chained-multishot packages or exceptionally dialogue-dense full-reference work; also ensure the
+local `context_size` can hold the system/user instructions plus the requested output. Raising the ceiling alone does
+not improve detail—the `enhance_description` contract and the scene's information load determine useful depth.
 
 In remote mode, press **Refresh API model list** after entering the endpoint and API key. ComfyUI requests the
 endpoint's `/models` resource through its own same-origin backend, avoiding browser CORS restrictions. It filters
@@ -449,6 +460,18 @@ motion, pacing, action continuity, physical sound, and requested music. It may i
 provides a meaningful change in viewpoint, time, location, scale, or information. Otherwise it prefers a motivated
 continuous camera move.
 
+The description follows MiniMax's recommended information order instead of adding generic cinematic adjectives. Every
+new detail must be visible or audible: establish style and initial composition, then source-supported subject
+appearance and frame position, environment and key props, actions and reactions, observable state changes, camera,
+and synchronized physical sound in playback order. Preserve spatial relationships and causality, define a subject at
+its first clear appearance, and distribute detail according to each shot's information load.
+
+Keyframe modes receive their documented transition logic: I2VA develops from the first-frame anchor through action
+onset to a visible result or reaction; FL2VA describes observable intermediate changes that progressively converge on
+the supplied last frame; L2VA constructs a plausible preceding state and an explicit transition that visibly lands on
+the final-frame anchor. Ref2VA generation normally targets 350–500 English words, but complete dialogue and actual
+source-video edit complexity take priority over mechanical padding.
+
 Short prompts of five seconds or less that explicitly describe simultaneous action with `while` or `mientras`
 receive a one-shot and simultaneity contract unless the source requests an edit or sequence. Gradual progressions such
 as materializations, reveals, or actions developing `poco a poco` also remain one continuous take at any duration when
@@ -468,9 +491,9 @@ the enhancer **how to direct and present it**:
 | Axis | Available profiles |
 |---|---|
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery` |
-| Visual language | `none`, `anime_general`, `anime_shonen`, `anime_shojo`, `animation_2d`, `documentary_observational` |
-| World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism` |
-| Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained` |
+| Visual language | `none`, `anime_general`, `anime_shonen`, `anime_shojo`, `animation_2d`, `documentary_observational`, `live_action_naturalistic`, `stylized_3d_animation`, `stop_motion_handcrafted`, `painterly_2d`, `graphic_novel`, `clean_commercial` |
+| World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k` |
+| Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw` |
 
 Profile selection guide:
 
@@ -492,6 +515,12 @@ Profile selection guide:
 | `anime_shojo` | inherits general anime, then emphasizes elegant composition, gaze, hands and emotional pauses | romance, flowers, sparkles, blush, tears, kisses, magic, or sentimental dialogue |
 | `animation_2d` | unified line/shape language, graphic silhouettes, layered camera motion and pose-to-pose clarity | cartoon physics, gag squash-and-stretch, anthropomorphism, impossible motion, or stylized effects |
 | `documentary_observational` | real-time continuity, unobtrusive human-operated framing, practical light and direct sound | interviews, claims, captions, dates, narration, archives, reenactment, or hidden-camera framing |
+| `live_action_naturalistic` | real-world materials, plausible optics, natural exposure, credible motion and contact | beauty filters, fantasy physics, stylized deformation, artificial lens effects, or documentary claims |
+| `stylized_3d_animation` | coherent volumetric shape language, materials, pose timing and parallax | toy proportions, rubber motion, impossible deformation, game UI, or cartoon sound effects |
+| `stop_motion_handcrafted` | deliberate pose increments, miniature staging and stable tactile craft materials | visible armatures, craft tools, toy behavior, replacement artifacts, or comic effects |
+| `painterly_2d` | stable painted value masses, brush character, authored poses and layered depth | paint splashes, drips, tears, morphing, calligraphy, or symbolic transitions |
+| `graphic_novel` | bold silhouettes, controlled inking, shadow masses and graphic focal hierarchy | panels, captions, balloons, written sound effects, superheroes, or comic plot conventions |
+| `clean_commercial` | precise subject/product hierarchy, accurate materials, controlled highlights and clean handling | brands, claims, prices, packaging text, features, spokesperson behavior, or advertising music |
 
 | World aesthetic | Directs | Does not imply |
 |---|---|---|
@@ -500,6 +529,15 @@ Profile selection guide:
 | `science_fiction` | coherent engineering motifs, scale, geometry, systems and machine sound | spacecraft, aliens, robots, portals, AI, implants, weapons, powers, or future plot facts |
 | `high_fantasy` | compatible handcrafted materials, pictorial depth and tactile atmosphere | magic, creatures, castles, royalty, prophecy, quests, weapons, or supernatural events |
 | `retrofuturism` | period-informed geometry, analog interfaces, material finish and mechanical legibility | rockets, robots, ray guns, flying cars, atomic tech, propaganda, brands, or alternate history |
+| `near_future_functional` | plausible manufacturing, restrained interfaces and familiar functional technology | holograms, implants, AI, robots, surveillance, weapons, vehicles, or new capabilities |
+| `gothic` | compatible vertical rhythm, aged craft and weighty stone/wood/iron/textile detail | castles, crypts, graves, candles, fog, storms, monsters, ritual, or religious symbols |
+| `solarpunk` | climate-responsive, repairable and resource-aware design on existing entities | plants, gardens, solar panels, turbines, water systems, utopias, activism, or new technology |
+| `steampunk` | coherent period mechanism, fastener, material and tactile-control language | engines, pipes, gauges, gears, goggles, airships, automatons, weapons, smoke, or alternate history |
+| `post_apocalyptic` | functional repair, reuse, scarcity and coherent wear on supplied entities | disaster, ruins, corpses, weapons, gangs, mutants, radiation, fire, dust storms, or survival plot |
+| `historical_period` | era-consistent construction, clothing, manufacture and practical lighting when the era is explicit | an inferred era, event, nationality, class, custom, readable text, weapon, vehicle, or politics |
+| `retrofuturism_atomic_age` | coherent 1950s–60s atomic/space-age vocabulary on existing technology | rockets, atomic power, propaganda, diners, robots, ray guns, space travel, or Cold War plot |
+| `retrofuturism_cassette` | coherent 1970s–80s modular, tactile, robust cassette-futurist vocabulary | computers, CRTs, cassette decks, spaceships, military hardware, dystopia, or readable UI |
+| `retrofuturism_y2k` | coherent late-1990s–2000s translucent, rounded and metallic Y2K vocabulary | web graphics, logos, gadgets, internet culture, holograms, robots, or readable UI |
 
 | Tone | Directs | Does not imply |
 |---|---|---|
@@ -511,6 +549,12 @@ Profile selection guide:
 | `melancholic` | reflective pacing, measured distance, restrained chroma and environmental space | loss, loneliness, regret, tears, tragedy, memories, rain, sad dialogue, piano, strings, or music |
 | `playful` | buoyant timing, open composition, lively but identity-consistent gesture | smiles, laughter, celebrations, dancing, pets, confetti, jokes, applause, or upbeat music |
 | `restrained` | editorial economy, precise camera, controlled color and specific micro-reaction | montage, spectacle, melodrama, effects, symbols, exaggerated reactions, or musical emphasis |
+| `serene` | unhurried continuity, stable composition, balanced exposure and low-density sound | nature, water, birds, meditation, sleep, spiritual meaning, silence, or calming music |
+| `eerie` | subtle perceptual imbalance, delayed recognition and unfamiliar spacing | threats, ghosts, monsters, danger, ominous voices, glitches, flicker, or supernatural events |
+| `whimsical` | light rhythm, graceful geometry and harmonious color around supplied action | magic, talking objects, sparkles, floating props, jokes, children, pets, dancing, or whimsical music |
+| `surreal` | controlled non-naturalistic presentation without changing the causal event graph | dreams, symbols, portals, transformations, duplicates, reversed motion, impossible anatomy, or hidden meaning |
+| `clinical` | procedural clarity, neutral exposure, stable scaled views and exact task movement | hospitals, laboratories, uniforms, instruments, screens, data, beeps, diagnosis, or scientific claims |
+| `raw` | immediate causality, direct performance, minimal grading and honest physical sound | shake, noise, clipping, distortion, dirt, damage, sweat, aggression, or documentary claims |
 
 All four default to `none`. With every axis neutral and no shot plan, the user request sent to the LLM is byte-for-byte
 the same as before this feature. A selected treatment only develops unspecified direction when
@@ -555,18 +599,34 @@ per-row exact-timing selector is disabled.
 
 ### Camera, color, optics, and image texture coverage
 
-Creative profiles currently provide concrete direction for composition, framing, camera motion, exposure hierarchy,
-contrast, saturation, motivated lighting, palette coherence, material response, and production design. For example,
-anime profiles request stable local colors and cel-value groups; documentary favors practical light and restrained
-grading; noir and dark profiles request readable low-key contrast; action and epic profiles emphasize spatially
-legible trajectories and scale.
+Creative profiles provide automatic, bounded direction for composition, framing, exposure hierarchy, contrast,
+saturation, motivated lighting, palette coherence, material response, and production design. The separate collapsed
+**Cinematography** section lets you override or supplement that presentation without editing the narrative prompt.
+Every selector defaults to **No preference**, so an untouched panel adds no text and preserves legacy behavior.
 
-These are bounded prompt-writing directions, not independent cinematography controls. The public schema does not yet
-expose manual focal length, lens family, focus target, depth of field, shutter character, grain, halation, bloom,
-chromatic aberration, flare, vignette, or sensor/film emulation. A profile may mention selective focus or a clean 2D
-finish where relevant, but selecting a profile does not authorize the enhancer to invent a lens effect, new light
-source, flash, atmosphere, VFX event, weather change, time-of-day transition, or photographic artifact. State an
-essential camera move, optical requirement, or capture texture explicitly in the basic prompt or shot row.
+| Control | Available intent |
+|---|---|
+| Color palette | natural, warm, cool, restrained, vibrant, or monochrome |
+| Exposure / contrast | high-key, balanced, low-key, high-contrast, or soft-contrast |
+| Camera motion | static, zoom, push/pull, pan, truck, tilt, pedestal, arc, tracking, POV, shake, or roll |
+| Camera amplitude / speed | automatic, small/medium/large and slow/normal/fast; enabled only for a moving camera |
+| Optics | wide, natural, or compressed telephoto perspective |
+| Depth of field | deep, balanced, or shallow |
+| Image texture | clean digital, subtle stable grain, 16 mm, or 35 mm character |
+| Lens effects | clean, subtle diffusion, or restrained halation |
+| Motion rendering | crisp, natural motion blur, or energetic motion blur |
+
+The official H3 base guide describes camera direction as **motion type + amplitude + speed**, expressed in natural
+English inside the relevant shot. The node follows that grammar and supports the official motion vocabulary rather
+than emitting bracket commands from older Hailuo models. A camera choice never creates a cut. Amplitude and speed are
+invalid without a moving camera so a direct API request cannot silently create an incoherent configuration.
+
+Color, exposure, optics, depth, texture, diffusion, halation, and blur are also translated into conservative natural
+language. They are directing requests, not guaranteed renderer parameters. The official guides explicitly describe
+style, composition, environment/lighting, camera, action and sound, but do not define dedicated H3 controls for focal
+length, aperture, film stock, grain or halation. These options therefore specify visual character without claiming
+exact physical calibration or inventing a camera body, lens model, light source, atmosphere, VFX event, weather change,
+time-of-day transition, or story beat.
 
 Color treatment must preserve authoritative wardrobe, object, skin, brand, and reference colors. It changes image
 presentation only; it must not be interpreted as a new diegetic lamp, sunrise, weather transition, transformation, or
@@ -574,6 +634,28 @@ story beat. The Validator checks the treatment configuration and structural prom
 the LLM or video model aesthetically realized a grade, lens character, lighting ratio, or texture. In manifest terms,
 `creativeTreatment.applied=true` means that the resolved directions were injected into the LLM request; it is not a
 visual-adherence score.
+
+The Cinematography panel uses its own strict serialized object:
+
+```json
+{
+  "schemaVersion": 1,
+  "colorPalette": "restrained",
+  "exposureContrast": "low_key",
+  "cameraMotion": "tracking",
+  "cameraAmplitude": "medium",
+  "cameraSpeed": "slow",
+  "optics": "compressed_telephoto",
+  "depthOfField": "shallow",
+  "imageTexture": "film_35mm",
+  "lensEffects": "restrained_halation",
+  "motionRendering": "natural_blur"
+}
+```
+
+Unknown or duplicate keys, unsupported values, and orphaned camera amplitude/speed modifiers are rejected before an
+LLM call. In chained multishot mode the resolved presentation is restated for every independent segment. The manifest
+records the canonical selection, resolved directives, schema/catalog versions, and SHA-256 digest.
 
 ### Creative-treatment JSON
 
@@ -590,9 +672,9 @@ The four visible selectors edit one stable, serialized field. This keeps workflo
 ```
 
 The selector widgets themselves are UI-only and are not appended to `widgets_values`. The canonical
-`creative_treatment_json` and `shot_plan_json` inputs are the final two serialized inputs on the main enhancer,
-direct-GGUF enhancer, Guide Builder, and Validator. Older workflows that contain neither field therefore keep their
-existing positional values and receive neutral empty defaults.
+`creative_treatment_json`, `shot_plan_json`, and `cinematography_json` inputs are the final three serialized inputs on
+the main enhancer, direct-GGUF enhancer, Guide Builder, and Validator. Older workflows that contain none of these
+fields therefore keep their existing positional values and receive neutral empty defaults.
 
 Non-empty backend JSON is strict. Unknown or duplicate keys, unsupported schema versions or profile values, and wrong
 value types raise a configuration error before any LLM call instead of being silently interpreted as creative
@@ -1425,9 +1507,9 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-The current suite contains 206 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
+The current suite contains 211 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
 media manifests and limits, chained multishot output, alignment, single-shot simultaneity and gradual progression, shot
-budgets, all four creative-profile catalogs, anime inheritance and deduplication, strict JSON and shot-plan limits,
+budgets, all four creative-profile catalogs, cinematography controls and H3 camera grammar, anime inheritance and deduplication, strict JSON and shot-plan limits,
 exact cut normalization, no-op compatibility, legacy positional/widget layouts, manifest digests, autonomous shot
 selection and cross-shot audio/dialogue isolation, exact-once dialogue/language preservation, untagged vocal-cue
 rejection, explicit age-category retention, internal voiceover, reference alias/variant merging, best-candidate repair
@@ -1438,9 +1520,11 @@ Bug reports should include the ComfyUI version, extension commit, backend, model
 
 ## Guide basis
 
-The implementation is based on MiniMax's public base and full-reference Video Prompt Writing Guides and the official
-H3 prompt-writing skill, with additional defensive validation and workflow-oriented controls. It is an original
-implementation and is not an official MiniMax or ComfyUI product.
+The implementation is based on MiniMax's public
+[base Video Prompt Writing Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md),
+[full-reference Video Prompt Writing Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md),
+and [official H3 launch documentation](https://minimaxi.com/blog/minimax-h3), with additional defensive validation and
+workflow-oriented controls. It is an original implementation and is not an official MiniMax or ComfyUI product.
 
 ## Project status and license
 

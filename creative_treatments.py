@@ -19,7 +19,9 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 1
+CREATIVE_PROFILE_CATALOG_VERSION = 2
+CINEMATOGRAPHY_SCHEMA_VERSION = 1
+CINEMATOGRAPHY_CATALOG_VERSION = 1
 SHOT_PLAN_SCHEMA_VERSION = 1
 
 CREATIVE_AXES = ("genre", "visual_language", "world_aesthetic", "tone")
@@ -260,6 +262,66 @@ VISUAL_LANGUAGE_PROFILES = {
         may_fill_unspecified=("Observational camera distance, practical reframing, direct-sound perspective, and naturalistic timing.",),
         must_not_invent=("Interviews, facts, captions, dates, narration, archival footage, reenactment, hidden-camera framing, or documentary claims."),
     ),
+    "live_action_naturalistic": _profile(
+        editing_and_pacing=("Preserve credible real-time continuity and physically complete actions without ornamental editing.",),
+        camera_and_framing=("Use plausible human-scale perspective, stable geography, and motivated camera placement.",),
+        lighting_and_color=("Favor believable exposure, natural color relationships, and source-motivated light with readable material response.",),
+        production_design=("Render supplied people, wardrobe, objects, and locations as coherent real-world materials without beautifying or redesigning them.",),
+        blocking_and_performance=("Use anatomically credible motion, weight, contact, eyelines, and restrained natural performance.",),
+        sound_treatment=("When allowed, preserve physically plausible direct sound, room perspective, and material-specific foley.",),
+        may_fill_unspecified=("Naturalistic capture, material response, physical motion, and human-scale camera placement.",),
+        must_not_invent=("Beauty filters, fantasy physics, stylized deformation, artificial lens effects, melodrama, or documentary claims."),
+    ),
+    "stylized_3d_animation": _profile(
+        editing_and_pacing=("Use clear pose-to-pose timing, readable arcs, controlled overlap, and stable spatial continuity.",),
+        camera_and_framing=("Compose with legible volumetric silhouettes, coherent perspective, and measured parallax.",),
+        lighting_and_color=("Use stable palette roles, shaped lighting, and consistent physically coherent material response within the selected stylization.",),
+        production_design=("Translate supplied content into one coherent stylized 3D shape, surface, scale, and detail language.",),
+        blocking_and_performance=("Use expressive but identity-consistent poses with credible contacts and no unrequested cartoon physics.",),
+        sound_treatment=("Keep permitted sound synchronized to visible 3D motion and material contact without adding cartoon effects.",),
+        may_fill_unspecified=("3D shape language, material simplification, animation spacing, and volumetric staging.",),
+        must_not_invent=("Toy proportions, anthropomorphism, rubber motion, impossible deformation, game UI, or cartoon sound effects."),
+    ),
+    "stop_motion_handcrafted": _profile(
+        editing_and_pacing=("Use deliberate pose increments, tactile holds, and coherent handcrafted stop-motion timing.",),
+        camera_and_framing=("Use physically plausible tabletop-scale camera placement, stable sets, and restrained parallax.",),
+        lighting_and_color=("Preserve stable practical illumination, tactile shadows, and consistent handmade surface color across frames.",),
+        production_design=("Express supplied content through coherent clay, felt, paper, wood, resin, or miniature-set craft only where its material is unspecified.",),
+        blocking_and_performance=("Use intentional frame-by-frame posing while preserving identity, anatomy, object count, and required action.",),
+        sound_treatment=("When allowed, use restrained tactile material sounds without adding workshop or toy noises.",),
+        may_fill_unspecified=("Handcrafted material language, pose increments, miniature staging, and tactile surface response.",),
+        must_not_invent=("Fingerprints, seams, armatures, toy behavior, craft tools, replacement-animation artifacts, or comic sound effects."),
+    ),
+    "painterly_2d": _profile(
+        editing_and_pacing=("Use readable authored poses and transitions while keeping painted forms temporally coherent.",),
+        camera_and_framing=("Favor composed depth planes and restrained camera motion that preserves the painted layout.",),
+        lighting_and_color=("Use controlled painted value masses, palette harmony, and stable brush texture without color crawl.",),
+        production_design=("Translate supplied content into one coherent watercolor, gouache, ink-wash, or painterly surface language without changing its facts.",),
+        blocking_and_performance=("Clarify motion through silhouette and shape change while avoiding fluid morphing unrelated to the action.",),
+        sound_treatment=("Painting style grants no new sound; use only audio authorized by the existing policies.",),
+        may_fill_unspecified=("Paint medium, brush character, value grouping, layer depth, and temporally stable surface texture.",),
+        must_not_invent=("Ink splashes, paint drips, paper tears, morphing, abstract transitions, calligraphy, or symbolic imagery."),
+    ),
+    "graphic_novel": _profile(
+        editing_and_pacing=("Use decisive visual beats and readable holds without turning the video into a slideshow or adding panel cuts.",),
+        camera_and_framing=("Use bold silhouette, graphic depth, controlled negative space, and clear focal hierarchy.",),
+        lighting_and_color=("Use stable inked contours, deliberate shadow masses, and a restrained coherent color system.",),
+        production_design=("Render supplied content through one consistent illustration, inking, and surface vocabulary.",),
+        blocking_and_performance=("Favor readable poses and expressions without adding comic exaggeration or changing identity.",),
+        sound_treatment=("Use only policy-authorized sound; graphic styling does not create captions or written sound effects.",),
+        may_fill_unspecified=("Inking, shadow shapes, graphic composition, restrained palette, and pose clarity.",),
+        must_not_invent=("Panels, gutters, captions, speech balloons, written sound effects, halftone text, superheroes, or comic-book plot conventions."),
+    ),
+    "clean_commercial": _profile(
+        editing_and_pacing=("Present the requested subject and action with efficient, legible timing and no invented sales beat.",),
+        camera_and_framing=("Use uncluttered composition, clear product or subject hierarchy, and controlled camera motion.",),
+        lighting_and_color=("Use clean exposure, accurate brand and material colors, controlled highlights, and polished but plausible separation.",),
+        production_design=("Keep supplied surfaces, packaging, controls, logos, and proportions exact; simplify only unspecified background clutter.",),
+        blocking_and_performance=("Use precise handling, clean gestures, and readable interaction without adding endorsement behavior.",),
+        sound_treatment=("When allowed, use clean material and mechanism detail; music and slogans require explicit authorization.",),
+        may_fill_unspecified=("Clean visual hierarchy, controlled reflections, accurate material presentation, and precise handling.",),
+        must_not_invent=("Brands, logos, slogans, claims, prices, packaging text, product features, spokesperson behavior, or advertising music."),
+    ),
 }
 
 
@@ -314,6 +376,69 @@ WORLD_AESTHETIC_PROFILES = {
         sound_treatment=("When allowed, use tactile switches, relays, motors, servos, ventilation, and era-compatible electronic texture for visible devices.",),
         may_fill_unspecified=("Period-informed shape language, analog interface detail, material finish, and mechanical operation.",),
         must_not_invent=("Rockets, robots, ray guns, flying cars, atomic technology, propaganda, fictional brands, or alternate-history events."),
+    ),
+    "near_future_functional": _profile(
+        production_design=("Apply restrained near-future refinement only to unspecified attributes of already authorized architecture, clothing, props, machines, and interfaces, using plausible manufacturing and clear affordances.",),
+        lighting_and_color=("Keep illumination practical and contemporary, with controlled emissions only from existing devices.",),
+        blocking_and_performance=("Treat existing technology as familiar and functional without changing behavior or capability.",),
+        sound_treatment=("When allowed, give visible supplied devices restrained, repeatable physical sound without futuristic clichés.",),
+        may_fill_unspecified=("Plausible near-future materials, manufacturing, interface hierarchy, and functional refinement.",),
+        must_not_invent=("Holograms, implants, robots, artificial intelligence, floating interfaces, surveillance, weapons, vehicles, or new technological capability."),
+    ),
+    "gothic": _profile(
+        production_design=("Use compatible vertical rhythm, aged craft, carved detail, stone, dark wood, iron, and textile weight only on already authorized structures and objects.",),
+        lighting_and_color=("Use source-motivated directional contrast and restrained color without forcing night, candles, fog, or underexposure.",),
+        blocking_and_performance=("Preserve supplied behavior; gothic design does not imply fear, solemnity, menace, or ritual.",),
+        sound_treatment=("Use only physically supported room and material acoustics; no organ, choir, wind, bells, or ominous ambience by default.",),
+        may_fill_unspecified=("Compatible gothic craft, vertical proportion, material age, and architectural rhythm.",),
+        must_not_invent=("Churches, castles, crypts, ruins, graves, crosses, candles, fog, storms, monsters, ghosts, ritual, or religious symbolism."),
+    ),
+    "solarpunk": _profile(
+        production_design=("Apply repairable, resource-aware, climate-responsive design only to unspecified attributes of existing places, garments, and devices.",),
+        lighting_and_color=("Favor natural illumination and material color while preserving supplied weather, season, vegetation, and time of day.",),
+        blocking_and_performance=("Do not change social behavior or assign environmental purpose to neutral actions.",),
+        sound_treatment=("Use only supported environmental and mechanical sources; do not add birds, water, wind, or community ambience.",),
+        may_fill_unspecified=("Passive-design logic, repairability, compatible natural materials, and restrained ecological integration.",),
+        must_not_invent=("Plants, gardens, solar panels, wind turbines, water systems, utopian communities, activism, new technology, or ecological plot claims."),
+    ),
+    "steampunk": _profile(
+        production_design=("Style unspecified attributes of existing authorized mechanisms with one coherent period craft, fastener, pipe, gauge, and material logic.",),
+        lighting_and_color=("Use plausible period practical light and material reflections without adding steam, smoke, sparks, or sepia grading.",),
+        blocking_and_performance=("Preserve supplied operation and capability; controls remain mechanically legible and physically reachable.",),
+        sound_treatment=("When allowed, give visible mechanisms restrained tactile sounds without implying new machinery or pressure events.",),
+        may_fill_unspecified=("Compatible period mechanism design, brass/iron/wood material logic, fasteners, and tactile controls.",),
+        must_not_invent=("Steam engines, pipes, gauges, gears, goggles, airships, automatons, weapons, Victorian characters, smoke, or alternate history unless already authorized."),
+    ),
+    "post_apocalyptic": _profile(
+        production_design=("Apply functional repair, reuse, scarcity, and weathering only to unspecified attributes of already supplied places, garments, vehicles, and objects.",),
+        lighting_and_color=("Preserve the explicit environment and palette; do not force dust, desaturation, smoke, harsh sun, or ruined atmosphere.",),
+        blocking_and_performance=("Preserve supplied affect and behavior; wear does not imply fear, aggression, hunger, or survival activity.",),
+        sound_treatment=("Use only physically supported ambience and material wear; silence does not imply disaster.",),
+        may_fill_unspecified=("Functional repair, reuse, patina, material scarcity, and coherent wear patterns.",),
+        must_not_invent=("Disaster, ruins, corpses, violence, weapons, gangs, mutants, radiation, fire, abandoned vehicles, dust storms, or survival plot facts."),
+    ),
+    "historical_period": _profile(
+        production_design=("Use only the era explicitly named by the source, keeping architecture, construction, clothing, objects, typography, and manufacturing mutually consistent.",),
+        lighting_and_color=("Use lighting sources and material response plausible for the supplied era without imposing a vintage grade.",),
+        blocking_and_performance=("Preserve supplied behavior and avoid stereotyped formality, class, occupation, or social custom.",),
+        sound_treatment=("Use only supported period-compatible physical sources; never add crowd, transport, music, or speech conventions.",),
+        may_fill_unspecified=("Era-consistent construction, materials, manufacture, and non-legible decorative detail only when the era is explicit.",),
+        must_not_invent=("A historical era, event, nationality, class, occupation, custom, readable text, weapon, vehicle, or political symbol."),
+    ),
+    "retrofuturism_atomic_age": _profile(
+        inherits=("retrofuturism",),
+        production_design=("Use a coherent 1950s–1960s atomic/space-age vocabulary for existing authorized technology: rounded enclosures, restrained chrome, molded plastics, analog dials, and era-consistent graphic geometry.",),
+        must_not_invent=("Rockets, atomic power, propaganda, diners, ray guns, robots, flying cars, space travel, or Cold War plot content."),
+    ),
+    "retrofuturism_cassette": _profile(
+        inherits=("retrofuturism",),
+        production_design=("Use a coherent 1970s–1980s cassette-futurist vocabulary for existing authorized technology: modular panels, physical keys, CRT-like display geometry, vents, labels as non-legible blocks, and robust housings.",),
+        must_not_invent=("Computers, CRT screens, cassette decks, spaceships, robots, military hardware, corporate dystopia, or readable interface text."),
+    ),
+    "retrofuturism_y2k": _profile(
+        inherits=("retrofuturism",),
+        production_design=("Use a coherent late-1990s–2000s Y2K vocabulary for existing authorized technology: translucent polymers, compact rounded forms, metallic accents, and era-consistent physical/digital controls.",),
+        must_not_invent=("Web graphics, logos, gadgets, internet culture, futuristic vehicles, holograms, robots, or readable interface text."),
     ),
 }
 
@@ -400,6 +525,66 @@ TONE_PROFILES = {
         may_fill_unspecified=("Editorial economy, precise camera behavior, controlled palette, and subtle performance detail.",),
         must_not_invent=("Flourishes, montage, spectacle, melodrama, visual effects, symbolic inserts, exaggerated reactions, or musical emphasis."),
     ),
+    "serene": _profile(
+        editing_and_pacing=("Use unhurried continuity, complete actions, and comfortable holds without suppressing required events.",),
+        camera_and_framing=("Favor stable composition, gentle motivated movement, and clear spatial balance.",),
+        lighting_and_color=("Use balanced exposure and harmonious source-consistent color without forcing warmth, daylight, or softness.",),
+        production_design=("Let existing order, space, and material relationships remain visually calm without removing authoritative detail.",),
+        blocking_and_performance=("Use economical movement and settled posture only within the supplied performance.",),
+        sound_treatment=("When allowed, preserve continuous low-density environmental detail without inventing nature sounds or music.",),
+        may_fill_unspecified=("Unhurried timing, stable framing, balanced exposure, and low-density sound.",),
+        must_not_invent=("Nature, water, breeze, birds, meditation, smiles, sleep, spiritual meaning, silence, or calming music."),
+    ),
+    "eerie": _profile(
+        editing_and_pacing=("Use subtle temporal irregularity, delayed recognition, or controlled stillness around information already present.",),
+        camera_and_framing=("Use slightly unfamiliar spacing, scale, or attention while preserving geography and required visibility.",),
+        lighting_and_color=("Use restrained source-compatible imbalance in color or visibility without darkening the scene or adding flicker.",),
+        production_design=("Emphasize an existing unusual relationship or repetition without converting decoration into evidence.",),
+        blocking_and_performance=("Preserve affect; do not add fear, suspicion, staring, or unnatural movement.",),
+        sound_treatment=("When allowed, use only supported ambience with restrained spacing or decay; no unseen source is implied.",),
+        may_fill_unspecified=("Subtle perceptual unfamiliarity, restrained imbalance, and delayed attention.",),
+        must_not_invent=("Threats, ghosts, monsters, uncanny faces, danger, ominous voices, drones, glitches, flicker, or supernatural events."),
+    ),
+    "whimsical": _profile(
+        editing_and_pacing=("Use light rhythmic variation and graceful transitions around the supplied action without creating a gag.",),
+        camera_and_framing=("Favor clear playful geometry and responsive but controlled movement without impossible viewpoints.",),
+        lighting_and_color=("Use harmonious color relationships and clean separation without adding saturation, sparkle, or magical glow.",),
+        production_design=("Highlight compatible shape rhythm and charming existing detail without anthropomorphizing objects.",),
+        blocking_and_performance=("Use buoyant but identity-consistent timing without inventing delight or childish behavior.",),
+        sound_treatment=("When allowed, keep real sources light and articulate; no cartoon effects or music are implied.",),
+        may_fill_unspecified=("Light rhythmic variation, graceful geometry, harmonious color, and articulate physical detail.",),
+        must_not_invent=("Magic, creatures, talking objects, sparkles, floating props, jokes, children, pets, dancing, or whimsical music."),
+    ),
+    "surreal": _profile(
+        editing_and_pacing=("Use an unusual presentation of relationships already supplied while keeping the exact causal event sequence intact.",),
+        camera_and_framing=("Allow controlled disorientation in scale, composition, or viewpoint only when it does not alter physical facts or continuity.",),
+        lighting_and_color=("Use a coherent non-naturalistic treatment without creating a new light source, transformation, or environmental event.",),
+        production_design=("Reframe existing forms and spatial relationships; do not add symbolic objects or replace the location.",),
+        blocking_and_performance=("Preserve required action and identity; surreal tone does not authorize impossible anatomy or behavior.",),
+        sound_treatment=("When allowed, transform only the perspective or texture of existing sources without adding voices, reversals, or music.",),
+        may_fill_unspecified=("Controlled perceptual disorientation, non-naturalistic presentation, and unusual spatial emphasis.",),
+        must_not_invent=("Dreams, hallucinations, symbols, floating objects, portals, transformations, duplicated subjects, reversed motion, impossible anatomy, or hidden meaning."),
+    ),
+    "clinical": _profile(
+        editing_and_pacing=("Use exact, procedural, information-first timing without omitting required human or environmental detail.",),
+        camera_and_framing=("Favor stable, orthogonal, clearly scaled views and consistent subject distance.",),
+        lighting_and_color=("Use neutral white balance, even readable exposure, and restrained contrast without forcing a white environment.",),
+        production_design=("Keep supplied surfaces and tools precise, functional, and uncluttered without inventing medical or laboratory context.",),
+        blocking_and_performance=("Use deliberate task-readable movement without flattening explicitly emotional behavior.",),
+        sound_treatment=("When allowed, use clean, accurately located physical sound without electronic beeps by default.",),
+        may_fill_unspecified=("Procedural clarity, neutral exposure, orthogonal framing, and precise physical operation.",),
+        must_not_invent=("Hospitals, laboratories, uniforms, instruments, screens, data, beeps, sterility, diagnosis, or scientific claims."),
+    ),
+    "raw": _profile(
+        editing_and_pacing=("Preserve immediate real-time causality and avoid ornamental smoothing, montage, or beautifying holds.",),
+        camera_and_framing=("Use direct physically plausible proximity and responsive framing without gratuitous shake or poor composition.",),
+        lighting_and_color=("Preserve source-consistent exposure and color with minimal grading; raw does not mean underexposed, noisy, or damaged.",),
+        production_design=("Retain functional wear and supplied imperfection without adding dirt, clutter, damage, or distress.",),
+        blocking_and_performance=("Preserve direct performance energy and physical effort without manufacturing aggression or vulnerability.",),
+        sound_treatment=("When allowed, favor immediate direct sound and honest room perspective without distortion.",),
+        may_fill_unspecified=("Immediate timing, minimal grading, direct camera proximity, and physically honest sound.",),
+        must_not_invent=("Handheld shake, sensor noise, clipping, distortion, dirt, damage, sweat, aggression, documentary claims, or degraded audio."),
+    ),
 }
 
 
@@ -409,6 +594,114 @@ PROFILE_CATALOGS = {
     "world_aesthetic": WORLD_AESTHETIC_PROFILES,
     "tone": TONE_PROFILES,
 }
+
+
+CINEMATOGRAPHY_JSON_KEYS = {
+    "colorPalette": "color_palette",
+    "exposureContrast": "exposure_contrast",
+    "cameraMotion": "camera_motion",
+    "cameraAmplitude": "camera_amplitude",
+    "cameraSpeed": "camera_speed",
+    "optics": "optics",
+    "depthOfField": "depth_of_field",
+    "imageTexture": "image_texture",
+    "lensEffects": "lens_effects",
+    "motionRendering": "motion_rendering",
+}
+
+CINEMATOGRAPHY_CHOICES = {
+    "color_palette": {
+        "none": "",
+        "natural": "Use natural, source-consistent color relationships with accurate skin, wardrobe, object, and brand colors.",
+        "warm": "Apply a restrained warm color bias as image treatment only, preserving explicit local colors and the supplied time of day.",
+        "cool": "Apply a restrained cool color bias as image treatment only, preserving explicit local colors and the supplied time of day.",
+        "restrained": "Use restrained chroma and controlled color separation without desaturating authoritative colors.",
+        "vibrant": "Use vivid but protected color separation without clipping channels, recoloring references, or increasing every color equally.",
+        "monochrome": "Render a coherent monochrome image with clear luminance separation, but do not apply monochrome where authoritative color must remain visible.",
+    },
+    "exposure_contrast": {
+        "none": "",
+        "high_key": "Use bright high-key exposure with protected highlights, readable pale materials, and no invented light source.",
+        "balanced": "Use balanced exposure, moderate contrast, protected highlights, and readable shadow detail.",
+        "low_key": "Use readable low-key exposure with controlled pools of visibility and no crushed required detail.",
+        "high_contrast": "Use a strong but controlled contrast curve with protected highlights and legible shadows.",
+        "soft_contrast": "Use gentle tonal transitions and soft contrast without haze, diffusion, or loss of material definition.",
+    },
+    "camera_motion": {
+        "none": "",
+        "static": "The camera holds a Static Shot.",
+        "zoom_in": "The camera Zooms In.",
+        "zoom_out": "The camera Zooms Out.",
+        "push_in": "The camera Pushes In.",
+        "pull_out": "The camera Pulls Out.",
+        "pan_left": "The camera Pans Left.",
+        "pan_right": "The camera Pans Right.",
+        "truck_left": "The camera Trucks Left.",
+        "truck_right": "The camera Trucks Right.",
+        "tilt_up": "The camera Tilts Up.",
+        "tilt_down": "The camera Tilts Down.",
+        "pedestal_up": "The camera Pedestals Up.",
+        "pedestal_down": "The camera Pedestals Down.",
+        "arc": "The camera performs an Arc Shot around the supplied focal subject.",
+        "tracking": "The camera performs a Tracking Shot following the supplied moving subject.",
+        "pov": "Use the explicitly established subject's POV while preserving all required visible information.",
+        "shake_slightly": "The camera Shakes Slightly without obscuring required action.",
+        "shake_strongly": "The camera Shakes Strongly while keeping required action identifiable.",
+        "roll_clockwise": "The camera Rolls Clockwise around the lens axis.",
+        "roll_counterclockwise": "The camera Rolls Counterclockwise around the lens axis.",
+    },
+    "camera_amplitude": {
+        "auto": "",
+        "small": "Use small camera-motion amplitude.",
+        "medium": "Use medium camera-motion amplitude.",
+        "large": "Use large camera-motion amplitude while preserving continuity and required visibility.",
+    },
+    "camera_speed": {
+        "auto": "",
+        "slow": "Use slow camera-motion speed.",
+        "normal": "Use normal camera-motion speed.",
+        "fast": "Use fast camera-motion speed while preserving spatial legibility.",
+    },
+    "optics": {
+        "none": "",
+        "wide_perspective": "Use a moderately wide perspective with readable spatial depth and controlled edge distortion.",
+        "natural_perspective": "Use a natural human-scale perspective without conspicuous wide-angle or telephoto distortion.",
+        "compressed_telephoto": "Use a compressed telephoto-like perspective while keeping subject-to-background relationships understandable.",
+    },
+    "depth_of_field": {
+        "none": "",
+        "deep": "Use deep focus so every required spatial layer and action remains readable.",
+        "balanced": "Use moderate depth of field with the principal required subject and action clearly focused.",
+        "shallow": "Use shallow depth of field with the required focal subject explicitly sharp; do not hide required action or reference detail.",
+    },
+    "image_texture": {
+        "none": "",
+        "clean_digital": "Use a clean, temporally stable digital image without grain, sensor noise, gate weave, or compression damage.",
+        "subtle_stable_grain": "Apply fine, subtle, temporally stable photographic grain without shimmer or loss of facial and text detail.",
+        "film_16mm": "Use a restrained 16mm-inspired photographic texture with fine stable grain and protected detail, not scratches or gate damage.",
+        "film_35mm": "Use a restrained 35mm-inspired photographic texture with fine stable grain and smooth tonal response, not scratches or gate damage.",
+    },
+    "lens_effects": {
+        "none": "",
+        "clean": "Keep optics clean: no bloom, halation, flare, chromatic aberration, vignette, or lens dirt.",
+        "subtle_diffusion": "Use restrained highlight diffusion while preserving facial, material, and text clarity; add no visible filter artifact.",
+        "restrained_halation": "Use restrained halation only around existing bright highlights, with no new glow or light source.",
+    },
+    "motion_rendering": {
+        "none": "",
+        "crisp": "Keep moving contours comparatively crisp and temporally stable without frozen or strobing motion.",
+        "natural_blur": "Use physically plausible natural motion blur proportional to existing movement and camera speed.",
+        "energetic_blur": "Use stronger directional motion blur only on fast supplied movement while preserving identity and action readability.",
+    },
+}
+
+
+def cinematography_choices(field: str) -> tuple[str, ...]:
+    """Return stable choices for one manual cinematography field."""
+    key = str(field or "").strip()
+    if key not in CINEMATOGRAPHY_CHOICES:
+        raise ValueError(f"Unsupported cinematography field {field!r}")
+    return tuple(CINEMATOGRAPHY_CHOICES[key])
 
 
 def _canonical_digest(value: Any) -> str:
@@ -429,6 +722,103 @@ def _strict_json_loads(value: str, field_name: str) -> Any:
         return json.loads(value, object_pairs_hook=object_from_pairs)
     except json.JSONDecodeError as exc:
         raise ValueError(f"{field_name} must be valid JSON: {exc.msg}") from exc
+
+
+def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any]:
+    """Parse the optional manual cinematography schema without changing legacy creative JSON."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raw: dict[str, Any] = {}
+    elif isinstance(value, str):
+        if len(value) > 32768:
+            raise ValueError("cinematography_json exceeds the 32768-character limit")
+        parsed = _strict_json_loads(value, "cinematography_json")
+        if not isinstance(parsed, dict):
+            raise ValueError("cinematography_json must be a JSON object")
+        raw = parsed
+    elif isinstance(value, Mapping):
+        raw = dict(value)
+    else:
+        raise ValueError("cinematography_json must be blank, a JSON object string, or a mapping")
+
+    allowed_keys = {"schemaVersion", *CINEMATOGRAPHY_JSON_KEYS}
+    unknown = sorted(set(raw) - allowed_keys)
+    if unknown:
+        raise ValueError(f"cinematography_json contains unsupported keys: {unknown}")
+    if raw and "schemaVersion" not in raw:
+        raise ValueError(f"cinematography_json requires schemaVersion {CINEMATOGRAPHY_SCHEMA_VERSION}")
+    schema = raw.get("schemaVersion", CINEMATOGRAPHY_SCHEMA_VERSION)
+    if raw and (
+        not isinstance(schema, int)
+        or isinstance(schema, bool)
+        or schema != CINEMATOGRAPHY_SCHEMA_VERSION
+    ):
+        raise ValueError(f"cinematography_json schemaVersion must be {CINEMATOGRAPHY_SCHEMA_VERSION}")
+
+    selections: dict[str, str] = {}
+    canonical: dict[str, Any] = {"schemaVersion": CINEMATOGRAPHY_SCHEMA_VERSION}
+    for external, internal in CINEMATOGRAPHY_JSON_KEYS.items():
+        default = "auto" if internal in {"camera_amplitude", "camera_speed"} else "none"
+        selected = raw.get(external, default)
+        if selected in (None, ""):
+            selected = default
+        if not isinstance(selected, str):
+            raise ValueError(f"cinematography_json {external} must be a string")
+        selected = selected.strip().lower()
+        choices = CINEMATOGRAPHY_CHOICES[internal]
+        if selected not in choices:
+            raise ValueError(
+                f"Unsupported cinematography {external} value {selected!r}; choose one of: "
+                + ", ".join(choices)
+            )
+        selections[internal] = selected
+        canonical[external] = selected
+
+    motion = selections["camera_motion"]
+    if motion in {"none", "static", "pov"} and (
+        selections["camera_amplitude"] != "auto" or selections["camera_speed"] != "auto"
+    ):
+        raise ValueError("cameraAmplitude and cameraSpeed require a moving cameraMotion")
+
+    directives = []
+    for field in CINEMATOGRAPHY_CHOICES:
+        text = CINEMATOGRAPHY_CHOICES[field][selections[field]]
+        if text:
+            directives.append({"field": field, "value": selections[field], "instruction": text})
+    requested = bool(directives)
+    digest_payload = {
+        "catalogVersion": CINEMATOGRAPHY_CATALOG_VERSION,
+        "selection": canonical,
+        "directives": directives,
+    }
+    return {
+        **canonical,
+        "catalogVersion": CINEMATOGRAPHY_CATALOG_VERSION,
+        "requested": requested,
+        "applied": requested,
+        "directives": directives,
+        "digest": _canonical_digest(digest_payload),
+        "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+    }
+
+
+def cinematography_instruction(cinematography: Mapping[str, Any]) -> str:
+    """Render explicit H3-oriented cinematography controls in compact natural English."""
+    if not cinematography.get("applied"):
+        return ""
+    lines = [
+        "EXPLICIT CINEMATOGRAPHY — AUTHORITATIVE PRESENTATION CONTROL:",
+        "Apply these choices consistently unless the source prompt, reference frame/video, or explicit shot row "
+        "states a more specific conflicting requirement. Integrate camera movement as natural English inside each "
+        "applicable shot using H3's motion type + amplitude + speed grammar; do not append unsupported tag syntax.",
+        "These controls change presentation only. They may not create a cut, action, subject, object, light source, "
+        "weather or time transition, VFX event, sound, or story beat. Preserve authoritative identity, geometry, "
+        "skin, wardrobe, product, brand, object, and reference colors. Keep texture and optical effects temporally "
+        "stable and omit any effect not selected below.",
+        "For chained_multishot output, restate the resolved cinematography compactly inside every autonomous prompt "
+        "item so no segment depends on styling declared only in another item.",
+    ]
+    lines.extend(f"- {item['instruction']}" for item in cinematography.get("directives", ()))
+    return "\n".join(lines)
 
 
 def creative_treatment_choices(axis: str) -> tuple[str, ...]:

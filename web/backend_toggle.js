@@ -104,9 +104,11 @@ const DEFAULT_MULTILINE_HEIGHTS = {
 const FIELD_STYLE_ID = "minimax-h3-field-styles";
 const CREATIVE_TREATMENT_WIDGET = "creative_treatment_json";
 const SHOT_PLAN_WIDGET = "shot_plan_json";
+const CINEMATOGRAPHY_WIDGET = "cinematography_json";
 const CREATIVE_PANEL_WIDGET = "MiniMax H3 creative direction";
 const CREATIVE_SCHEMA_VERSION = 1;
 const SHOT_PLAN_SCHEMA_VERSION = 1;
+const CINEMATOGRAPHY_SCHEMA_VERSION = 1;
 const MAX_SHOTS = 64;
 const DEFAULT_EXACT_SHOT_DURATION = 1;
 const CREATIVE_CHOICES = {
@@ -124,10 +126,16 @@ const CREATIVE_CHOICES = {
     visualLanguage: [
         ["none", "No preference"],
         ["anime_general", "General anime"],
-        ["anime_shonen", "Shōnen anime"],
-        ["anime_shojo", "Shōjo anime"],
+        ["anime_shonen", "Kinetic action anime"],
+        ["anime_shojo", "Lyrical character anime"],
         ["animation_2d", "2D animation"],
         ["documentary_observational", "Observational documentary"],
+        ["live_action_naturalistic", "Naturalistic live action"],
+        ["stylized_3d_animation", "Stylized 3D animation"],
+        ["stop_motion_handcrafted", "Handcrafted stop motion"],
+        ["painterly_2d", "Painterly 2D"],
+        ["graphic_novel", "Graphic novel"],
+        ["clean_commercial", "Clean commercial"],
     ],
     worldAesthetic: [
         ["none", "No preference"],
@@ -136,6 +144,15 @@ const CREATIVE_CHOICES = {
         ["science_fiction", "Science fiction"],
         ["high_fantasy", "High fantasy"],
         ["retrofuturism", "Retrofuturism"],
+        ["near_future_functional", "Functional near future"],
+        ["gothic", "Gothic"],
+        ["solarpunk", "Solarpunk"],
+        ["steampunk", "Steampunk"],
+        ["post_apocalyptic", "Post-apocalyptic"],
+        ["historical_period", "Historical period"],
+        ["retrofuturism_atomic_age", "Atomic-age retrofuturism"],
+        ["retrofuturism_cassette", "Cassette futurism"],
+        ["retrofuturism_y2k", "Y2K futurism"],
     ],
     tone: [
         ["none", "No preference"],
@@ -147,8 +164,33 @@ const CREATIVE_CHOICES = {
         ["melancholic", "Melancholic"],
         ["playful", "Playful"],
         ["restrained", "Restrained"],
+        ["serene", "Serene"],
+        ["eerie", "Eerie"],
+        ["whimsical", "Whimsical"],
+        ["surreal", "Surreal"],
+        ["clinical", "Clinical"],
+        ["raw", "Raw"],
     ],
 };
+const CINEMATOGRAPHY_CHOICES = {
+    colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"]],
+    exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
+    cameraMotion: [["none", "No preference"], ["static", "Static shot"], ["zoom_in", "Zoom in"], ["zoom_out", "Zoom out"], ["push_in", "Push in"], ["pull_out", "Pull out"], ["pan_left", "Pan left"], ["pan_right", "Pan right"], ["truck_left", "Truck left"], ["truck_right", "Truck right"], ["tilt_up", "Tilt up"], ["tilt_down", "Tilt down"], ["pedestal_up", "Pedestal up"], ["pedestal_down", "Pedestal down"], ["arc", "Arc shot"], ["tracking", "Tracking shot"], ["pov", "POV"], ["shake_slightly", "Shake slightly"], ["shake_strongly", "Shake strongly"], ["roll_clockwise", "Roll clockwise"], ["roll_counterclockwise", "Roll counterclockwise"]],
+    cameraAmplitude: [["auto", "Automatic"], ["small", "Small"], ["medium", "Medium"], ["large", "Large"]],
+    cameraSpeed: [["auto", "Automatic"], ["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
+    optics: [["none", "No preference"], ["wide_perspective", "Wide perspective"], ["natural_perspective", "Natural perspective"], ["compressed_telephoto", "Compressed telephoto"]],
+    depthOfField: [["none", "No preference"], ["deep", "Deep focus"], ["balanced", "Balanced depth"], ["shallow", "Shallow focus"]],
+    imageTexture: [["none", "No preference"], ["clean_digital", "Clean digital"], ["subtle_stable_grain", "Subtle stable grain"], ["film_16mm", "16mm-inspired"], ["film_35mm", "35mm-inspired"]],
+    lensEffects: [["none", "No preference"], ["clean", "Clean optics"], ["subtle_diffusion", "Subtle diffusion"], ["restrained_halation", "Restrained halation"]],
+    motionRendering: [["none", "No preference"], ["crisp", "Crisp motion"], ["natural_blur", "Natural motion blur"], ["energetic_blur", "Energetic motion blur"]],
+};
+const CINEMATOGRAPHY_FIELDS = [
+    ["colorPalette", "Color palette"], ["exposureContrast", "Exposure / contrast"],
+    ["cameraMotion", "H3 camera motion"], ["cameraAmplitude", "Motion amplitude"],
+    ["cameraSpeed", "Motion speed"], ["optics", "Optics"],
+    ["depthOfField", "Depth of field"], ["imageTexture", "Image texture"],
+    ["lensEffects", "Lens effects"], ["motionRendering", "Motion rendering"],
+];
 const CREATIVE_FIELD_DEFINITIONS = [
     {
         key: "genre",
@@ -767,6 +809,22 @@ function defaultShotPlan() {
     };
 }
 
+function defaultCinematography() {
+    return {
+        schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION,
+        colorPalette: "none",
+        exposureContrast: "none",
+        cameraMotion: "none",
+        cameraAmplitude: "auto",
+        cameraSpeed: "auto",
+        optics: "none",
+        depthOfField: "none",
+        imageTexture: "none",
+        lensEffects: "none",
+        motionRendering: "none",
+    };
+}
+
 function parseJsonObject(value) {
     if (value && typeof value === "object" && !Array.isArray(value)) return value;
     if (typeof value !== "string" || !value.trim()) return null;
@@ -793,6 +851,26 @@ function sanitizeCreativeTreatment(value) {
         worldAesthetic: allowedCreativeValue("worldAesthetic", parsed.worldAesthetic),
         tone: allowedCreativeValue("tone", parsed.tone),
     };
+}
+
+function allowedCinematographyValue(key, value) {
+    const values = CINEMATOGRAPHY_CHOICES[key]?.map(([token]) => token) ?? [];
+    const fallback = ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none";
+    return typeof value === "string" && values.includes(value) ? value : fallback;
+}
+
+function sanitizeCinematography(value) {
+    const parsed = parseJsonObject(value);
+    if (!parsed || parsed.schemaVersion !== CINEMATOGRAPHY_SCHEMA_VERSION) return defaultCinematography();
+    const state = { schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION };
+    for (const [key] of CINEMATOGRAPHY_FIELDS) {
+        state[key] = allowedCinematographyValue(key, parsed[key]);
+    }
+    if (["none", "static", "pov"].includes(state.cameraMotion)) {
+        state.cameraAmplitude = "auto";
+        state.cameraSpeed = "auto";
+    }
+    return state;
 }
 
 function validDuration(value) {
@@ -875,6 +953,18 @@ function serializeCreativeTreatment(state) {
     });
 }
 
+function serializeCinematography(state) {
+    const result = { schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION };
+    for (const [key] of CINEMATOGRAPHY_FIELDS) {
+        result[key] = allowedCinematographyValue(key, state?.[key]);
+    }
+    if (["none", "static", "pov"].includes(result.cameraMotion)) {
+        result.cameraAmplitude = "auto";
+        result.cameraSpeed = "auto";
+    }
+    return JSON.stringify(result);
+}
+
 function serializeShotPlan(state) {
     const sanitized = sanitizeShotPlan(JSON.stringify({
         schemaVersion: SHOT_PLAN_SCHEMA_VERSION,
@@ -946,6 +1036,10 @@ function persistAccordionState(node, key, open) {
 
 function creativeChoiceLabel(key, value) {
     return CREATIVE_CHOICES[key]?.find(([candidate]) => candidate === value)?.[1] ?? value;
+}
+
+function cinematographyChoiceLabel(key, value) {
+    return CINEMATOGRAPHY_CHOICES[key]?.find(([candidate]) => candidate === value)?.[1] ?? value;
 }
 
 function setCanonicalValue(node, widget, value) {
@@ -1159,6 +1253,33 @@ function commitCreativeTreatment(node) {
     updateCreativeTreatmentSummary(node);
 }
 
+function commitCinematography(node) {
+    const widget = node.widgets?.find((candidate) => candidate.name === CINEMATOGRAPHY_WIDGET);
+    writeJsonStorage(node, widget, serializeCinematography(node.__minimaxCinematographyState));
+    updateCinematographySummary(node);
+}
+
+function updateCinematographySummary(node) {
+    const panel = node.__minimaxCreativePanel;
+    const state = node.__minimaxCinematographyState;
+    if (!panel?.cinematographySummary || !state) return;
+    const active = CINEMATOGRAPHY_FIELDS
+        .map(([key]) => [key, state[key]])
+        .filter(([key, value]) => !(["cameraAmplitude", "cameraSpeed"].includes(key) ? value === "auto" : value === "none"))
+        .map(([key, value]) => cinematographyChoiceLabel(key, value));
+    panel.cinematographySummary.textContent = `Cinematography · ${active.length ? active.join(" · ") : "No preferences"}`;
+    const moving = !["none", "static", "pov"].includes(state.cameraMotion);
+    for (const key of ["cameraAmplitude", "cameraSpeed"]) {
+        const select = panel.cinematographySelects?.[key];
+        if (select) {
+            select.disabled = !moving;
+            select.title = moving
+                ? "H3 documents camera movement as motion type + amplitude + speed."
+                : "Choose a moving H3 camera motion first.";
+        }
+    }
+}
+
 function updateCreativeTreatmentSummary(node) {
     const panel = node.__minimaxCreativePanel;
     const state = node.__minimaxCreativeTreatmentState;
@@ -1349,20 +1470,29 @@ function hydrateCreativeDirectionPanel(node) {
     if (!panel) return;
     const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
     const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
-    if (!creativeWidget || !shotWidget) return;
+    const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
+    if (!creativeWidget || !shotWidget || !cinematographyWidget) return;
 
     hideJsonStorageWidget(creativeWidget);
     hideJsonStorageWidget(shotWidget);
+    hideJsonStorageWidget(cinematographyWidget);
     const creative = sanitizeCreativeTreatment(creativeWidget.value);
     const shots = sanitizeShotPlan(shotWidget.value);
+    const cinematography = sanitizeCinematography(cinematographyWidget.value);
     node.__minimaxCreativeTreatmentState = creative;
     node.__minimaxShotPlanState = shots;
+    node.__minimaxCinematographyState = cinematography;
     writeJsonStorage(node, creativeWidget, serializeCreativeTreatment(creative));
     writeJsonStorage(node, shotWidget, JSON.stringify(shots));
+    writeJsonStorage(node, cinematographyWidget, serializeCinematography(cinematography));
     for (const definition of CREATIVE_FIELD_DEFINITIONS) {
         panel.creativeSelects[definition.key].value = creative[definition.key];
     }
     updateCreativeTreatmentSummary(node);
+    for (const [key] of CINEMATOGRAPHY_FIELDS) {
+        panel.cinematographySelects[key].value = cinematography[key];
+    }
+    updateCinematographySummary(node);
     syncSettingsPanelProxies(node);
     renderShotRows(node);
     updateCreativePanelEnhancementState(node);
@@ -1589,11 +1719,14 @@ function createAdvancedSettingsDetails(node) {
 function addCreativeDirectionPanel(node) {
     const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
     const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
-    if (!creativeWidget || !shotWidget || typeof node.addDOMWidget !== "function") return;
+    const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
+    if (!creativeWidget || !shotWidget || !cinematographyWidget || typeof node.addDOMWidget !== "function") return;
     hideJsonStorageWidget(creativeWidget);
     hideJsonStorageWidget(shotWidget);
+    hideJsonStorageWidget(cinematographyWidget);
     wrapJsonStorageCallback(node, creativeWidget);
     wrapJsonStorageCallback(node, shotWidget);
+    wrapJsonStorageCallback(node, cinematographyWidget);
     if (node.__minimaxCreativePanel) {
         hydrateCreativeDirectionPanel(node);
         return;
@@ -1648,6 +1781,43 @@ function addCreativeDirectionPanel(node) {
     treatmentBody.append(treatmentControls, treatmentStatus);
     treatmentDetails.append(treatmentSummary, treatmentBody);
 
+    const cinematographyDetails = createPanelElement("details", "minimax-h3-cinematography-details");
+    cinematographyDetails.open = accordionState(node, "cinematography");
+    const cinematographySummary = createPanelElement("summary", "", "Cinematography · No preferences");
+    cinematographySummary.title = "Explicit H3-oriented camera, color, optics, focus, texture, and motion-rendering controls.";
+    const cinematographyBody = createPanelElement("div", "minimax-h3-panel-body");
+    const cinematographyHelp = createPanelElement(
+        "p",
+        "minimax-h3-panel-help",
+        "Optional explicit presentation controls. H3 camera movement follows motion type + amplitude + speed. Source facts, references, shot rows, and explicit colors remain authoritative.",
+    );
+    const cinematographyGrid = createPanelElement("div", "minimax-h3-treatment-grid");
+    const cinematographySelects = {};
+    for (const [key, label] of CINEMATOGRAPHY_FIELDS) {
+        const field = createPanelElement("label", "minimax-h3-treatment-field");
+        field.appendChild(createPanelElement("span", "", label));
+        const select = createPanelElement("select", "");
+        select.setAttribute("aria-label", label);
+        addSelectOptions(select, CINEMATOGRAPHY_CHOICES[key]);
+        select.addEventListener("change", () => {
+            const state = node.__minimaxCinematographyState;
+            if (!state) return;
+            state[key] = allowedCinematographyValue(key, select.value);
+            if (key === "cameraMotion" && ["none", "static", "pov"].includes(state.cameraMotion)) {
+                state.cameraAmplitude = "auto";
+                state.cameraSpeed = "auto";
+                cinematographySelects.cameraAmplitude.value = "auto";
+                cinematographySelects.cameraSpeed.value = "auto";
+            }
+            commitCinematography(node);
+        });
+        cinematographySelects[key] = select;
+        field.appendChild(select);
+        cinematographyGrid.appendChild(field);
+    }
+    cinematographyBody.append(cinematographyHelp, cinematographyGrid);
+    cinematographyDetails.append(cinematographySummary, cinematographyBody);
+
     const shotDetails = createPanelElement("details", "minimax-h3-shot-details");
     shotDetails.open = accordionState(node, "shotPlan");
     const shotSummaryLabel = createPanelElement("summary", "", "Shot plan · No shots");
@@ -1679,7 +1849,7 @@ function addCreativeDirectionPanel(node) {
     const advancedSettings = createAdvancedSettingsDetails(node);
     if (modelSetup) root.appendChild(modelSetup.details);
     if (chainedSettings) root.appendChild(chainedSettings.details);
-    root.append(treatmentDetails, shotDetails);
+    root.append(treatmentDetails, cinematographyDetails, shotDetails);
     if (advancedSettings) root.appendChild(advancedSettings.details);
 
     const panelWidget = node.addDOMWidget(
@@ -1697,6 +1867,9 @@ function addCreativeDirectionPanel(node) {
         treatmentBody,
         treatmentStatus,
         creativeSelects,
+        cinematographyDetails,
+        cinematographySummary,
+        cinematographySelects,
         shotDetails,
         shotSummaryLabel,
         timingSelect,
@@ -1734,6 +1907,7 @@ function addCreativeDirectionPanel(node) {
     bindAccordion(modelSetup?.details, "modelSetup");
     bindAccordion(chainedSettings?.details, "chainedMultishot");
     bindAccordion(treatmentDetails, "creativeDirection");
+    bindAccordion(cinematographyDetails, "cinematography");
     bindAccordion(shotDetails, "shotPlan");
     bindAccordion(advancedSettings?.details, "advancedSettings");
     timingSelect.addEventListener("change", () => {

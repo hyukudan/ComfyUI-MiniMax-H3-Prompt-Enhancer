@@ -7,12 +7,15 @@ import json
 import pytest
 
 from creative_treatments import (
+    CINEMATOGRAPHY_CHOICES,
     CREATIVE_AXES,
     PROFILE_DIMENSIONS,
     compose_creative_treatment,
+    cinematography_instruction,
     creative_treatment_choices,
     creative_treatment_instruction,
     parse_creative_treatment,
+    parse_cinematography,
     parse_shot_plan,
     shot_plan_instruction,
 )
@@ -24,13 +27,17 @@ CANONICAL_CHOICES = {
     ),
     "visual_language": (
         "none", "anime_general", "anime_shonen", "anime_shojo", "animation_2d",
-        "documentary_observational",
+        "documentary_observational", "live_action_naturalistic", "stylized_3d_animation",
+        "stop_motion_handcrafted", "painterly_2d", "graphic_novel", "clean_commercial",
     ),
     "world_aesthetic": (
         "none", "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",
+        "near_future_functional", "gothic", "solarpunk", "steampunk", "post_apocalyptic",
+        "historical_period", "retrofuturism_atomic_age", "retrofuturism_cassette", "retrofuturism_y2k",
     ),
     "tone": (
         "none", "epic", "intimate", "dark", "tense", "hopeful", "melancholic", "playful", "restrained",
+        "serene", "eerie", "whimsical", "surreal", "clinical", "raw",
     ),
 }
 
@@ -38,6 +45,56 @@ CANONICAL_CHOICES = {
 @pytest.mark.parametrize("axis", CREATIVE_AXES)
 def test_creative_catalog_choices_are_stable_and_complete(axis):
     assert creative_treatment_choices(axis) == CANONICAL_CHOICES[axis]
+
+
+def test_cinematography_blank_is_neutral_and_all_choices_parse():
+    neutral = parse_cinematography("")
+    assert neutral["requested"] is False
+    assert neutral["directives"] == []
+    assert cinematography_instruction(neutral) == ""
+    for field, choices in CINEMATOGRAPHY_CHOICES.items():
+        external = {
+            "color_palette": "colorPalette", "exposure_contrast": "exposureContrast",
+            "camera_motion": "cameraMotion", "camera_amplitude": "cameraAmplitude",
+            "camera_speed": "cameraSpeed", "optics": "optics", "depth_of_field": "depthOfField",
+            "image_texture": "imageTexture", "lens_effects": "lensEffects",
+            "motion_rendering": "motionRendering",
+        }[field]
+        for choice in choices:
+            payload = {"schemaVersion": 1, external: choice}
+            if field in {"camera_amplitude", "camera_speed"} and choice != "auto":
+                payload["cameraMotion"] = "push_in"
+            parsed = parse_cinematography(payload)
+            assert parsed[external] == choice
+
+
+def test_cinematography_uses_h3_camera_grammar_and_hard_fidelity_contract():
+    parsed = parse_cinematography({
+        "schemaVersion": 1,
+        "colorPalette": "warm",
+        "cameraMotion": "push_in",
+        "cameraAmplitude": "small",
+        "cameraSpeed": "slow",
+        "imageTexture": "subtle_stable_grain",
+    })
+    instruction = cinematography_instruction(parsed)
+    assert "motion type + amplitude + speed" in instruction
+    assert "Pushes In" in instruction
+    assert "small camera-motion amplitude" in instruction
+    assert "slow camera-motion speed" in instruction
+    assert "temporally stable" in instruction
+    assert "may not create a cut" in instruction
+
+
+def test_cinematography_rejects_invalid_or_orphaned_motion_modifiers():
+    with pytest.raises(ValueError, match="duplicate key"):
+        parse_cinematography('{"schemaVersion":1,"colorPalette":"warm","colorPalette":"cool"}')
+    with pytest.raises(ValueError, match="unsupported keys"):
+        parse_cinematography({"schemaVersion": 1, "lensMm": 50})
+    with pytest.raises(ValueError, match="Unsupported cinematography"):
+        parse_cinematography({"schemaVersion": 1, "colorPalette": "sepia"})
+    with pytest.raises(ValueError, match="require a moving"):
+        parse_cinematography({"schemaVersion": 1, "cameraAmplitude": "large"})
 
 
 @pytest.mark.parametrize(

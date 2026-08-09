@@ -43,6 +43,21 @@ AUTO_SHOTS_JSON = json.dumps({
 })
 
 
+CINEMATOGRAPHY_JSON = json.dumps({
+    "schemaVersion": 1,
+    "colorPalette": "restrained",
+    "exposureContrast": "low_key",
+    "cameraMotion": "tracking",
+    "cameraAmplitude": "medium",
+    "cameraSpeed": "slow",
+    "optics": "compressed_telephoto",
+    "depthOfField": "shallow",
+    "imageTexture": "film_35mm",
+    "lensEffects": "restrained_halation",
+    "motionRendering": "natural_blur",
+})
+
+
 def test_neutral_controls_preserve_the_pre_feature_user_request_byte_for_byte():
     legacy_call = build_user_request("A woman crosses a quiet station.", "t2va", 5.0, "")
     explicit_neutral = build_user_request(
@@ -85,11 +100,14 @@ non_diegetic_music: N/A"""
     assert legacy[1] == explicit[1]
     manifest = explicit[2]
     assert manifest["creativeTreatmentSchemaVersion"] == 1
-    assert manifest["creativeProfileCatalogVersion"] == 1
+    assert manifest["creativeProfileCatalogVersion"] == 2
+    assert manifest["cinematographySchemaVersion"] == 1
+    assert manifest["cinematographyCatalogVersion"] == 1
     assert manifest["shotPlanSchemaVersion"] == 1
     assert manifest["shotsPackageSchemaVersion"] == 1
     assert manifest["creativeTreatment"]["applied"] is False
     assert manifest["creativeTreatment"]["profileIds"] == []
+    assert manifest["cinematography"]["applied"] is False
     assert len(manifest["creativeTreatment"]["digest"]) == 64
     assert manifest["shotPlan"]["applied"] is False
     assert manifest["shotsPackage"] == {}
@@ -114,6 +132,38 @@ def test_treatment_and_shot_plan_are_injected_without_overriding_audio_or_cuts()
     assert "NON-DIEGETIC MUSIC POLICY — OFF" in request
     assert "A profile never creates a cut" in request
     assert "music remains entirely governed" in request.lower()
+
+
+def test_cinematography_is_injected_as_bounded_h3_direction_and_recorded():
+    captured = []
+
+    def complete(messages):
+        captured.append(messages[-1]["content"])
+        return TWO_SHOT_PROMPT
+
+    _prompt, report, manifest = enhance_prompt_with_completion(
+        "A woman approaches a car and enters through the driver's door. No music.",
+        "t2va", 8.0, "", complete, 0, {"provider": "test"},
+        ambience_foley_policy="off", background_score_policy="off",
+        shot_plan_json=AUTO_SHOTS_JSON,
+        cinematography_json=CINEMATOGRAPHY_JSON,
+    )
+    request = captured[0]
+    assert "EXPLICIT CINEMATOGRAPHY — AUTHORITATIVE PRESENTATION CONTROL" in request
+    assert "motion type + amplitude + speed" in request
+    assert "Tracking Shot" in request
+    assert "medium camera-motion amplitude" in request
+    assert "slow camera-motion speed" in request
+    assert "may not create a cut" in request
+    assert "light source" in request
+    assert report["valid"], report
+
+    cinematography = manifest["cinematography"]
+    assert cinematography["applied"] is True
+    assert cinematography["cameraMotion"] == "tracking"
+    assert cinematography["cameraAmplitude"] == "medium"
+    assert cinematography["cameraSpeed"] == "slow"
+    assert len(cinematography["digest"]) == 64
 
 
 def test_disabled_description_enhancement_ignores_treatment_but_not_explicit_shot_plan():
