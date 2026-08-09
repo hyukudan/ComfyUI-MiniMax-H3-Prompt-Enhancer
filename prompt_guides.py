@@ -8,13 +8,26 @@ T2VA/I2VA/FL2VA/L2VA and full-reference prompt-writing guides.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 import json
 import re
 from typing import Any
 
 try:
+    from .creative_treatments import (
+        creative_treatment_instruction,
+        parse_creative_treatment,
+        parse_shot_plan,
+        shot_plan_instruction,
+    )
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from creative_treatments import (
+        creative_treatment_instruction,
+        parse_creative_treatment,
+        parse_shot_plan,
+        shot_plan_instruction,
+    )
     from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 
 
@@ -988,7 +1001,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        multishot_identity_lock: str = "",
                        multishot_voice_lock: str = "",
                        multishot_setting_lock: str = "",
-                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> str:
+                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                       creative_treatment_json: str = "",
+                       shot_plan_json: str = "") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -1001,6 +1016,25 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(basic_prompt)
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = profile["effectiveDurationSeconds"]
+    creative_treatment = parse_creative_treatment(
+        creative_treatment_json, enabled=bool(enhance_description),
+    )
+    explicit_shot_plan = parse_shot_plan(
+        shot_plan_json, effective_duration, 0, resolved,
+    )
+    if explicit_shot_plan["provided"] and int(multishot_shot_count or 0):
+        if resolved == "chained_multishot" and int(multishot_shot_count) != explicit_shot_plan["shotCount"]:
+            raise ValueError(
+                "multishot_shot_count conflicts with the explicit shot_plan_json shot count "
+                f"({int(multishot_shot_count)} versus {explicit_shot_plan['shotCount']})"
+            )
+    source_explicit_count = _required_explicit_shot_count(basic_prompt)
+    if (explicit_shot_plan["provided"] and source_explicit_count
+            and source_explicit_count != explicit_shot_plan["shotCount"]):
+        raise ValueError(
+            "shot_plan_json conflicts with explicit cut commands in basic_prompt "
+            f"({explicit_shot_plan['shotCount']} planned versus {source_explicit_count} required)"
+        )
     alignment = alignment_instruction(resolved, effective_duration)
     parts = [
         f"TASK MODE: {resolved.upper()}",
@@ -1049,8 +1083,23 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "but the selected voice policy overrides it. Emit no lexical dialogue, <d> blocks, speaker IDs, "
             "narration, voiceover, or intelligible vocal sound."
         )
+    treatment_contract = creative_treatment_instruction(creative_treatment)
+    if treatment_contract:
+        parts.append(
+            treatment_contract
+            + "\nSELECTED AUDIO CONTROLS (authoritative over every treatment sound suggestion): "
+            f"ambience_foley_policy={ambience_foley_policy}; "
+            f"background_score_policy={background_score_policy}; "
+            f"voice_performance={voice_performance}."
+        )
+    explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
+    if explicit_plan_contract:
+        parts.append(explicit_plan_contract)
     if resolved == "chained_multishot":
-        count = max(0, int(multishot_shot_count or 0))
+        count = (
+            explicit_shot_plan["shotCount"]
+            if explicit_shot_plan["provided"] else max(0, int(multishot_shot_count or 0))
+        )
         locks = [
             ("IDENTITY LOCK", multishot_identity_lock),
             ("VOICE LOCK", multishot_voice_lock),
@@ -1060,7 +1109,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             if str(lock).strip():
                 parts.append(f"{label} (repeat verbatim in every prompt item):\n{str(lock).strip()}")
         shot_segments = _explicit_shot_segments(basic_prompt)
-        if shot_segments and (not count or len(shot_segments) == count):
+        if not explicit_shot_plan["provided"] and shot_segments and (not count or len(shot_segments) == count):
             parts.append(
                 "AUTHORITATIVE MULTISHOT ITEM PLAN: Each source cut creates the next independent prompt item. "
                 "Do not move actions, dialogue occurrences, reactions, transformations, or wardrobe states between "
@@ -1095,6 +1144,18 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "Return only valid JSON shaped exactly as {\"prompts\":[\"...\"]}.",
         ])
         return "\n\n".join(parts)
+    if explicit_shot_plan["provided"]:
+        edit_enhancement_guidance = (
+            "- Treat the supplied explicit shot plan as the entire edit map. Develop camera movement, staging, and "
+            "information inside each listed shot, but do not add, remove, merge, split, reorder, or relocate a cut.\n"
+        )
+    else:
+        edit_enhancement_guidance = (
+            "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
+            "otherwise prefer a motivated continuous camera move.\n"
+            "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
+            "invent inserts, cutaways, or extra shots merely to dramatize an object, impact, or already-visible action.\n"
+        )
     if bool(enhance_description):
         parts.append(
             "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
@@ -1112,10 +1173,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- For an explicit fly/propel/move-offscreen consequence, keep a sufficiently wide view on the named "
             "subject's readable trajectory until it fully exits the frame; a cut, disappearance, close-up, implied "
             "aftermath, or simple fall does not satisfy that requested action.\n"
-            "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
-            "otherwise prefer a motivated continuous camera move.\n"
-            "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
-            "invent inserts, cutaways, or extra shots merely to dramatize an object, impact, or already-visible action.\n"
+            + edit_enhancement_guidance +
             "- Express absolute cut times only in [Shot N] headers. Do not add competing numeric timestamps inside a "
             "shot, and never create another shot or vocal cue to repeat or continue the same short line.\n"
             "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
@@ -1246,10 +1304,21 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "singing, lyrics, or vocal samples:\n" + requested_instrumental
         )
     required_explicit_shots = _required_explicit_shot_count(basic_prompt)
-    simultaneous_single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
-    continuous_progression = _requires_single_continuous_progression(basic_prompt)
+    simultaneous_single_shot = (
+        False if explicit_shot_plan["provided"]
+        else _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
+    )
+    continuous_progression = (
+        False if explicit_shot_plan["provided"]
+        else _requires_single_continuous_progression(basic_prompt)
+    )
     single_shot = simultaneous_single_shot or continuous_progression
-    if required_explicit_shots:
+    if explicit_shot_plan["provided"]:
+        # The complete plan was already injected before the mode fork.  Do not
+        # append inferred or source-derived edit guidance that could compete
+        # with its exact boundaries.
+        pass
+    elif required_explicit_shots:
         shot_segments = _explicit_shot_segments(basic_prompt)
         parts.append(
             f"EXPLICIT EDIT PLAN: Use exactly {required_explicit_shots} shots because the source contains "
@@ -1329,7 +1398,11 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_scope_check,
         "use numeric cut times only in later [Shot N] headers",
     ]
-    if required_explicit_shots:
+    if explicit_shot_plan["provided"]:
+        final_checks.insert(0, f"use exactly {explicit_shot_plan['shotCount']} shots in the supplied order")
+        if explicit_shot_plan["timingMode"] == "exact":
+            final_checks.append("use every exact supplied shot boundary")
+    elif required_explicit_shots:
         final_checks.insert(0, f"use exactly {required_explicit_shots} shots and preserve every explicit source cut")
     elif single_shot:
         final_checks.insert(0, "exactly one continuous shot")
@@ -2019,7 +2092,8 @@ def normalize_shot_timestamps(text: str) -> str:
     )
 
 
-def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> str:
+def normalize_shot_timeline(text: str, mode: str, duration_seconds: float,
+                            explicit_shot_plan: Mapping[str, Any] | None = None) -> str:
     """Replace missing/placeholder later-shot times with deterministic in-duration cut points."""
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
     section_match = re.search(
@@ -2032,9 +2106,15 @@ def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> st
     markers = list(re.finditer(r"\[Shot\s+(\d+)\]", body, flags=re.IGNORECASE))
     if len(markers) < 2:
         return str(text)
+    plan = explicit_shot_plan or {}
     shot_count = max(int(item.group(1)) for item in markers)
+    exact_cuts = list(plan.get("expectedCutTimesSeconds", ())) if plan.get("timingMode") == "exact" else []
     for shot_number in range(2, shot_count + 1):
-        cut = float(duration_seconds) * (shot_number - 1) / shot_count
+        cut = (
+            float(exact_cuts[shot_number - 2])
+            if shot_number - 2 < len(exact_cuts)
+            else float(duration_seconds) * (shot_number - 1) / shot_count
+        )
         minutes = int(cut // 60)
         seconds = cut - minutes * 60
         timestamp = f"{minutes:02d}:{seconds:06.3f}"
@@ -2043,10 +2123,11 @@ def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> st
             re.IGNORECASE,
         )
         match = pattern.search(body)
-        if match and not re.fullmatch(
+        valid_complete_header = bool(match and re.fullmatch(
             rf"\[Shot\s+{shot_number}\]\s+At\s+\d{{2}}:\d{{2}}\.\d{{3}},?",
             match.group(0), flags=re.IGNORECASE,
-        ):
+        ))
+        if match and (exact_cuts or not valid_complete_header):
             body = body[:match.start()] + f"[Shot {shot_number}] At {timestamp}," + body[match.end():]
     return str(text)[:section_match.start()] + section_match.group(1) + body + str(text)[section_match.end():]
 
@@ -2248,19 +2329,43 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     multishot_identity_lock: str = "",
                     multishot_voice_lock: str = "",
                     multishot_setting_lock: str = "",
-                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
+                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                    creative_treatment_json: str = "",
+                    shot_plan_json: str = "") -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
     reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
+    configuration_errors: list[str] = []
+    try:
+        parse_creative_treatment(creative_treatment_json)
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
+    try:
+        explicit_shot_plan = parse_shot_plan(
+            shot_plan_json, profile["effectiveDurationSeconds"], 0, resolved,
+        )
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+        explicit_shot_plan = parse_shot_plan("", profile["effectiveDurationSeconds"], 0, resolved)
     if resolved == "chained_multishot":
-        profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
         locks = (multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+        expected_count = (
+            explicit_shot_plan["shotCount"]
+            if explicit_shot_plan["provided"] else multishot_shot_count
+        )
+        if (explicit_shot_plan["provided"] and int(multishot_shot_count or 0)
+                and int(multishot_shot_count) != explicit_shot_plan["shotCount"]):
+            configuration_errors.append(
+                "multishot_shot_count conflicts with the explicit shot_plan_json shot count"
+            )
         report = _validate_multishot(
-            prompt, profile["effectiveDurationSeconds"], source_prompt, multishot_shot_count, locks,
+            prompt, profile["effectiveDurationSeconds"], source_prompt, expected_count, locks,
             voice_performance, authored_dialogue_ledger,
         )
         parsed = parse_media_manifest(media_manifest)
+        report["errors"].extend(configuration_errors)
         report["errors"].extend(parsed["errors"])
         report["warnings"].extend(parsed["warnings"])
         report["errors"].extend(profile["errors"])
@@ -2269,14 +2374,14 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["aspectRatio"] = aspect_ratio
         report["generationProfile"] = profile
         report["mediaManifest"] = parsed
+        report["shotPlan"] = explicit_shot_plan
         return report
     text = str(prompt).strip()
-    errors: list[str] = []
+    errors: list[str] = list(configuration_errors)
     warnings: list[str] = []
     parsed_manifest = parse_media_manifest(media_manifest)
     errors.extend(parsed_manifest["errors"])
     warnings.extend(parsed_manifest["warnings"])
-    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     errors.extend(profile["errors"])
     warnings.extend(profile["warnings"])
     duration_seconds = profile["effectiveDurationSeconds"]
@@ -2313,9 +2418,33 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append("Cut timestamps must be strictly increasing")
         if any(value <= 0 or value >= float(duration_seconds) for value in cut_times):
             errors.append("Every cut timestamp must fall strictly inside the target duration")
-    if _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1:
+        if explicit_shot_plan["provided"] and explicit_shot_plan["timingMode"] == "exact":
+            expected_cuts = list(explicit_shot_plan["expectedCutTimesSeconds"])
+            # Headers are rendered to milliseconds, so exact boundaries can be
+            # checked much more strictly than the one-frame tolerance used for
+            # accepting the sum of user-entered shot durations.
+            tolerance = 0.0015
+            if len(cut_times) == len(expected_cuts):
+                mismatches = [
+                    (expected, observed)
+                    for expected, observed in zip(expected_cuts, cut_times)
+                    if abs(expected - observed) > tolerance
+                ]
+                if mismatches:
+                    errors.append(
+                        "Explicit shot-plan cut timestamps do not match the exact requested boundaries: "
+                        + repr(mismatches)
+                    )
+    if explicit_shot_plan["provided"] and len(shots) != explicit_shot_plan["shotCount"]:
+        errors.append(
+            f"Explicit shot_plan_json requires exactly {explicit_shot_plan['shotCount']} shots; "
+            f"observed {len(shots)}"
+        )
+    if (not explicit_shot_plan["provided"]
+            and _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1):
         errors.append("The short simultaneous source requires exactly one continuous shot")
-    if _requires_single_continuous_progression(source_prompt) and len(shots) != 1:
+    if (not explicit_shot_plan["provided"]
+            and _requires_single_continuous_progression(source_prompt) and len(shots) != 1):
         errors.append("The gradual continuous progression requires exactly one continuous shot")
     required_explicit_shots = _required_explicit_shot_count(source_prompt)
     if required_explicit_shots and len(shots) != required_explicit_shots:
@@ -2323,7 +2452,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             f"The source contains mandatory cut commands and requires exactly {required_explicit_shots} shots; "
             f"observed {len(shots)}"
         )
-    implicit_limit = _implicit_shot_limit(source_prompt)
+    implicit_limit = None if explicit_shot_plan["provided"] else _implicit_shot_limit(source_prompt)
     if implicit_limit is not None and len(shots) > implicit_limit:
         errors.append(
             f"The source supplied no explicit edit structure; use at most {implicit_limit} shot(s), observed {len(shots)}"
@@ -2826,4 +2955,5 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         "aspectRatio": aspect_ratio,
         "mediaManifest": parsed_manifest,
         "generationProfile": profile,
+        "shotPlan": explicit_shot_plan,
     }

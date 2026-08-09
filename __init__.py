@@ -11,6 +11,7 @@ if __package__:
         MiniMaxH3UnloadGGUFServer,
         MiniMaxH3MediaManifestValidator,
         MiniMaxH3ChainedMultishotOutput,
+        MiniMaxH3ShotSelector,
     )
 
     NODE_CLASS_MAPPINGS = {
@@ -21,6 +22,7 @@ if __package__:
         "MiniMaxH3UnloadGGUFServer": MiniMaxH3UnloadGGUFServer,
         "MiniMaxH3MediaManifestValidator": MiniMaxH3MediaManifestValidator,
         "MiniMaxH3ChainedMultishotOutput": MiniMaxH3ChainedMultishotOutput,
+        "MiniMaxH3ShotSelector": MiniMaxH3ShotSelector,
     }
     NODE_DISPLAY_NAME_MAPPINGS = {
         "MiniMaxH3PromptGuideBuilder": "MiniMax H3 Prompt Guide Builder",
@@ -30,6 +32,7 @@ if __package__:
         "MiniMaxH3UnloadGGUFServer": "MiniMax H3 Unload GGUF Prompt Model",
         "MiniMaxH3MediaManifestValidator": "MiniMax H3 Media Manifest Validator",
         "MiniMaxH3ChainedMultishotOutput": "MiniMax H3 Chained Multishot Output",
+        "MiniMaxH3ShotSelector": "MiniMax H3 Shot Selector",
     }
 else:  # pragma: no cover
     NODE_CLASS_MAPPINGS = {}

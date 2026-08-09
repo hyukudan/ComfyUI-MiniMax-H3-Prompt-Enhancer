@@ -179,9 +179,7 @@ def test_discovery_lists_comfy_gguf_models_and_llama_server(monkeypatch, tmp_pat
     monkeypatch.setitem(sys.modules, "folder_paths", types.SimpleNamespace(
         models_dir=str(tmp_path), folder_names_and_paths={},
     ))
-    assert gguf_server.available_gguf_models() == [
-        gguf_server.NO_GGUF_MODELS, str(model.resolve()),
-    ]
+    assert gguf_server.available_gguf_models() == [str(model.resolve())]
     assert gguf_server.available_llama_servers() == [str(server.resolve())]
 
 
