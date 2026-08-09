@@ -213,6 +213,11 @@ def _normalize_transcript_text(value: Any) -> str:
     return text
 
 
+MIN_GENERATION_SECONDS = 4.0
+TRAINED_GENERATION_SECONDS = 15.0
+MAX_GENERATION_SECONDS = 150.0
+
+
 def generation_profile(duration_seconds: float, aspect_ratio: str = "auto", frame_count: int = 0) -> dict[str, Any]:
     """Validate H3 generation geometry and return the effective duration."""
     errors: list[str] = []
@@ -225,8 +230,16 @@ def generation_profile(duration_seconds: float, aspect_ratio: str = "auto", fram
         effective = frames / 24.0
         if abs(float(duration_seconds) - effective) > 0.5:
             warnings.append("frame_count overrides duration_seconds by more than 0.5s; effective duration follows frames/24")
-    if not 4.0 <= effective <= 15.0:
-        errors.append("MiniMax H3 single-generation duration must be within the documented 4-15 seconds")
+    if not MIN_GENERATION_SECONDS <= effective <= MAX_GENERATION_SECONDS:
+        errors.append(
+            "MiniMax H3 single-generation duration must be within 4-150 seconds "
+            "(the native ComfyUI node accepts up to 3600 frames)"
+        )
+    elif effective > TRAINED_GENERATION_SECONDS:
+        warnings.append(
+            "duration exceeds MiniMax H3's approximately 5-15 second trained range; "
+            "longer single generations are supported by the native node but are untested and use substantially more memory"
+        )
     if aspect_ratio not in ASPECT_RATIOS:
         errors.append(f"Unsupported aspect ratio {aspect_ratio!r}")
     return {

@@ -71,6 +71,18 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
         assert optional["instrumental_style"][1]["default"] == "none"
 
 
+def test_generation_duration_matches_native_h3_ceiling_and_frontend_preserves_it():
+    for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer, MiniMaxH3PromptGuideBuilder):
+        inputs = node_class.INPUT_TYPES()
+        assert inputs["required"]["duration_seconds"][1]["max"] == 150.0
+        assert inputs["optional"]["frame_count"][1]["max"] == 3600
+    frontend = FRONTEND.read_text(encoding="utf-8")
+    assert 'const MAX_GENERATION_SECONDS = 150;' in frontend
+    assert 'sanitizeNumberWidget(node, "duration_seconds", 5, 4, MAX_GENERATION_SECONDS);' in frontend
+    assert 'panel.root.style.maxWidth = `${panelWidth}px`;' in frontend
+    assert 'new ResizeObserver(() => scheduleCreativePanelLayout(node))' in frontend
+
+
 def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
     assert MiniMaxH3PromptGuideBuilder.RETURN_NAMES == ("system_prompt", "user_prompt", "resolved_mode")
     expected_enhancer_outputs = (

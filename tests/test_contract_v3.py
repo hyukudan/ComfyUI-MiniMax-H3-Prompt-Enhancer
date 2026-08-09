@@ -91,6 +91,11 @@ def test_frame_grid_and_effective_duration_profile():
     assert any("overrides duration_seconds" in warning for warning in good["warnings"])
     assert not generation_profile(5, "16:9", 244)["valid"]
     assert not generation_profile(3, "16:9", 0)["valid"]
+    long_generation = generation_profile(31, "16:9", 0)
+    assert long_generation["valid"]
+    assert any("trained range" in warning for warning in long_generation["warnings"])
+    assert generation_profile(150, "16:9", 0)["valid"]
+    assert not generation_profile(150.01, "16:9", 0)["valid"]
 
 
 def test_disabled_video_audio_does_not_import_transcript_and_enabled_audio_is_normalized():

@@ -286,7 +286,7 @@ Shared controls:
 | Control | Default | Behavior |
 |---|---:|---|
 | `mode` | `auto` | Chooses from explicit manifest mode/roles first, then reference labels, otherwise T2VA |
-| `duration_seconds` | `5.0` | H3 generation duration (4–15 s); frame count becomes the effective downstream duration when supplied |
+| `duration_seconds` | `5.0` | H3 generation duration (4–150 s); above the approximately 5–15 s trained range is experimental and uses much more memory; frame count becomes authoritative when supplied |
 | `reference_context` | blank | Optional plain-language descriptions of supplied reference assets and their roles; this does not contain the media itself |
 | `aspect_ratio` | `auto` | Adds target geometry to the rewrite request without inventing an H3 section |
 | `frame_count` | `0` | Advanced exact H3 frame count on the `17 × n + 5` grid; zero means “derive generation length from duration” |
@@ -337,6 +337,9 @@ Main-node local controls:
 | `keep_server_loaded` | disabled | Reuse the same compatible private server instead of releasing the prompt-model memory after the call |
 
 Remote and local values remain saved when hidden, but only the route selected by `use_remote_model` executes.
+The custom accordion panel remeasures itself after opening sections, changing backends, loading workflows, and
+execution errors. If an older cached frontend still lets Model setup or another accordion extend beyond the node,
+restart ComfyUI and hard-refresh the browser so `web/backend_toggle.js` is reloaded.
 
 The 4096-token default is an output ceiling, not a target length. It is comfortably above MiniMax's normal
 350–500-word Ref2VA generation description and does not make ordinary T2VA/I2VA/FL2VA/L2VA prompts terse. Increase it
@@ -416,7 +419,8 @@ the canonical object. It validates the optional exact item count, source dialogu
 continuity locks; locks missing from an item are prepended deterministically before validation. Outputs are
 `multishot_script`, compact canonical `prompts_json`, `valid`, `validation_report`, and
 `total_duration_seconds = duration_per_shot × prompt count`. `duration_per_shot` defaults to 10.1 seconds and accepts
-4–15 seconds.
+4–150 seconds. Values above approximately 15 seconds inherit the same experimental long-generation warning as the
+main enhancer.
 
 Each item is an independent conditioning pass, not a `[Shot N]` inside one generation. This node formats the plan; it
 does not queue H3 renders. Generate each item separately and, when the video workflow supports it, use the previous
@@ -1340,7 +1344,7 @@ specified ordinary-character description from the source prompt when one is avai
 
 ### Exact frames and duration
 
-`frame_count=0` is the normal setting: the node uses `duration_seconds` (4–15 seconds). A nonzero frame count is for a
+`frame_count=0` is the normal setting: the node uses `duration_seconds` (4–150 seconds). A nonzero frame count is for a
 downstream H3 workflow that requires the exact `17 × n + 5` grid:
 
 ```text
@@ -1349,12 +1353,15 @@ downstream H3 workflow that requires the exact `17 × n + 5` grid:
 
 The `17` is the step between valid latent lengths, `n` is any non-negative integer, and `+5` is the grid offset. Thus
 `90 = 17 × 5 + 5`; it is an exact frame count, not “17k plus 5 thousand.” At H3's 24 fps timing convention, a supplied
-frame count becomes the authoritative effective duration (`frame_count / 24`) returned by the node. The validator
-reports an error when the effective duration falls outside 4–15 seconds, and warns when it differs from the entered
-duration by more than 0.5 seconds. In practice, leave it at zero unless the sampler or workflow explicitly asks for an
-exact frame value.
+frame count becomes the authoritative effective duration (`frame_count / 24`) returned by the node. The native
+ComfyUI H3 conditioning nodes accept a requested length up to 3600 frames (about 150 seconds), while documenting
+roughly 124–362 frames (about 5–15 seconds) as the trained range. The validator therefore rejects effective durations
+outside 4–150 seconds, warns above 15 seconds, and also warns when exact frames differ from the entered duration by
+more than 0.5 seconds. Longer clips can consume dramatically more VRAM and may lose temporal coherence; use chained
+segments when continuity permits. In practice, leave exact frames at zero unless the sampler or workflow explicitly
+asks for them.
 
-Combining the grid with this node's 4–15 second envelope leaves these accepted nonzero counts:
+Common trained-range grid values are:
 
 ```text
 107, 124, 141, 158, 175, 192, 209, 226, 243, 260, 277, 294, 311, 328, 345

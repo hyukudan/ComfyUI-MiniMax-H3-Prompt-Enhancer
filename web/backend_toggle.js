@@ -62,6 +62,8 @@ const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
 const MIN_MULTILINE_HEIGHT = 72;
 const MAX_MULTILINE_HEIGHT = 720;
+const MAX_GENERATION_SECONDS = 150;
+const MAX_GENERATION_FRAMES = 3600;
 const MULTILINE_HEIGHTS_PROPERTY = "minimaxH3MultilineHeights";
 const ACCORDION_STATE_PROPERTY = "minimaxH3AccordionState";
 const DISPLAY_LABELS = {
@@ -357,6 +359,9 @@ function ensureFieldTitleStyles() {
         }
         .minimax-h3-creative-panel details {
             flex: 0 0 auto;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
             margin: 0;
             padding: 0;
             border: 1px solid color-mix(in srgb, var(--border-color, #666) 62%, transparent);
@@ -368,8 +373,10 @@ function ensureFieldTitleStyles() {
             overflow: visible;
         }
         .minimax-h3-creative-panel summary {
+            max-width: 100%;
             min-height: 30px;
             padding: 6px 9px;
+            overflow: hidden;
             cursor: pointer;
             color: var(--descrip-text, #bbb);
             font-weight: 650;
@@ -435,8 +442,16 @@ function ensureFieldTitleStyles() {
         }
         .minimax-h3-setting-actions {
             display: flex;
+            min-width: 0;
+            max-width: 100%;
             flex-wrap: wrap;
             gap: 6px;
+            overflow: hidden;
+        }
+        .minimax-h3-setting-actions select {
+            min-width: 0;
+            max-width: 100%;
+            flex: 1 1 240px;
         }
         .minimax-h3-setting-actions button {
             min-height: 27px;
@@ -1270,10 +1285,34 @@ function updateCreativePanelHeight(node) {
         preferredHeight += 8;
     }
     preferredHeight = Math.max(72, preferredHeight);
+    const panelWidth = Math.max(240, (Number(node.size?.[0]) || MIN_NODE_WIDTH) - 20);
+    const changed = panel.widget.__minimaxPreferredHeight !== preferredHeight
+        || panel.widget.__minimaxPreferredWidth !== panelWidth;
     panel.widget.__minimaxPreferredHeight = preferredHeight;
+    panel.widget.__minimaxPreferredWidth = panelWidth;
+    panel.root.style.width = `${panelWidth}px`;
+    panel.root.style.maxWidth = `${panelWidth}px`;
     panel.root.style.height = `${preferredHeight}px`;
-    panel.widget.computeSize = (width) => [Math.max(MIN_NODE_WIDTH, Number(width) || 0), preferredHeight];
-    fitNodeToVisibleWidgets(node);
+    panel.widget.computeSize = () => [panelWidth, preferredHeight];
+    if (changed) fitNodeToVisibleWidgets(node);
+}
+
+function scheduleCreativePanelLayout(node) {
+    if (!node?.__minimaxCreativePanel || node.__minimaxCreativeLayoutPending) return;
+    node.__minimaxCreativeLayoutPending = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        node.__minimaxCreativeLayoutPending = false;
+        updateCreativePanelHeight(node);
+    }));
+}
+
+function observeCreativePanelLayout(node) {
+    const panel = node.__minimaxCreativePanel;
+    if (!panel || panel.layoutObserver || typeof ResizeObserver !== "function") return;
+    panel.layoutObserver = new ResizeObserver(() => scheduleCreativePanelLayout(node));
+    for (const body of panel.root.querySelectorAll(".minimax-h3-panel-body")) {
+        panel.layoutObserver.observe(body);
+    }
 }
 
 function updateCreativePanelMode(node) {
@@ -1982,6 +2021,7 @@ function addCreativeDirectionPanel(node) {
         chainedSettings,
         advancedSettings,
     };
+    observeCreativePanelLayout(node);
     const managedNames = new Set([
         ...(modelSetup?.canonicalNames ?? []),
         ...(chainedSettings?.canonicalNames ?? []),
@@ -2044,6 +2084,7 @@ function addCreativeDirectionPanel(node) {
     });
 
     hydrateCreativeDirectionPanel(node);
+    scheduleCreativePanelLayout(node);
 }
 
 function configureCreativeDirectionNode(node, nodeName = node.comfyClass ?? node.type ?? "") {
@@ -2196,7 +2237,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         assignMigratedValue(instrumental, "");
     }
     sanitizeEnumWidget(node, "mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"], "auto");
-    sanitizeNumberWidget(node, "duration_seconds", 5, 4, 15);
+    sanitizeNumberWidget(node, "duration_seconds", 5, 4, MAX_GENERATION_SECONDS);
     sanitizeNumberWidget(node, "temperature", 0.2, 0, 2);
     sanitizeIntegerWidget(node, "max_tokens", 4096, 512, 32768);
     sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);
@@ -2206,7 +2247,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeIntegerWidget(node, "threads", 0, 0, 256);
     sanitizeIntegerWidget(node, "startup_timeout", 180, 10, 1800);
     sanitizeIntegerWidget(node, "multishot_shot_count", 0, 0, 64);
-    sanitizeIntegerWidget(node, "frame_count", 0, 0, 4096);
+    sanitizeIntegerWidget(node, "frame_count", 0, 0, MAX_GENERATION_FRAMES);
     sanitizeEnumWidget(node, "ambience_foley_policy", ["auto", "ensure_audible", "off"], "auto");
     sanitizeEnumWidget(node, "background_score_policy", ["follow_prompt", "add_instrumental", "off"], "follow_prompt");
     sanitizeEnumWidget(node, "instrumental_style", [
@@ -2420,6 +2461,13 @@ app.registerExtension({
                 this.__minimaxWidgetMigrationComplete = true;
             }
             enforceConditionalVisibility(this);
+            const panel = this.__minimaxCreativePanel;
+            if (panel) {
+                const expectedWidth = Math.max(240, (Number(this.size?.[0]) || MIN_NODE_WIDTH) - 20);
+                if (Math.abs((panel.widget.__minimaxPreferredWidth ?? 0) - expectedWidth) > 1) {
+                    scheduleCreativePanelLayout(this);
+                }
+            }
             const result = originalDrawForeground?.apply(this, arguments);
             const requiredHeight = Math.max(MIN_NODE_HEIGHT, visibleWidgetHeight(this));
             if (Array.isArray(this.size) && this.size[1] + 2 < requiredHeight) {

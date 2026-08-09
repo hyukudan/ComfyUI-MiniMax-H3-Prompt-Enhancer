@@ -49,7 +49,7 @@ try:
         unload_cached_server,
     )
     from .prompt_enhancer import enhance_prompt
-    from .media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
+    from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
     from .prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
@@ -59,11 +59,15 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         unload_cached_server,
     )
     from prompt_enhancer import enhance_prompt
-    from media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
+    from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
     from prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
+GENERATION_DURATION_INPUT = {"default": 5.0, "min": 4.0, "max": MAX_GENERATION_SECONDS, "step": 0.01,
+                             "tooltip": "4-150 seconds. H3 was trained around 5-15 seconds; longer generations are experimental and require much more memory."}
+FRAME_COUNT_INPUT = {"default": 0, "min": 0, "max": 3600, "step": 1,
+                     "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5. Above about 362 frames (~15 s) is experimental."}
 
 
 class MiniMaxH3PromptGuideBuilder:
@@ -81,7 +85,7 @@ class MiniMaxH3PromptGuideBuilder:
         return {"required": {
             "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
             "mode": (MODE_CHOICES, {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "duration_seconds": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
             "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
@@ -92,7 +96,7 @@ class MiniMaxH3PromptGuideBuilder:
             "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
             "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced alternative to reference notes: structured JSON describing connected media, roles, analysis, subjects, and transcripts."}),
             "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1, "tooltip": "Chained multishot only: 0 infers the count"}),
-            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "frame_count": ("INT", dict(FRAME_COUNT_INPUT)),
             "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
@@ -144,7 +148,7 @@ class MiniMaxH3PromptEnhancer:
         return {"required": {
             "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
             "mode": (MODE_CHOICES, {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "duration_seconds": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
             "endpoint": ("STRING", {"default": "http://127.0.0.1:1234/v1"}),
             "model": ("STRING", {"default": "", "tooltip": "Blank excludes embedding models and prefers a compact local instruct model from /v1/models"}),
@@ -172,7 +176,7 @@ class MiniMaxH3PromptEnhancer:
             "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
             "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced alternative to reference notes: structured JSON describing connected media and roles."}),
             "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
-            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "frame_count": ("INT", dict(FRAME_COUNT_INPUT)),
             "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
@@ -273,7 +277,7 @@ class MiniMaxH3GGUFPromptEnhancer:
         return {"required": {
             "basic_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": BASIC_PROMPT_PLACEHOLDER}),
             "mode": (MODE_CHOICES, {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "duration_seconds": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
             "llama_server_path": ("STRING", {"default": "", "tooltip": "Existing llama-server executable; never downloaded automatically"}),
             "gguf_model_path": ("STRING", {"default": "", "tooltip": "Existing GGUF under a registered model directory"}),
@@ -297,7 +301,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
             "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced structured JSON for connected reference media."}),
             "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
-            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "frame_count": ("INT", dict(FRAME_COUNT_INPUT)),
             "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
@@ -401,7 +405,7 @@ class MiniMaxH3ChainedMultishotOutput:
     def INPUT_TYPES(cls):
         return {"required": {
             "prompts_json": ("STRING", {"multiline": True, "default": '{"prompts":[]}'}),
-            "duration_per_shot": ("FLOAT", {"default": 10.1, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "duration_per_shot": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "source_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": SOURCE_PROMPT_PLACEHOLDER}),
         }, "optional": {
             "expected_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
@@ -505,7 +509,7 @@ class MiniMaxH3PromptValidator:
         return {"required": {
             "prompt": ("STRING", {"multiline": True, "default": "", "placeholder": VALIDATION_PROMPT_PLACEHOLDER}),
             "mode": (MODE_CHOICES, {"default": "auto"}),
-            "duration_seconds": ("FLOAT", {"default": 5.0, "min": 4.0, "max": 15.0, "step": 0.01}),
+            "duration_seconds": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "source_prompt": ("STRING", {"multiline": True, "default": "", "placeholder": SOURCE_PROMPT_PLACEHOLDER}),
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
@@ -515,7 +519,7 @@ class MiniMaxH3PromptValidator:
             "aspect_ratio": (list(ASPECT_RATIOS), {"default": "auto"}),
             "media_manifest": ("STRING", {"multiline": True, "default": "", "placeholder": MANIFEST_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Advanced structured JSON for connected reference media."}),
             "multishot_shot_count": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
-            "frame_count": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 1, "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5 and produce an effective 4–15 second generation."}),
+            "frame_count": ("INT", dict(FRAME_COUNT_INPUT)),
             "multishot_identity_lock": ("STRING", {"multiline": True, "default": "", "placeholder": IDENTITY_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
