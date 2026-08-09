@@ -35,6 +35,7 @@ const LOCAL_WIDGETS = [
     "keep_server_loaded",
 ];
 const INSTRUMENTAL_WIDGET = "instrumental_description";
+const INSTRUMENTAL_STYLE_WIDGET = "instrumental_style";
 const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
 const MIN_MULTILINE_HEIGHT = 72;
@@ -57,6 +58,7 @@ const DISPLAY_LABELS = {
     ambience_foley_policy: "Scene sounds (ambience & foley)",
     background_score_policy: "Background score",
     instrumental_description: "Instrumental description",
+    instrumental_style: "Music genre / style",
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
     media_manifest: "Media metadata JSON (optional)",
@@ -155,6 +157,7 @@ const CREATIVE_CHOICES = {
         ["live_action_visceral_horror", "Visceral practical-effects horror"],
         ["live_action_1980s_action", "1980s practical action cinema"],
         ["live_action_classic_chinese_martial_arts", "Classic Chinese-language martial-arts cinema"],
+        ["live_action_midcentury_technicolor_epic", "Mid-century Technicolor epic"],
         ["documentary_observational", "Observational documentary"],
         ["clean_commercial", "Clean commercial presentation"],
     ],
@@ -205,11 +208,11 @@ const VISUAL_LANGUAGE_GROUPS = [
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
     ["Physical animation", ["stop_motion_handcrafted"]],
-    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "documentary_observational"]],
+    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
     ["Commercial & presentation", ["clean_commercial"]],
 ];
 const CINEMATOGRAPHY_CHOICES = {
-    colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"]],
+    colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"], ["midcentury_dye_transfer", "Mid-century dye-transfer color"], ["two_color_process", "Early two-color process"], ["bleach_bypass", "Bleach bypass"], ["teal_orange", "Teal–orange separation"], ["cross_processed", "Cross-processed color"], ["sepia", "Sepia monochrome"], ["saturated_slide_film", "Saturated slide-film color"], ["cold_steel_blue", "Cold steel-blue sci-fi"], ["sterile_white_cyan", "Sterile white–cyan sci-fi"], ["neon_cyan_magenta", "Neon cyan–magenta"]],
     exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
     cameraMotion: [["none", "No preference"], ["static", "Static shot"], ["zoom_in", "Zoom in"], ["zoom_out", "Zoom out"], ["push_in", "Push in"], ["pull_out", "Pull out"], ["pan_left", "Pan left"], ["pan_right", "Pan right"], ["truck_left", "Truck left"], ["truck_right", "Truck right"], ["tilt_up", "Tilt up"], ["tilt_down", "Tilt down"], ["pedestal_up", "Pedestal up"], ["pedestal_down", "Pedestal down"], ["arc", "Arc shot"], ["tracking", "Tracking shot"], ["pov", "POV"], ["shake_slightly", "Shake slightly"], ["shake_strongly", "Shake strongly"], ["roll_clockwise", "Roll clockwise"], ["roll_counterclockwise", "Roll counterclockwise"]],
     cameraAmplitude: [["auto", "Automatic"], ["small", "Small"], ["medium", "Medium"], ["large", "Large"]],
@@ -2181,6 +2184,11 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeIntegerWidget(node, "frame_count", 0, 0, 4096);
     sanitizeEnumWidget(node, "ambience_foley_policy", ["auto", "ensure_audible", "off"], "auto");
     sanitizeEnumWidget(node, "background_score_policy", ["follow_prompt", "add_instrumental", "off"], "follow_prompt");
+    sanitizeEnumWidget(node, "instrumental_style", [
+        "none", "cinematic_orchestral", "hybrid_orchestral_electronic", "ambient_atmospheric",
+        "electronic_modern", "synthwave", "rock_instrumental", "jazz", "classical_chamber",
+        "folk_acoustic", "hip_hop_instrumental", "funk_disco", "horror_tension",
+    ], "none");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeBooleanWidget(node, "use_remote_model", true);
@@ -2215,6 +2223,7 @@ function enforceConditionalVisibility(node) {
     for (const name of LOCAL_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !managed.has(name) && !useRemote);
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET), score?.value === "add_instrumental");
+    setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET), score?.value === "add_instrumental");
     const modeWidget = node.widgets?.find((widget) => widget.name === "mode");
     if (modeWidget) {
         const multishot = modeWidget.value === "chained_multishot";
@@ -2252,7 +2261,9 @@ function applyLabels(node) {
 function refreshInstrumentalWidget(node) {
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     const description = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET);
+    const style = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
     setWidgetVisible(description, score?.value === "add_instrumental");
+    setWidgetVisible(style, score?.value === "add_instrumental");
     fitNodeToVisibleWidgets(node);
 }
 

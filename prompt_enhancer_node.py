@@ -50,7 +50,7 @@ try:
     )
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
-    from .prompt_guides import build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -60,7 +60,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     )
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, manifest_context, parse_media_manifest
-    from prompt_guides import build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -100,6 +100,7 @@ class MiniMaxH3PromptGuideBuilder:
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for the four optional creative-treatment selectors. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -108,7 +109,7 @@ class MiniMaxH3PromptGuideBuilder:
               media_manifest="", multishot_shot_count=0, frame_count=0,
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
-              cinematography_json=""):
+              cinematography_json="", instrumental_style="none"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -120,7 +121,7 @@ class MiniMaxH3PromptGuideBuilder:
                 instrumental_description,
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                (), creative_treatment_json, shot_plan_json, cinematography_json,
+                (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             ),
             resolved,
         )
@@ -179,6 +180,7 @@ class MiniMaxH3PromptEnhancer:
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
         }}
 
     @classmethod
@@ -202,7 +204,8 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
+                creative_treatment_json="", shot_plan_json="", cinematography_json="",
+                instrumental_style="none"):
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -216,10 +219,12 @@ class MiniMaxH3PromptEnhancer:
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                    creative_treatment_json, shot_plan_json, cinematography_json)):
+                    creative_treatment_json, shot_plan_json, cinematography_json,
+                    instrumental_style != "none")):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                                creative_treatment_json, shot_plan_json, cinematography_json)
+                                creative_treatment_json, shot_plan_json, cinematography_json,
+                                instrumental_style)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -235,10 +240,12 @@ class MiniMaxH3PromptEnhancer:
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                    creative_treatment_json, shot_plan_json, cinematography_json)):
+                    creative_treatment_json, shot_plan_json, cinematography_json,
+                    instrumental_style != "none")):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                               creative_treatment_json, shot_plan_json, cinematography_json)
+                               creative_treatment_json, shot_plan_json, cinematography_json,
+                               instrumental_style)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -298,6 +305,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
         }}
 
     @classmethod
@@ -312,7 +320,8 @@ class MiniMaxH3GGUFPromptEnhancer:
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
+                creative_treatment_json="", shot_plan_json="", cinematography_json="",
+                instrumental_style="none"):
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
@@ -326,7 +335,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-            creative_treatment_json, shot_plan_json, cinematography_json,
+            creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
         )
         return (
             prompt,

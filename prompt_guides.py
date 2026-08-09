@@ -52,6 +52,81 @@ TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multis
 AMBIENCE_FOLEY_POLICIES = ("auto", "ensure_audible", "off")
 BACKGROUND_SCORE_POLICIES = ("follow_prompt", "add_instrumental", "off")
 VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
+INSTRUMENTAL_STYLE_CHOICES = (
+    "none",
+    "cinematic_orchestral",
+    "hybrid_orchestral_electronic",
+    "ambient_atmospheric",
+    "electronic_modern",
+    "synthwave",
+    "rock_instrumental",
+    "jazz",
+    "classical_chamber",
+    "folk_acoustic",
+    "hip_hop_instrumental",
+    "funk_disco",
+    "horror_tension",
+)
+INSTRUMENTAL_STYLE_CONTRACTS = {
+    "cinematic_orchestral": (
+        "Arrange the supplied musical idea as cinematic orchestra: coherent instrumental families, thematic development, "
+        "controlled register, dynamic arcs, and scene-synchronized orchestral density. Do not default to heroic brass, "
+        "ostinatos, trailer percussion, choir, or a huge climax."
+    ),
+    "hybrid_orchestral_electronic": (
+        "Blend acoustic orchestral roles with designed electronic pulse, bass, texture, or percussion as one integrated "
+        "hybrid score. Keep the balance and transitions purposeful; do not add trailer braams, risers, impacts, choir, or vocals."
+    ),
+    "ambient_atmospheric": (
+        "Translate the idea into sparse atmospheric instrumental music with slowly evolving timbre, restrained harmonic "
+        "motion, spacious register, and low event density. Preserve audible musical structure without becoming room tone, "
+        "sound design, drone-only filler, or vocal ambience."
+    ),
+    "electronic_modern": (
+        "Arrange the idea with contemporary instrumental synthesis, programmed rhythm where requested, controlled low end, "
+        "clear timbral layers, and deliberate automation. Do not add club conventions, drops, glitches, arpeggios, or aggressive bass unless supported by the user's direction."
+    ),
+    "synthwave": (
+        "Use a restrained retro-synth vocabulary with period-compatible analog-style timbres, gated or electronic percussion "
+        "only when rhythmically appropriate, melodic bass, and clear harmonic progression. Do not add vocals, nostalgia effects, "
+        "VHS noise, arcade sounds, or force a fast neon-action mood."
+    ),
+    "rock_instrumental": (
+        "Arrange the idea as instrumental rock through a coherent rhythm section, guitar or compatible lead roles, playable "
+        "phrasing, section contrast, and controlled amplification. Do not add vocals, crowd sound, virtuoso solos, distortion, "
+        "double-kick intensity, or anthem structure unless requested."
+    ),
+    "jazz": (
+        "Adapt the idea through jazz-informed harmony, voicing, articulation, rhythmic placement, ensemble interaction, and "
+        "measured improvisational space while retaining the requested tempo and dramatic function. Do not automatically add swing, "
+        "saxophone, walking bass, big-band brass, nightclub ambience, or extended solos."
+    ),
+    "classical_chamber": (
+        "Arrange the idea for a small acoustic classical ensemble with transparent counterpoint, playable phrasing, controlled "
+        "dynamics, and clearly differentiated instrumental roles. Do not expand into full orchestra, virtuoso concerto writing, "
+        "period pastiche, choir, or operatic gesture."
+    ),
+    "folk_acoustic": (
+        "Translate the idea into an intimate acoustic folk arrangement with human-scale pulse, playable phrasing, restrained "
+        "ensemble layers, and natural instrumental dynamics. Do not infer a nationality, tradition, rustic setting, vocals, "
+        "handclaps, stomps, or celebratory character."
+    ),
+    "hip_hop_instrumental": (
+        "Arrange the idea as an instrumental hip-hop beat using intentional groove, drum programming, bass relationship, sample-like "
+        "or played texture, and section variation. Use no rapping, spoken samples, vocal chops, copyrighted sampling, producer tags, "
+        "turntable effects, or genre-specific aggression unless explicitly requested."
+    ),
+    "funk_disco": (
+        "Adapt the idea through syncopated instrumental groove, interlocking rhythm-section roles, concise harmonic rhythm, and "
+        "controlled bright accents. Do not force four-on-the-floor, slap bass, wah guitar, strings, brass, dancefloor ambience, "
+        "camp performance, or vocals unless requested."
+    ),
+    "horror_tension": (
+        "Shape the supplied idea as a restrained instrumental tension underscore using controlled dissonance, register, pulse, "
+        "silence, timbral friction, and dynamic restraint tied to events already present. Do not invent danger, jump-scare stingers, "
+        "screams, heartbeat, chanting, reversed voices, impacts, or supernatural meaning."
+    ),
+}
 REF2VA_TASK_TYPES = (
     "keyframe completion", "reference generation", "video editing", "video continuation",
     "audio reuse", "audio reference",
@@ -1018,13 +1093,16 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
                        creative_treatment_json: str = "",
                        shot_plan_json: str = "",
-                       cinematography_json: str = "") -> str:
+                       cinematography_json: str = "",
+                       instrumental_style: str = "none") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
         raise ValueError(f"Unsupported background-score policy {background_score_policy!r}")
     if voice_performance not in VOICE_PERFORMANCES:
         raise ValueError(f"Unsupported voice performance {voice_performance!r}")
+    if instrumental_style not in INSTRUMENTAL_STYLE_CHOICES:
+        raise ValueError(f"Unsupported instrumental style {instrumental_style!r}")
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -1159,10 +1237,27 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     }
     parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
     requested_instrumental = str(instrumental_description or "").strip()
+    if background_score_policy == "add_instrumental" and instrumental_style != "none":
+        parts.append(
+            "INSTRUMENTAL MUSIC GENRE / STYLE — AUTHORITATIVE ARRANGEMENT GRAMMAR: Adapt the user's score "
+            "description and the scene's dramatic function into the selected musical language. Preserve explicit tempo, "
+            "meter, rhythmic events, dynamics, structural timing, entry/exit points, and requested instruments wherever "
+            "compatible; re-orchestrate only what is necessary to make the selection coherent. Express the result as "
+            "concrete audible musical parameters, not as a genre label. The score remains audience-only and strictly "
+            "instrumental, with no singing, lyrics, speech, chants, choir, or vocal samples.\n"
+            f"Selected style: {instrumental_style}.\n"
+            + INSTRUMENTAL_STYLE_CONTRACTS[instrumental_style]
+            + "\nOUTPUT INTEGRATION — MANDATORY: In structured single-generation output, write the resolved "
+            "instrumentation, tempo, rhythm, harmony, texture, structure, and dynamics as concrete audible prose in "
+            "non_diegetic_music. Do not output only the genre name, style ID, preset label, or a statement that the "
+            "style is applied. Where an autonomous chained item carries score direction, restate the same resolved "
+            "musical signature compactly so it does not depend on hidden selector metadata."
+        )
     if background_score_policy == "add_instrumental" and requested_instrumental:
         parts.append(
             "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
-            "audience-only score. Preserve concrete instrumentation, tempo, rhythm, and dynamics. Translate any "
+            "audience-only score and adapt its arrangement to the selected instrumental style when one is active. "
+            "Preserve concrete instrumentation, tempo, rhythm, and dynamics wherever compatible. Translate any "
             "abstract mood wording into those audible musical parameters instead of repeating the mood label. "
             "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
             "singing, lyrics, or vocal samples:\n" + requested_instrumental

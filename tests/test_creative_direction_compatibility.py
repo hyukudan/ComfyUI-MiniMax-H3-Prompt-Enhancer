@@ -23,7 +23,8 @@ from prompt_guides import build_user_request
 FIXTURE = Path(__file__).with_name("fixtures") / "legacy_node_inputs_v050.json"
 FRONTEND = Path(__file__).parents[1] / "web" / "backend_toggle.js"
 README = Path(__file__).parents[1] / "README.md"
-NEW_FIELDS = ["creative_treatment_json", "shot_plan_json", "cinematography_json"]
+NEW_FIELDS = ["creative_treatment_json", "shot_plan_json", "cinematography_json", "instrumental_style"]
+JSON_FIELDS = NEW_FIELDS[:-1]
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 CREATIVE = '{"schemaVersion":1,"genre":"action","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOTS = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"One shot."}]}'
@@ -62,11 +63,12 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
     for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer, MiniMaxH3PromptGuideBuilder):
         optional = node_class.INPUT_TYPES()["optional"]
         assert list(optional)[-len(NEW_FIELDS):] == NEW_FIELDS
-        for name in NEW_FIELDS:
+        for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
             assert options["multiline"] is True
             assert options["dynamicPrompts"] is False
+        assert optional["instrumental_style"][1]["default"] == "none"
 
 
 def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
@@ -100,7 +102,7 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             if parameter.name != "self"
         ]
         assert [parameter.name for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELDS
-        assert [parameter.default for parameter in parameters[-len(NEW_FIELDS):]] == [""] * len(NEW_FIELDS)
+        assert [parameter.default for parameter in parameters[-len(NEW_FIELDS):]] == ["", "", "", "none"]
 
 
 def test_legacy_guide_builder_positional_call_still_uses_neutral_behavior():
@@ -143,10 +145,10 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-2:] == ("", "")
+    assert captured["args"][-2:] == ("", "none")
 
 
-def test_main_and_specialized_nodes_forward_both_new_fields_without_positional_shift(monkeypatch):
+def test_main_and_specialized_nodes_forward_appended_fields_without_positional_shift(monkeypatch):
     remote_calls = []
     gguf_calls = []
     monkeypatch.setattr(
@@ -168,8 +170,8 @@ def test_main_and_specialized_nodes_forward_both_new_fields_without_positional_s
         0.2, 4096, 300, 180, 0, True, True, False,
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert remote_calls[0][-3:] == (CREATIVE, SHOTS, "")
-    assert gguf_calls[0][-3:] == (CREATIVE, SHOTS, "")
+    assert remote_calls[0][-4:] == (CREATIVE, SHOTS, "", "none")
+    assert gguf_calls[0][-4:] == (CREATIVE, SHOTS, "", "none")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
@@ -211,6 +213,10 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
         "cel_shaded_3d", "documentary_observational", "live_action_cinematic",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
         "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "live_action_midcentury_technicolor_epic", "midcentury_dye_transfer",
+        "two_color_process", "bleach_bypass", "teal_orange", "cross_processed",
+        "sepia", "saturated_slide_film",
+        "cold_steel_blue", "sterile_white_cyan", "neon_cyan_magenta",
         "crime", "western", "sports_competition", "analog_1980s", "urban_industrial",
         "kinetic", "pulp_heightened", "stoic",
         "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",

@@ -246,7 +246,7 @@ start closed and expand downward; their open/closed state is saved in node prope
 - **Advanced settings** is always the last section. It contains exact frames, structured media metadata, generation
   timeout/repair controls, token budget, temperature, and thinking control. Its summary calls out non-default exact
   frames or active metadata.
-- `add_instrumental` reveals **Instrumental description** in the main flow.
+- `add_instrumental` reveals **Music genre / style** and **Instrumental description** in the main flow.
 - `ref2va` reveals **Reference notes**. Existing non-empty reference notes remain visible in every mode.
 
 The accordion controls are non-persistent presentation proxies over the original canonical widgets. Hidden canonical
@@ -301,6 +301,7 @@ Shared controls:
 | `ambience_foley_policy` | `auto` | Controls non-musical, non-spoken scene sound: environment plus physical action sounds |
 | `background_score_policy` | `follow_prompt` | Follow the source, add an instrumental score, or force music off |
 | `instrumental_description` | empty | When `add_instrumental` is selected, describe instrumentation, tempo, rhythm, and dynamics; mood wording is translated into audible parameters |
+| `instrumental_style` | `none` | Optional arrangement grammar applied to the instrumental description when `add_instrumental` is active |
 | `voice_performance` | `audible` | Audible dialogue, experimental silent mouth acting, or no voice performance |
 
 Generation and repair controls:
@@ -611,7 +612,7 @@ the enhancer **how to direct and present it**:
 | Axis | Available profiles |
 |---|---|
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery`, `crime`, `western`, `sports_competition` |
-| Visual language | `none`, `anime_general`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `pixel_art_16bit`, `documentary_observational`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
+| Visual language | `none`, `anime_general`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `pixel_art_16bit`, `documentary_observational`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_midcentury_technicolor_epic`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
 | World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k`, `analog_1980s`, `urban_industrial` |
 | Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic` |
 
@@ -650,6 +651,7 @@ Profile selection guide:
 | `live_action_visceral_horror` | tactile practical-effects horror grammar for disturbing material already present: patient observation, controlled proximity, dense readable shadow, physically exact material response and close synchronized foley | any new blood, wound, injury, mutilation, fluid, decay, procedure, monster, violence, victim, scream, wet effect, shock cut, or graphic event |
 | `live_action_1980s_action` | decisive 1980s practical-feature grammar with medium-wide geography, complete setup/action/impact/recovery, photochemical contrast, tactile physical response and restrained optical or dolly emphasis | fights, guns, explosions, chases, enemies, injuries, hero poses, one-liners, slow motion, neon, smoke, period wardrobe, VHS artifacts, synth score, or franchise imitation |
 | `live_action_classic_chinese_martial_arts` | classic Chinese-language martial-arts coverage with full-body masters, readable floor geometry, responsive pans/reframing, complete movement phrases, rooted weight and exact contact | fights, opponents, techniques, schools, weapons, wirework, powers, impossible jumps, period costumes, temples, dynasties, dubbed voices, or franchise imitation |
+| `live_action_midcentury_technicolor_epic` | premium 1950s–1960s color-epic grammar with composed widescreen tableaux, formal ensemble blocking, tangible set scale, luminous exposure and pristine dye-transfer-like color | mythology, antiquity, empires, armies, battles, monsters, temples, costumes, matte paintings, theatrical acting, overtures, orchestral music, film damage, or franchise imitation |
 | `stylized_3d_animation` | unmistakable non-photorealistic modeled 3D with stable topology, textures, shaped lighting, coherent materials, rig-like poses, controlled overlap and volumetric parallax | live action unless explicit, a CG filter, toy proportions, rubber motion, topology drift, impossible deformation, game UI, or cartoon effects |
 | `game_3d_cinematic` | contemporary real-time game-engine cutscene rendering with stable PBR assets, virtual cinematography, engine-plausible lighting, collision-aware staging and rigged performance | HUDs, prompts, player characters, enemies, pickups, quests, combat, game mechanics, letterbox bars, UI audio, or game music |
 | `game_3d_nextgen` | premium next-generation AAA CG with high-density assets, stable microdetail, high-fidelity PBR, global illumination, volumetrics, groom/cloth behavior and motion-capture-like performance | live action, celebrities, franchises, weapons, armor, vehicles, invented technology, combat, trailer montage, HUDs, lens dirt, UI audio, or epic score |
@@ -757,7 +759,7 @@ Every selector defaults to **No preference**, so an untouched panel adds no text
 
 | Control | Available intent |
 |---|---|
-| Color palette | natural, warm, cool, restrained, vibrant, or monochrome |
+| Color palette | natural, warm, cool, restrained, vibrant, monochrome, mid-century dye-transfer, early two-color, bleach bypass, teal–orange, cross-processed, sepia, saturated slide-film, cold steel-blue sci-fi, sterile white–cyan sci-fi, or neon cyan–magenta |
 | Exposure / contrast | high-key, balanced, low-key, high-contrast, or soft-contrast |
 | Camera motion | static, zoom, push/pull, pan, truck, tilt, pedestal, arc, tracking, POV, shake, or roll |
 | Camera amplitude / speed | automatic, small/medium/large and slow/normal/fast; enabled only for a moving camera |
@@ -808,7 +810,7 @@ Exact serialized values for API-format workflows:
 
 | Field | Values after the neutral/default value |
 |---|---|
-| `colorPalette` | `none`, `natural`, `warm`, `cool`, `restrained`, `vibrant`, `monochrome` |
+| `colorPalette` | `none`, `natural`, `warm`, `cool`, `restrained`, `vibrant`, `monochrome`, `midcentury_dye_transfer`, `two_color_process`, `bleach_bypass`, `teal_orange`, `cross_processed`, `sepia`, `saturated_slide_film`, `cold_steel_blue`, `sterile_white_cyan`, `neon_cyan_magenta` |
 | `exposureContrast` | `none`, `high_key`, `balanced`, `low_key`, `high_contrast`, `soft_contrast` |
 | `cameraMotion` | `none`, `static`, `zoom_in`, `zoom_out`, `push_in`, `pull_out`, `pan_left`, `pan_right`, `truck_left`, `truck_right`, `tilt_up`, `tilt_down`, `pedestal_up`, `pedestal_down`, `arc`, `tracking`, `pov`, `shake_slightly`, `shake_strongly`, `roll_clockwise`, `roll_counterclockwise` |
 | `cameraAmplitude` | `auto`, `small`, `medium`, `large` |
@@ -1155,10 +1157,33 @@ object, a door closing, an impact, an engine starting, or breathing. It is neith
 an explicit requirement; `off` asks for no ambience or foley. For example, a rainy chase can have rain and traffic as
 ambience, shoes striking wet pavement and clothes moving as foley, dialogue as voice, and an orchestral cue as score.
 
-Selecting `add_instrumental` reveals an **Instrumental description** text box. Its contents become authoritative musical
-direction for the enhancer (instrumentation, tempo, rhythm, and dynamics). Abstract mood wording is converted to those
-audible parameters rather than repeated in the final field. Leaving it empty lets the model choose concrete musical
-parameters. The field remains hidden and is ignored under the other score policies.
+Selecting `add_instrumental` reveals **Music genre / style** and an **Instrumental description** text box. The text
+supplies the concrete intent: instrumentation, tempo, meter, rhythm, dynamics, structure, and entry/exit timing. The
+selector adapts that material to a musical arrangement grammar without replacing compatible instructions. Abstract
+mood wording is converted to audible parameters rather than repeated in the final field. Both controls remain hidden
+and are ignored under the other score policies. Leaving the selector at `none` preserves the previous behavior.
+
+Available styles:
+
+| ID | Arrangement emphasis | Never implied automatically |
+|---|---|---|
+| `cinematic_orchestral` | coherent orchestral families, thematic development, register and dynamic arcs | heroic brass, ostinatos, trailer percussion, choir or huge climax |
+| `hybrid_orchestral_electronic` | integrated acoustic orchestral and designed electronic roles | braams, risers, impacts, choir or vocals |
+| `ambient_atmospheric` | sparse evolving timbre, spacious register and restrained harmonic motion | room tone, sound-design filler, drone-only structure or vocal ambience |
+| `electronic_modern` | contemporary synthesis, programmed rhythm, controlled low end and automation | club drops, glitches, arpeggios or aggressive bass |
+| `synthwave` | restrained analog-style synth vocabulary and period-compatible electronic rhythm | VHS noise, arcade sounds, vocals or forced neon-action mood |
+| `rock_instrumental` | playable rhythm section, lead roles, section contrast and amplification | vocals, crowds, virtuoso solos, distortion or anthem structure |
+| `jazz` | jazz-informed harmony, voicing, articulation, ensemble interaction and measured improvisation | swing, saxophone, walking bass, big band or nightclub ambience |
+| `classical_chamber` | transparent small-ensemble counterpoint, phrasing and acoustic dynamics | full orchestra, concerto display, period pastiche, choir or opera |
+| `folk_acoustic` | intimate acoustic ensemble, human-scale pulse and natural dynamics | an inferred culture, nationality, rustic setting, vocals, stomps or claps |
+| `hip_hop_instrumental` | intentional groove, drum/bass relationship, texture and section variation | rapping, vocal chops, copyrighted samples, tags or turntable effects |
+| `funk_disco` | syncopated interlocking groove, concise harmony and controlled bright accents | four-on-the-floor, slap bass, wah, strings, brass, camp or vocals |
+| `horror_tension` | event-supported dissonance, register, pulse, silence and timbral friction | danger, jump scares, screams, heartbeat, chanting, reversed voices or impacts |
+
+The selected style is authoritative for arrangement, while explicit tempo, timing, dynamics and compatible requested
+instruments remain authoritative source facts. Every style remains strictly instrumental: no singing, lyrics, speech,
+chants, choir or vocal samples. Semantic adherence is LLM-driven; the Validator checks the normal music policy and
+output structure but does not score whether the final prose sounds sufficiently jazz, orchestral or electronic.
 
 `silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the
 final H3 prompt. It retains only non-lexical visual direction such as language rhythm, approximate length, cadence,
@@ -1537,6 +1562,9 @@ Creative direction was added without reordering the v0.5.0 positional inputs. `c
 enhancer, Guide Builder, and Validator. Existing output names/order are unchanged; per-shot extraction uses the new
 Shot Selector node instead of changing enhancer outputs. Old workflows therefore retain their backend, audio,
 duration, reference, and output connections.
+
+Version 0.6.x appends `instrumental_style` after those fields on the main enhancer, specialized GGUF enhancer, and
+Guide Builder. Its neutral default is `none`; no earlier widget position or output changes.
 
 On load, the frontend repairs known historical serialization shifts:
 

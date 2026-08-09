@@ -34,6 +34,7 @@ CANONICAL_CHOICES = {
         "documentary_observational", "live_action_naturalistic", "live_action_cinematic",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
         "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "live_action_midcentury_technicolor_epic",
         "stylized_3d_animation",
         "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d", "cel_shaded_3d",
         "stop_motion_handcrafted", "painterly_2d", "watercolor_2d", "gouache_2d",
@@ -97,13 +98,50 @@ def test_cinematography_uses_h3_camera_grammar_and_hard_fidelity_contract():
     assert "may not create a cut" in instruction
 
 
+def test_midcentury_dye_transfer_is_an_independent_color_treatment():
+    parsed = parse_cinematography({
+        "schemaVersion": 1,
+        "colorPalette": "midcentury_dye_transfer",
+    })
+    instruction = cinematography_instruction(parsed)
+    assert "mid-century dye-transfer color treatment" in instruction
+    assert "luminous protected skin" in instruction
+    assert "do not add fading" in instruction
+    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
+    assert "do not merely name a preset" in instruction
+    assert "self-contained" in instruction
+
+
+@pytest.mark.parametrize(
+    ("palette", "phrase", "guardrail"),
+    (
+        ("two_color_process", "warm red-orange versus cyan-blue-green", "misregistration"),
+        ("bleach_bypass", "dense neutral and metallic tones", "Do not add grain"),
+        ("teal_orange", "complementary separation", "do not invent colored light sources"),
+        ("cross_processed", "hue crossover", "random frame-to-frame shifts"),
+        ("sepia", "warm sepia monochrome", "do not infer an old era"),
+        ("saturated_slide_film", "rich but controlled primaries", "projector artifacts"),
+        ("cold_steel_blue", "cold steel-blue science-fiction", "Do not turn the scene into night"),
+        ("sterile_white_cyan", "sterile white-cyan science-fiction", "Do not force high-key exposure"),
+        ("neon_cyan_magenta", "neon cyan-magenta", "do not invent neon tubes"),
+    ),
+)
+def test_named_color_treatments_are_specific_and_non_narrative(palette, phrase, guardrail):
+    instruction = cinematography_instruction(parse_cinematography({
+        "schemaVersion": 1,
+        "colorPalette": palette,
+    }))
+    assert phrase in instruction
+    assert guardrail in instruction
+
+
 def test_cinematography_rejects_invalid_or_orphaned_motion_modifiers():
     with pytest.raises(ValueError, match="duplicate key"):
         parse_cinematography('{"schemaVersion":1,"colorPalette":"warm","colorPalette":"cool"}')
     with pytest.raises(ValueError, match="unsupported keys"):
         parse_cinematography({"schemaVersion": 1, "lensMm": 50})
     with pytest.raises(ValueError, match="Unsupported cinematography"):
-        parse_cinematography({"schemaVersion": 1, "colorPalette": "sepia"})
+        parse_cinematography({"schemaVersion": 1, "colorPalette": "infrared_fantasy"})
     with pytest.raises(ValueError, match="require a moving"):
         parse_cinematography({"schemaVersion": 1, "cameraAmplitude": "large"})
 
@@ -263,6 +301,7 @@ def test_live_action_variants_are_distinct_and_do_not_invent_genre_content():
         "live_action_visceral_horror": ("visceral practical-effects horror language", "material cause-and-effect", "Blood"),
         "live_action_1980s_action": ("1980s practical-action feature", "photochemical", "Fights"),
         "live_action_classic_chinese_martial_arts": ("classic Chinese-language martial-arts cinema", "full-body master shots", "wirework"),
+        "live_action_midcentury_technicolor_epic": ("premium mid-century 1950s–1960s color epic", "dye-transfer release print", "Mythology"),
     }
     for profile, phrases in checks.items():
         treatment = compose_creative_treatment(visual_language=profile)

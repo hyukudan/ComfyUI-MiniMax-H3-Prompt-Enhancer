@@ -290,6 +290,7 @@ def enhance_prompt_with_gguf_server(
     creative_treatment_json: str = "",
     shot_plan_json: str = "",
     cinematography_json: str = "",
+    instrumental_style: str = "none",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -390,6 +391,7 @@ def enhance_prompt_with_gguf_server(
                 creative_treatment_json,
                 shot_plan_json,
                 cinematography_json,
+                instrumental_style,
             )
         finally:
             if not bool(keep_server_loaded):

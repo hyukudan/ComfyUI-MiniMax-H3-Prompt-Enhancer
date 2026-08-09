@@ -322,3 +322,22 @@ def test_pipeline_records_only_an_active_instrumental_description():
     )
     assert "Slow cello pulse, sparse and tense." in captured["request"]
     assert manifest["instrumentalDescription"] == "Slow cello pulse, sparse and tense."
+
+
+def test_pipeline_records_requested_and_applied_instrumental_style():
+    def complete(_messages):
+        return VALID_PROMPT.replace("N/A", "A restrained jazz-informed cello score with no vocals.")
+
+    _result, _validation, active = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley.", "t2va", 5.0, "", complete, 0,
+        {"provider": "test"}, background_score_policy="add_instrumental",
+        instrumental_description="Cello, 72 BPM.", instrumental_style="jazz",
+    )
+    _result, _validation, inactive = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley.", "t2va", 5.0, "", complete, 0,
+        {"provider": "test"}, background_score_policy="off", instrumental_style="jazz",
+    )
+    assert active["instrumentalStyleRequested"] == "jazz"
+    assert active["instrumentalStyleApplied"] == "jazz"
+    assert inactive["instrumentalStyleRequested"] == "jazz"
+    assert inactive["instrumentalStyleApplied"] == "none"

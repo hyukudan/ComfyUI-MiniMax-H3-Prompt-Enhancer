@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from prompt_guides import (
     BASE_SECTIONS,
     REFERENCE_SECTIONS,
@@ -503,6 +505,53 @@ def test_enhancement_respects_static_camera_audio_off_and_required_score():
     assert "physical sound only as permitted" in request
     assert "musical treatment is governed exclusively" in request
     assert "If the user did not request music" not in request
+
+
+def test_instrumental_style_adapts_user_direction_only_when_score_is_enabled():
+    active = build_user_request(
+        "A woman crosses an empty station.", "t2va", 5.0,
+        background_score_policy="add_instrumental",
+        instrumental_description="Cello, 72 BPM, a gradual crescendo in the final two seconds.",
+        instrumental_style="jazz",
+    )
+    inactive = build_user_request(
+        "A woman crosses an empty station.", "t2va", 5.0,
+        background_score_policy="off",
+        instrumental_description="Cello, 72 BPM.",
+        instrumental_style="jazz",
+    )
+    assert "INSTRUMENTAL MUSIC GENRE / STYLE" in active
+    assert "Selected style: jazz" in active
+    assert "jazz-informed harmony" in active
+    assert "Cello, 72 BPM" in active
+    assert "adapt its arrangement to the selected instrumental style" in active
+    assert "singing, lyrics, speech, chants, choir, or vocal samples" in active
+    assert "write the resolved instrumentation, tempo, rhythm, harmony" in active
+    assert "Do not output only the genre name" in active
+    assert "INSTRUMENTAL MUSIC GENRE / STYLE" not in inactive
+    assert "Cello, 72 BPM" not in inactive
+
+
+def test_every_instrumental_style_has_a_concrete_non_vocal_contract():
+    from prompt_guides import INSTRUMENTAL_STYLE_CHOICES
+
+    for style in INSTRUMENTAL_STYLE_CHOICES[1:]:
+        request = build_user_request(
+            "A figure walks through fog.", "t2va", 5.0,
+            background_score_policy="add_instrumental",
+            instrumental_style=style,
+        )
+        assert f"Selected style: {style}" in request
+        assert "strictly instrumental" in request
+
+
+def test_unknown_instrumental_style_is_rejected():
+    with pytest.raises(ValueError, match="Unsupported instrumental style"):
+        build_user_request(
+            "A figure walks.", "t2va", 5.0,
+            background_score_policy="add_instrumental",
+            instrumental_style="pirate_polkas",
+        )
 
 
 def test_explicit_aspect_ratio_adds_composition_contract_but_auto_does_not():

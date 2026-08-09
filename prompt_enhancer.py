@@ -269,6 +269,7 @@ def enhance_prompt_with_completion(
     creative_treatment_json: str = "",
     shot_plan_json: str = "",
     cinematography_json: str = "",
+    instrumental_style: str = "none",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -290,7 +291,7 @@ def enhance_prompt_with_completion(
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-        (), creative_treatment_json, shot_plan_json, cinematography_json,
+        (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -312,7 +313,7 @@ def enhance_prompt_with_completion(
             ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
-            creative_treatment_json, shot_plan_json, cinematography_json,
+            creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -448,6 +449,10 @@ def enhance_prompt_with_completion(
         "instrumentalDescription": (
             str(instrumental_description).strip() if background_score_policy == "add_instrumental" else ""
         ),
+        "instrumentalStyleRequested": instrumental_style,
+        "instrumentalStyleApplied": (
+            instrumental_style if background_score_policy == "add_instrumental" else "none"
+        ),
         "voicePerformance": voice_performance,
         "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
         "dialogueLedgerLineCount": len(dialogue_ledger),
@@ -481,7 +486,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    frame_count: int = 0, multishot_identity_lock: str = "",
                    multishot_voice_lock: str = "", multishot_setting_lock: str = "",
                    creative_treatment_json: str = "", shot_plan_json: str = "",
-                   cinematography_json: str = "") -> tuple[str, dict, dict]:
+                   cinematography_json: str = "",
+                   instrumental_style: str = "none") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -526,4 +532,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         creative_treatment_json,
         shot_plan_json,
         cinematography_json,
+        instrumental_style,
     )

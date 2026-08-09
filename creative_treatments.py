@@ -19,9 +19,9 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 11
+CREATIVE_PROFILE_CATALOG_VERSION = 12
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
-CINEMATOGRAPHY_CATALOG_VERSION = 1
+CINEMATOGRAPHY_CATALOG_VERSION = 4
 SHOT_PLAN_SCHEMA_VERSION = 1
 
 CREATIVE_AXES = ("genre", "visual_language", "world_aesthetic", "tone")
@@ -646,6 +646,34 @@ VISUAL_LANGUAGE_PROFILES = {
             "Fights, opponents, attacks, martial-arts techniques, schools, masters, training, tournaments, revenge, honor codes, weapons, swords, staffs, wirework, impossible jumps, acrobatics, powers, energy, speed effects, period costumes, temples, dynasties, dubbed voices, impact exaggeration, or franchise imitation.",
         ),
     ),
+    "live_action_midcentury_technicolor_epic": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the stately visual grammar of a premium mid-century 1950s–1960s color epic: complete dramatic entrances, formal scene development, measured reactions, and decisive transitions without imposing spectacle or a long runtime.",
+        ),
+        camera_and_framing=(
+            "Favor composed widescreen tableaux, balanced foreground-to-background depth, strong lateral staging, architectural scale, clean profile and three-quarter groupings, and deliberate camera movement that preserves the full physical arrangement.",
+            "Use closer framing for supplied expressions, gestures, objects, and contacts while retaining formal eyelines, stable screen direction, coherent scale, and optically plausible photographed perspective.",
+        ),
+        lighting_and_color=(
+            "Use luminous source-motivated studio or exterior lighting, protected faces and highlights, dense readable shadows, confident local color, and rich complementary separation compatible with a pristine mid-century dye-transfer release print.",
+            "Preserve explicit colors, weather, time of day, and reference appearance; do not automatically add golden light, painted skies, diffusion, sepia, faded color, print damage, gate weave, or heavy grain.",
+        ),
+        production_design=(
+            "Photograph supplied sets, landscapes, costumes, crowds, miniatures, matte work, props, creatures, and practical effects with tangible constructed scale and coherent period-feature finish, but never add them merely to make the scene epic.",
+        ),
+        blocking_and_performance=(
+            "Use clear formal placement, readable ensemble spacing, sustained posture, purposeful entrances and turns, precise gesture, and physically complete action without forcing theatrical declamation or heroic bearing.",
+        ),
+        sound_treatment=(
+            "When allowed, preserve clean spacious production sound, material specificity, ensemble perspective, and controlled dynamic scale; the profile grants no overture, fanfare, orchestral score, dubbed performance, or vintage audio degradation.",
+        ),
+        may_fill_unspecified=(
+            "Widescreen tableau organization, formal ensemble blocking, tangible set scale, luminous photographic exposure, rich protected local color, measured camera movement, and pristine mid-century feature polish.",
+        ),
+        must_not_invent=(
+            "Mythology, antiquity, historical periods, empires, royalty, heroes, armies, crowds, battles, voyages, monsters, temples, palaces, deserts, seas, costumes, weapons, matte paintings, miniatures, theatrical acting, painted backdrops, overtures, fanfares, orchestral music, film damage, or franchise imitation.",
+        ),
+    ),
     "stylized_3d_animation": _profile(
         version=2,
         editing_and_pacing=("Present unmistakable stylized 3D animation with clear pose-to-pose timing, readable arcs, controlled overlap, intentional holds, and stable spatial continuity rather than live action with a CG filter.",),
@@ -1252,6 +1280,16 @@ CINEMATOGRAPHY_CHOICES = {
         "restrained": "Use restrained chroma and controlled color separation without desaturating authoritative colors.",
         "vibrant": "Use vivid but protected color separation without clipping channels, recoloring references, or increasing every color equally.",
         "monochrome": "Render a coherent monochrome image with clear luminance separation, but do not apply monochrome where authoritative color must remain visible.",
+        "midcentury_dye_transfer": "Apply a pristine mid-century dye-transfer color treatment with rich but controlled primaries, luminous protected skin, dense neutral blacks, clean complementary separation, stable local color, and smooth highlight roll-off. Preserve explicit colors and do not add fading, sepia, color misregistration, print damage, gate weave, or grain.",
+        "two_color_process": "Apply a controlled early two-color-process treatment with a deliberately constrained warm red-orange versus cyan-blue-green reproduction, clear luminance hierarchy, protected faces, and stable color boundaries. Preserve authoritative colors where required and do not add period settings, fading, fringing, misregistration, print damage, or grain.",
+        "bleach_bypass": "Apply a restrained bleach-bypass color treatment with reduced chroma, dense neutral and metallic tones, firm controlled contrast, protected skin, readable shadows, and contained highlights. Do not add grain, dirt, clipping, underexposure, blue cast, war imagery, or distressed content.",
+        "teal_orange": "Apply restrained teal-orange complementary separation as image treatment: keep natural protected skin and warm practical elements distinct from cooler environmental tones without recoloring every shadow teal or every highlight orange. Preserve explicit local colors and do not invent colored light sources.",
+        "cross_processed": "Apply a deliberate cross-processed color treatment with controlled hue crossover between shadows and highlights, selective saturation, firm contrast, protected faces, and temporally stable color relationships. Do not add random frame-to-frame shifts, clipping, light leaks, chemical stains, grain, or print damage.",
+        "sepia": "Render a coherent warm sepia monochrome treatment with clear luminance separation, protected faces and highlights, and readable material detail. Sepia changes color treatment only; do not infer an old era or add fading, scratches, vignette, paper texture, grain, or archival damage.",
+        "saturated_slide_film": "Apply a pristine saturated slide-film color treatment with rich but controlled primaries, crisp color separation, clean neutral blacks, luminous local color, and protected highlights. Do not add underexposure, crushed shadows, grain, frame borders, projector artifacts, fading, or nostalgic subject matter.",
+        "cold_steel_blue": "Apply a cold steel-blue science-fiction color treatment with controlled blue and cyan bias, clean neutral metals and grays, protected natural skin, readable shadow detail, and restrained warm accents from sources already present. Do not turn the scene into night, recolor every object blue, or invent technology, screens, emissions, haze, or light sources.",
+        "sterile_white_cyan": "Apply a sterile white-cyan science-fiction palette with clean differentiated whites, cool neutral surfaces, restrained cyan separation, protected skin and local colors, and fully retained highlight detail. Do not force high-key exposure, clip whites, remove material texture, or invent laboratories, medical spaces, technology, screens, or luminous fixtures.",
+        "neon_cyan_magenta": "Apply a vivid but controlled neon cyan-magenta color treatment using selective complementary separation, protected skin and authoritative colors, clean channel detail, and stable saturation across time. Treat it as grading only: do not invent neon tubes, signs, city lights, holograms, rain, reflections, colored light sources, cyberpunk objects, or emissive effects.",
     },
     "exposure_contrast": {
         "none": "",
@@ -1450,6 +1488,11 @@ def cinematography_instruction(cinematography: Mapping[str, Any]) -> str:
         "stable and omit any effect not selected below.",
         "For chained_multishot output, restate the resolved cinematography compactly inside every autonomous prompt "
         "item so no segment depends on styling declared only in another item.",
+        "OUTPUT INTEGRATION — MANDATORY: Translate every selected control into concrete visible prompt wording inside "
+        "the applicable shot or autonomous segment. Describe the resulting palette, exposure, material color response, "
+        "camera behavior, optics, focus, texture, and motion rendering; do not merely name a preset, repeat its ID, "
+        "mention this control panel, or say that a look is applied. The final prompt must remain self-contained if all "
+        "control metadata is removed.",
     ]
     lines.extend(f"- {item['instruction']}" for item in cinematography.get("directives", ()))
     return "\n".join(lines)
