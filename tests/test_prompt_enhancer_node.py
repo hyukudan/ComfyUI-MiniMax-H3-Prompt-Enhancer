@@ -76,6 +76,12 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["instrumental_style"][1]["default"] == "none"
     assert "jazz" in inputs["instrumental_style"][0]
     assert "horror_tension" in inputs["instrumental_style"][0]
+    assert "action_cinematic" in inputs["instrumental_style"][0]
+    assert "mystery_investigation" in inputs["instrumental_style"][0]
+    assert "suspense_build" in inputs["instrumental_style"][0]
+    assert "combat_rhythmic" in inputs["instrumental_style"][0]
+    assert "chinese_martial_arts" in inputs["instrumental_style"][0]
+    assert "horror_intense" in inputs["instrumental_style"][0]
     assert inputs["voice_performance"][0][-1] == "none"
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]

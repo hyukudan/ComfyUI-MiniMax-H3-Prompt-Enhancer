@@ -19,7 +19,7 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 12
+CREATIVE_PROFILE_CATALOG_VERSION = 13
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 4
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -290,8 +290,9 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Martial arts, fights, attacks, muscular physique, bodybuilder anatomy, scars, torn clothing, armor, weapons, wastelands, post-apocalyptic settings, gangs, violence, gore, powers, aura, speed lines, shouting, tragic plot, narrator, vintage damage, or franchise designs."),
     ),
     "anime_retro_gag_family": _profile(
+        version=2,
         editing_and_pacing=(
-            "Present the sequence as early-1980s Japanese family gag-manga television animation with clear setup-action-consequence readability only for events already supplied, economical pose changes, cheerful held poses, and deliberate limited-animation timing rather than modern fluid anime or filtered live action.",
+            "Present the sequence as unmistakable early-1980s Japanese family gag-manga television animation with clear setup-action-consequence readability only for events already supplied, economical pose changes, strongly graphic held poses, and deliberate limited-animation timing rather than modern fluid anime, soft children's-book illustration, or filtered live action.",
             "Use simple pose-to-pose transitions and selective mouth, eye, hand, prop, and background-cycle animation while keeping the requested action physically complete and temporally coherent.",
         ),
         camera_and_framing=(
@@ -299,7 +300,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Keep characters and props clearly separated and geography easy to understand without superhero foreshortening, dramatic lens effects, panel framing, or frantic camera motion.",
         ),
         lighting_and_color=(
-            "Use clean moderately bold contours, rounded geometric construction, flat cel fills, one simple shadow band at most, warm off-whites, friendly clear primaries and secondaries, and a compact cheerful palette while preserving authoritative colors.",
+            "Use crisp bold black contours, rounded geometric construction, opaque hard-edged cel fills, one simple shadow band at most, warm off-whites, strong clean primaries and secondaries, and a compact high-clarity television palette while preserving authoritative colors; avoid pastel softness and watercolor diffusion.",
             "Keep outlines, facial features, flat fills, shadow shapes, palette assignments, and simplified painted backgrounds temporally stable without digital gradients, glossy highlights, line boil, color crawl, or modern compositing glow.",
         ),
         production_design=(
@@ -310,8 +311,30 @@ VISUAL_LANGUAGE_PROFILES = {
             "Use clear friendly poses, readable eye and mouth shapes, simple gestures, and concise reaction holds only to clarify supplied behavior; gag styling does not make the character foolish, clumsy, childish, or comedic by itself.",
         ),
         sound_treatment=("Retro family-gag styling grants no funny voice, laughter, boing, whistle, percussion hit, chiptune, theme song, mascot vocal, or written sound effect; use only audio authorized by existing policies.",),
-        may_fill_unspecified=("Rounded retro shape language, compact palette, flat cel fill, simple shadow policy, classic limited-animation spacing, clean neighborhood or domestic background abstraction, and concise reaction posing."),
-        must_not_invent=("Jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
+        may_fill_unspecified=("Crisp rounded retro shape language, compact high-clarity palette, opaque hard-edged cel fill, simple shadow policy, classic limited-animation spacing, clean neighborhood or domestic background abstraction, and concise reaction posing."),
+        must_not_invent=("Pastel softness, watercolor diffusion, contemporary kawaii gloss, American children's-comic rendering, jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
+    ),
+    "anime_ultradetailed_cinematic": _profile(
+        inherits=("anime_general",),
+        editing_and_pacing=(
+            "Use feature-animation precision: preserve dense design information through every pose, reserve the richest redraws for authored focal beats, and use controlled holds or selective motion where constant full-detail movement would shimmer.",
+        ),
+        camera_and_framing=(
+            "Build cinematic anime layouts with exact perspective, deep multi-plane staging, fine foreground and background separation, disciplined scale, and carefully drawn parallax while keeping the requested subject and action immediately readable.",
+        ),
+        lighting_and_color=(
+            "Use sophisticated but stable anime color design with layered cel and painted value transitions, precise material-dependent highlights, protected local colors, controlled atmospheric depth, and high-detail shadow construction motivated only by existing illumination.",
+        ),
+        production_design=(
+            "Render supplied faces, hair, hands, fabric, surfaces, architecture, machinery, vegetation, and environmental wear with high line precision, material specificity, dense coherent texture, and richly painted background depth only where those elements already exist or are safe presentational detail.",
+            "Keep fine contours, facial construction, patterns, small props, material edges, reflections, shadow maps, and background geometry temporally locked; detail density must remain coherent rather than crawling, melting, or being redesigned frame by frame.",
+        ),
+        blocking_and_performance=(
+            "Preserve nuanced eye, finger, hair, cloth, and weight-transfer animation with anatomically complete contacts; never trade identity, silhouette clarity, or physical causality for decorative detail.",
+        ),
+        sound_treatment=("When allowed, use finely separated, precisely located physical sound for existing materials and movement; visual intricacy grants no additional effects, voices, or music.",),
+        may_fill_unspecified=("High-precision anime linework, sophisticated cel-and-painted value structure, material-specific highlight behavior, rich background painting, multi-plane depth, stable micro-detail, and selective feature-animation polish."),
+        must_not_invent=("Extra jewelry, embroidery, decals, text, ornaments, props, architecture, machinery, crowds, weather, particles, sparks, lens flares, magical effects, holograms, light sources, damage, dirt, beauty retouching, photoreal rendering, or detail that changes identity or story."),
     ),
     "anime_shonen": _profile(
         version=2,

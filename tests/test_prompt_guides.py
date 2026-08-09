@@ -81,6 +81,68 @@ non_diegetic_music: N/A"""
     assert tuple(report["sections"]) == BASE_SECTIONS
 
 
+def test_grading_only_palette_rejects_invented_colored_lighting_and_accepts_grade_language():
+    cinematography = json.dumps({"schemaVersion": 1, "colorPalette": "neon_cyan_magenta"})
+    invented = """integrated_multimodal_description: [Shot 1] A mechanic walks through a neutral workshop under saturated glow and cyan-magenta colored lighting.
+
+overall_soundscape: Footsteps cross the concrete floor.
+
+non_diegetic_music: N/A"""
+    report = validate_prompt(
+        invented, "t2va", 5.0, "A mechanic walks through a neutral workshop.",
+        cinematography_json=cinematography,
+    )
+    assert not report["valid"]
+    assert any("grading-only presentation control" in error for error in report["errors"])
+
+    graded = invented.replace(
+        "under saturated glow and cyan-magenta colored lighting",
+        "with cyan-magenta channel separation as a stable image color treatment under the existing neutral illumination",
+    )
+    assert validate_prompt(
+        graded, "t2va", 5.0, "A mechanic walks through a neutral workshop.",
+        cinematography_json=cinematography,
+    )["valid"]
+
+
+def test_grading_palette_allows_colored_light_explicitly_present_in_source():
+    cinematography = json.dumps({"schemaVersion": 1, "colorPalette": "cold_steel_blue"})
+    prompt = """integrated_multimodal_description: [Shot 1] An astronaut walks beneath the existing cyan lighting in a spacecraft corridor.
+
+overall_soundscape: Ventilation and footsteps remain audible.
+
+non_diegetic_music: N/A"""
+    report = validate_prompt(
+        prompt, "t2va", 5.0, "An astronaut walks beneath cyan lighting in a spacecraft corridor.",
+        cinematography_json=cinematography,
+    )
+    assert report["valid"], report
+
+
+def test_selected_creative_profile_id_must_not_leak_into_final_prompt():
+    treatment = json.dumps({"schemaVersion": 1, "visualLanguage": "anime_ultradetailed_cinematic"})
+    leaked = """integrated_multimodal_description: [Shot 1] The scene uses visual_language:anime_ultradetailed_cinematic style as a woman walks across a room.
+
+overall_soundscape: Footsteps cross the floor.
+
+non_diegetic_music: N/A"""
+    report = validate_prompt(
+        leaked, "t2va", 5.0, "A woman walks across a room.",
+        creative_treatment_json=treatment,
+    )
+    assert not report["valid"]
+    assert any("internal creative profile identifier" in error for error in report["errors"])
+
+    translated = leaked.replace(
+        "visual_language:anime_ultradetailed_cinematic style",
+        "high-precision hand-drawn cinematic anime with stable cel shading and richly painted depth",
+    )
+    assert validate_prompt(
+        translated, "t2va", 5.0, "A woman walks across a room.",
+        creative_treatment_json=treatment,
+    )["valid"]
+
+
 def test_fl2va_alignment_uses_actual_last_shot_number():
     first = alignment_instruction("fl2va", 8.0, 2)
     prompt = f"""{first}

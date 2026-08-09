@@ -206,7 +206,7 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     source = FRONTEND.read_text(encoding="utf-8")
     for token in (
         "action", "horror", "thriller", "romance", "comedy", "drama", "adventure", "mystery",
-        "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "anime_general", "anime_ultradetailed_cinematic", "anime_retro_dramatic", "anime_retro_gag_family",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel", "animation_2d", "pixel_art_16bit",
         "stylized_3d_animation", "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d",
@@ -264,3 +264,19 @@ def test_frontend_uses_collapsed_non_persistent_accordions_and_keeps_advanced_la
     assert append_block.index("shotDetails") < append_block.index("advancedSettings.details")
     assert "node.__minimaxProxyManagedWidgets = managedNames" in source
     assert "setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false)" in source
+
+
+def test_frontend_places_nonpersistent_music_style_proxy_below_background_score():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert 'const INSTRUMENTAL_STYLE_PROXY_WIDGET = "minimax_h3_instrumental_style_proxy"' in source
+    proxy = source.split("function addInstrumentalStyleProxy", 1)[1].split(
+        "function refreshBackendWidgets", 1,
+    )[0]
+    assert 'node.widgets.indexOf(score)' in proxy
+    assert 'node.widgets.splice(scoreIndex + 1, 0, proxyWidget)' in proxy
+    assert "markPanelWidgetNonPersistent(proxyWidget)" in proxy
+    for token in (
+        "action_cinematic", "mystery_investigation", "suspense_build", "combat_rhythmic",
+        "chinese_martial_arts", "horror_intense",
+    ):
+        assert f'["{token}",' in source

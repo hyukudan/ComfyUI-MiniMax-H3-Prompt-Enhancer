@@ -56,6 +56,11 @@ INSTRUMENTAL_STYLE_CHOICES = (
     "none",
     "cinematic_orchestral",
     "hybrid_orchestral_electronic",
+    "action_cinematic",
+    "mystery_investigation",
+    "suspense_build",
+    "combat_rhythmic",
+    "chinese_martial_arts",
     "ambient_atmospheric",
     "electronic_modern",
     "synthwave",
@@ -66,6 +71,7 @@ INSTRUMENTAL_STYLE_CHOICES = (
     "hip_hop_instrumental",
     "funk_disco",
     "horror_tension",
+    "horror_intense",
 )
 INSTRUMENTAL_STYLE_CONTRACTS = {
     "cinematic_orchestral": (
@@ -76,6 +82,32 @@ INSTRUMENTAL_STYLE_CONTRACTS = {
     "hybrid_orchestral_electronic": (
         "Blend acoustic orchestral roles with designed electronic pulse, bass, texture, or percussion as one integrated "
         "hybrid score. Keep the balance and transitions purposeful; do not add trailer braams, risers, impacts, choir, or vocals."
+    ),
+    "action_cinematic": (
+        "Turn the supplied musical idea into a forward-driving cinematic action cue with a clearly readable pulse, "
+        "short propulsive figures, controlled low-end weight, and event-synchronized rises and releases. Scale density "
+        "to action that is actually present; do not invent a chase, fight, danger, trailer braams, choir, or wall-to-wall percussion."
+    ),
+    "mystery_investigation": (
+        "Shape the supplied idea as an investigative mystery underscore with sparse question-and-answer motifs, selective "
+        "harmonic ambiguity, transparent texture, and deliberate gaps that leave dialogue and physical clues audible. Do not "
+        "imply guilt, crime, danger, supernatural causes, revelation stings, detective pastiche, or a solved mystery."
+    ),
+    "suspense_build": (
+        "Develop the supplied idea as a controlled suspense arc: begin with low event density, establish a stable restrained "
+        "pulse or harmonic pressure, and increase register, subdivision, or density only alongside events already requested. "
+        "Do not add a threat, countdown, heartbeat, ticking clock, jump-scare sting, braam, scream, or false climax."
+    ),
+    "combat_rhythmic": (
+        "Arrange the supplied idea around physically legible combat rhythm using concise percussion, accented rests, changing "
+        "metrical pressure, and synchronized emphasis for contacts that the scene already contains. Preserve movement clarity and "
+        "dynamic headroom; do not invent blows, weapons, crowds, victory, chanting, impacts, or continuous maximal intensity."
+    ),
+    "chinese_martial_arts": (
+        "Adapt the supplied idea as an instrumental Chinese martial-arts film score using an intentional, non-tokenistic balance "
+        "of Chinese instrumental colors and compatible orchestral or percussive roles, agile phrasing, breath-shaped pauses, and "
+        "precise synchronization to movement already present. Do not infer a dynasty, location, folklore, comedy, wire-fu, combat, "
+        "gong hits, chanting, or a fixed instrument roster unless the user or scene supports it."
     ),
     "ambient_atmospheric": (
         "Translate the idea into sparse atmospheric instrumental music with slowly evolving timbre, restrained harmonic "
@@ -125,6 +157,12 @@ INSTRUMENTAL_STYLE_CONTRACTS = {
         "Shape the supplied idea as a restrained instrumental tension underscore using controlled dissonance, register, pulse, "
         "silence, timbral friction, and dynamic restraint tied to events already present. Do not invent danger, jump-scare stingers, "
         "screams, heartbeat, chanting, reversed voices, impacts, or supernatural meaning."
+    ),
+    "horror_intense": (
+        "Build an intense instrumental horror cue from the supplied idea through unstable harmony, abrasive but controlled timbre, "
+        "extreme register contrast, ruptured pulse, and sharply bounded dynamic peaks tied only to existing events. Keep speech and "
+        "important physical sound intelligible; do not invent gore, monsters, danger, screams, whispers, chanting, jump scares, "
+        "heartbeat, reversed voices, or impacts."
     ),
 }
 REF2VA_TASK_TYPES = (
@@ -2509,6 +2547,79 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
     return {"valid": not errors, "mode": "chained_multishot", "errors": errors, "warnings": warnings, "promptCount": len(prompts)}
 
 
+_GRADING_ONLY_PALETTE_PATTERNS = {
+    "cold_steel_blue": (
+        r"\b(?:steel[- ]?blue|blue|cyan)(?:[- ]biased)?\s+(?:light(?:ing)?|glow|emission|illumination|reflection)s?\b",
+    ),
+    "sterile_white_cyan": (
+        r"\bcyan\s+(?:light(?:ing)?|glow|emission|illumination|reflection|luminous fixture)s?\b",
+        r"\bluminous\s+(?:cyan\s+)?fixtures?\b",
+    ),
+    "neon_cyan_magenta": (
+        r"\bneon\s+(?:tube|sign|light|lighting|glow|emission|fixture)s?\b",
+        r"\b(?:cyan|magenta|cyan[- ]magenta|colored)\s+(?:light(?:ing)?|glow|emission|illumination|reflection)s?\b",
+        r"\b(?:saturated|neon)\s+glow\b",
+        r"\bglow(?:ing)?\b",
+    ),
+}
+
+
+def _positive_pattern_matches(value: str, pattern: str) -> list[re.Match[str]]:
+    """Return positive mentions while ignoring nearby explicit negation."""
+    matches = []
+    for match in re.finditer(pattern, value or "", flags=re.IGNORECASE):
+        prefix = (value or "")[max(0, match.start() - 48):match.start()]
+        if re.search(r"\b(?:no|not|without|avoid|forbid|forbids|do not|does not)\b[^.!?;]{0,40}$", prefix, re.IGNORECASE):
+            continue
+        matches.append(match)
+    return matches
+
+
+def _cinematography_literal_adherence_errors(
+    source_prompt: str, output_prompt: str, cinematography: Mapping[str, Any],
+) -> list[str]:
+    """Catch bounded presentation controls being turned into invented scene lighting.
+
+    This intentionally covers only palettes whose contracts explicitly define them
+    as grading/presentation. It is a repair trigger, not an aesthetic quality score.
+    """
+    palette = str(cinematography.get("colorPalette", "none"))
+    patterns = _GRADING_ONLY_PALETTE_PATTERNS.get(palette, ())
+    if not patterns:
+        return []
+    source = source_prompt or ""
+    violations = []
+    for pattern in patterns:
+        output_matches = _positive_pattern_matches(output_prompt, pattern)
+        if output_matches and not _positive_pattern_matches(source, pattern):
+            violations.extend(match.group(0) for match in output_matches)
+    if not violations:
+        return []
+    observed = ", ".join(repr(item) for item in dict.fromkeys(violations))
+    return [
+        f"Selected colorPalette={palette} is a grading-only presentation control, but the output invented "
+        f"diegetic colored lighting or glow absent from the source ({observed}). Rewrite it as image color "
+        "treatment, channel separation, or material color response under the source's existing illumination."
+    ]
+
+
+def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[str, Any]) -> list[str]:
+    """Prevent internal profile identifiers from leaking into the H3-facing prose."""
+    leaked = []
+    for profile_id in treatment.get("profileIds", ()):
+        axis, _, value = str(profile_id).partition(":")
+        patterns = (re.escape(str(profile_id)), rf"\b{re.escape(axis)}\s*:\s*{re.escape(value)}\b")
+        if any(re.search(pattern, output_prompt or "", flags=re.IGNORECASE) for pattern in patterns):
+            leaked.append(str(profile_id))
+    if not leaked:
+        return []
+    return [
+        "The output exposed internal creative profile identifier(s) "
+        f"{leaked!r}. Rewrite them as concrete self-contained visual, editorial, performance, and sound prose; "
+        "the final H3 prompt must not name selector IDs or control metadata."
+    ]
+
+
 def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     source_prompt: str = "", reference_context: str = "",
                     ambience_foley_policy: str = "auto",
@@ -2531,13 +2642,15 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     )
     configuration_errors: list[str] = []
     try:
-        parse_creative_treatment(creative_treatment_json)
+        selected_creative_treatment = parse_creative_treatment(creative_treatment_json)
     except ValueError as exc:
         configuration_errors.append(str(exc))
+        selected_creative_treatment = parse_creative_treatment("")
     try:
-        parse_cinematography(cinematography_json)
+        selected_cinematography = parse_cinematography(cinematography_json)
     except ValueError as exc:
         configuration_errors.append(str(exc))
+        selected_cinematography = parse_cinematography("")
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     try:
         explicit_shot_plan = parse_shot_plan(
@@ -2566,6 +2679,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["errors"].extend(parsed["errors"])
         report["warnings"].extend(parsed["warnings"])
         report["errors"].extend(profile["errors"])
+        report["errors"].extend(_cinematography_literal_adherence_errors(
+            source_prompt, prompt, selected_cinematography,
+        ))
+        report["errors"].extend(_creative_literal_adherence_errors(
+            prompt, selected_creative_treatment,
+        ))
         report["warnings"].extend(profile["warnings"])
         report["valid"] = not report["errors"]
         report["aspectRatio"] = aspect_ratio
@@ -2593,6 +2712,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     if text.startswith("```") or text.endswith("```"):
         errors.append("Output must not use a Markdown code fence")
     errors.extend(_explicit_source_fact_errors(source_prompt, text))
+    errors.extend(_cinematography_literal_adherence_errors(
+        source_prompt, text, selected_cinematography,
+    ))
+    errors.extend(_creative_literal_adherence_errors(text, selected_creative_treatment))
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)

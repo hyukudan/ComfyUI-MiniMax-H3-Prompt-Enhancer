@@ -36,6 +36,28 @@ const LOCAL_WIDGETS = [
 ];
 const INSTRUMENTAL_WIDGET = "instrumental_description";
 const INSTRUMENTAL_STYLE_WIDGET = "instrumental_style";
+const INSTRUMENTAL_STYLE_PROXY_WIDGET = "minimax_h3_instrumental_style_proxy";
+const INSTRUMENTAL_STYLE_CHOICES = [
+    ["none", "No genre / preserve description"],
+    ["cinematic_orchestral", "Cinematic orchestral"],
+    ["hybrid_orchestral_electronic", "Hybrid orchestral / electronic"],
+    ["action_cinematic", "Cinematic action"],
+    ["mystery_investigation", "Mystery / investigation"],
+    ["suspense_build", "Suspense build"],
+    ["combat_rhythmic", "Rhythmic combat"],
+    ["chinese_martial_arts", "Chinese martial-arts cinema"],
+    ["ambient_atmospheric", "Ambient / atmospheric"],
+    ["electronic_modern", "Modern electronic"],
+    ["synthwave", "Synthwave"],
+    ["rock_instrumental", "Instrumental rock"],
+    ["jazz", "Jazz"],
+    ["classical_chamber", "Classical chamber"],
+    ["folk_acoustic", "Acoustic folk"],
+    ["hip_hop_instrumental", "Instrumental hip-hop"],
+    ["funk_disco", "Funk / disco"],
+    ["horror_tension", "Horror tension · restrained"],
+    ["horror_intense", "Horror · intense"],
+];
 const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
 const MIN_MULTILINE_HEIGHT = 72;
@@ -131,6 +153,7 @@ const CREATIVE_CHOICES = {
     visualLanguage: [
         ["none", "No preference"],
         ["anime_general", "General anime"],
+        ["anime_ultradetailed_cinematic", "Ultra-detailed cinematic anime"],
         ["anime_shonen", "Kinetic action anime (shōnen)"],
         ["anime_shojo", "Lyrical shōjo anime"],
         ["anime_shojo_pastel", "Classic luminous shōjo anime"],
@@ -202,7 +225,7 @@ const CREATIVE_CHOICES = {
     ],
 };
 const VISUAL_LANGUAGE_GROUPS = [
-    ["Anime", ["anime_general", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
+    ["Anime", ["anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
     ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d"]],
     ["Graphic & pixel styles", ["american_comic_pastel", "graphic_novel", "graphic_noir", "pixel_art_16bit"]],
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
@@ -2185,9 +2208,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "ambience_foley_policy", ["auto", "ensure_audible", "off"], "auto");
     sanitizeEnumWidget(node, "background_score_policy", ["follow_prompt", "add_instrumental", "off"], "follow_prompt");
     sanitizeEnumWidget(node, "instrumental_style", [
-        "none", "cinematic_orchestral", "hybrid_orchestral_electronic", "ambient_atmospheric",
-        "electronic_modern", "synthwave", "rock_instrumental", "jazz", "classical_chamber",
-        "folk_acoustic", "hip_hop_instrumental", "funk_disco", "horror_tension",
+        ...INSTRUMENTAL_STYLE_CHOICES.map(([value]) => value),
     ], "none");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
@@ -2262,9 +2283,47 @@ function refreshInstrumentalWidget(node) {
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     const description = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET);
     const style = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
+    const styleProxy = node.__minimaxInstrumentalStyleProxy;
+    const active = score?.value === "add_instrumental";
     setWidgetVisible(description, score?.value === "add_instrumental");
-    setWidgetVisible(style, score?.value === "add_instrumental");
+    setWidgetVisible(style, active && !styleProxy);
+    if (styleProxy) {
+        setWidgetVisible(style, false);
+        setWidgetVisible(styleProxy.widget, active);
+        styleProxy.control.value = String(style?.value ?? "none");
+    }
     fitNodeToVisibleWidgets(node);
+}
+
+function addInstrumentalStyleProxy(node) {
+    if (node.__minimaxInstrumentalStyleProxy || typeof node.addDOMWidget !== "function") return;
+    const canonical = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
+    const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
+    if (!canonical || !score) return;
+    const root = createPanelElement("label", "minimax-h3-setting-field");
+    root.appendChild(createPanelElement("span", "", "Music genre / style"));
+    const control = createPanelElement("select", "");
+    addSelectOptions(control, INSTRUMENTAL_STYLE_CHOICES);
+    control.value = String(canonical.value ?? "none");
+    control.title = canonical.options?.tooltip ?? "Adapt the instrumental arrangement while preserving compatible user direction.";
+    control.setAttribute("aria-label", "Music genre / style");
+    control.addEventListener("change", () => setCanonicalValue(node, canonical, control.value));
+    root.appendChild(control);
+    const proxyWidget = node.addDOMWidget(
+        INSTRUMENTAL_STYLE_PROXY_WIDGET,
+        "minimaxH3InstrumentalStyle",
+        root,
+        { serialize: false, hideOnZoom: false },
+    );
+    markPanelWidgetNonPersistent(proxyWidget);
+    const currentIndex = node.widgets.indexOf(proxyWidget);
+    const scoreIndex = node.widgets.indexOf(score);
+    if (currentIndex >= 0 && scoreIndex >= 0) {
+        node.widgets.splice(currentIndex, 1);
+        node.widgets.splice(scoreIndex + 1, 0, proxyWidget);
+    }
+    node.__minimaxInstrumentalStyleProxy = { widget: proxyWidget, control, canonical };
+    setWidgetVisible(canonical, false);
 }
 
 function refreshBackendWidgets(node) {
@@ -2302,6 +2361,7 @@ function configureAudioNode(node) {
     applyMultilineTitles(node);
     applyLabels(node);
     normalizeMigratedRuntimeWidgets(node);
+    addInstrumentalStyleProxy(node);
     wrapRefreshCallback(node, "background_score_policy", refreshInstrumentalWidget);
     wrapRefreshCallback(node, "mode", (target) => {
         enforceConditionalVisibility(target);

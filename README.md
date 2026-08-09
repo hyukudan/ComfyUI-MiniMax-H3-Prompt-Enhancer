@@ -246,7 +246,8 @@ start closed and expand downward; their open/closed state is saved in node prope
 - **Advanced settings** is always the last section. It contains exact frames, structured media metadata, generation
   timeout/repair controls, token budget, temperature, and thinking control. Its summary calls out non-default exact
   frames or active metadata.
-- `add_instrumental` reveals **Music genre / style** and **Instrumental description** in the main flow.
+- `add_instrumental` reveals **Music genre / style** immediately below **Background score**, followed by
+  **Instrumental description** in the main flow.
 - `ref2va` reveals **Reference notes**. Existing non-empty reference notes remain visible in every mode.
 
 The accordion controls are non-persistent presentation proxies over the original canonical widgets. Hidden canonical
@@ -612,7 +613,7 @@ the enhancer **how to direct and present it**:
 | Axis | Available profiles |
 |---|---|
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery`, `crime`, `western`, `sports_competition` |
-| Visual language | `none`, `anime_general`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `pixel_art_16bit`, `documentary_observational`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_midcentury_technicolor_epic`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
+| Visual language | `none`, `anime_general`, `anime_ultradetailed_cinematic`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `pixel_art_16bit`, `documentary_observational`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_midcentury_technicolor_epic`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
 | World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k`, `analog_1980s`, `urban_industrial` |
 | Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic` |
 
@@ -635,8 +636,9 @@ Profile selection guide:
 | Visual language | Directs | Does not imply |
 |---|---|---|
 | `anime_general` | unmistakable hand-authored 2D anime with stable linework, facial construction, cel-value groups, painted backgrounds, layered parallax, key poses and holds | live action unless explicit, an anime filter, powers, auras, transformations, speed lines, chibi symbols, or anime sound effects |
+| `anime_ultradetailed_cinematic` | inherits general anime, then adds feature-animation line precision, sophisticated cel-and-painted values, material-specific highlights, richly painted multi-plane depth and temporally locked micro-detail | extra ornaments, text, props, buildings, machinery, crowds, weather, particles, VFX, light sources, damage, photorealism, or identity-changing detail |
 | `anime_retro_dramatic` | serious late-1970s–1980s Japanese cel animation with mature angular drawing, variable heavy ink, classic shadow bands, restrained period color, hand-painted depth, held intensity and deliberate limited animation | muscles, martial arts, fights, attacks, scars, armor, weapons, wastelands, violence, powers, aura, speed lines, shouting, tragedy, narration, vintage damage, or franchise designs |
-| `anime_retro_gag_family` | early-1980s Japanese family gag-manga television language with rounded compact construction, clean bold contours, flat cel fills, compact friendly color and economical limited animation | jokes, slapstick, childification, chibi morphing, ninjas, robots, mascots, talking animals, magical gadgets, tricks, panels, funny voices, laughter, comic audio, or franchise designs |
+| `anime_retro_gag_family` | unmistakable early-1980s Japanese family gag-manga television language with rounded compact construction, crisp bold black contours, opaque hard-edged cel fills, strong clean primaries and economical limited animation | pastel/watercolor softness, contemporary kawaii gloss, American children's-comic rendering, jokes, slapstick, childification, chibi morphing, ninjas, robots, mascots, magical gadgets, funny voices, comic audio, or franchise designs |
 | `anime_shonen` | inherits general anime, then strengthens kinetic perspective and action rhythm | rivals, combat, attacks, techniques, power-ups, energy effects, screaming, or tournament stakes |
 | `anime_shojo` | inherits general anime, then emphasizes elegant composition, gaze, hands and emotional pauses | romance, flowers, sparkles, blush, tears, kisses, magic, or sentimental dialogue |
 | `anime_shojo_pastel` | classic luminous Japanese shōjo animation: fine variable line, carefully constructed bright eyes, tapered faces, flowing lock shapes, light cel shading, painted backgrounds and pale color relationships balanced by saturated anchors | Western superhero anatomy, heavy contour, crosshatching, halftones, hard noir shadow, American comic framing, romance, magic, franchise costumes, or sentimental music |
@@ -1157,7 +1159,8 @@ object, a door closing, an impact, an engine starting, or breathing. It is neith
 an explicit requirement; `off` asks for no ambience or foley. For example, a rainy chase can have rain and traffic as
 ambience, shoes striking wet pavement and clothes moving as foley, dialogue as voice, and an orchestral cue as score.
 
-Selecting `add_instrumental` reveals **Music genre / style** and an **Instrumental description** text box. The text
+Selecting `add_instrumental` reveals **Music genre / style** immediately below **Background score**, followed by an
+**Instrumental description** text box. The text
 supplies the concrete intent: instrumentation, tempo, meter, rhythm, dynamics, structure, and entry/exit timing. The
 selector adapts that material to a musical arrangement grammar without replacing compatible instructions. Abstract
 mood wording is converted to audible parameters rather than repeated in the final field. Both controls remain hidden
@@ -1169,6 +1172,11 @@ Available styles:
 |---|---|---|
 | `cinematic_orchestral` | coherent orchestral families, thematic development, register and dynamic arcs | heroic brass, ostinatos, trailer percussion, choir or huge climax |
 | `hybrid_orchestral_electronic` | integrated acoustic orchestral and designed electronic roles | braams, risers, impacts, choir or vocals |
+| `action_cinematic` | readable pulse, propulsive figures, controlled low-end weight, and event-linked rises/releases | a chase, fight, danger, braams, choir or constant percussion |
+| `mystery_investigation` | sparse question-and-answer motifs, harmonic ambiguity, transparent texture, and deliberate gaps | guilt, crime, danger, supernatural causes, reveal stings or a solved mystery |
+| `suspense_build` | low-density opening and a controlled rise in register, subdivision or density alongside existing events | threats, countdowns, heartbeat, ticking, jump scares, braams or false climaxes |
+| `combat_rhythmic` | accented rests, changing metrical pressure and synchronization to combat already present | blows, weapons, crowds, victory, chants, impacts or nonstop maximal intensity |
+| `chinese_martial_arts` | non-tokenistic Chinese instrumental color with compatible orchestral/percussive roles, agile phrasing and breath-shaped pauses | a dynasty, location, folklore, comedy, wire-fu, combat, gong hits, chanting or a fixed instrument roster |
 | `ambient_atmospheric` | sparse evolving timbre, spacious register and restrained harmonic motion | room tone, sound-design filler, drone-only structure or vocal ambience |
 | `electronic_modern` | contemporary synthesis, programmed rhythm, controlled low end and automation | club drops, glitches, arpeggios or aggressive bass |
 | `synthwave` | restrained analog-style synth vocabulary and period-compatible electronic rhythm | VHS noise, arcade sounds, vocals or forced neon-action mood |
@@ -1179,11 +1187,15 @@ Available styles:
 | `hip_hop_instrumental` | intentional groove, drum/bass relationship, texture and section variation | rapping, vocal chops, copyrighted samples, tags or turntable effects |
 | `funk_disco` | syncopated interlocking groove, concise harmony and controlled bright accents | four-on-the-floor, slap bass, wah, strings, brass, camp or vocals |
 | `horror_tension` | event-supported dissonance, register, pulse, silence and timbral friction | danger, jump scares, screams, heartbeat, chanting, reversed voices or impacts |
+| `horror_intense` | unstable harmony, abrasive controlled timbre, extreme-register contrast, ruptured pulse and bounded peaks | gore, monsters, danger, screams, whispers, chanting, jump scares or impacts |
 
 The selected style is authoritative for arrangement, while explicit tempo, timing, dynamics and compatible requested
 instruments remain authoritative source facts. Every style remains strictly instrumental: no singing, lyrics, speech,
 chants, choir or vocal samples. Semantic adherence is LLM-driven; the Validator checks the normal music policy and
 output structure but does not score whether the final prose sounds sufficiently jazz, orchestral or electronic.
+Cinematography has one additional bounded literal guard: grading-only sci-fi palettes trigger repair if generated
+prose turns them into colored lights, glow, neon fixtures, or emissions absent from the source. This checks a specific
+forbidden invention; it is not a general aesthetic-quality score.
 
 `silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the
 final H3 prompt. It retains only non-lexical visual direction such as language rhythm, approximate length, cadence,

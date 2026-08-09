@@ -27,7 +27,7 @@ CANONICAL_CHOICES = {
         "crime", "western", "sports_competition",
     ),
     "visual_language": (
-        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family", "anime_ultradetailed_cinematic",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel",
         "animation_2d", "pixel_art_16bit",
@@ -271,11 +271,24 @@ def test_retro_serious_and_family_gag_anime_are_distinct_standalone_contracts():
     assert "must not add muscle mass" in dramatic_instruction
     assert "Martial arts, fights, attacks" in dramatic_instruction
 
-    assert gag["profileVersions"] == {"visual_language:anime_retro_gag_family": 1}
+    assert gag["profileVersions"] == {"visual_language:anime_retro_gag_family": 2}
     assert "early-1980s Japanese family gag-manga television animation" in gag_instruction
     assert "rounded geometric construction" in gag_instruction
     assert "does not make the character foolish" in gag_instruction
     assert "ninjas, robots, mascots" in gag_instruction
+
+
+def test_ultradetailed_anime_adds_precision_without_inventing_scene_detail():
+    treatment = compose_creative_treatment(visual_language="anime_ultradetailed_cinematic")
+    instruction = creative_treatment_instruction(treatment)
+    assert treatment["profileVersions"] == {
+        "visual_language:anime_general": 2,
+        "visual_language:anime_ultradetailed_cinematic": 1,
+    }
+    assert "feature-animation precision" in instruction
+    assert "material specificity" in instruction
+    assert "temporally locked" in instruction
+    assert "Extra jewelry, embroidery" in instruction
 
 
 def test_every_3d_variant_has_a_distinct_complete_rendering_contract():
