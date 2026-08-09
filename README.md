@@ -267,6 +267,18 @@ start closed and expand downward; their open/closed state is saved in node prope
 - **Cinematography** contains optional presentation controls for color palette, exposure/contrast, camera motion plus
   amplitude and speed, optics, depth of field, image texture, lens effects, and motion rendering. Its summary lists
   only active choices and reads **No preferences** when neutral.
+- **Looks** sits between Cinematography and the plan section and manages reusable creative presets. **Save current
+  look…** stores the active Creative direction plus Cinematography under a name you type inline (the shot plan is
+  deliberately excluded: a look travels across scenes). Saved looks live in the browser's local storage for your
+  ComfyUI user profile — up to 50, evicting the oldest — so they follow you across workflows without adding any
+  serialized widget. **Apply** and **Delete** manage the selected look; **Copy look** places a compact JSON envelope
+  on the clipboard and **Paste look** imports one, so looks can be shared in chat or committed next to a project.
+  A look whose value no longer exists in the loaded catalog is applied verbatim and flagged by the usual
+  "Unavailable in the loaded catalog" warning instead of being silently dropped.
+- The **🎲 Explore** button in the Creative direction header proposes a coherent random combination of genre, visual
+  language, world aesthetic, and tone (and, with a 30% chance, a color palette). Shift-click also rolls the remaining
+  cinematography fields. Conflicting axes are reconciled by the same conflict-resolution precedence that governs
+  hand-picked combinations, so exploration never produces contradictory instructions.
 - **Shot plan** becomes **Segment plan** in chained mode. Its summary shows row count and Auto or Exact timing.
   **+ Add shot** becomes **+ Add independent segment** in chained mode.
 - **Advanced settings** is always the last section. It contains exact frames, structured media metadata, generation
