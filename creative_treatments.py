@@ -19,7 +19,7 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 17
+CREATIVE_PROFILE_CATALOG_VERSION = 18
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 6
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -506,6 +506,38 @@ VISUAL_LANGUAGE_PROFILES = {
         may_fill_unspecified=("Operator distance, practical reframing, available-light response, ordinary environmental specificity, direct-sound perspective, and naturalistic timing."),
         must_not_invent=("Interviews, facts, captions, dates, narration, archival footage, reenactment, hidden-camera framing, news coverage, surveillance aesthetics, shaky-cam spectacle, or documentary claims."),
     ),
+    "mockumentary_talking_head": _profile(
+        tags={"camera_energy": "handheld"},
+        editing_and_pacing=(
+            "Present the material as single-camera mockumentary coverage: a documentary crew is in the room and complicit with it, so the camera chases what already happens instead of anticipating or staging it.",
+            "Let a supplied beat run until something in the source undercuts it, then follow that; add no punchline, escalation, extra reaction, or edited comic rhythm.",
+        ),
+        camera_and_framing=(
+            "Operate handheld from a standing crew position with small live corrections and a hunting instinct: a snap zoom onto a reaction, a quick refocus once it lands, a whip pan to whoever cuts in.",
+            "Steal shots through blinds, doorways, window mullions, and glass partitions, accepting soft foreground obstruction and imperfect headroom as the price of catching the moment.",
+            "When the source supplies an interview, frame it as a seated or standing talking-head with the subject addressing a point just off lens, or straight to lens if the source says so, and use it as a cutaway only where a cut is already authorized.",
+        ),
+        lighting_and_color=(
+            "Keep the light institutionally honest: overhead fluorescent flatness, unflattering window mix, uncorrected white balance between sources, and no shaping, relighting, or flattering key.",
+            "Preserve supplied colors, time of day, and fixtures; the crew turns nothing on and gels nothing.",
+        ),
+        production_design=(
+            "Photograph the supplied interior exactly as it is used, keeping real clutter on surfaces, notices where they already hang, and the sightlines through partitions that the camera exploits.",
+        ),
+        blocking_and_performance=(
+            "Keep behavior dry, overlapping, and unresolved: people talk across each other, trail off, and carry on with what they were doing through the beat.",
+            "Let a performer acknowledge the camera with a glance, a held look, or a turn toward the lens only when the source explicitly supplies that acknowledgement.",
+        ),
+        sound_treatment=(
+            "When allowed, use crew-position production sound with on-camera or boom perspective, live room ambience, and overlapping speech at uneven distance without sweetening.",
+        ),
+        may_fill_unspecified=(
+            "Hunting handheld operation, snap-zoom and refocus emphasis, whip-pan redirection, obstructed stolen sightlines, flat institutional light, unstyled interior texture, and dry overlapping delivery.",
+        ),
+        must_not_invent=(
+            "Interviews, talking-head segments, confessional asides, glances or looks to camera, an interviewer, off-screen questions, crew members in frame, lower thirds, name captions, chapter cards, subtitles, narration, jokes, punchlines, comic escalation, cringe, awkward silences, an office or workplace, colleagues, or laughter.",
+        ),
+    ),
     "live_action_naturalistic": _profile(
         version=2,
         editing_and_pacing=("Present credible live-action reality with continuous time, physically complete actions, natural pauses, and motivated edits without ornamental coverage or montage language.",),
@@ -898,6 +930,99 @@ VISUAL_LANGUAGE_PROFILES = {
             "Mythology, antiquity, historical periods, empires, royalty, heroes, armies, crowds, battles, voyages, monsters, temples, palaces, deserts, seas, costumes, weapons, matte paintings, miniatures, theatrical acting, painted backdrops, overtures, fanfares, orchestral music, film damage, or franchise imitation.",
         ),
     ),
+    "giallo": _profile(
+        tags={"camera_energy": "choreographed"},
+        editing_and_pacing=(
+            "Present photographed live action with the composed, unhurried grammar of 1970s Italian giallo craft: sustained looking, deliberate revelation of what the frame already contains, and cuts placed only where the supplied plan allows.",
+            "The craft is a lighting and composition language, never a plot engine; it adds no stalking, pursuit, discovery, or violent beat.",
+        ),
+        camera_and_framing=(
+            "Compose baroquely through whatever the source supplies — mirrors, glazing, stair spirals, doorways, balustrades, patterned interiors — so the frame reads as layered, reflected, and geometrically ornate.",
+            "Let the camera prowl slowly on a steady glide, then commit to a sudden violent push-in onto a face, hand, or object already present, and use extreme close-ups of eyes and hands only where the source already places them.",
+        ),
+        lighting_and_color=(
+            "Flood the frame with saturated theatrical gel light in deep red, cobalt blue, emerald green, and violet, accepting frankly artificial motivation: the color is an avowed design decision rather than a plausible practical source.",
+            "Keep the image glossy and precisely exposed with rich blacks, protected skin, and clean speculars; giallo is beautiful and deliberate, so add no grime, haze, underexposure, heavy grain, or print damage.",
+        ),
+        production_design=(
+            "Render the supplied interiors, wardrobe, and objects through lacquer, polished brass, velvet, glass, and enamel surfaces that hold color and reflection, without adding décor, art objects, architecture, or a period the source has not stated.",
+        ),
+        blocking_and_performance=(
+            "Stage bodies with precise, slightly formal placement: a turn held at the exact angle, hands framed deliberately, a gaze that lands and stays, all without adding fear, suspicion, threat, or victim behavior.",
+        ),
+        sound_treatment=(
+            "When allowed, foreground exaggerated tactile foley for actions already visible — fabric and leather creak, the ring of metal, a heel on stone, close controlled breath — with no score, whisper, or scream.",
+        ),
+        may_fill_unspecified=(
+            "Saturated gel color scheme, avowedly artificial lighting motivation, mirrored and layered composition, slow prowling movement, decisive push-in emphasis, lacquer-and-velvet surface response, and close tactile foley.",
+        ),
+        must_not_invent=(
+            "A killer, stalker, murderer, black leather gloves, knives, razors, weapons, victims, stalking, pursuit, murder, violence, blood, wounds, bodies, screams, telephone calls, whispers, an Italian setting, a 1970s period, period wardrobe, grime, fog, film grain, print damage, progressive-rock or lounge score, or a mystery plot.",
+        ),
+    ),
+    "tokusatsu_sentai": _profile(
+        tags={"camera_energy": "choreographed"},
+        editing_and_pacing=(
+            "Present the sequence as 1980s-to-1990s Japanese henshin-team television craft photographed as live action on broadcast video, with decisive setup, held formation, exchange, and recovery beats applied only to figures and movement the source already supplies.",
+            "Let each beat land as a complete staged unit of pose, reaction, and reset rather than fragmenting into modern hypercutting; add no montage, replay, or roll call.",
+        ),
+        camera_and_framing=(
+            "Stage the group frontally to the lens in a held line or wedge so the whole formation reads across the frame, keeping enough foreground floor for stunt movement.",
+            "Punctuate an existing reaction with an abrupt dramatic zoom-in onto a masked face, a clenched fist, or a turning head, landing hard and holding instead of pumping or drifting.",
+        ),
+        lighting_and_color=(
+            "Use flat high-key exposure, saturated primary costume color, honest daylight on exteriors, and video-native motion rendering rather than a filmic shutter or a graded feature finish.",
+            "When the source already supplies pyrotechnics, let their flare bloom across the frame and register as a hard specular slide across a curved visor; never add explosions, fire light, atmospheric smoke, or a nostalgia grade.",
+        ),
+        production_design=(
+            "Read every supplied suit, helmet, and visor as practical costume material: molded fiberglass and stretch fabric with visible seams and closures, a reflective curved visor, and real weight on the performer inside; this is photographed craft, never animation.",
+            "Place the action in the tokusatsu battleground vocabulary of disused quarry, riverbank, or industrial lot only when the source leaves the location open, and let earth charges erupt behind the standing line rather than among it when pyrotechnics are already supplied.",
+        ),
+        blocking_and_performance=(
+            "For supplied action, use theatrical choreographed hand-to-hand with wide telegraphed swings, exaggerated recoil, committed stunt rolls, and a decisive settled finishing pose.",
+            "Hold the frontal pose for the camera a beat longer than realism wants, keeping posture big, rooted, and readable through the suit without changing who the figure is.",
+        ),
+        sound_treatment=(
+            "When allowed, use dry percussive impact foley, suit and cloth movement, the concussive body of an already-present charge, and heroic projected delivery for dialogue the source supplies.",
+        ),
+        may_fill_unspecified=(
+            "Frontal formation staging, held hero poses, abrupt dramatic zoom punctuation, flat high-key video exposure, practical suit material response, quarry or industrial-lot battleground when the location is open, and percussive impact foley.",
+        ),
+        must_not_invent=(
+            "Monsters, kaijin, villains, henchmen, giant robots, mecha, transformations, henshin sequences, roll calls, extra team members, explosions, pyrotechnics, fire, smoke, weapons, finishing moves, powers, energy beams, anime or cel rendering, Japanese text, logos, insignia, narration, or a franchise team.",
+        ),
+    ),
+    "kaiju_suitmation": _profile(
+        tags={"camera_energy": "locked"},
+        editing_and_pacing=(
+            "Present the sequence as classic suitmation filmmaking photographed on a miniature stage, holding complete deliberate actions long enough for their mass to register instead of cutting for spectacle.",
+            "Keep every transition inside the supplied plan; the craft adds no destruction montage, no cutaway to onlookers, and no escalation.",
+        ),
+        camera_and_framing=(
+            "Place the camera low at miniature street level and look up, so anything the source presents as large towers over the frame and meets open sky.",
+            "Compose in stacked layers with miniature facades, power lines, and vehicles crossing the foreground to sell scale, keeping the lens on a stable stage-bound head rather than a handheld or aerial viewpoint.",
+        ),
+        lighting_and_color=(
+            "Light the miniature stage with hard directional keys plus searchlight beams and vehicle lamps working at street scale, and keep photographed color honest so a supplied creature reads as painted latex over a performer rather than rendered skin.",
+        ),
+        production_design=(
+            "Build the environment as detailed constructed miniatures: scaled facades, glazing, rooftop clutter, cabling, and roadway furniture with real edges, joins, and paint wear photographed as physical objects.",
+            "Stage smoke, sparks, or collapsing structures as practical miniature elements in foreground layers only when the source already supplies them; if the source supplies no creature, apply the craft to what it does supply and add no monster.",
+        ),
+        blocking_and_performance=(
+            "Move any supplied creature as a suited human performer would: heavy planted steps, a slowly rotating torso, limited head articulation, and momentum that has to be arrested rather than snapped.",
+            "Let debris, water, and dust fall with the ponderous cadence of high-speed photography so mass reads far larger than the model actually is.",
+        ),
+        sound_treatment=(
+            "When allowed, use deep dry impact and material-collapse foley matched to visible events with exterior or stage perspective; the craft grants no roar, siren, alarm, crowd, or orchestral score.",
+        ),
+        may_fill_unspecified=(
+            "Suit-performer weight and cadence, low street-level viewpoint, layered miniature foreground, scale-selling set construction, hard practical stage light, slowed debris and water behavior, and dry impact foley.",
+        ),
+        must_not_invent=(
+            "A monster, creature, dinosaur, giant animal, destruction, collapsing buildings, fire, smoke, explosions, military response, tanks, jets, evacuation, panicking crowds, victims, radiation, roars, sirens, photoreal CG creature rendering, Japanese text, or a franchise monster.",
+        ),
+    ),
     "surveillance_found_footage": _profile(
         tags={"camera_energy": "observational", "pacing": "long_takes"},
         editing_and_pacing=(
@@ -1171,6 +1296,64 @@ VISUAL_LANGUAGE_PROFILES = {
         sound_treatment=("When allowed, use restrained tactile material contact synchronized to visible causes; stop-motion styling grants no workshop noises, toy sounds, music, or comic effects.",),
         may_fill_unspecified=("Handcrafted medium, miniature scale, fabrication language, pose increments, replacement timing, tactile surface response, practical shadow character, and set depth."),
         must_not_invent=("Smooth live-action or generic CG rendering unless explicitly required; fingerprints, exposed seams, armatures, toy behavior, craft tools, animators, replacement-animation errors, jitter as a gimmick, workshop ambience, or comic sound effects."),
+    ),
+    "supermarionation": _profile(
+        tags={"camera_energy": "choreographed"},
+        editing_and_pacing=(
+            "Present the sequence as 1960s marionette-show craft: characters performed as visibly artificial puppets, staged and cut with the measured completeness of live-action drama rather than cartoon timing.",
+        ),
+        camera_and_framing=(
+            "Move the camera through miniature space exactly as a live-action drama would, dollying along a built corridor, craning down to a console, or holding clean over-shoulder geometry, so the space is photographed as a location rather than as a tabletop.",
+            "Favor full-figure and chest-up framings with the puppets on their marks, holding on a tilted head where live action would hold on an eye.",
+        ),
+        lighting_and_color=(
+            "Light the miniature sets with the practical fixtures built into them — glowing console panels, ceiling strips, instrument lamps — supported by hard studio keys, and let the smooth molded faces take a clean specular highlight.",
+        ),
+        production_design=(
+            "Construct every set, interior, and piece of equipment as a meticulously detailed miniature with working practical lights, real switchgear, decals, panel lines, and honest fabricated edges photographed as physical objects.",
+            "Stage an elaborate mechanical launch or transit sequence only when the source already supplies both the machine and the movement; the craft never introduces one.",
+        ),
+        blocking_and_performance=(
+            "Perform characters as marionettes: slightly oversized heads, smooth glossy faces, a gentle vertical float carried through every step and gesture, hands that arrive at a position instead of flowing into it, and expressive head tilts and turns standing in for facial acting.",
+            "Puppet artifice governs only how a character moves and renders; identity, age, wardrobe, count, and role stay exactly as supplied.",
+        ),
+        sound_treatment=(
+            "When allowed, keep close clean dialogue over practical mechanism and material sound synchronized to visible causes; the craft grants no march, orchestral cue, countdown, alarm, or comic effect.",
+        ),
+        may_fill_unspecified=(
+            "Marionette head proportion and surface gloss, vertical float in motion, head-tilt performance accents, miniature construction with working practicals, live-action-style camera staging across miniature space, and clean close dialogue perspective.",
+        ),
+        must_not_invent=(
+            "Visible strings, string jokes, puppet gags, rescue missions, emergencies, disasters, countdowns, launches, vehicles, aircraft, rockets, submarines, secret bases, uniforms, organizations, a 1960s setting, period props, extra characters, marches, orchestral score, or a franchise design.",
+        ),
+    ),
+    "rotoscope_animation": _profile(
+        editing_and_pacing=(
+            "Present the sequence as animation traced over photographed live action: the underlying performance keeps its real timing, weight, and micro-hesitation while every delivered frame is a drawn image.",
+            "Hold one traced-animation technique for the whole sequence; the rendering never switches medium, falls back to photography, or dissolves into abstraction.",
+        ),
+        camera_and_framing=(
+            "Keep the framing and camera behavior of the live-action pass that would have been traced: real lens perspective, human-scale placement, and moves a physical camera actually made.",
+            "Let backgrounds simplify toward flat graphic shapes and reduced planes while figures retain the full articulation of the traced performance.",
+        ),
+        lighting_and_color=(
+            "Fill with flat or lightly painterly color regions that sit inside their outlines and slide slightly against them, so fills and contours never lock perfectly together.",
+            "Let linework and fills shimmer and rebalance from frame to frame as a deliberate boiling line: contour weight, edge placement, and color boundaries breathe while identity, anatomy, and supplied local colors stay exact.",
+        ),
+        production_design=(
+            "Translate every supplied person, garment, object, and location into drawn line and fill with photographic material response removed, keeping proportions, identity, count, and required colors precise because the drawing follows a real body.",
+        ),
+        blocking_and_performance=(
+            "Preserve naturalistic human motion underneath the drawing: genuine weight transfer, balance corrections, breath, blink timing, and unposed gesture, with nothing exaggerated, smoothed, or re-timed into cartoon animation.",
+            "The intended effect is the uncanny co-presence of lifelike movement and an obviously drawn surface; do not resolve it toward either photography or stylized animation.",
+        ),
+        sound_treatment=("Traced-animation styling grants no narration, music, or stylized effects; use only audio authorized by the existing policies and synchronized to visible causes.",),
+        may_fill_unspecified=(
+            "Line quality and weight variation, boiling-line amplitude, fill flatness or painterly handling, outline-to-fill offset, background graphic simplification, and palette organization.",
+        ),
+        must_not_invent=(
+            "Live-action or photoreal rendering unless explicitly required; dreams, hallucinations, drug states, psychedelia, morphing, identity shifts, style changes mid-shot, glowing auras, symbolic imagery, mid-sequence medium switches, or a rotoscope filter applied as post-processing.",
+        ),
     ),
     "painterly_2d": _profile(
         version=2,

@@ -44,7 +44,8 @@ CANONICAL_CHOICES = {
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel",
         "animation_2d", "pixel_art_16bit",
-        "documentary_observational", "live_action_naturalistic", "live_action_cinematic",
+        "documentary_observational", "mockumentary_talking_head",
+        "live_action_naturalistic", "live_action_cinematic",
         "live_action_classic_black_and_white",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
         "live_action_1980s_television", "live_action_latin_american_telenovela",
@@ -52,11 +53,13 @@ CANONICAL_CHOICES = {
         "live_action_classic_western", "live_action_revisionist_western",
         "live_action_1950s_studio_color",
         "live_action_midcentury_technicolor_epic",
+        "giallo", "tokusatsu_sentai", "kaiju_suitmation",
         "surveillance_found_footage", "home_camcorder_1990s", "1970s_new_hollywood",
         "silent_era_1920s", "storybook_symmetrical",
         "stylized_3d_animation",
         "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d", "cel_shaded_3d",
-        "stop_motion_handcrafted", "painterly_2d", "watercolor_2d", "gouache_2d",
+        "stop_motion_handcrafted", "supermarionation", "rotoscope_animation",
+        "painterly_2d", "watercolor_2d", "gouache_2d",
         "graphic_novel", "graphic_noir", "clean_commercial",
     ),
     "world_aesthetic": (
@@ -489,6 +492,115 @@ def test_capture_and_period_visual_languages_carry_distinct_complete_contracts()
         other = creative_treatment_instruction(compose_creative_treatment(visual_language=neighbour))
         assert checks[profile][0] not in other
         assert checks[profile][1] not in other
+
+
+def test_genre_craft_visual_languages_carry_distinct_complete_contracts():
+    checks = {
+        "tokusatsu_sentai": (
+            "1980s-to-1990s Japanese henshin-team television craft",
+            "abrupt dramatic zoom-in",
+            "giant robots",
+        ),
+        "kaiju_suitmation": (
+            "classic suitmation filmmaking",
+            "low at miniature street level",
+            "photoreal CG creature rendering",
+        ),
+        "giallo": (
+            "1970s Italian giallo craft",
+            "saturated theatrical gel light",
+            "black leather gloves",
+        ),
+        "mockumentary_talking_head": (
+            "single-camera mockumentary coverage",
+            "snap zoom onto a reaction",
+            "lower thirds",
+        ),
+        "supermarionation": (
+            "1960s marionette-show craft",
+            "gentle vertical float",
+            "Visible strings",
+        ),
+        "rotoscope_animation": (
+            "animation traced over photographed live action",
+            "deliberate boiling line",
+            "hallucinations",
+        ),
+    }
+    for profile, phrases in checks.items():
+        treatment = compose_creative_treatment(visual_language=profile)
+        assert treatment["profileVersions"] == {f"visual_language:{profile}": 1}
+        assert set(treatment["dimensions"]) == set(PROFILE_DIMENSIONS)
+        instruction = creative_treatment_instruction(treatment)
+        for phrase in phrases:
+            assert phrase in instruction
+
+    # Each craft has to read as itself rather than as the established profile it sits
+    # closest to: the complicit mockumentary camera is neither the invisible observational
+    # documentary nor the unmanned surveillance device, and traced animation is not drawn
+    # animation.
+    neighbours = {
+        "tokusatsu_sentai": ("live_action_1980s_action",),
+        "kaiju_suitmation": ("stop_motion_handcrafted",),
+        "giallo": ("live_action_expressionist",),
+        "mockumentary_talking_head": ("documentary_observational", "surveillance_found_footage"),
+        "supermarionation": ("stop_motion_handcrafted",),
+        "rotoscope_animation": ("animation_2d", "painterly_2d"),
+    }
+    for profile, others in neighbours.items():
+        for neighbour in others:
+            other = creative_treatment_instruction(compose_creative_treatment(visual_language=neighbour))
+            assert checks[profile][0] not in other
+            assert checks[profile][1] not in other
+
+
+def test_mockumentary_camera_is_complicit_where_observational_documentary_is_invisible():
+    mockumentary = compose_creative_treatment(visual_language="mockumentary_talking_head")["dimensions"]
+    observational = compose_creative_treatment(visual_language="documentary_observational")["dimensions"]
+    assert "complicit with it" in " ".join(mockumentary["editing_and_pacing"])
+    assert "unobtrusive" in " ".join(observational["camera_and_framing"])
+    # The interview grammar is available only as a response to the source, never as a
+    # licence to add one.
+    camera = " ".join(mockumentary["camera_and_framing"])
+    assert "When the source supplies an interview" in camera
+    forbidden = " ".join(mockumentary["must_not_invent"])
+    for item in ("Interviews", "glances or looks to camera", "an interviewer", "lower thirds", "narration"):
+        assert item in forbidden
+
+
+def test_suitmation_and_marionette_crafts_never_conjure_their_own_subjects():
+    kaiju = compose_creative_treatment(visual_language="kaiju_suitmation")["dimensions"]
+    # No creature in the source means the craft still applies - to miniatures and viewpoint.
+    assert "if the source supplies no creature, apply the craft to what it does supply and add no monster" in \
+        " ".join(kaiju["production_design"])
+    assert "A monster, creature, dinosaur" in " ".join(kaiju["must_not_invent"])
+
+    marionette = compose_creative_treatment(visual_language="supermarionation")["dimensions"]
+    assert "only when the source already supplies both the machine and the movement" in \
+        " ".join(marionette["production_design"])
+    # Puppet artifice is a rendering and motion contract, not permission to recast anyone.
+    assert "identity, age, wardrobe, count, and role stay exactly as supplied" in \
+        " ".join(marionette["blocking_and_performance"])
+
+    tokusatsu = compose_creative_treatment(visual_language="tokusatsu_sentai")["dimensions"]
+    assert "this is photographed craft, never animation" in " ".join(tokusatsu["production_design"])
+    assert "anime or cel rendering" in " ".join(tokusatsu["must_not_invent"])
+
+
+def test_giallo_is_a_lighting_language_and_rotoscope_is_a_rendering_language():
+    giallo = compose_creative_treatment(visual_language="giallo")["dimensions"]
+    assert "never a plot engine" in " ".join(giallo["editing_and_pacing"])
+    assert "giallo is beautiful and deliberate" in " ".join(giallo["lighting_and_color"])
+    forbidden = " ".join(giallo["must_not_invent"])
+    for item in ("A killer, stalker", "black leather gloves", "grime", "a mystery plot"):
+        assert item in forbidden
+
+    rotoscope = compose_creative_treatment(visual_language="rotoscope_animation")["dimensions"]
+    assert "uncanny co-presence of lifelike movement and an obviously drawn surface" in \
+        " ".join(rotoscope["blocking_and_performance"])
+    assert "nothing exaggerated, smoothed, or re-timed into cartoon animation" in \
+        " ".join(rotoscope["blocking_and_performance"])
+    assert "a rotoscope filter applied as post-processing" in " ".join(rotoscope["must_not_invent"])
 
 
 def test_silent_era_visual_language_never_forces_silence_or_fights_the_dialogue_contract():
@@ -1057,6 +1169,36 @@ def test_new_profile_camera_tags_join_the_existing_antagonism_vocabulary():
     # explicit camera move instead of fighting it.
     unhurried = compose_creative_treatment(visual_language="1970s_new_hollywood")
     assert detect_treatment_conflicts(unhurried, shake) == []
+
+
+def test_genre_craft_profiles_reuse_the_catalogued_camera_energy_vocabulary():
+    # The staged crafts claim only values the antagonism vocabulary already knows, so an
+    # explicit camera move still outranks them and nothing new has to be resolved.
+    shake = parse_cinematography({"schemaVersion": 1, "cameraMotion": "shake"})
+    for profile, loser in (
+        ("giallo", "choreographed"),
+        ("tokusatsu_sentai", "choreographed"),
+        ("supermarionation", "choreographed"),
+        ("kaiju_suitmation", "locked"),
+    ):
+        conflicts = detect_treatment_conflicts(compose_creative_treatment(visual_language=profile), shake)
+        assert conflicts
+        assert {item["winnerAxis"] for item in conflicts} == {"cinematography"}
+        assert {item["loser"] for item in conflicts} == {loser}
+
+    # The mockumentary camera is handheld, so a locked world aesthetic of higher
+    # precedence wins over it exactly like any other handheld visual language.
+    handheld = compose_creative_treatment(
+        visual_language="mockumentary_talking_head", world_aesthetic="liminal_institutional",
+    )
+    conflicts = detect_treatment_conflicts(handheld, parse_cinematography(""))
+    assert {item["winner"] for item in conflicts} == {"locked"}
+    assert {item["loserAxis"] for item in conflicts} == {"visual_language"}
+
+    # Rotoscope animation is a rendering contract only: it claims no camera tag and so
+    # never fights an explicit move.
+    traced = compose_creative_treatment(visual_language="rotoscope_animation")
+    assert detect_treatment_conflicts(traced, shake) == []
 
 
 def test_compatible_selections_produce_no_conflicts_and_no_dropped_lines():
