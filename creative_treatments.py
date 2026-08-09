@@ -19,7 +19,7 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 2
+CREATIVE_PROFILE_CATALOG_VERSION = 11
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 1
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -43,7 +43,7 @@ PROFILE_DIMENSIONS = (
 )
 
 
-def _profile(*, inherits=(), editing_and_pacing=(), camera_and_framing=(),
+def _profile(*, version=1, inherits=(), editing_and_pacing=(), camera_and_framing=(),
              lighting_and_color=(), production_design=(), blocking_and_performance=(),
              sound_treatment=(), may_fill_unspecified=(), must_not_invent=()) -> dict[str, Any]:
     """Keep every profile structurally identical and easy to version/review."""
@@ -51,7 +51,7 @@ def _profile(*, inherits=(), editing_and_pacing=(), camera_and_framing=(),
         return (value,) if isinstance(value, str) else tuple(value)
 
     return {
-        "version": 1,
+        "version": int(version),
         "inherits": items(inherits),
         "editing_and_pacing": items(editing_and_pacing),
         "camera_and_framing": items(camera_and_framing),
@@ -205,22 +205,116 @@ GENRE_PROFILES = {
         may_fill_unspecified=("Attention order, observational inserts only when permitted by the shot plan, and restrained curiosity.",),
         must_not_invent=("Clues, crimes, suspects, secrets, culprits, coded messages, revelations, or solutions."),
     ),
+    "crime": _profile(
+        editing_and_pacing=("Organize only supplied rule-breaking, investigation, pursuit, concealment, confrontation, or consequence into clear cause-and-effect beats with controlled information release.",),
+        camera_and_framing=("Use legible relationship geography, watchful distance, thresholds, reflections, or controlled proximity only around people, objects, and actions already present.",),
+        lighting_and_color=("Use motivated contrast and practical-light separation without automatically making the scene nocturnal, desaturated, noir, or ominous.",),
+        production_design=("Emphasize the functional placement and material specificity of existing locations, evidence, valuables, tools, documents, vehicles, or barriers without turning decoration into plot information.",),
+        blocking_and_performance=("Use precise observation, guarded spacing, purposeful handling, concealment, suspicion, authority, or pressure only where supported by supplied roles and actions.",),
+        sound_treatment=("When allowed, clarify informative footsteps, handling, mechanisms, vehicles, rooms, and off-screen activity only when physically supplied.",),
+        may_fill_unspecified=("Information order, guarded spatial relationships, procedural clarity, functional environmental detail, and restrained consequence timing."),
+        must_not_invent=("Crimes, criminals, police, detectives, victims, suspects, clues, evidence, weapons, drugs, theft, corruption, pursuit, betrayal, arrests, guilt, danger, violence, sirens, interrogation, or revelations."),
+    ),
+    "western": _profile(
+        editing_and_pacing=("Use patient spatial establishment, measured approach and reaction timing, and decisive completion of confrontations or physical tasks only when already supplied.",),
+        camera_and_framing=("Favor readable human-to-landscape scale, lateral geography, thresholds, profile spacing, and held eyelines while preserving the supplied setting and shot plan.",),
+        lighting_and_color=("Use source-consistent directional light, tactile earth and material color, protected sky or interior highlights, and readable shadow without forcing heat, sunset, dust, sepia, or desaturation."),
+        production_design=("Emphasize existing terrain, timber, metal, leather, cloth, dust, weathering, architecture, animals, or vehicles only when they are actually supplied; do not infer an era or frontier setting."),
+        blocking_and_performance=("Use economical gesture, grounded stance, measured distance, practical effort, and sustained eyelines without imposing toughness, hostility, honor, or threat."),
+        sound_treatment=("When allowed, preserve spacious environmental perspective and exact material foley from visible causes; western scoring and iconic effects are never automatic."),
+        may_fill_unspecified=("Measured spatial tension, landscape scale where a landscape exists, tactile material emphasis, restrained gesture, and decisive physical resolution."),
+        must_not_invent=("Frontiers, deserts, ranches, towns, cowboys, outlaws, sheriffs, horses, cattle, saloons, duels, guns, hats, boots, dust, tumbleweed, revenge, lawlessness, whistles, or western music."),
+    ),
+    "sports_competition": _profile(
+        editing_and_pacing=("For competition already supplied, establish the objective and participants, preserve continuous play, isolate decisive changes, and let the visible result register without manufacturing a comeback or climax."),
+        camera_and_framing=("Keep participants, boundaries, trajectories, possession, score-relevant events, and spatial cause-and-effect legible through appropriately wide coverage and selective detail."),
+        lighting_and_color=("Maintain clean participant separation, accurate uniforms and markings, readable fast motion, and source-consistent venue exposure without broadcast or advertising polish by default."),
+        production_design=("Preserve supplied venue geometry, equipment, markings, uniforms, audience, weather, and score information exactly; do not invent branding or competition infrastructure."),
+        blocking_and_performance=("Use credible preparation, technique, exertion, balance, contact, recovery, fatigue, and reaction only for the supplied activity and participant roles."),
+        sound_treatment=("When allowed, synchronize movement, equipment, contact, venue perspective, breath, and supplied crowd response without commentary, whistles, chants, or hype cues by default."),
+        may_fill_unspecified=("Objective clarity, participant geography, trajectory readability, exertion, technique timing, result visibility, and venue sound perspective."),
+        must_not_invent=("Sports, matches, teams, opponents, rules, scores, winners, losers, crowds, coaches, referees, uniforms, equipment, fouls, injuries, rivalry, celebration, commentary, whistles, chants, or triumphant music."),
+    ),
 }
 
 
 VISUAL_LANGUAGE_PROFILES = {
     "none": _profile(),
     "anime_general": _profile(
-        editing_and_pacing=("Use clear key poses, anticipation, decisive action beats, selective holds, and readable transitions appropriate to authored 2D animation.",),
-        camera_and_framing=("Compose with strong silhouettes, clean eyelines, purposeful perspective, and layered foreground/background parallax.",),
-        lighting_and_color=("Use coherent cel-shaded value groups, selective highlights, controlled gradients, and stable local colors across the sequence.",),
-        production_design=("Translate supplied people, wardrobe, objects, and settings into a consistent hand-authored anime design vocabulary with stable line weight and shape language.",),
-        blocking_and_performance=("Favor expressive but identity-consistent poses, economical in-between motion, and held facial keys around important reactions.",),
-        sound_treatment=("Treat sound as synchronized audiovisual direction under the existing dialogue, ambience, foley, and music policies; anime styling grants no new sound content.",),
-        may_fill_unspecified=("Line quality, cel-shading organization, animation timing, background layering, and pose clarity.",),
-        must_not_invent=("Powers, auras, transformations, speed lines, impact frames, chibi forms, exaggerated facial symbols, or anime sound effects without a matching requested event."),
+        version=2,
+        editing_and_pacing=(
+            "Present the sequence as authored 2D anime animation with clear key poses, anticipation, decisive action beats, economical in-betweens, selective holds, and stable temporal continuity rather than filtered live action.",
+        ),
+        camera_and_framing=(
+            "Compose with strong drawn silhouettes, clean eyelines, purposeful perspective, readable shot scale, and layered foreground/background parallax feasible in a 2D anime layout.",
+            "Keep camera movement deliberate and compatible with authored background planes; prevent perspective drift, sliding anatomy, and swimming linework.",
+        ),
+        lighting_and_color=(
+            "Use coherent cel-shaded value groups, clean shadow shapes, selective highlights, controlled gradients, and stable local colors with no photographic color-grade finish.",
+            "Keep line weight, fill boundaries, eye detail, facial construction, highlights, and cel shadows temporally stable without line boil, color crawl, or frame-to-frame redesign.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires live action or photographic rendering, translate supplied people, wardrobe, objects, materials, and settings into an unmistakably non-photorealistic hand-authored 2D anime design vocabulary.",
+            "Maintain one coherent line, shape, proportion, cel-shading, background-painting, and detail language while preserving identity, age, count, wardrobe, object design, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use expressive but identity-consistent poses, readable weight and contact, economical secondary motion, and held facial keys around important reactions without unstable anatomy or facial drift.",
+        ),
+        sound_treatment=("Treat sound as synchronized audiovisual direction under the existing dialogue, ambience, foley, and music policies; anime styling grants no new dialogue, vocals, music, or effects.",),
+        may_fill_unspecified=("Anime line quality, cel-shading organization, animation spacing, painted background layering, parallax, pose clarity, and temporally stable facial detail."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; a mere anime post-process filter, powers, auras, transformations, speed lines, impact frames, chibi forms, exaggerated facial symbols, or anime sound effects without a matching requested event."),
+    ),
+    "anime_retro_dramatic": _profile(
+        editing_and_pacing=(
+            "Present the sequence as serious late-1970s-to-1980s Japanese cel animation with decisive key poses, sparse controlled in-betweens, weighty held expressions, deliberate reaction timing, and complete readable actions rather than modern fluid anime or filtered live action.",
+            "Use economical limited-animation cadence deliberately: preserve stillness in the body while animating only an essential gaze, hand, hair, cloth, atmospheric layer, or camera move when that best serves an event already present.",
+        ),
+        camera_and_framing=(
+            "Use forceful but disciplined classic-TV composition: bold silhouettes, strong profile and three-quarter views, low or slightly canted angles when motivated, compressed dramatic close-ups, layered foreground occlusion, and hand-painted depth.",
+            "Keep anatomy, screen direction, scale, and background perspective stable; retro drama does not require constant zooms, shake, speed lines, or action framing.",
+        ),
+        lighting_and_color=(
+            "Use thick-to-fine variable ink contours, angular interior facial lines, clear brow-nose-jaw construction, two- or three-band cel shadows, hard graphic light boundaries, and restrained ochre, rust, crimson, olive, navy, skin, and dusty-neutral relationships with protected required colors.",
+            "Add only subtle temporally stable analog cel-and-film character: restrained paint variation, mild optical softness, and fine stable grain without scratches, gate weave, faded color, flicker, or degraded-video artifacts.",
+            "Keep contour weight, facial planes, cel-shadow boundaries, local colors, highlight shapes, painted background texture, and grain temporally stable without line boil or frame-to-frame redesign.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and settings into unmistakable mature hand-drawn Japanese dramatic cel animation with angular shape language, defined hands, substantial fabric folds, simplified but specific materials, and richly painted backgrounds.",
+            "Preserve supplied identity, ethnicity, age, body type, anatomy, wardrobe, object design, location, and colors; serious retro styling must not add muscle mass, scars, armor, wasteland wear, or a franchise character design.",
+        ),
+        blocking_and_performance=(
+            "Use contained intensity, firm grounded poses, readable weight, steady eyelines, controlled breath, economical gestures, and sharply held facial keys without imposing anger, stoicism, aggression, or combat readiness.",
+        ),
+        sound_treatment=("Retro dramatic styling grants no narrator, shouted attack, vocal exertion, orchestral or rock score, impact sound, analog hiss, or dramatic sting; use only audio authorized by existing policies.",),
+        may_fill_unspecified=("Mature angular line language, variable ink weight, classic cel-shadow bands, restrained period palette, painted background depth, limited-animation spacing, held facial keys, and subtle stable analog texture."),
+        must_not_invent=("Martial arts, fights, attacks, muscular physique, bodybuilder anatomy, scars, torn clothing, armor, weapons, wastelands, post-apocalyptic settings, gangs, violence, gore, powers, aura, speed lines, shouting, tragic plot, narrator, vintage damage, or franchise designs."),
+    ),
+    "anime_retro_gag_family": _profile(
+        editing_and_pacing=(
+            "Present the sequence as early-1980s Japanese family gag-manga television animation with clear setup-action-consequence readability only for events already supplied, economical pose changes, cheerful held poses, and deliberate limited-animation timing rather than modern fluid anime or filtered live action.",
+            "Use simple pose-to-pose transitions and selective mouth, eye, hand, prop, and background-cycle animation while keeping the requested action physically complete and temporally coherent.",
+        ),
+        camera_and_framing=(
+            "Use clean frontal, three-quarter, profile, and medium-wide staging; rounded readable silhouettes; simple domestic or neighborhood depth; uncluttered focal hierarchy; and restrained pans or holds compatible with classic family television animation.",
+            "Keep characters and props clearly separated and geography easy to understand without superhero foreshortening, dramatic lens effects, panel framing, or frantic camera motion.",
+        ),
+        lighting_and_color=(
+            "Use clean moderately bold contours, rounded geometric construction, flat cel fills, one simple shadow band at most, warm off-whites, friendly clear primaries and secondaries, and a compact cheerful palette while preserving authoritative colors.",
+            "Keep outlines, facial features, flat fills, shadow shapes, palette assignments, and simplified painted backgrounds temporally stable without digital gradients, glossy highlights, line boil, color crawl, or modern compositing glow.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and environments into unmistakable retro Japanese family gag-manga animation with rounded compact shapes, simple oval or dot-like feature construction where identity permits, clean hands, iconic silhouettes, and economical painted backgrounds.",
+            "Preserve identity, ethnicity, age category, body type, count, wardrobe, object subtype, location, and required colors; graphic simplification must not turn an adult into a child, create chibi anatomy, or copy any existing mascot or character.",
+        ),
+        blocking_and_performance=(
+            "Use clear friendly poses, readable eye and mouth shapes, simple gestures, and concise reaction holds only to clarify supplied behavior; gag styling does not make the character foolish, clumsy, childish, or comedic by itself.",
+        ),
+        sound_treatment=("Retro family-gag styling grants no funny voice, laughter, boing, whistle, percussion hit, chiptune, theme song, mascot vocal, or written sound effect; use only audio authorized by existing policies.",),
+        may_fill_unspecified=("Rounded retro shape language, compact palette, flat cel fill, simple shadow policy, classic limited-animation spacing, clean neighborhood or domestic background abstraction, and concise reaction posing."),
+        must_not_invent=("Jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
     ),
     "anime_shonen": _profile(
+        version=2,
         inherits=("anime_general",),
         editing_and_pacing=("Give requested physical actions a pronounced anticipation-action-impact-recovery rhythm while preserving the exact event count and cut plan.",),
         camera_and_framing=("Use forceful perspective, low angles, broad trajectories, and strong silhouettes only to emphasize actions already present.",),
@@ -232,6 +326,7 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Rivals, combat, attacks, techniques, power-ups, transformations, energy effects, aura, screaming, or tournament stakes."),
     ),
     "anime_shojo": _profile(
+        version=2,
         inherits=("anime_general",),
         editing_and_pacing=("Use elegant pauses and measured reaction timing around emotional information already present.",),
         camera_and_framing=("Emphasize supplied gaze, hands, posture, and relational distance through graceful composition and gentle camera motion.",),
@@ -242,85 +337,574 @@ VISUAL_LANGUAGE_PROFILES = {
         may_fill_unspecified=("Elegant composition, delicate motion accents, and expressive reaction holds.",),
         must_not_invent=("Romance, flowers, sparkles, blush, tears, kisses, magical transformation, beauty filters, or sentimental dialogue."),
     ),
+    "anime_shojo_pastel": _profile(
+        version=2,
+        inherits=("anime_shojo",),
+        editing_and_pacing=(
+            "Use the economical pose changes, carefully held expressions, graceful reaction timing, and clean limited-animation cadence of classic Japanese shōjo television animation while preserving every supplied action, cut, and timing requirement.",
+        ),
+        camera_and_framing=(
+            "Use elegant asymmetry, generous breathing room, refined close or medium framing, long clean silhouettes, and layered painted-background depth that keeps gaze, hands, posture, and relational distance clear.",
+            "Favor delicate Japanese shōjo composition and facial emphasis, not Western superhero foreshortening, heavy comic-book perspective, or panel-like framing.",
+        ),
+        lighting_and_color=(
+            "Use an unmistakably classic shōjo-anime color design: luminous ivory and skin values, soft rose, lavender, powder blue and mint relationships, plus a few clean saturated anchor colors so the image remains cel-animated rather than uniformly faded.",
+            "Use fine clean variable linework, light one- or two-band cel shading, delicate cheek and lip color, bright graphic highlights, and airy hand-painted backgrounds without heavy black ink masses or Western comic crosshatching.",
+            "Keep local colors, fine outlines, iris rings, multiple eye highlights, hair highlight bands, gradients, and shadow shapes temporally stable; avoid washed-out skin, clipped whites, color crawl, and photographic beauty-filter rendering.",
+        ),
+        production_design=(
+            "Translate supplied content into a coherent hand-authored Japanese shōjo animation vocabulary with tapered elegant faces, large luminous carefully constructed eyes, understated noses and mouths, fine lashes, clean cel fills, and hair organized into long flowing tapered locks with graphic highlight shapes.",
+            "Preserve the supplied person's identity, ethnicity, age, body type, wardrobe, object design, and setting; shōjo refinement must not substitute an existing character, costume, magical-girl uniform, or franchise design.",
+        ),
+        blocking_and_performance=(
+            "Favor nuanced eye direction, restrained blinking, hands, posture, breath, long-hair arcs, and fabric motion with elegant readable poses; shōjo styling does not create romance or emotional events.",
+        ),
+        sound_treatment=("Classic shōjo styling grants no dialogue, sentimental score, transformation sound, magical effect, or decorative chime; use only audio authorized by existing policies.",),
+        may_fill_unspecified=("Fine Japanese shōjo line character, luminous eye construction, flowing tapered hair shapes, light cel shading, pastel relationships with saturated anchors, elegant spacing, painted background softness, and restrained secondary motion."),
+        must_not_invent=("Western superhero anatomy, heavy black contour, crosshatching, halftone shading, hard noir shadow, American comic-panel styling, romance, attraction, flowers, petals, sparkles, blush, tears, kisses, magical transformations, franchise costumes, beauty filters, decorative symbols, or sentimental dialogue or music."),
+    ),
+    "american_comic_pastel": _profile(
+        editing_and_pacing=(
+            "Present the sequence as polished moving American comic illustration with confident poses, clean readable transitions, selective holds, and continuous motion rather than a slideshow or filtered live action.",
+        ),
+        camera_and_framing=(
+            "Use bold Western editorial composition, confident foreshortening, clear silhouette, strong focal hierarchy, generous negative space, and layered 2D depth without dividing the video into panels.",
+        ),
+        lighting_and_color=(
+            "Use crisp controlled contour drawing, selective interior ink, simplified graphic shadow shapes, luminous pastel color families, clean saturated accents, and polished digital-comic fills.",
+            "Keep contour weight, facial construction, fill boundaries, shadow shapes, pastel local colors, and highlight placement temporally stable without line boil, cross-frame redesign, or muddy gradients.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and settings into unmistakably non-photorealistic contemporary American comic illustration with refined digital color and no franchise imitation.",
+            "Preserve identity, age, body type, count, wardrobe, proportions, and required colors while using one coherent Western comic line, shape, fill, and background vocabulary.",
+        ),
+        blocking_and_performance=(
+            "Use expressive eyes and brows, confident readable gestures, clean hand silhouettes, and purposeful hair and fabric motion without imposing superhero physique or melodrama.",
+        ),
+        sound_treatment=("American-comic styling grants no narration, captions, written effects, heroic score, dialogue, or comic audio; use only sound authorized by existing policies.",),
+        may_fill_unspecified=("Pastel digital-comic palette, contour hierarchy, graphic shadow shapes, Western editorial composition, clean fills, selective texture, and confident pose clarity."),
+        must_not_invent=("Superheroes, heroic anatomy, muscles, costumes, masks, capes, powers, action poses, villains, fights, panels, gutters, captions, speech balloons, written sound effects, logos, franchise designs, narration, or heroic music."),
+    ),
     "animation_2d": _profile(
-        editing_and_pacing=("Organize movement into readable key poses and economical transitions with stable temporal continuity.",),
-        camera_and_framing=("Use graphic composition, clear silhouettes, controlled parallax, and camera moves feasible in a layered 2D scene.",),
-        lighting_and_color=("Maintain consistent palette roles, value hierarchy, and simplified shadow shapes.",),
-        production_design=("Use unified line, shape, texture, and background abstraction across characters, objects, and environment.",),
-        blocking_and_performance=("Prioritize pose-to-pose clarity and purposeful secondary motion.",),
-        sound_treatment=("Synchronize permitted physical sound to visible animated causes without adding cartoon vocals or effects by default.",),
-        may_fill_unspecified=("Line/shape language, palette organization, parallax, key-pose timing, and secondary motion.",),
-        must_not_invent=("Cartoon physics, squash-and-stretch gags, anthropomorphism, impossible motion, or stylized sound effects."),
+        version=2,
+        editing_and_pacing=(
+            "Present the sequence as clearly authored non-photorealistic 2D animation with readable key poses, economical transitions, intentional holds, and stable temporal continuity rather than live action with a flattened filter.",
+        ),
+        camera_and_framing=(
+            "Use graphic composition, clear drawn silhouettes, controlled layered parallax, stable perspective, and camera moves feasible in an authored 2D scene.",
+            "Preserve spatial continuity across foreground, subject, and background planes without sliding layers, warped geometry, or camera-induced line shimmer.",
+        ),
+        lighting_and_color=(
+            "Maintain consistent palette roles, deliberate value hierarchy, simplified authored shadow shapes, stable local colors, and edge treatment without photographic grading.",
+            "Prevent line boil, texture crawl, flickering fills, unstable outlines, and frame-to-frame changes in shape or rendering technique.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another rendering medium, translate supplied subjects, objects, materials, and environments into one unmistakably hand-authored 2D line, shape, fill, texture, and background-abstraction language.",
+            "Preserve identity, anatomy, count, wardrobe, proportions, object subtype, reference colors, and environmental facts while replacing photographic material response with coherent drawn design.",
+        ),
+        blocking_and_performance=("Prioritize pose-to-pose clarity, stable anatomy, readable contact and weight, facial consistency, and purposeful secondary motion.",),
+        sound_treatment=("Synchronize permitted physical sound to visible animated causes; 2D styling grants no cartoon vocals, music, or stylized effects by default.",),
+        may_fill_unspecified=("2D line and shape language, fill treatment, palette organization, background abstraction, layered parallax, key-pose timing, and secondary motion."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; a mere flattened post-process filter, cartoon physics, squash-and-stretch gags, anthropomorphism, impossible motion, or stylized sound effects."),
+    ),
+    "pixel_art_16bit": _profile(
+        inherits=("animation_2d",),
+        editing_and_pacing=(
+            "Present motion as authored 16-bit-era pixel animation with deliberate stepped poses, economical in-between frames, readable anticipation and recovery, and stable temporal cadence.",
+        ),
+        camera_and_framing=(
+            "Compose for a fixed low-resolution pixel grid with strong sprite silhouettes, tile-aware depth layers, integer-aligned camera displacement, and controlled parallax that never causes subpixel shimmer.",
+        ),
+        lighting_and_color=(
+            "Use a deliberately limited approximately 16-to-64-color palette with role-based color ramps, crisp clusters, selective stable dithering, and clear value separation.",
+            "Keep every pixel hard-edged and grid-aligned with nearest-neighbor visual scaling: no antialiasing, subpixel edges, smooth photographic gradients, soft focus, crawling dithering, or frame-to-frame palette drift.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another rendering medium, translate supplied subjects, wardrobe, objects, and environments into unmistakable non-photorealistic 16-bit-style pixel art while preserving identity, count, shape cues, and required colors.",
+            "Use one coherent sprite, tile, pixel-cluster, outline, and palette language across characters, props, effects, and backgrounds.",
+        ),
+        blocking_and_performance=(
+            "Express performance through readable sprite poses, silhouette changes, head and hand accents, and sparse secondary animation without losing required contact, anatomy, identity, or action state.",
+        ),
+        sound_treatment=("Pixel-art styling grants no chiptune, bleeps, menu sounds, or game effects; use only audio authorized by the existing policies and visible events.",),
+        may_fill_unspecified=("Logical pixel resolution, hard pixel clusters, limited palette ramps, stable dithering, stepped animation timing, tile depth, and integer-aligned parallax."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; CRT scanlines, screen curvature, glitches, chromatic aberration, HUDs, menus, health bars, scores, readable game text, game mechanics, enemies, pickups, chiptune, or arcade sound effects."),
     ),
     "documentary_observational": _profile(
-        editing_and_pacing=("Preserve real-time causal continuity and use longer observational takes unless the source explicitly supplies edits.",),
-        camera_and_framing=("Use an unobtrusive fixed or responsive human-operated viewpoint, practical reframing, and credible imperfect immediacy without gratuitous shake.",),
-        lighting_and_color=("Favor available or plausibly practical light, restrained grading, and truthful exposure transitions.",),
-        production_design=("Keep the supplied environment unarranged, specific, functional, and free of decorative dramatization.",),
-        blocking_and_performance=("Favor unforced behavior, task-focused gesture, natural overlap, and awareness appropriate to whether the camera is acknowledged.",),
-        sound_treatment=("When allowed, prioritize synchronized direct sound, environmental continuity, perspective, and naturally occurring foley.",),
-        may_fill_unspecified=("Observational camera distance, practical reframing, direct-sound perspective, and naturalistic timing.",),
-        must_not_invent=("Interviews, facts, captions, dates, narration, archival footage, reenactment, hidden-camera framing, or documentary claims."),
+        version=2,
+        editing_and_pacing=(
+            "Present events with observational documentary immediacy, preserving real-time causal continuity, complete actions, incidental pauses, and longer takes unless explicit edits require otherwise.",
+        ),
+        camera_and_framing=(
+            "Use an unobtrusive fixed or responsive human-operated viewpoint, credible shoulder-height placement, practical reframing, occasional natural occlusion, and restrained imperfection without gratuitous shake or staged coverage.",
+            "Maintain believable operator distance, lens perspective, screen direction, and spatial geography; the camera observes rather than choreographs attention theatrically.",
+        ),
+        lighting_and_color=(
+            "Favor available or plausibly practical light, truthful white balance, restrained grading, protected highlights, readable shadows, and natural exposure adaptation without cinematic relighting.",
+        ),
+        production_design=(
+            "Keep the supplied environment unarranged, specific, functional, and materially credible, retaining compatible ordinary clutter and wear without decorative dramatization or production polish.",
+        ),
+        blocking_and_performance=(
+            "Favor unforced behavior, task-focused gesture, natural overlap, credible hesitation, and awareness appropriate to whether the camera is acknowledged; avoid commercial posing or actorly emphasis.",
+        ),
+        sound_treatment=("When allowed, prioritize synchronized direct sound, continuous room or outdoor perspective, natural overlap, location acoustics, and material-specific incidental foley without documentary narration.",),
+        may_fill_unspecified=("Operator distance, practical reframing, available-light response, ordinary environmental specificity, direct-sound perspective, and naturalistic timing."),
+        must_not_invent=("Interviews, facts, captions, dates, narration, archival footage, reenactment, hidden-camera framing, news coverage, surveillance aesthetics, shaky-cam spectacle, or documentary claims."),
     ),
     "live_action_naturalistic": _profile(
-        editing_and_pacing=("Preserve credible real-time continuity and physically complete actions without ornamental editing.",),
-        camera_and_framing=("Use plausible human-scale perspective, stable geography, and motivated camera placement.",),
-        lighting_and_color=("Favor believable exposure, natural color relationships, and source-motivated light with readable material response.",),
-        production_design=("Render supplied people, wardrobe, objects, and locations as coherent real-world materials without beautifying or redesigning them.",),
-        blocking_and_performance=("Use anatomically credible motion, weight, contact, eyelines, and restrained natural performance.",),
-        sound_treatment=("When allowed, preserve physically plausible direct sound, room perspective, and material-specific foley.",),
-        may_fill_unspecified=("Naturalistic capture, material response, physical motion, and human-scale camera placement.",),
-        must_not_invent=("Beauty filters, fantasy physics, stylized deformation, artificial lens effects, melodrama, or documentary claims."),
+        version=2,
+        editing_and_pacing=("Present credible live-action reality with continuous time, physically complete actions, natural pauses, and motivated edits without ornamental coverage or montage language.",),
+        camera_and_framing=(
+            "Use plausible human-scale camera height, real lens perspective, stable geography, motivated placement, restrained operation, and consistent spatial relationships.",
+            "Keep faces, hands, anatomy, horizon, scale, and background geometry optically coherent through camera and subject movement.",
+        ),
+        lighting_and_color=(
+            "Favor believable exposure, natural skin and local colors, source-motivated practical or environmental light, protected highlights, readable shadows, and physically plausible material response.",
+            "Use restrained capture-like grading without beauty filtration, synthetic glow, excessive teal-orange separation, or stylized relighting.",
+        ),
+        production_design=(
+            "Render supplied people, skin, hair, wardrobe, objects, surfaces, reflections, and locations as coherent real-world materials with consistent scale and wear, without beautifying or redesigning them.",
+        ),
+        blocking_and_performance=("Use anatomically credible motion, weight transfer, contact pressure, balance, eyelines, breathing, micro-expression, and restrained natural performance without pose drift or artificial theatricality.",),
+        sound_treatment=("When allowed, preserve physically plausible direct sound, room perspective, distance, occlusion, and material-specific foley synchronized to visible causes.",),
+        may_fill_unspecified=("Naturalistic capture behavior, lens perspective, practical exposure, real material response, physical motion, restrained performance, and human-scale camera placement."),
+        must_not_invent=("Beauty filters, glamour retouching, fantasy physics, stylized deformation, synthetic lens effects, melodrama, commercial posing, cinematic spectacle, or documentary claims."),
+    ),
+    "live_action_cinematic": _profile(
+        editing_and_pacing=(
+            "Present unmistakably photographed cinematic live action with deliberate narrative coverage, complete performance beats, motivated edits, and polished temporal continuity rather than documentary observation or commercial montage.",
+        ),
+        camera_and_framing=(
+            "Use composed live-action cinematography with intentional shot scale, stable screen direction, controlled foreground and background depth, motivated camera placement, and smooth physical camera operation.",
+            "Keep perspective, faces, hands, anatomy, horizon, scale, focus behavior, and background geometry optically coherent through every movement and cut.",
+        ),
+        lighting_and_color=(
+            "Use shaped but source-motivated cinematic lighting, protected highlight roll-off, readable shadow detail, natural skin and authoritative local colors, controlled separation, and one temporally stable filmic grade.",
+            "Keep the image recognizably photographic without imposing teal-orange color, excessive diffusion, bloom, flare, crushed blacks, or a generic blockbuster finish.",
+        ),
+        production_design=(
+            "Render all supplied people, wardrobe, objects, surfaces, reflections, and locations as coherent photographed real-world materials, emphasizing existing production detail without redesigning the scene.",
+        ),
+        blocking_and_performance=(
+            "Use physically credible screen performance with clear eyelines, nuanced facial behavior, purposeful gesture, grounded weight, exact contact, and controlled continuity between coverage angles.",
+        ),
+        sound_treatment=(
+            "When allowed, preserve polished but physically grounded production sound, spatial room tone, perspective, dialogue presence, and material foley synchronized to visible causes.",
+        ),
+        may_fill_unspecified=(
+            "Narrative shot scale, motivated coverage, filmic exposure roll-off, controlled depth, polished camera support, performance continuity, and restrained photographic finishing.",
+        ),
+        must_not_invent=(
+            "Spectacle, action, danger, romance, glamour, slow motion, speed ramps, drones, cranes, anamorphic flares, letterbox bars, film grain, trailer editing, voice-over, dialogue, or score merely because the profile is cinematic.",
+        ),
+    ),
+    "live_action_gritty": _profile(
+        editing_and_pacing=(
+            "Present immediate textured live action with complete real-time actions, imperfect human timing, restrained editorial polish, and direct causal continuity rather than a glossy cinematic or commercial finish.",
+        ),
+        camera_and_framing=(
+            "Use close human-scale camera access, practical responsive reframing, credible handheld or shoulder-supported inertia when movement warrants it, and stable geography without gratuitous shake.",
+            "Preserve legible faces, hands, contacts, horizons, scale, and screen direction even when framing is reactive or partially occluded.",
+        ),
+        lighting_and_color=(
+            "Favor available or practical source-motivated light, honest exposure limits, restrained chroma, natural skin and local colors, robust highlight detail, and readable imperfect shadows.",
+            "Keep texture photographic and temporally stable without automatically adding sensor noise, film grain, clipping, bleach bypass, dirt, underexposure, or desaturation.",
+        ),
+        production_design=(
+            "Retain the supplied environment's existing wear, functional clutter, weathering, fabric behavior, skin texture, and material irregularity without making anything dirtier, poorer, damaged, or more dangerous.",
+        ),
+        blocking_and_performance=(
+            "Use unpolished but controlled natural behavior, effort, breath, weight transfer, contact pressure, hesitation, and overlapping reactions without aggressive acting or continuity drift.",
+        ),
+        sound_treatment=(
+            "When allowed, favor immediate direct sound, close material contact, truthful room or street perspective, and restrained production roughness without distortion or degraded intelligibility.",
+        ),
+        may_fill_unspecified=(
+            "Responsive physical camera support, practical exposure behavior, ordinary surface texture, immediate performance timing, direct-sound perspective, and restrained grading.",
+        ),
+        must_not_invent=(
+            "Violence, gore, injuries, blood, grime, poverty, sweat, aggression, danger, crime, drugs, shaky-cam spectacle, sensor noise, film damage, clipping, distortion, profanity, documentary claims, or degraded audio.",
+        ),
+    ),
+    "live_action_expressionist": _profile(
+        editing_and_pacing=(
+            "Present clearly photographed but deliberately expressionist live action with controlled visual rhythm, decisive held compositions, and motivated graphic transitions while preserving the requested event order and shot boundaries.",
+        ),
+        camera_and_framing=(
+            "Use bold geometric composition, selective negative space, strong depth planes, deliberate symmetry or imbalance, and purposeful qualitative lens perspective without warping required anatomy or spatial facts.",
+            "Keep every stylized camera choice physically coherent and readable; expressionism changes presentation, not the event, location, or causal action.",
+        ),
+        lighting_and_color=(
+            "Use shaped source-motivated pools of light, graphic shadow structure, selective color blocking, and controlled contrast while preserving explicit colors, visibility requirements, skin identity, time of day, and supplied light sources.",
+            "Maintain one stable photographic treatment without inventing colored lights, flicker, projections, haze, silhouettes, monochrome, or optical effects merely to signal stylization.",
+        ),
+        production_design=(
+            "Emphasize existing geometry, repeated shapes, thresholds, surfaces, reflections, and color relationships as photographed design elements without constructing a new theatrical set or altering supplied objects.",
+        ),
+        blocking_and_performance=(
+            "Use precise silhouette, spacing, gaze, gesture, stillness, and movement paths with physically credible anatomy, contact, weight, and identity rather than theatrical overacting.",
+        ),
+        sound_treatment=(
+            "Expressionist visuals grant no stylized sound; when allowed, keep audio tied to supplied voices, spaces, materials, and visible physical causes.",
+        ),
+        may_fill_unspecified=(
+            "Graphic composition, controlled spatial imbalance, selective contrast, shape repetition, deliberate stillness, and bold but source-compatible photographic organization.",
+        ),
+        must_not_invent=(
+            "Dreams, hallucinations, symbolism, supernatural events, dutch angles, colored lights, fog, smoke, flicker, projections, mirrors, shadows as characters, distorted bodies, theatrical sets, dance, montage, abstract inserts, stylized voices, or music.",
+        ),
+    ),
+    "live_action_visceral_horror": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with a visceral practical-effects horror language: patient physical observation, complete cause-and-response beats, and unflinching temporal continuity only around disturbing material already supplied by the prompt or references.",
+            "Let existing tactile detail register clearly without adding shock inserts, reaction shots, repeated impacts, escalation, or montage.",
+        ),
+        camera_and_framing=(
+            "Use controlled proximity, obstructed or partial views, uncomfortable but legible negative space, and selective close physical detail only for subjects, effects, surfaces, and actions already present.",
+            "Keep anatomy, scale, contact points, screen direction, hands, tools, and material cause-and-effect exact; never use framing to imply an unseen injury or event.",
+        ),
+        lighting_and_color=(
+            "Use source-motivated practical light, dense but readable shadow structure, restrained contaminated color relationships, honest moist/matte/specular separation, and protected highlight detail that makes existing materials feel physically present.",
+            "Preserve explicit colors, skin identity, time of day, and supplied light sources; do not automatically impose green tint, red wash, underexposure, flicker, grime, film damage, or desaturation.",
+        ),
+        production_design=(
+            "Render only already supplied disturbing, organic, medical, prosthetic, cosmetic, damaged, wet, or decayed material with convincing practical-effects construction, weight, translucency, adhesion, residue behavior, and interaction with surrounding real surfaces.",
+            "Treat unspecified ordinary people, bodies, wardrobe, props, and locations as intact and unchanged; the visual language cannot create graphic content.",
+        ),
+        blocking_and_performance=(
+            "When the supplied action contains visceral contact, show exact preparation, pressure, resistance, material response, recoil, breath, gaze, weight transfer, and final physical state without exaggerating pain or adding victim behavior.",
+            "For non-visceral actions, preserve restrained natural live-action performance without forcing fear, disgust, aggression, panic, or menace.",
+        ),
+        sound_treatment=(
+            "When allowed and physically supported, render close material sound with precise texture, pressure, adhesion, separation, room perspective, and synchronization; never add wet effects, screams, impacts, medical sounds, drones, or score without a visible or supplied cause.",
+        ),
+        may_fill_unspecified=(
+            "Practical-effects material response for already authorized content, tactile close-detail scale, readable shadow density, physical contact behavior, restrained contaminated color balance, and exact synchronized material foley.",
+        ),
+        must_not_invent=(
+            "Blood, wounds, injuries, mutilation, exposed anatomy, bodily fluids, decay, disease, infection, surgery, medical procedures, prosthetics, monsters, transformations, torture, violence, victims, weapons, tools, grime, insects, disgust reactions, screams, wet sound effects, shock cuts, censorship, or graphic events absent from the source.",
+        ),
+    ),
+    "live_action_1980s_action": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the decisive visual grammar of a polished 1980s practical-action feature: clear setup, preparation, action, impact, reaction, and recovery only for events already supplied by the prompt.",
+            "Use assertive but spatially coherent cutting, letting practical movement and consequences complete on screen without modern hypercutting, speed ramps, or trailer montage.",
+        ),
+        camera_and_framing=(
+            "Favor strong medium-wide and full-body geography, low or shoulder-height hero framing only when compatible with the supplied performance, purposeful dollies, lateral tracking, and restrained optical zooms motivated by an existing reveal or reaction.",
+            "Keep trajectories, vehicles, bodies, hands, props, contact points, eyelines, screen direction, and practical stunt space continuously legible.",
+        ),
+        lighting_and_color=(
+            "Use a robust photochemical feature-film impression with protected skin, dense but readable blacks, confident local color, hard or mixed practical sources, controlled warm/cool separation, and stable highlight bloom only where supported by visible light.",
+            "Preserve authoritative colors and time of day; do not impose teal-orange grading, VHS damage, neon, smoke, sunset, blue moonlight, red emergency light, or excessive grain.",
+        ),
+        production_design=(
+            "Photograph supplied wardrobe, vehicles, architecture, props, pyrotechnics, breakaway materials, weather, and locations with tactile period-feature credibility, but preserve their stated era and never retrofit the scene with 1980s objects or styling.",
+        ),
+        blocking_and_performance=(
+            "For supplied action, emphasize readable preparation, committed momentum, practical effort, grounded stance, exact contact, recoil, follow-through, and recovery; otherwise retain contained confident live-action performance.",
+            "Keep stunt-like physicality plausible and identity-consistent without exaggerating musculature, toughness, aggression, pain, or invulnerability.",
+        ),
+        sound_treatment=(
+            "When allowed, use punchy synchronized production-style transients, mechanical detail, movement, contact, debris, room or exterior perspective, and concise dynamic contrast only for visible causes.",
+        ),
+        may_fill_unspecified=(
+            "Practical-action coverage, medium-wide geography, decisive camera support, photochemical contrast, tactile physical response, restrained period-feature polish, and clear impact/recovery timing.",
+        ),
+        must_not_invent=(
+            "Fights, chases, guns, weapons, explosions, fire, crashes, vehicles, destruction, injuries, enemies, police, soldiers, hostages, muscles, one-liners, hero poses, slow motion, speed ramps, helicopters, neon, smoke, 1980s wardrobe, VHS artifacts, synth score, or franchise imitation.",
+        ),
+    ),
+    "live_action_classic_chinese_martial_arts": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the lucid rhythmic grammar of classic Chinese-language martial-arts cinema, applying preparation, exchange, contact, reaction, reset, and escalation beats only to martial movement already supplied by the prompt.",
+            "Let choreography read through complete physical phrases and purposeful cuts rather than fragmenting motion into unrelated close-ups or modern hypercutting.",
+        ),
+        camera_and_framing=(
+            "Favor full-body master shots, medium-wide two-person or group geometry, clear floor patterns, lateral movement, layered depth, responsive pans and tilts, and restrained rapid reframing that preserves the start and finish of each supplied movement.",
+            "Use closer views only for an existing hand position, weapon grip, facial reaction, contact, or tactical change; keep screen direction, distance, stance, limb ownership, eyelines, and contact points exact.",
+        ),
+        lighting_and_color=(
+            "Use stable photographed color with readable costume separation, natural skin, tactile cloth and set materials, source-motivated hard or soft light, controlled contrast, and a restrained period-film response without forcing faded color or print damage.",
+            "Preserve explicit palette, location, weather, time of day, and reference appearance; do not add theatrical colored light, fog, dust, backlight, or vintage degradation.",
+        ),
+        production_design=(
+            "Photograph only the supplied clothing, architecture, terrain, interiors, props, and weapons with coherent tactile construction and uncluttered movement space; the style does not choose a dynasty, nationality, school, costume, temple, village, landscape, or historical period.",
+        ),
+        blocking_and_performance=(
+            "For martial action already present, prioritize rooted stance, balance, breath, gaze, distance, guard, anticipation, precise limb paths, weight transfer, credible contact, controlled recoil, partner response, and a stable finishing pose.",
+            "For ordinary action, retain restrained natural performance; do not turn gestures, walking, or object handling into martial choreography.",
+        ),
+        sound_treatment=(
+            "When allowed, synchronize concise cloth movement, foot placement, breath, body or object contact, weapon handling, and room or exterior perspective to visible causes without exaggerated dubbed impacts.",
+        ),
+        may_fill_unspecified=(
+            "Full-body choreography coverage, readable floor geometry, responsive physical reframing, stance and distance clarity, complete movement phrasing, tactile costume motion, and exact synchronized contact foley.",
+        ),
+        must_not_invent=(
+            "Fights, opponents, attacks, martial-arts techniques, schools, masters, training, tournaments, revenge, honor codes, weapons, swords, staffs, wirework, impossible jumps, acrobatics, powers, energy, speed effects, period costumes, temples, dynasties, dubbed voices, impact exaggeration, or franchise imitation.",
+        ),
     ),
     "stylized_3d_animation": _profile(
-        editing_and_pacing=("Use clear pose-to-pose timing, readable arcs, controlled overlap, and stable spatial continuity.",),
-        camera_and_framing=("Compose with legible volumetric silhouettes, coherent perspective, and measured parallax.",),
-        lighting_and_color=("Use stable palette roles, shaped lighting, and consistent physically coherent material response within the selected stylization.",),
-        production_design=("Translate supplied content into one coherent stylized 3D shape, surface, scale, and detail language.",),
-        blocking_and_performance=("Use expressive but identity-consistent poses with credible contacts and no unrequested cartoon physics.",),
-        sound_treatment=("Keep permitted sound synchronized to visible 3D motion and material contact without adding cartoon effects.",),
-        may_fill_unspecified=("3D shape language, material simplification, animation spacing, and volumetric staging.",),
-        must_not_invent=("Toy proportions, anthropomorphism, rubber motion, impossible deformation, game UI, or cartoon sound effects."),
+        version=2,
+        editing_and_pacing=("Present unmistakable stylized 3D animation with clear pose-to-pose timing, readable arcs, controlled overlap, intentional holds, and stable spatial continuity rather than live action with a CG filter.",),
+        camera_and_framing=(
+            "Compose with legible volumetric silhouettes, coherent modeled perspective, measured parallax, stable scale, and camera motion that reveals genuine 3D form without distorting topology.",
+        ),
+        lighting_and_color=(
+            "Use stable palette roles, deliberately shaped 3D lighting, clean value separation, controlled highlights, and coherent stylized material response without default photorealism.",
+            "Keep shading, texture placement, reflections, topology, and material identity temporally stable without flicker, texture swimming, or frame-to-frame remeshing.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and environments into one unmistakably non-photorealistic stylized 3D shape, topology, surface, scale, and detail language.",
+            "Preserve identity, age, count, proportions, object subtype, required colors, and reference design while simplifying only unspecified material and geometric detail.",
+        ),
+        blocking_and_performance=("Use expressive but identity-consistent poses, clear centers of mass, credible contacts, controlled deformation, purposeful overlap, stable facial rigs, and no unrequested cartoon physics.",),
+        sound_treatment=("Keep permitted sound synchronized to visible 3D motion and material contact; 3D styling grants no cartoon vocals, music, interface sounds, or effects.",),
+        may_fill_unspecified=("Stylized 3D shape language, topology simplification, material response, rig-like pose clarity, animation spacing, volumetric staging, and controlled overlap."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; a mere CG post-process filter, toy proportions, anthropomorphism, rubber motion, impossible deformation, unstable topology, game UI, or cartoon sound effects."),
+    ),
+    "game_3d_cinematic": _profile(
+        editing_and_pacing=(
+            "Present the sequence as a polished contemporary real-time 3D game cinematic with authored cutscene timing, complete animation beats, responsive transitions, and stable continuity rather than live action or prerecorded footage displayed inside a game.",
+        ),
+        camera_and_framing=(
+            "Use controlled virtual-cinema framing, coherent modeled perspective, gameplay-readable geography, stable scale, collision-aware trajectories, and smooth rigged camera movement without HUD composition or player-camera jitter.",
+        ),
+        lighting_and_color=(
+            "Use coherent real-time physically based materials, baked or dynamic global illumination, controlled volumetric depth, stable shadows, readable specular response, and cinematic but engine-plausible color separation.",
+            "Keep meshes, UV texture placement, normal detail, materials, reflections, shadow maps, and lighting temporally stable without texture streaming, LOD popping, shader flicker, or frame-to-frame remeshing.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, props, and environments into unmistakable high-quality real-time game-engine 3D assets with coherent topology, PBR surfaces, rigging, scale, and environmental construction.",
+            "Preserve identity, age, body type, count, wardrobe, object subtype, reference design, and required colors; game-cinematic styling does not redesign the scene into a game level.",
+        ),
+        blocking_and_performance=(
+            "Use stable rigged anatomy, readable centers of mass, grounded contacts, collision-aware interaction, controlled facial animation, and purposeful overlap without canned idle loops or gameplay gestures.",
+        ),
+        sound_treatment=("When allowed, use synchronized cinematic environmental and material sound; game styling grants no UI sounds, player feedback, quest audio, announcer, dialogue, or score.",),
+        may_fill_unspecified=("Real-time PBR material response, virtual camera rig, engine-plausible lighting, stable asset topology, rigged animation timing, collision-aware staging, and environmental depth."),
+        must_not_invent=("HUDs, menus, reticles, health bars, button prompts, player characters, enemies, pickups, quests, checkpoints, combat, weapons, game mechanics, cutscene letterbox bars, logos, UI sounds, or game music."),
+    ),
+    "game_3d_nextgen": _profile(
+        editing_and_pacing=(
+            "Present the sequence as a top-tier next-generation AAA 3D cinematic with finely resolved performance beats, physically complete motion, premium transition polish, and stable continuity rather than live action.",
+        ),
+        camera_and_framing=(
+            "Use high-end virtual cinematography with coherent full 3D perspective, physically plausible camera inertia, precise focus hierarchy, stable scale, and detailed foreground-to-background staging.",
+        ),
+        lighting_and_color=(
+            "Use high-fidelity PBR shading, ray-traced-like global illumination and reflections, controlled volumetric atmosphere, detailed shadowing, realistic subsurface response where appropriate, and protected cinematic dynamic range while remaining visibly authored CG.",
+            "Keep high-resolution textures, micro-normal detail, strand or card hair, skin shading, reflections, geometry, materials, and illumination temporally stable without uncanny flicker, pore crawl, texture swimming, LOD changes, or denoising artifacts.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied content into premium next-generation 3D assets with production-grade topology, high-density modeled detail, coherent PBR materials, groomed hair or fur, and richly constructed environments.",
+            "Preserve exact identity, age, anatomy, body type, wardrobe, count, object design, reference colors, and setting facts; fidelity increases detail but grants no redesign or additional technology.",
+        ),
+        blocking_and_performance=(
+            "Use high-quality motion-capture-like weight, stable rig deformation, precise hand and foot contact, nuanced facial performance, eye focus, breathing, cloth, and hair simulation without uncanny anatomy or animation drift.",
+        ),
+        sound_treatment=("When allowed, use high-resolution cinematic direct sound and material detail synchronized to visible causes; AAA styling grants no trailer score, dialogue, UI audio, or spectacle sounds.",),
+        may_fill_unspecified=("Premium asset detail, high-fidelity PBR response, virtual production lighting, groom and cloth behavior, motion-capture-like timing, stable microdetail, and dense environmental construction."),
+        must_not_invent=("Live-action rendering, celebrities, franchise characters, weapons, armor, vehicles, science-fiction technology, destruction, combat, trailer montage, HUDs, menus, logos, lens dirt, excessive bloom, UI audio, or epic score."),
+    ),
+    "low_poly_3d": _profile(
+        editing_and_pacing=(
+            "Present the sequence as intentional low-poly 3D animation with readable pose-to-pose timing, clean arcs, selective holds, and stable faceted forms rather than an unfinished blockout or low-quality render.",
+        ),
+        camera_and_framing=(
+            "Compose with bold faceted silhouettes, clear polygonal depth, simple coherent perspective, measured parallax, and camera movement that reveals planar construction without exposing accidental gaps or clipping.",
+        ),
+        lighting_and_color=(
+            "Use a compact deliberate palette, flat or minimally interpolated shading, broad planar light changes, restrained ambient occlusion, and crisp faceted highlights with no photoreal texture maps.",
+            "Keep polygon topology, face normals, palette assignment, edges, shadows, and material boundaries temporally stable without vertex jitter, z-fighting, LOD popping, or changing polygon density.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, props, and environments into unmistakable intentionally designed low-poly 3D assets using economical geometry, purposeful faceting, simplified surfaces, and coherent scale.",
+            "Preserve identity, body type, count, proportions, object subtype, silhouette cues, and required colors; simplification must remain designed and finished rather than generic or primitive.",
+        ),
+        blocking_and_performance=("Use clean rigged poses, stable joints, readable contacts, controlled deformation, and sparse secondary motion that respects simplified geometry without rubber limbs.",),
+        sound_treatment=("Low-poly styling grants no retro game music, UI sounds, bleeps, or toy effects; use only audio authorized by existing policies.",),
+        may_fill_unspecified=("Polygon density, purposeful faceting, flat-shaded palette, simplified geometry, planar lighting, economical rigging, and clean low-poly environmental depth."),
+        must_not_invent=("Unfinished graybox assets, wireframes, visible vertices, broken normals, missing textures, primitive placeholders, HUDs, menus, retro game mechanics, voxel rendering, pixel art, chiptune, or arcade effects."),
+    ),
+    "cel_shaded_3d": _profile(
+        editing_and_pacing=(
+            "Present the sequence as polished cel-shaded 3D animation with stable rigged motion, authored pose timing, clean action beats, and continuous 3D spatial coherence rather than 2D frame morphing or live action with an outline filter.",
+        ),
+        camera_and_framing=(
+            "Use genuine modeled perspective, strong readable silhouettes, controlled virtual-camera parallax, and dynamic but legible framing that preserves 3D volume and geography.",
+        ),
+        lighting_and_color=(
+            "Use stable two- or three-band toon shading, clean local colors, graphic light boundaries, restrained specular accents, and optional controlled silhouette or crease outlines that remain attached to the modeled form.",
+            "Keep toon bands, outline thickness, face shading, mesh topology, colors, highlights, and shadows temporally stable without crawling contours, shadow popping, texture swim, or photographic gradients.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and settings into unmistakable stylized 3D models rendered with one coherent cel-shaded material, outline, shape, and detail language.",
+            "Preserve identity, anatomy, age, count, wardrobe, proportions, object design, and required colors; cel shading changes rendering, not story facts or franchise identity.",
+        ),
+        blocking_and_performance=("Use stable rig deformation, expressive but identity-consistent poses, clear contact and weight, controlled facial shapes, and purposeful overlap without rubber motion or 2D anatomy drift.",),
+        sound_treatment=("Cel-shaded 3D styling grants no anime vocals, attack calls, game UI sounds, music, or stylized impacts; use only audio authorized by existing policies.",),
+        may_fill_unspecified=("Toon-band count, outline policy, stylized 3D shape language, rig timing, graphic light boundaries, clean local palette, and virtual-camera staging."),
+        must_not_invent=("Live action with an outline filter, flat 2D illustration, superheroes, anime powers, speed lines, attacks, weapons, game UI, menus, franchise characters, exaggerated impact effects, or cartoon sound."),
     ),
     "stop_motion_handcrafted": _profile(
-        editing_and_pacing=("Use deliberate pose increments, tactile holds, and coherent handcrafted stop-motion timing.",),
-        camera_and_framing=("Use physically plausible tabletop-scale camera placement, stable sets, and restrained parallax.",),
-        lighting_and_color=("Preserve stable practical illumination, tactile shadows, and consistent handmade surface color across frames.",),
-        production_design=("Express supplied content through coherent clay, felt, paper, wood, resin, or miniature-set craft only where its material is unspecified.",),
-        blocking_and_performance=("Use intentional frame-by-frame posing while preserving identity, anatomy, object count, and required action.",),
-        sound_treatment=("When allowed, use restrained tactile material sounds without adding workshop or toy noises.",),
-        may_fill_unspecified=("Handcrafted material language, pose increments, miniature staging, and tactile surface response.",),
-        must_not_invent=("Fingerprints, seams, armatures, toy behavior, craft tools, replacement-animation artifacts, or comic sound effects."),
+        version=2,
+        editing_and_pacing=("Present unmistakable handcrafted stop-motion animation with deliberate pose increments, tactile holds, finite replacement-like motion cadence, and coherent frame-by-frame continuity rather than smooth CG or filtered live action.",),
+        camera_and_framing=(
+            "Use physically plausible miniature or tabletop-scale camera placement, stable constructed sets, real depth, measured parallax, and restrained moves compatible with photographing physical models frame by frame.",
+        ),
+        lighting_and_color=(
+            "Preserve stable practical miniature illumination, tactile cast shadows, restrained exposure, handmade local color, and consistent surface response without electronic or photoreal polish.",
+            "Keep material fibers, clay or paper edges, paint, set joins, shadows, and light direction temporally stable without texture crawl or changing fabrication technique.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied subjects, clothing, objects, and settings into one coherent handcrafted clay, felt, paper, wood, resin, painted miniature, or mixed-media vocabulary selected from unspecified material choices.",
+            "Preserve identity, count, anatomy, proportions, object design, and required colors while making construction, scale, and tactile material language coherent across the full scene.",
+        ),
+        blocking_and_performance=("Use intentional frame-by-frame posing, stable replaceable facial shapes, clear contact, readable weight, and controlled secondary movement without rubber motion or accidental form drift.",),
+        sound_treatment=("When allowed, use restrained tactile material contact synchronized to visible causes; stop-motion styling grants no workshop noises, toy sounds, music, or comic effects.",),
+        may_fill_unspecified=("Handcrafted medium, miniature scale, fabrication language, pose increments, replacement timing, tactile surface response, practical shadow character, and set depth."),
+        must_not_invent=("Smooth live-action or generic CG rendering unless explicitly required; fingerprints, exposed seams, armatures, toy behavior, craft tools, animators, replacement-animation errors, jitter as a gimmick, workshop ambience, or comic sound effects."),
     ),
     "painterly_2d": _profile(
-        editing_and_pacing=("Use readable authored poses and transitions while keeping painted forms temporally coherent.",),
-        camera_and_framing=("Favor composed depth planes and restrained camera motion that preserves the painted layout.",),
-        lighting_and_color=("Use controlled painted value masses, palette harmony, and stable brush texture without color crawl.",),
-        production_design=("Translate supplied content into one coherent watercolor, gouache, ink-wash, or painterly surface language without changing its facts.",),
-        blocking_and_performance=("Clarify motion through silhouette and shape change while avoiding fluid morphing unrelated to the action.",),
-        sound_treatment=("Painting style grants no new sound; use only audio authorized by the existing policies.",),
-        may_fill_unspecified=("Paint medium, brush character, value grouping, layer depth, and temporally stable surface texture.",),
-        must_not_invent=("Ink splashes, paint drips, paper tears, morphing, abstract transitions, calligraphy, or symbolic imagery."),
+        version=2,
+        editing_and_pacing=(
+            "Present the sequence as authored hand-painted 2D animation with readable painted key poses, deliberate transitions, selective holds, and continuous temporal coherence rather than live-action footage with an artistic filter.",
+            "Keep the chosen paint handling and level of detail consistent through movement; do not let brushwork, contours, or painted forms dissolve, regenerate, or change medium between frames.",
+        ),
+        camera_and_framing=(
+            "Compose through clearly painted foreground, subject, and background depth planes with strong silhouette, value grouping, and purposeful negative space.",
+            "Use restrained cinematic reframing and layered 2D parallax that preserves the authored painted layout; avoid photographic depth cues, lens-driven realism, and camera motion that makes painted surfaces swim.",
+        ),
+        lighting_and_color=(
+            "Build illumination as stable painted value and pigment masses with deliberate edge control, palette harmony, visible brush character, protected local colors, and no photographic color-grade finish.",
+            "Keep brush direction, paint texture, value boundaries, color mixtures, and highlights temporally stable without color crawl, flickering strokes, boiling texture, or frame-to-frame repainting.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires live action or photographic rendering, translate every supplied person, face, garment, object, material, and environment into an unmistakably non-photorealistic hand-painted 2D visual language while preserving identity and all supplied facts.",
+            "Choose one coherent painterly medium and surface vocabulary for the whole sequence, with painted edges and simplified material response instead of photographic skin, fabric, metal, glass, or background texture.",
+        ),
+        blocking_and_performance=(
+            "Express action and emotion through readable painted silhouette changes, authored facial shapes, body poses, and economical secondary motion while preserving anatomy, identity, contact, and object state.",
+        ),
+        sound_treatment=("Painterly styling grants no narration, music, brush sounds, or decorative effects; use only audio authorized by the existing policies and visible events.",),
+        may_fill_unspecified=("Paint medium, brush size and edge character, pigment-like palette, painted depth planes, value grouping, surface tooth, and temporally stable brush texture."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; a mere painterly post-process filter, photographic skin or materials, paint splashes, drips, tears, morphing, medium changes, abstract transitions, calligraphy, symbolic imagery, or animated brush strokes drawing the scene."),
+    ),
+    "watercolor_2d": _profile(
+        editing_and_pacing=(
+            "Present the sequence as hand-painted 2D watercolor animation with clear authored poses, gentle economical transitions, selective holds, and stable forms rather than filtered live action.",
+            "Preserve the same wash structure and pigment placement through motion; movement changes the subject pose, not the watercolor medium itself.",
+        ),
+        camera_and_framing=(
+            "Compose with airy painted depth planes, readable silhouettes, generous paper-toned negative space, and restrained layered parallax appropriate to a watercolor illustration.",
+            "Use gentle reframing that preserves wash shapes and paper texture without photographic lens behavior or swimming painted surfaces.",
+        ),
+        lighting_and_color=(
+            "Use translucent layered washes, luminous paper whites, restrained pigment mixtures, soft wet-on-wet transitions, selective dry-brush edges, subtle granulation, and a limited harmonious watercolor palette.",
+            "Keep paper tooth, wash boundaries, blooms, granulation, pigment density, local colors, and edge softness temporally stable; prevent crawling paper grain, flickering washes, muddy colors, and frame-to-frame pigment redistribution.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied people, wardrobe, objects, and environments into unmistakably non-photorealistic watercolor illustration with visible paper support and no photographic material texture.",
+            "Use one coherent watercolor paper, pigment, wash, outline, and detail vocabulary across the full scene while preserving identity, counts, proportions, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use elegant readable poses, simplified painted facial shapes, clear hands and contacts, and restrained hair, fabric, and atmospheric motion without losing identity or anatomy.",
+        ),
+        sound_treatment=("Watercolor styling grants no brush sounds, narration, music, or decorative chimes; use only audio authorized by the existing policies.",),
+        may_fill_unspecified=("Watercolor paper tooth, translucent wash layering, pigment palette, granulation, edge softness, dry-brush accents, airy depth, and gentle secondary motion."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; watercolor applied as a post-process filter, uncontrolled splashes, dripping paint, spreading stains, paper tears, animated painting, morphing, symbolic inserts, calligraphy, or medium changes."),
+    ),
+    "gouache_2d": _profile(
+        editing_and_pacing=(
+            "Present the sequence as authored hand-painted 2D gouache animation with confident key poses, clean readable transitions, controlled holds, and stable opaque painted forms rather than filtered live action.",
+            "Keep shape simplification, brush handling, and matte paint coverage consistent across every frame and action state.",
+        ),
+        camera_and_framing=(
+            "Compose with bold flat depth planes, strong silhouettes, editorial shape rhythm, controlled negative space, and measured 2D parallax that preserves the painted layout.",
+            "Use deliberate cinematic framing without photographic depth of field, lens realism, or camera motion that makes opaque paint shapes crawl or warp.",
+        ),
+        lighting_and_color=(
+            "Use opaque matte color fields, compact harmonious palette families, decisive value grouping, simplified painted shadows, crisp-to-dry-brush edge variation, and restrained visible brush texture.",
+            "Keep paint coverage, paper tooth, edge character, local colors, shadow shapes, and brush accents temporally stable without flicker, boiling texture, gradient banding, or frame-to-frame repainting.",
+        ),
+        production_design=(
+            "Unless authoritative content explicitly requires another medium, translate supplied people, clothing, objects, materials, and environments into unmistakably non-photorealistic gouache illustration with opaque painted surfaces and no photographic texture.",
+            "Use one coherent gouache, paper, shape, outline, and brush vocabulary across characters and setting while preserving identity, proportions, object count, and required design facts.",
+        ),
+        blocking_and_performance=(
+            "Clarify performance through bold painted poses, readable facial shapes, stable anatomy, explicit contact, and economical secondary motion in hair, fabric, foliage, smoke, or light only when present.",
+        ),
+        sound_treatment=("Gouache styling grants no brush sounds, narration, music, or decorative effects; use only audio authorized by the existing policies.",),
+        may_fill_unspecified=("Opaque matte palette, painted shape language, paper tooth, dry-brush accents, edge hierarchy, bold value masses, layered depth, and economical secondary motion."),
+        must_not_invent=("Live-action or photoreal rendering unless explicitly required; gouache used as a post-process filter, glossy oil-paint impasto, paint splashes, drips, paper tears, animated painting, morphing, abstract transitions, posters, lettering, or medium changes."),
     ),
     "graphic_novel": _profile(
-        editing_and_pacing=("Use decisive visual beats and readable holds without turning the video into a slideshow or adding panel cuts.",),
-        camera_and_framing=("Use bold silhouette, graphic depth, controlled negative space, and clear focal hierarchy.",),
-        lighting_and_color=("Use stable inked contours, deliberate shadow masses, and a restrained coherent color system.",),
-        production_design=("Render supplied content through one consistent illustration, inking, and surface vocabulary.",),
-        blocking_and_performance=("Favor readable poses and expressions without adding comic exaggeration or changing identity.",),
-        sound_treatment=("Use only policy-authorized sound; graphic styling does not create captions or written sound effects.",),
-        may_fill_unspecified=("Inking, shadow shapes, graphic composition, restrained palette, and pose clarity.",),
-        must_not_invent=("Panels, gutters, captions, speech balloons, written sound effects, halftone text, superheroes, or comic-book plot conventions."),
+        version=2,
+        inherits=("animation_2d",),
+        editing_and_pacing=(
+            "Present the sequence as a moving illustrated graphic novel with decisive visual beats, authored pose changes, and readable holds; preserve continuous motion rather than a slideshow or panel-by-panel edit.",
+        ),
+        camera_and_framing=(
+            "Use bold silhouettes, graphic depth planes, controlled negative space, strong perspective, and an unmistakable illustrated focal hierarchy.",
+            "Use layered 2D parallax and deliberate cinematic reframing while keeping figures, props, and environments visibly drawn rather than photographically captured.",
+        ),
+        lighting_and_color=(
+            "Use temporally stable expressive ink contours, deliberate pools and masses of shadow, protected highlights, and a restrained coherent color system without live-action photographic grading.",
+            "Keep line weight, solid fills, selective texture, local colors, and shadow boundaries stable from frame to frame; prevent crawling ink, flickering hatching, and unstable surface detail.",
+        ),
+        production_design=(
+            "Unless the authoritative prompt explicitly requires live action or photographic rendering, translate supplied people, wardrobe, objects, and settings into an unmistakably non-photorealistic hand-illustrated 2D graphic-novel vocabulary.",
+            "Maintain one coherent drawing, inking, print-texture, shape, and surface language across characters and environment while preserving identity and all supplied design facts.",
+        ),
+        blocking_and_performance=(
+            "Favor forceful readable poses, clear expressions, and economical purposeful secondary motion in hair, fabric, smoke, light, and environmental layers without adding comic exaggeration or changing identity.",
+        ),
+        sound_treatment=("Use only policy-authorized sound; graphic styling does not create captions, narration, written sound effects, or stylized comic audio.",),
+        may_fill_unspecified=("Illustrated line character, inking, stable print texture, graphic shadow shapes, layered 2D parallax, restrained palette, and pose clarity.",),
+        must_not_invent=("Photorealistic or live-action rendering unless explicitly required; panels, gutters, captions, narration, speech balloons, written sound effects, superheroes, or comic-book plot conventions."),
+    ),
+    "graphic_noir": _profile(
+        inherits=("graphic_novel",),
+        editing_and_pacing=(
+            "Use measured tension, stark reveals, and held graphic compositions only around information and events already present, without imposing a crime story.",
+        ),
+        camera_and_framing=(
+            "Favor severe geometric framing, oblique depth, silhouettes, frames within frames, and large fields of black while retaining enough selective visibility to read required identity and action.",
+        ),
+        lighting_and_color=(
+            "Use extreme but controlled black-and-white value separation, dominant ink-black shadow masses, sharp rim or practical highlights, and optional selective accent color only where compatible with authoritative colors.",
+            "Treat color as sparse graphic emphasis rather than live-action color grading; preserve required skin, wardrobe, object, and reference colors whenever they are authoritative.",
+        ),
+        production_design=(
+            "Express compatible supplied architecture, interiors, wardrobe, and props through a stark illustrated crime-noir graphic vocabulary without adding conventional noir objects or locations.",
+        ),
+        blocking_and_performance=(
+            "Use contained gesture, watchful eyelines, strong profile or three-quarter silhouettes, and deliberate stillness where compatible with the requested performance.",
+        ),
+        sound_treatment=("Noir styling grants no voice-over, jazz, rain, sirens, weapons, or ominous sound; use only audio authorized by the existing policies and visible events.",),
+        may_fill_unspecified=("Ink-black negative space, selective visibility, hard graphic highlights, sparse accent color, severe geometry, and restrained illustrated performance.",),
+        must_not_invent=("Crime, detectives, guns, violence, femme-fatale characterization, cigarettes, rain, blinds, alleys, jazz, sirens, voice-over, betrayal, or pessimistic plot facts."),
     ),
     "clean_commercial": _profile(
-        editing_and_pacing=("Present the requested subject and action with efficient, legible timing and no invented sales beat.",),
-        camera_and_framing=("Use uncluttered composition, clear product or subject hierarchy, and controlled camera motion.",),
-        lighting_and_color=("Use clean exposure, accurate brand and material colors, controlled highlights, and polished but plausible separation.",),
-        production_design=("Keep supplied surfaces, packaging, controls, logos, and proportions exact; simplify only unspecified background clutter.",),
-        blocking_and_performance=("Use precise handling, clean gestures, and readable interaction without adding endorsement behavior.",),
-        sound_treatment=("When allowed, use clean material and mechanism detail; music and slogans require explicit authorization.",),
-        may_fill_unspecified=("Clean visual hierarchy, controlled reflections, accurate material presentation, and precise handling.",),
-        must_not_invent=("Brands, logos, slogans, claims, prices, packaging text, product features, spokesperson behavior, or advertising music."),
+        version=2,
+        editing_and_pacing=("Present the requested subject, product, and action with efficient premium-commercial clarity, complete readable handling, purposeful holds, and no invented sales beat, demonstration, or call to action.",),
+        camera_and_framing=(
+            "Use uncluttered composition, precise subject hierarchy, controlled negative space, stable geometry, intentional detail scale, and smooth measured camera motion that keeps required features readable.",
+        ),
+        lighting_and_color=(
+            "Use clean protected exposure, accurate supplied brand and material colors, shaped but plausible separation, controlled reflections, crisp edge highlights, readable dark surfaces, and no clipped glossy finish.",
+            "Keep labels, controls, seams, reflections, materials, proportions, and colors temporally stable without warping, invented text, changing packaging, or excessive beauty glow.",
+        ),
+        production_design=(
+            "Keep supplied surfaces, packaging, controls, logos, typography, object geometry, and proportions exact; simplify only unspecified background clutter and use polished compatible support surfaces without inventing a campaign world.",
+        ),
+        blocking_and_performance=("Use precise handling, clean hand placement, readable contact, controlled gesture, and confident but neutral interaction without endorsement behavior, presentation smiles, or pointing at invented features.",),
+        sound_treatment=("When allowed, use clean material, mechanism, handling, and room detail synchronized to visible causes; music, slogans, voice-over, sonic logos, and claims require explicit authorization.",),
+        may_fill_unspecified=("Premium visual hierarchy, controlled reflections, accurate material presentation, clean support surfaces, precise handling, stable product geometry, and restrained polish."),
+        must_not_invent=("Brands, logos, slogans, claims, prices, packaging text, product features, demonstrations, spokesperson behavior, endorsement gestures, call-to-action framing, voice-over, sonic logos, or advertising music."),
     ),
 }
 
@@ -439,6 +1023,26 @@ WORLD_AESTHETIC_PROFILES = {
         inherits=("retrofuturism",),
         production_design=("Use a coherent late-1990s–2000s Y2K vocabulary for existing authorized technology: translucent polymers, compact rounded forms, metallic accents, and era-consistent physical/digital controls.",),
         must_not_invent=("Web graphics, logos, gadgets, internet culture, futuristic vehicles, holograms, robots, or readable interface text."),
+    ),
+    "analog_1980s": _profile(
+        editing_and_pacing=("Use period-compatible editorial clarity and complete physical beats without adding retro montage, channel switching, freeze frames, or music-driven cutting."),
+        camera_and_framing=("Use plausible late-1970s-to-1980s photographed perspective and camera support without forcing zooms, handheld operation, broadcast framing, or modern stabilized movement."),
+        lighting_and_color=("Use practical-source color separation, restrained photochemical contrast, protected skin and local colors, modest highlight bloom, and a stable period-compatible film response without degrading the image."),
+        production_design=("Apply coherent 1980s analog material, manufacturing, graphic-shape, control, furniture, and wardrobe vocabulary only to unspecified attributes of entities already authorized and only when compatible with the stated place and social context."),
+        blocking_and_performance=("Preserve natural period-compatible interaction with supplied physical controls, media, furniture, vehicles, wardrobe, and spaces without theatrical nostalgia."),
+        sound_treatment=("When allowed, give existing analog mechanisms, rooms, streets, media, and appliances period-compatible physical sound without synth music or electronic nostalgia cues."),
+        may_fill_unspecified=("Period-compatible material finishes, analog control language, practical-source color, restrained photochemical response, and physical mechanism detail."),
+        must_not_invent=("An unspecified year, cassette tapes, VHS, CRTs, computers, arcade machines, phones, cars, neon, malls, offices, shoulder pads, hairstyles, logos, readable period text, scanlines, tracking errors, tape noise, synths, or nostalgia."),
+    ),
+    "urban_industrial": _profile(
+        editing_and_pacing=("Let existing infrastructure, circulation, machinery, labor, traffic, and spatial constraints create functional visual rhythm without adding urgency or conflict."),
+        camera_and_framing=("Use layered structural depth, long service sight lines, thresholds, foreground utility elements, and human-to-infrastructure scale only where compatible with the supplied location."),
+        lighting_and_color=("Use mixed practical illumination, hard material reflections, atmospheric depth only when physically supported, and restrained industrial color without defaulting to cyan, orange, green, smoke, or night."),
+        production_design=("Emphasize authorized concrete, brick, metal, glass, pipes, ducts, rails, loading surfaces, utilities, wear, repairs, and modular repetition without adding a factory or dereliction to another setting."),
+        blocking_and_performance=("Let people navigate supplied work zones, passages, machinery, crowds, barriers, and vertical levels with credible safety, clearance, and task-focused movement."),
+        sound_treatment=("When allowed, build physically supported ventilation, traffic, machinery, electrical, structural, and reverberant ambience with correct distance and occlusion."),
+        may_fill_unspecified=("Functional infrastructure detail, structural depth, material wear, circulation logic, practical light behavior, and spatial mechanical ambience."),
+        must_not_invent=("Cities, factories, warehouses, machinery, pipes, ducts, cables, workers, traffic, trains, cranes, smoke, steam, pollution, rain, decay, poverty, danger, crime, cyberpunk technology, alarms, or industrial music."),
     ),
 }
 
@@ -584,6 +1188,36 @@ TONE_PROFILES = {
         sound_treatment=("When allowed, favor immediate direct sound and honest room perspective without distortion.",),
         may_fill_unspecified=("Immediate timing, minimal grading, direct camera proximity, and physically honest sound.",),
         must_not_invent=("Handheld shake, sensor noise, clipping, distortion, dirt, damage, sweat, aggression, documentary claims, or degraded audio."),
+    ),
+    "kinetic": _profile(
+        editing_and_pacing=("Increase the cadence and decisiveness of supplied movement through concise anticipation, committed execution, immediate response, and efficient recovery without creating new actions or cuts."),
+        camera_and_framing=("Keep moving subjects, trajectories, contacts, and changing spatial relationships continuously legible; use responsive framing only within explicit camera and shot-plan constraints."),
+        lighting_and_color=("Maintain clear value and color separation through motion without adding flashes, pulses, speed effects, or a more aggressive grade."),
+        production_design=("Use existing depth layers, surfaces, props, and pathways to clarify motion and parallax without adding obstacles or destructible elements."),
+        blocking_and_performance=("Use sharper commitment, weight transfer, directional intent, follow-through, and rapid but physically complete reactions only for movement already requested."),
+        sound_treatment=("When allowed, tighten synchronization and transient clarity for visible movement and contact without adding impacts, whooshes, chants, or music."),
+        may_fill_unspecified=("Anticipation length, movement cadence, responsive framing, trajectory clarity, reaction timing, and physically complete follow-through."),
+        must_not_invent=("Action, fights, chases, attacks, danger, speed, athletic ability, impacts, destruction, cuts, shake, whip pans, speed ramps, slow motion, flashes, whooshes, or energetic music."),
+    ),
+    "pulp_heightened": _profile(
+        editing_and_pacing=("Present supplied conflict, revelation, danger, romance, or spectacle with bold economical emphasis, clean reversals, and decisive held reactions without manufacturing melodrama or plot escalation."),
+        camera_and_framing=("Use strong silhouettes, graphic staging, assertive scale changes, and purposeful angles only where they clarify supplied information; preserve anatomy and spatial coherence."),
+        lighting_and_color=("Use controlled high-contrast color separation and bold local-color relationships while preserving explicit palette, exposure, skin, time, and source lighting."),
+        production_design=("Emphasize existing iconic shapes, textures, props, wardrobe, architecture, and spatial motifs without adding genre decoration or turning ordinary objects into symbols."),
+        blocking_and_performance=("Use clear intention, decisive gesture, readable reaction, and contained theatrical emphasis only to strengthen behavior already supplied."),
+        sound_treatment=("When allowed, use concise dynamic emphasis on supplied voices and visible events; pulp tone grants no stings, narration, exaggerated impacts, or music."),
+        may_fill_unspecified=("Graphic emphasis, decisive reaction holds, bold but protected color separation, iconic silhouette, and economical heightened performance."),
+        must_not_invent=("Villains, heroes, danger, violence, seduction, betrayal, camp, one-liners, narration, posters, comic graphics, dutch angles, extreme colors, shock cuts, stings, or music."),
+    ),
+    "stoic": _profile(
+        editing_and_pacing=("Use measured continuity, patient pauses, and direct completion of supplied tasks or confrontations without ornamental escalation or sentimental release."),
+        camera_and_framing=("Favor stable distance, uncluttered geometry, sustained eyelines, and economical camera response while preserving required visibility and explicit movement."),
+        lighting_and_color=("Use controlled natural color, restrained contrast, and stable exposure without making the image cold, dark, desaturated, austere, or monochrome by default."),
+        production_design=("Keep existing spaces and objects functional, specific, and visually ordered without stripping detail or adding severity."),
+        blocking_and_performance=("Favor contained posture, economical gesture, steady gaze, purposeful movement, and subtle physical reaction without suppressing emotion explicitly required by the prompt."),
+        sound_treatment=("When allowed, preserve sparse precise physical sound and room perspective without imposing silence, drones, or minimal music."),
+        may_fill_unspecified=("Measured pauses, stable distance, economical gesture, sustained gaze, restrained contrast, and precise low-density sound."),
+        must_not_invent=("Toughness, masculinity, emotional repression, trauma, authority, honor, hostility, silence, loneliness, sacrifice, violence, terse dialogue, dark grading, drones, or minimalist music."),
     ),
 }
 

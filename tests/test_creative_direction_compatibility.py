@@ -204,7 +204,15 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     source = FRONTEND.read_text(encoding="utf-8")
     for token in (
         "action", "horror", "thriller", "romance", "comedy", "drama", "adventure", "mystery",
-        "anime_general", "anime_shonen", "anime_shojo", "animation_2d", "documentary_observational",
+        "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "anime_shonen", "anime_shojo", "anime_shojo_pastel",
+        "american_comic_pastel", "animation_2d", "pixel_art_16bit",
+        "stylized_3d_animation", "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d",
+        "cel_shaded_3d", "documentary_observational", "live_action_cinematic",
+        "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
+        "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "crime", "western", "sports_competition", "analog_1980s", "urban_industrial",
+        "kinetic", "pulp_heightened", "stoic",
         "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",
         "epic", "intimate", "dark", "tense", "hopeful", "melancholic", "playful", "restrained",
     ):
@@ -219,6 +227,15 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     assert "/^[A-Za-z0-9_-]{1,64}$/" in source
     assert ".slice(0, 8000)" in source
     assert "rebalanceExactDurations" in source
+    family_labels = (
+        '"Anime"', '"Drawn & painted 2D"', '"Graphic & pixel styles"',
+        '"3D animation"', '"Game cinematics"', '"Physical animation"',
+        '"Live action"', '"Commercial & presentation"',
+    )
+    positions = [source.index(label) for label in family_labels]
+    assert positions == sorted(positions)
+    assert 'document.createElement("optgroup")' in source
+    assert "Unavailable in loaded catalog" in source
 
 
 def test_frontend_uses_collapsed_non_persistent_accordions_and_keeps_advanced_last():

@@ -24,20 +24,31 @@ from creative_treatments import (
 CANONICAL_CHOICES = {
     "genre": (
         "none", "action", "horror", "thriller", "romance", "comedy", "drama", "adventure", "mystery",
+        "crime", "western", "sports_competition",
     ),
     "visual_language": (
-        "none", "anime_general", "anime_shonen", "anime_shojo", "animation_2d",
-        "documentary_observational", "live_action_naturalistic", "stylized_3d_animation",
-        "stop_motion_handcrafted", "painterly_2d", "graphic_novel", "clean_commercial",
+        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "anime_shonen", "anime_shojo", "anime_shojo_pastel",
+        "american_comic_pastel",
+        "animation_2d", "pixel_art_16bit",
+        "documentary_observational", "live_action_naturalistic", "live_action_cinematic",
+        "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
+        "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "stylized_3d_animation",
+        "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d", "cel_shaded_3d",
+        "stop_motion_handcrafted", "painterly_2d", "watercolor_2d", "gouache_2d",
+        "graphic_novel", "graphic_noir", "clean_commercial",
     ),
     "world_aesthetic": (
         "none", "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",
         "near_future_functional", "gothic", "solarpunk", "steampunk", "post_apocalyptic",
         "historical_period", "retrofuturism_atomic_age", "retrofuturism_cassette", "retrofuturism_y2k",
+        "analog_1980s", "urban_industrial",
     ),
     "tone": (
         "none", "epic", "intimate", "dark", "tense", "hopeful", "melancholic", "playful", "restrained",
         "serene", "eerie", "whimsical", "surreal", "clinical", "raw",
+        "kinetic", "pulp_heightened", "stoic",
     ),
 }
 
@@ -140,12 +151,185 @@ def test_shonen_and_shojo_inherit_the_general_anime_language_without_duplicates(
     anime = compose_creative_treatment(visual_language="anime_general")
     for child_name in ("anime_shonen", "anime_shojo"):
         child = compose_creative_treatment(visual_language=child_name)
-        assert child["profileVersions"]["visual_language:anime_general"] == 1
-        assert child["profileVersions"][f"visual_language:{child_name}"] == 1
+        assert child["profileVersions"]["visual_language:anime_general"] == 2
+        assert child["profileVersions"][f"visual_language:{child_name}"] == 2
         for dimension in PROFILE_DIMENSIONS:
             assert set(anime["dimensions"][dimension]) <= set(child["dimensions"][dimension])
             normalized = [value.casefold() for value in child["dimensions"][dimension]]
             assert len(normalized) == len(set(normalized))
+
+
+def test_graphic_novel_is_unmistakably_illustrated_2d_and_graphic_noir_inherits_it():
+    animation = compose_creative_treatment(visual_language="animation_2d")
+    graphic = compose_creative_treatment(visual_language="graphic_novel")
+    noir = compose_creative_treatment(visual_language="graphic_noir")
+
+    assert graphic["profileVersions"]["visual_language:animation_2d"] == 2
+    assert graphic["profileVersions"]["visual_language:graphic_novel"] == 2
+    assert noir["profileVersions"]["visual_language:animation_2d"] == 2
+    assert noir["profileVersions"]["visual_language:graphic_novel"] == 2
+    assert noir["profileVersions"]["visual_language:graphic_noir"] == 1
+    for dimension in PROFILE_DIMENSIONS:
+        assert set(animation["dimensions"][dimension]) <= set(graphic["dimensions"][dimension])
+        assert set(graphic["dimensions"][dimension]) <= set(noir["dimensions"][dimension])
+
+    graphic_instruction = creative_treatment_instruction(graphic)
+    noir_instruction = creative_treatment_instruction(noir)
+    assert "unmistakably non-photorealistic hand-illustrated 2D" in graphic_instruction
+    assert "moving illustrated graphic novel" in graphic_instruction
+    assert "rather than photographically captured" in graphic_instruction
+    assert "prevent crawling ink" in graphic_instruction
+    assert "dominant ink-black shadow masses" in noir_instruction
+    assert "optional selective accent color" in noir_instruction
+    assert "Noir styling grants no voice-over" in noir_instruction
+
+
+def test_pastel_shojo_and_16bit_pixel_art_are_strong_2d_visual_languages():
+    shojo = compose_creative_treatment(visual_language="anime_shojo")
+    pastel = compose_creative_treatment(visual_language="anime_shojo_pastel")
+    animation = compose_creative_treatment(visual_language="animation_2d")
+    pixel = compose_creative_treatment(visual_language="pixel_art_16bit")
+
+    for dimension in PROFILE_DIMENSIONS:
+        assert set(shojo["dimensions"][dimension]) <= set(pastel["dimensions"][dimension])
+        assert set(animation["dimensions"][dimension]) <= set(pixel["dimensions"][dimension])
+
+    pastel_instruction = creative_treatment_instruction(pastel)
+    pixel_instruction = creative_treatment_instruction(pixel)
+    assert "classic shōjo-anime color design" in pastel_instruction
+    assert "hand-authored Japanese shōjo animation vocabulary" in pastel_instruction
+    assert "not Western superhero foreshortening" in pastel_instruction
+    assert "approximately 16-to-64-color palette" in pixel_instruction
+    assert "nearest-neighbor visual scaling" in pixel_instruction
+    assert "integer-aligned camera displacement" in pixel_instruction
+    assert "grants no chiptune" in pixel_instruction
+
+
+def test_classic_shojo_is_distinct_from_pastel_american_comic():
+    shojo = compose_creative_treatment(visual_language="anime_shojo_pastel")
+    comic = compose_creative_treatment(visual_language="american_comic_pastel")
+    shojo_instruction = creative_treatment_instruction(shojo)
+    comic_instruction = creative_treatment_instruction(comic)
+
+    assert shojo["profileVersions"]["visual_language:anime_shojo_pastel"] == 2
+    assert "large luminous carefully constructed eyes" in shojo_instruction
+    assert "long flowing tapered locks" in shojo_instruction
+    assert "Western superhero anatomy" in shojo_instruction
+    assert comic["profileVersions"] == {"visual_language:american_comic_pastel": 1}
+    assert "moving American comic illustration" in comic_instruction
+    assert "Western editorial composition" in comic_instruction
+    assert "luminous pastel color families" in comic_instruction
+
+
+def test_retro_serious_and_family_gag_anime_are_distinct_standalone_contracts():
+    dramatic = compose_creative_treatment(visual_language="anime_retro_dramatic")
+    gag = compose_creative_treatment(visual_language="anime_retro_gag_family")
+    dramatic_instruction = creative_treatment_instruction(dramatic)
+    gag_instruction = creative_treatment_instruction(gag)
+
+    assert dramatic["profileVersions"] == {"visual_language:anime_retro_dramatic": 1}
+    assert "serious late-1970s-to-1980s Japanese cel animation" in dramatic_instruction
+    assert "thick-to-fine variable ink contours" in dramatic_instruction
+    assert "must not add muscle mass" in dramatic_instruction
+    assert "Martial arts, fights, attacks" in dramatic_instruction
+
+    assert gag["profileVersions"] == {"visual_language:anime_retro_gag_family": 1}
+    assert "early-1980s Japanese family gag-manga television animation" in gag_instruction
+    assert "rounded geometric construction" in gag_instruction
+    assert "does not make the character foolish" in gag_instruction
+    assert "ninjas, robots, mascots" in gag_instruction
+
+
+def test_every_3d_variant_has_a_distinct_complete_rendering_contract():
+    checks = {
+        "game_3d_cinematic": ("real-time 3D game cinematic", "LOD popping", "HUDs"),
+        "game_3d_nextgen": ("next-generation AAA 3D cinematic", "micro-normal detail", "Live-action rendering"),
+        "low_poly_3d": ("intentional low-poly 3D animation", "purposeful faceting", "Unfinished graybox"),
+        "cel_shaded_3d": ("cel-shaded 3D animation", "two- or three-band toon shading", "outline filter"),
+    }
+    for profile, phrases in checks.items():
+        treatment = compose_creative_treatment(visual_language=profile)
+        assert treatment["profileVersions"] == {f"visual_language:{profile}": 1}
+        instruction = creative_treatment_instruction(treatment)
+        for phrase in phrases:
+            assert phrase in instruction
+
+
+def test_live_action_variants_are_distinct_and_do_not_invent_genre_content():
+    checks = {
+        "live_action_cinematic": ("photographed cinematic live action", "teal-orange", "Spectacle"),
+        "live_action_gritty": ("immediate textured live action", "gratuitous shake", "gore"),
+        "live_action_expressionist": ("expressionist live action", "graphic shadow structure", "hallucinations"),
+        "live_action_visceral_horror": ("visceral practical-effects horror language", "material cause-and-effect", "Blood"),
+        "live_action_1980s_action": ("1980s practical-action feature", "photochemical", "Fights"),
+        "live_action_classic_chinese_martial_arts": ("classic Chinese-language martial-arts cinema", "full-body master shots", "wirework"),
+    }
+    for profile, phrases in checks.items():
+        treatment = compose_creative_treatment(visual_language=profile)
+        instruction = creative_treatment_instruction(treatment)
+        for phrase in phrases:
+            assert phrase in instruction
+
+
+def test_period_action_combinations_preserve_unique_cross_axis_guidance():
+    treatment = compose_creative_treatment(
+        genre="action",
+        visual_language="live_action_1980s_action",
+        world_aesthetic="analog_1980s",
+        tone="kinetic",
+    )
+    instruction = creative_treatment_instruction(treatment)
+    assert "anticipation, action, impact, and recovery" in instruction
+    assert "1980s practical-action feature" in instruction
+    assert "1980s analog material" in instruction
+    assert "Increase the cadence and decisiveness" in instruction
+    assert "Fights, pursuers, weapons" in instruction
+    assert "cassette tapes, VHS, CRTs" in instruction
+
+
+@pytest.mark.parametrize(
+    ("axis", "profile", "positive", "prohibited"),
+    (
+        ("genre", "crime", "controlled information release", "Crimes, criminals"),
+        ("genre", "western", "human-to-landscape scale", "Frontiers, deserts"),
+        ("genre", "sports_competition", "continuous play", "Sports, matches"),
+        ("world_aesthetic", "urban_industrial", "structural depth", "Cities, factories"),
+        ("tone", "pulp_heightened", "bold economical emphasis", "Villains, heroes"),
+        ("tone", "stoic", "economical gesture", "Toughness, masculinity"),
+    ),
+)
+def test_new_cross_axis_profiles_add_direction_without_inventing_content(axis, profile, positive, prohibited):
+    kwargs = {axis: profile}
+    instruction = creative_treatment_instruction(compose_creative_treatment(**kwargs))
+    assert positive in instruction
+    assert prohibited in instruction
+
+
+def test_painterly_watercolor_and_gouache_are_independent_complete_rendering_contracts():
+    expected = {
+        "painterly_2d": (
+            "unmistakably non-photorealistic hand-painted 2D visual language",
+            "a mere painterly post-process filter",
+        ),
+        "watercolor_2d": (
+            "translucent layered washes",
+            "watercolor applied as a post-process filter",
+        ),
+        "gouache_2d": (
+            "opaque matte color fields",
+            "gouache used as a post-process filter",
+        ),
+    }
+    for profile, phrases in expected.items():
+        treatment = compose_creative_treatment(visual_language=profile)
+        assert treatment["profileVersions"] == {
+            f"visual_language:{profile}": 2 if profile == "painterly_2d" else 1,
+        }
+        instruction = creative_treatment_instruction(treatment)
+        assert "post-process filter" in instruction
+        assert "temporally stable" in instruction
+        assert phrases[0] in instruction
+        assert phrases[1] in instruction
 
 
 def test_combined_action_shonen_cyberpunk_epic_profile_is_subordinate_and_deduplicated():

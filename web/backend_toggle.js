@@ -122,20 +122,41 @@ const CREATIVE_CHOICES = {
         ["drama", "Drama"],
         ["adventure", "Adventure / epic"],
         ["mystery", "Mystery"],
+        ["crime", "Crime"],
+        ["western", "Western"],
+        ["sports_competition", "Sports competition"],
     ],
     visualLanguage: [
         ["none", "No preference"],
         ["anime_general", "General anime"],
-        ["anime_shonen", "Kinetic action anime"],
-        ["anime_shojo", "Lyrical character anime"],
-        ["animation_2d", "2D animation"],
-        ["documentary_observational", "Observational documentary"],
-        ["live_action_naturalistic", "Naturalistic live action"],
-        ["stylized_3d_animation", "Stylized 3D animation"],
-        ["stop_motion_handcrafted", "Handcrafted stop motion"],
-        ["painterly_2d", "Painterly 2D"],
+        ["anime_shonen", "Kinetic action anime (shōnen)"],
+        ["anime_shojo", "Lyrical shōjo anime"],
+        ["anime_shojo_pastel", "Classic luminous shōjo anime"],
+        ["anime_retro_dramatic", "Retro dramatic cel anime"],
+        ["anime_retro_gag_family", "Retro family gag anime"],
+        ["animation_2d", "General 2D animation"],
+        ["painterly_2d", "Painterly 2D animation"],
+        ["watercolor_2d", "Watercolor 2D animation"],
+        ["gouache_2d", "Gouache 2D animation"],
+        ["american_comic_pastel", "Pastel American comic"],
         ["graphic_novel", "Graphic novel"],
-        ["clean_commercial", "Clean commercial"],
+        ["graphic_noir", "Graphic noir"],
+        ["pixel_art_16bit", "16-bit pixel art"],
+        ["stylized_3d_animation", "Stylized 3D animation"],
+        ["cel_shaded_3d", "Cel-shaded 3D animation"],
+        ["low_poly_3d", "Low-poly 3D animation"],
+        ["game_3d_cinematic", "Real-time game cinematic"],
+        ["game_3d_nextgen", "Next-generation AAA cinematic"],
+        ["stop_motion_handcrafted", "Handcrafted stop motion"],
+        ["live_action_naturalistic", "Naturalistic live action"],
+        ["live_action_cinematic", "Cinematic narrative live action"],
+        ["live_action_gritty", "Gritty immediate live action"],
+        ["live_action_expressionist", "Expressionist live action"],
+        ["live_action_visceral_horror", "Visceral practical-effects horror"],
+        ["live_action_1980s_action", "1980s practical action cinema"],
+        ["live_action_classic_chinese_martial_arts", "Classic Chinese-language martial-arts cinema"],
+        ["documentary_observational", "Observational documentary"],
+        ["clean_commercial", "Clean commercial presentation"],
     ],
     worldAesthetic: [
         ["none", "No preference"],
@@ -150,6 +171,8 @@ const CREATIVE_CHOICES = {
         ["steampunk", "Steampunk"],
         ["post_apocalyptic", "Post-apocalyptic"],
         ["historical_period", "Historical period"],
+        ["analog_1980s", "Analog 1980s"],
+        ["urban_industrial", "Urban industrial"],
         ["retrofuturism_atomic_age", "Atomic-age retrofuturism"],
         ["retrofuturism_cassette", "Cassette futurism"],
         ["retrofuturism_y2k", "Y2K futurism"],
@@ -170,8 +193,21 @@ const CREATIVE_CHOICES = {
         ["surreal", "Surreal"],
         ["clinical", "Clinical"],
         ["raw", "Raw"],
+        ["kinetic", "Kinetic"],
+        ["pulp_heightened", "Pulp heightened"],
+        ["stoic", "Stoic"],
     ],
 };
+const VISUAL_LANGUAGE_GROUPS = [
+    ["Anime", ["anime_general", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
+    ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d"]],
+    ["Graphic & pixel styles", ["american_comic_pastel", "graphic_novel", "graphic_noir", "pixel_art_16bit"]],
+    ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
+    ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
+    ["Physical animation", ["stop_motion_handcrafted"]],
+    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "documentary_observational"]],
+    ["Commercial & presentation", ["clean_commercial"]],
+];
 const CINEMATOGRAPHY_CHOICES = {
     colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"]],
     exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
@@ -841,15 +877,19 @@ function allowedCreativeValue(key, value) {
     return typeof value === "string" && values.includes(value) ? value : "none";
 }
 
+function preservedCreativeValue(value, fallback = "none") {
+    return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
 function sanitizeCreativeTreatment(value) {
     const parsed = parseJsonObject(value);
     if (!parsed || parsed.schemaVersion !== CREATIVE_SCHEMA_VERSION) return defaultCreativeTreatment();
     return {
         schemaVersion: CREATIVE_SCHEMA_VERSION,
-        genre: allowedCreativeValue("genre", parsed.genre),
-        visualLanguage: allowedCreativeValue("visualLanguage", parsed.visualLanguage),
-        worldAesthetic: allowedCreativeValue("worldAesthetic", parsed.worldAesthetic),
-        tone: allowedCreativeValue("tone", parsed.tone),
+        genre: preservedCreativeValue(parsed.genre),
+        visualLanguage: preservedCreativeValue(parsed.visualLanguage),
+        worldAesthetic: preservedCreativeValue(parsed.worldAesthetic),
+        tone: preservedCreativeValue(parsed.tone),
     };
 }
 
@@ -946,10 +986,10 @@ function sanitizeShotPlan(value) {
 function serializeCreativeTreatment(state) {
     return JSON.stringify({
         schemaVersion: CREATIVE_SCHEMA_VERSION,
-        genre: allowedCreativeValue("genre", state?.genre),
-        visualLanguage: allowedCreativeValue("visualLanguage", state?.visualLanguage),
-        worldAesthetic: allowedCreativeValue("worldAesthetic", state?.worldAesthetic),
-        tone: allowedCreativeValue("tone", state?.tone),
+        genre: preservedCreativeValue(state?.genre),
+        visualLanguage: preservedCreativeValue(state?.visualLanguage),
+        worldAesthetic: preservedCreativeValue(state?.worldAesthetic),
+        tone: preservedCreativeValue(state?.tone),
     });
 }
 
@@ -1138,6 +1178,28 @@ function addSelectOptions(select, choices) {
     }
 }
 
+function addVisualLanguageOptions(select) {
+    const labels = new Map(CREATIVE_CHOICES.visualLanguage);
+    addSelectOptions(select, [["none", labels.get("none")]]);
+    for (const [groupLabel, values] of VISUAL_LANGUAGE_GROUPS) {
+        const group = document.createElement("optgroup");
+        group.label = groupLabel;
+        addSelectOptions(group, values.map((value) => [value, labels.get(value)]));
+        select.appendChild(group);
+    }
+}
+
+function ensureUnavailableOption(select, value) {
+    if (typeof value !== "string" || !value) return;
+    const exists = [...select.querySelectorAll("option")].some((option) => option.value === value);
+    if (exists) return;
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = `Unavailable in loaded catalog — ${value}`;
+    option.dataset.minimaxUnavailable = "true";
+    select.insertBefore(option, select.firstChild?.nextSibling ?? null);
+}
+
 function roundedDuration(value) {
     return Math.max(0.01, Math.round(value * 1000) / 1000);
 }
@@ -1241,9 +1303,17 @@ function updateCreativePanelEnhancementState(node) {
     const enabled = widgetValue === undefined || widgetValue === true || widgetValue === 1
         || String(widgetValue).toLowerCase() === "true";
     panel.treatmentBody.classList.toggle("minimax-h3-treatment-disabled", !enabled);
-    panel.treatmentStatus.textContent = enabled
-        ? ""
-        : "Treatment is saved but will not be applied while Enhance description is disabled.";
+    const unavailable = CREATIVE_FIELD_DEFINITIONS.flatMap(({ key, label }) => {
+        const value = node.__minimaxCreativeTreatmentState?.[key];
+        const known = CREATIVE_CHOICES[key].some(([token]) => token === value);
+        return known ? [] : [`${label}: ${value}`];
+    });
+    const messages = [];
+    if (!enabled) messages.push("Treatment is saved but will not be applied while Enhance description is disabled.");
+    if (unavailable.length) {
+        messages.push(`Unavailable in the loaded catalog (${unavailable.join(", ")}). Restart/update ComfyUI or choose a replacement.`);
+    }
+    panel.treatmentStatus.textContent = messages.join(" ");
     updateCreativePanelHeight(node);
 }
 
@@ -1486,6 +1556,7 @@ function hydrateCreativeDirectionPanel(node) {
     writeJsonStorage(node, shotWidget, JSON.stringify(shots));
     writeJsonStorage(node, cinematographyWidget, serializeCinematography(cinematography));
     for (const definition of CREATIVE_FIELD_DEFINITIONS) {
+        ensureUnavailableOption(panel.creativeSelects[definition.key], creative[definition.key]);
         panel.creativeSelects[definition.key].value = creative[definition.key];
     }
     updateCreativeTreatmentSummary(node);
@@ -1767,7 +1838,8 @@ function addCreativeDirectionPanel(node) {
         const select = createPanelElement("select", "");
         select.setAttribute("aria-label", definition.label);
         select.title = definition.title;
-        addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
+        if (definition.key === "visualLanguage") addVisualLanguageOptions(select);
+        else addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
         select.addEventListener("change", () => {
             node.__minimaxCreativeTreatmentState[definition.key] = allowedCreativeValue(definition.key, select.value);
             commitCreativeTreatment(node);
