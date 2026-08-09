@@ -1526,6 +1526,20 @@ The implementation is based on MiniMax's public
 and [official H3 launch documentation](https://minimaxi.com/blog/minimax-h3), with additional defensive validation and
 workflow-oriented controls. It is an original implementation and is not an official MiniMax or ComfyUI product.
 
+As of 9 August 2026, those two prompt-writing guides are the complete functional documentation in the official H3
+repository's `docs` directory (the remaining file covers licensing). This pack implements their documented prompt
+contracts for T2VA, I2VA, FL2VA, L2VA, and Ref2VA: section order, alignment sentences, chronological descriptions,
+shot numbering and cut timing, first/last-frame development, natural camera vocabulary including POV and optional
+amplitude/speed, speaker IDs, exact-language dialogue and lyrics, voiceover, cross-cut speech, visible text,
+soundscape/music separation, reference definitions and labels, task summaries, retention relationships, reference
+audio behavior, and the normal Ref2VA description-depth recommendation.
+
+This coverage claim applies to prompt writing, normalization, and structural validation. Resolution, frame geometry,
+sampler, steps, CFG, scheduler, model/LoRA weights, reference tensors, masks, and native H3 conditioning remain the
+responsibility of the surrounding ComfyUI workflow. The optional optics, depth-of-field, grain, diffusion, halation,
+and motion-rendering selectors are conservative natural-language directing aids; the official guides do not define
+them as deterministic H3 runtime parameters.
+
 ## Project status and license
 
 The project is beta software. Prompt validation and backend lifecycle behavior are tested, but model outputs remain nondeterministic.
