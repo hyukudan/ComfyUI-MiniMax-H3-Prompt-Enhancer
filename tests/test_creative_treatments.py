@@ -27,7 +27,8 @@ CANONICAL_CHOICES = {
         "crime", "western", "sports_competition",
     ),
     "visual_language": (
-        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family", "anime_ultradetailed_cinematic",
+        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "japanese_print_animation", "anime_ultradetailed_cinematic",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel",
         "animation_2d", "pixel_art_16bit",
@@ -271,11 +272,23 @@ def test_retro_serious_and_family_gag_anime_are_distinct_standalone_contracts():
     assert "must not add muscle mass" in dramatic_instruction
     assert "Martial arts, fights, attacks" in dramatic_instruction
 
-    assert gag["profileVersions"] == {"visual_language:anime_retro_gag_family": 2}
-    assert "early-1980s Japanese family gag-manga television animation" in gag_instruction
-    assert "rounded geometric construction" in gag_instruction
+    assert gag["profileVersions"] == {"visual_language:anime_retro_gag_family": 3}
+    assert "late-1970s-to-1980s Japanese family gag-manga television animation" in gag_instruction
+    assert "circular or softly squared heads" in gag_instruction
     assert "does not make the character foolish" in gag_instruction
     assert "ninjas, robots, mascots" in gag_instruction
+    assert "large simple oval eyes" in gag_instruction
+    assert "Ukiyo-e or woodblock-print rendering" in gag_instruction
+
+
+def test_japanese_print_animation_is_separate_from_retro_family_gag_anime():
+    treatment = compose_creative_treatment(visual_language="japanese_print_animation")
+    instruction = creative_treatment_instruction(treatment)
+    assert treatment["profileVersions"] == {"visual_language:japanese_print_animation": 1}
+    assert "moving Japanese woodblock-print-inspired graphic animation" in instruction
+    assert "carved-looking variable contours" in instruction
+    assert "instead of converting the story into historical Japan" in instruction
+    assert "Edo-period settings" in instruction
 
 
 def test_ultradetailed_anime_adds_precision_without_inventing_scene_detail():

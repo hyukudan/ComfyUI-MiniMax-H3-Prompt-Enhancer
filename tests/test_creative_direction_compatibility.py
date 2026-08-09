@@ -207,6 +207,7 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     for token in (
         "action", "horror", "thriller", "romance", "comedy", "drama", "adventure", "mystery",
         "anime_general", "anime_ultradetailed_cinematic", "anime_retro_dramatic", "anime_retro_gag_family",
+        "japanese_print_animation",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel", "animation_2d", "pixel_art_16bit",
         "stylized_3d_animation", "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d",

@@ -19,7 +19,7 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 13
+CREATIVE_PROFILE_CATALOG_VERSION = 14
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 4
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -290,29 +290,50 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Martial arts, fights, attacks, muscular physique, bodybuilder anatomy, scars, torn clothing, armor, weapons, wastelands, post-apocalyptic settings, gangs, violence, gore, powers, aura, speed lines, shouting, tragic plot, narrator, vintage damage, or franchise designs."),
     ),
     "anime_retro_gag_family": _profile(
-        version=2,
+        version=3,
         editing_and_pacing=(
-            "Present the sequence as unmistakable early-1980s Japanese family gag-manga television animation with clear setup-action-consequence readability only for events already supplied, economical pose changes, strongly graphic held poses, and deliberate limited-animation timing rather than modern fluid anime, soft children's-book illustration, or filtered live action.",
-            "Use simple pose-to-pose transitions and selective mouth, eye, hand, prop, and background-cycle animation while keeping the requested action physically complete and temporally coherent.",
+            "Present the sequence as unmistakable late-1970s-to-1980s Japanese family gag-manga television animation with clear setup-action-consequence readability only for events already supplied, snappy pose-to-pose changes, strongly graphic held cels, replacement eye and mouth drawings, and deliberate limited-animation timing.",
+            "Keep actions physically complete through economical key poses and selective eye, mouth, hand, prop, and background-cycle animation; do not soften the result into children's-book illustration or modern fluid anime.",
         ),
         camera_and_framing=(
-            "Use clean frontal, three-quarter, profile, and medium-wide staging; rounded readable silhouettes; simple domestic or neighborhood depth; uncluttered focal hierarchy; and restrained pans or holds compatible with classic family television animation.",
-            "Keep characters and props clearly separated and geography easy to understand without superhero foreshortening, dramatic lens effects, panel framing, or frantic camera motion.",
+            "Use clean eye-level frontal, three-quarter, profile, medium, and medium-wide staging that makes compact rounded character silhouettes, large readable faces, and simple gestures immediately legible.",
+            "Keep characters and props clearly separated against economical painted depth with restrained pans and holds; avoid superhero foreshortening, dramatic lens effects, print-like flattened perspective, panel framing, or frantic camera motion.",
         ),
         lighting_and_color=(
-            "Use crisp bold black contours, rounded geometric construction, opaque hard-edged cel fills, one simple shadow band at most, warm off-whites, strong clean primaries and secondaries, and a compact high-clarity television palette while preserving authoritative colors; avoid pastel softness and watercolor diffusion.",
-            "Keep outlines, facial features, flat fills, shadow shapes, palette assignments, and simplified painted backgrounds temporally stable without digital gradients, glossy highlights, line boil, color crawl, or modern compositing glow.",
+            "Use crisp uniform-to-gently-variable black ink contours, opaque hard-edged cel fills, one simple shadow band at most, warm off-whites, strong clean primaries and secondaries, and a compact high-clarity television palette while preserving authoritative colors.",
+            "Keep outlines, large simple eye shapes, small pupils, minimal nose and mouth marks, flat fills, shadow shapes, and simplified painted backgrounds temporally stable without pastel softness, watercolor diffusion, woodblock texture, paper grain, digital gradients, glossy highlights, line boil, or modern compositing glow.",
         ),
         production_design=(
-            "Unless authoritative content explicitly requires another medium, translate supplied subjects, wardrobe, objects, and environments into unmistakable retro Japanese family gag-manga animation with rounded compact shapes, simple oval or dot-like feature construction where identity permits, clean hands, iconic silhouettes, and economical painted backgrounds.",
-            "Preserve identity, ethnicity, age category, body type, count, wardrobe, object subtype, location, and required colors; graphic simplification must not turn an adult into a child, create chibi anatomy, or copy any existing mascot or character.",
+            "Translate supplied people into unmistakable retro Japanese family gag-manga television character design: circular or softly squared heads, rounded cheeks, slightly head-forward compact proportions, large simple oval eyes with small dark pupils, tiny economical nose and mouth marks, compact torsos, short clean limb shapes, simplified hands and feet, and highly readable silhouettes.",
+            "Translate supplied wardrobe, objects, and environments into the same bold economical cel vocabulary and painted-background language while preserving identity, ethnicity, age category, count, garment type, object subtype, location, and required colors. Adults must remain adults; compact design is not infant anatomy, chibi transformation, or a franchise likeness.",
         ),
         blocking_and_performance=(
-            "Use clear friendly poses, readable eye and mouth shapes, simple gestures, and concise reaction holds only to clarify supplied behavior; gag styling does not make the character foolish, clumsy, childish, or comedic by itself.",
+            "Use large readable eye direction, clear mouth shapes, compact graphic poses, simple hand gestures, and concise reaction holds only to clarify supplied behavior; gag styling does not make the character foolish, clumsy, childish, or comedic by itself.",
         ),
         sound_treatment=("Retro family-gag styling grants no funny voice, laughter, boing, whistle, percussion hit, chiptune, theme song, mascot vocal, or written sound effect; use only audio authorized by existing policies.",),
-        may_fill_unspecified=("Crisp rounded retro shape language, compact high-clarity palette, opaque hard-edged cel fill, simple shadow policy, classic limited-animation spacing, clean neighborhood or domestic background abstraction, and concise reaction posing."),
-        must_not_invent=("Pastel softness, watercolor diffusion, contemporary kawaii gloss, American children's-comic rendering, jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
+        may_fill_unspecified=("Circular head and cheek construction, slightly head-forward compact adult-safe proportions, large oval eyes with small pupils, minimal facial marks, crisp contour, opaque cel fill, compact high-clarity palette, classic limited-animation spacing, economical painted background depth, and concise reaction posing."),
+        must_not_invent=("Ukiyo-e or woodblock-print rendering, calligraphic brush texture, paper grain, Edo-period styling, pastel softness, watercolor diffusion, contemporary kawaii gloss, American children's-comic rendering, infant anatomy, jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
+    ),
+    "japanese_print_animation": _profile(
+        editing_and_pacing=(
+            "Present the supplied sequence as moving Japanese woodblock-print-inspired graphic animation, using composed tableau-like holds, deliberate pose changes, and selective motion within stable illustrated planes while preserving every requested event and its order.",
+        ),
+        camera_and_framing=(
+            "Use bold asymmetrical cropping, diagonal flow, clear negative space, tiered flattened depth, and controlled lateral or vertical parallax inspired by printed composition while keeping subject scale, geography, and physical action understandable.",
+        ),
+        lighting_and_color=(
+            "Use carved-looking variable contours, flat bounded color planes, restrained mineral-pigment-like color relationships, selective paper-and-ink texture, and graphic pattern rhythm with temporally stable registration and readable luminance separation.",
+            "Preserve authoritative skin, wardrobe, product, object, and reference colors; print texture must remain subtle and locked rather than flickering, crawling, fading, or simulating damaged archival material.",
+        ),
+        production_design=(
+            "Translate only the supplied people, wardrobe, objects, materials, and setting into a coherent Japanese print-inspired illustration vocabulary; retain their exact era, culture, identity, count, object subtype, architecture, and environment instead of converting the story into historical Japan.",
+        ),
+        blocking_and_performance=(
+            "Use clean profile, three-quarter, and full-figure poses with articulate hands, fabric direction, gaze, and weight transfer; stylized flatness must not break anatomy, contact, or causal movement.",
+        ),
+        sound_treatment=("Print-inspired visuals authorize no traditional instruments, narration, written effects, or added sound; follow only the selected audio policies and supplied sources.",),
+        may_fill_unspecified=("Woodblock-inspired contour rhythm, flat registered color planes, restrained print texture, asymmetrical negative space, tiered graphic depth, pattern hierarchy, and stable illustrated parallax."),
+        must_not_invent=("Edo-period settings, ukiyo-e subjects, kimono, samurai, geisha, kabuki, temples, Mount Fuji, waves, boats, cherry blossom, Japanese text, seals, borders, paper damage, fading, historical claims, traditional music, narration, or franchise imagery."),
     ),
     "anime_ultradetailed_cinematic": _profile(
         inherits=("anime_general",),

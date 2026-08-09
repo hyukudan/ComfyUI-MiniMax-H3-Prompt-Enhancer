@@ -2611,13 +2611,37 @@ def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[st
         patterns = (re.escape(str(profile_id)), rf"\b{re.escape(axis)}\s*:\s*{re.escape(value)}\b")
         if any(re.search(pattern, output_prompt or "", flags=re.IGNORECASE) for pattern in patterns):
             leaked.append(str(profile_id))
-    if not leaked:
-        return []
-    return [
-        "The output exposed internal creative profile identifier(s) "
-        f"{leaked!r}. Rewrite them as concrete self-contained visual, editorial, performance, and sound prose; "
-        "the final H3 prompt must not name selector IDs or control metadata."
-    ]
+    errors = []
+    if leaked:
+        errors.append(
+            "The output exposed internal creative profile identifier(s) "
+            f"{leaked!r}. Rewrite them as concrete self-contained visual, editorial, performance, and sound prose; "
+            "the final H3 prompt must not name selector IDs or control metadata."
+        )
+    selected = {str(profile_id) for profile_id in treatment.get("profileIds", ())}
+    if "visual_language:anime_retro_gag_family" in selected:
+        required = {
+            "round head/cheek construction": r"\b(?:circular|round(?:ed)?|softly[- ]squared)\s+(?:head|face|cheek)s?\b|\brounded\s+cheeks?\b",
+            "large simple oval eyes": r"\blarge\s+(?:simple\s+)?(?:oval|round(?:ed)?)\s+eyes?\b|\b(?:oval|round(?:ed)?)\s+eyes?\s+with\s+(?:small|dark)\s+pupils?\b",
+        }
+        absent = [label for label, pattern in required.items() if not re.search(
+            pattern, output_prompt or "", flags=re.IGNORECASE,
+        )]
+        if absent:
+            errors.append(
+                "The retro family gag-anime profile is missing its defining character design: "
+                f"{', '.join(absent)}. State these visible traits concretely while preserving identity and adult age."
+            )
+        forbidden_print = re.findall(
+            r"\b(?:ukiyo-e|woodblock(?:[- ]print)?|calligraphic brush|paper grain|Edo[- ]period)\b",
+            output_prompt or "", flags=re.IGNORECASE,
+        )
+        if forbidden_print:
+            errors.append(
+                "The retro family gag-anime profile must not be rendered as Japanese print art; remove "
+                f"{list(dict.fromkeys(forbidden_print))!r} and use crisp television cel character design instead."
+            )
+    return errors
 
 
 def validate_prompt(prompt: str, mode: str, duration_seconds: float,

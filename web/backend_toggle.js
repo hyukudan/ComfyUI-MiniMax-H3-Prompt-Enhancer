@@ -163,6 +163,7 @@ const CREATIVE_CHOICES = {
         ["painterly_2d", "Painterly 2D animation"],
         ["watercolor_2d", "Watercolor 2D animation"],
         ["gouache_2d", "Gouache 2D animation"],
+        ["japanese_print_animation", "Japanese print-inspired animation"],
         ["american_comic_pastel", "Pastel American comic"],
         ["graphic_novel", "Graphic novel"],
         ["graphic_noir", "Graphic noir"],
@@ -226,7 +227,7 @@ const CREATIVE_CHOICES = {
 };
 const VISUAL_LANGUAGE_GROUPS = [
     ["Anime", ["anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
-    ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d"]],
+    ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d", "japanese_print_animation"]],
     ["Graphic & pixel styles", ["american_comic_pastel", "graphic_novel", "graphic_noir", "pixel_art_16bit"]],
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],

@@ -143,6 +143,34 @@ non_diegetic_music: N/A"""
     )["valid"]
 
 
+def test_retro_family_gag_profile_requires_round_heads_and_large_simple_eyes_not_print_art():
+    treatment = json.dumps({"schemaVersion": 1, "visualLanguage": "anime_retro_gag_family"})
+    base = """integrated_multimodal_description: [Shot 1] An adult worker with {design} walks across an office.
+
+overall_soundscape: Footsteps cross the floor.
+
+non_diegetic_music: N/A"""
+    vague = validate_prompt(
+        base.format(design="a compact rounded silhouette"), "t2va", 5.0,
+        "An adult worker walks across an office.", creative_treatment_json=treatment,
+    )
+    assert not vague["valid"]
+    assert any("defining character design" in error for error in vague["errors"])
+
+    print_like = validate_prompt(
+        base.format(design="a circular head, rounded cheeks, large simple oval eyes, and woodblock-print texture"),
+        "t2va", 5.0, "An adult worker walks across an office.", creative_treatment_json=treatment,
+    )
+    assert not print_like["valid"]
+    assert any("must not be rendered as Japanese print art" in error for error in print_like["errors"])
+
+    correct = validate_prompt(
+        base.format(design="a circular head, rounded cheeks, large simple oval eyes with small pupils, and crisp cel fills"),
+        "t2va", 5.0, "An adult worker walks across an office.", creative_treatment_json=treatment,
+    )
+    assert correct["valid"], correct
+
+
 def test_fl2va_alignment_uses_actual_last_shot_number():
     first = alignment_instruction("fl2va", 8.0, 2)
     prompt = f"""{first}
