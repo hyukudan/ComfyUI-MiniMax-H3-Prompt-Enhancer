@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 
@@ -20,6 +21,20 @@ VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":1,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOT_PLAN_PLACEHOLDER = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"..."}]}'
 CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":1,"colorPalette":"none","cameraMotion":"none"}'
+ALWAYS_RE_ENHANCE_INPUT = {"default": False,
+                           "tooltip": "Re-run the LLM on every queue even when the inputs are unchanged. "
+                                      "Disabled reuses the cached enhancement, so requeueing an unchanged "
+                                      "prompt no longer forces the H3 sampler to regenerate the video."}
+API_KEY_TOOLTIP = ("Bearer token for the OpenAI-compatible endpoint. It is no longer saved into workflow "
+                   "files, so it must be retyped after reloading. Set MINIMAX_H3_PROMPT_ENHANCER_API_KEY "
+                   "instead for anything long-lived: enhance_prompt reads that environment variable "
+                   "whenever this widget is blank.")
+
+
+def _enhancement_digest(inputs):
+    """Hash the resolved inputs so identical queues reuse the cached enhancement result."""
+    payload = json.dumps(dict(inputs), sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _local_runtime_limits(context_size, startup_timeout):
@@ -161,7 +176,7 @@ class MiniMaxH3PromptEnhancer:
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
             "endpoint": ("STRING", {"default": "http://127.0.0.1:1234/v1"}),
             "model": ("STRING", {"default": "", "tooltip": "Blank excludes embedding models and prefers a compact local instruct model from /v1/models"}),
-            "api_key": ("STRING", {"default": "", "password": True}),
+            "api_key": ("STRING", {"default": "", "password": True, "tooltip": API_KEY_TOOLTIP}),
             "temperature": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05}),
             "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
             "timeout_seconds": ("INT", {"default": 300, "min": 10, "max": 1800, "step": 10}),
@@ -196,11 +211,17 @@ class MiniMaxH3PromptEnhancer:
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
+            # Appended last on purpose: ComfyUI stores widget values positionally, so a new control
+            # anywhere else would shift every saved workflow's widgets_values by one slot.
+            "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
         }}
 
     @classmethod
-    def IS_CHANGED(cls, **_kwargs):
-        return float("nan")
+    def IS_CHANGED(cls, always_re_enhance=False, **kwargs):
+        """Reuse the previous enhancement while the inputs are identical."""
+        if always_re_enhance:
+            return float("nan")
+        return _enhancement_digest(kwargs)
 
     @classmethod
     def VALIDATE_INPUTS(cls, local_model=None, llama_server_path=None):
@@ -220,7 +241,9 @@ class MiniMaxH3PromptEnhancer:
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
-                instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
+                instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
+                always_re_enhance=False):
+        # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -325,11 +348,17 @@ class MiniMaxH3GGUFPromptEnhancer:
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
+            # Appended last on purpose: ComfyUI stores widget values positionally, so a new control
+            # anywhere else would shift every saved workflow's widgets_values by one slot.
+            "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
         }}
 
     @classmethod
-    def IS_CHANGED(cls, **_kwargs):
-        return float("nan")
+    def IS_CHANGED(cls, always_re_enhance=False, **kwargs):
+        """Reuse the previous enhancement while the inputs are identical."""
+        if always_re_enhance:
+            return float("nan")
+        return _enhancement_digest(kwargs)
 
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, llama_server_path,
                 gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
@@ -340,7 +369,9 @@ class MiniMaxH3GGUFPromptEnhancer:
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
-                instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
+                instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
+                always_re_enhance=False):
+        # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,

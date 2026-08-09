@@ -25,6 +25,7 @@ const REMOTE_WIDGETS = [
     API_MODEL_REFRESH,
     API_MODEL_PICKER,
 ];
+const API_KEY_WIDGET = "api_key";
 const LOCAL_WIDGETS = [
     "local_model",
     "llama_server_path",
@@ -1033,10 +1034,9 @@ function sanitizeShotPlan(value) {
         return defaultShotPlan();
     }
 
-    const requestedTiming = parsed.timingMode === "exact" ? "exact" : "auto";
+    const timingMode = parsed.timingMode === "exact" ? "exact" : "auto";
     const shots = [];
     const usedIds = new Set();
-    let exactIsComplete = requestedTiming === "exact";
     for (const rawShot of parsed.shots.slice(0, MAX_SHOTS)) {
         const source = rawShot && typeof rawShot === "object" && !Array.isArray(rawShot) ? rawShot : {};
         let id = typeof source.id === "string" ? source.id.trim() : "";
@@ -1056,20 +1056,20 @@ function sanitizeShotPlan(value) {
             && source.transitionIn !== "cut") {
             shot.transitionIn = source.transitionIn;
         }
-        if (requestedTiming === "exact") {
+        if (timingMode === "exact") {
+            // A row without a usable duration keeps no durationSeconds key. The
+            // plan stays "exact" on purpose: silently downgrading to auto used
+            // to erase every duration the user had already typed. The missing
+            // row is surfaced by updateShotSummary (red summary + aria-invalid)
+            // and, if it is still missing at run time, rejected by the backend's
+            // parse_shot_plan with an explicit error.
             const duration = validDuration(source.durationSeconds);
-            if (duration === null) {
-                exactIsComplete = false;
-            } else {
-                shot.durationSeconds = duration;
-            }
+            if (duration !== null) shot.durationSeconds = duration;
         }
         shots.push(shot);
     }
 
-    // An incomplete exact plan must not reach the backend with a mixture of
-    // timed and untimed rows. Downgrade it to auto instead of inventing times.
-    const timingMode = exactIsComplete ? "exact" : "auto";
+    // Auto timing never carries per-row durations.
     if (timingMode === "auto") {
         for (const shot of shots) delete shot.durationSeconds;
     }
@@ -1366,9 +1366,51 @@ function observeCreativePanelLayout(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel || panel.layoutObserver || typeof ResizeObserver !== "function") return;
     panel.layoutObserver = new ResizeObserver(() => scheduleCreativePanelLayout(node));
+    // Also parked on the node so releaseCreativeDirectionPanel can disconnect it
+    // without depending on the panel record still being reachable.
+    node.__minimaxPanelResizeObserver = panel.layoutObserver;
     for (const body of panel.root.querySelectorAll(".minimax-h3-panel-body")) {
         panel.layoutObserver.observe(body);
     }
+}
+
+function releaseCreativeDirectionPanel(node) {
+    node.__minimaxPanelResizeObserver?.disconnect?.();
+    node.__minimaxPanelResizeObserver = null;
+    const panel = node.__minimaxCreativePanel;
+    if (panel) {
+        panel.layoutObserver = null;
+        // addDOMWidget owns the element: ComfyUI detaches it from its DOM
+        // container when the node goes away. Only clean up what it left behind,
+        // never remove an element the frontend still manages.
+        if (panel.root?.isConnected) panel.root.remove();
+        // The panel widget is non-persistent (markPanelWidgetNonPersistent), so
+        // dropping it cannot shift widgets_values. Removing it keeps a re-added
+        // node instance from ending up with two stacked panels.
+        const panelIndex = node.widgets?.indexOf(panel.widget) ?? -1;
+        if (panelIndex >= 0) node.widgets.splice(panelIndex, 1);
+    }
+    node.__minimaxCreativePanel = null;
+    node.__minimaxCreativeTreatmentState = null;
+    node.__minimaxCinematographyState = null;
+    node.__minimaxShotPlanState = null;
+    node.__minimaxProxyManagedWidgets = null;
+    node.__minimaxInstrumentalStyleProxy = null;
+    node.__minimaxCreativeLayoutPending = false;
+}
+
+function installCreativePanelCleanup(node) {
+    if (node.__minimaxPanelCleanupInstalled) return;
+    node.__minimaxPanelCleanupInstalled = true;
+    const originalRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        // Run the previous handler first: addDOMWidget installs its own
+        // onRemoved to detach the element, so releasing afterwards never
+        // double-removes it.
+        const result = originalRemoved?.apply(this, arguments);
+        releaseCreativeDirectionPanel(this);
+        return result;
+    };
 }
 
 function updateCreativePanelMode(node) {
@@ -1521,6 +1563,12 @@ function updateShotSummary(node) {
         const total = state.shots.reduce((sum, shot) => sum + (validDuration(shot.durationSeconds) ?? 0), 0);
         const expected = effectiveDuration(node);
         const chained = chainedMode;
+        // Rows loaded without a usable duration are kept as-is instead of
+        // wiping the whole plan, so they must be reported here.
+        const missingDurations = state.shots.filter((shot) => validDuration(shot.durationSeconds) === null).length;
+        if (missingDurations) {
+            problems.push(`${missingDurations} ${missingDurations === 1 ? "row needs" : "rows need"} a duration`);
+        }
         if (chained) {
             const invalidSegment = state.shots.some((shot) => {
                 const duration = validDuration(shot.durationSeconds);
@@ -1594,8 +1642,13 @@ function renderShotRows(node) {
             duration.min = "0.01";
             duration.max = "3600";
             duration.step = "0.1";
-            duration.value = String(shot.durationSeconds);
+            // A stored plan may carry a row without a usable duration (hand
+            // edited or legacy JSON). Show it as an empty, invalid field instead
+            // of printing "undefined" or discarding the sibling durations.
+            const storedDuration = validDuration(shot.durationSeconds);
+            duration.value = storedDuration === null ? "" : String(storedDuration);
             duration.setAttribute("aria-label", `Exact duration for row ${index + 1}`);
+            duration.setAttribute("aria-invalid", storedDuration === null ? "true" : "false");
             duration.title = "Required for every row when exact timing is enabled.";
             duration.addEventListener("input", () => {
                 const next = validDuration(duration.value);
@@ -1607,8 +1660,9 @@ function renderShotRows(node) {
             });
             duration.addEventListener("blur", () => {
                 const next = validDuration(duration.value);
-                if (next === null) duration.value = String(shot.durationSeconds);
-                duration.setAttribute("aria-invalid", "false");
+                const current = validDuration(shot.durationSeconds);
+                if (next === null) duration.value = current === null ? "" : String(current);
+                duration.setAttribute("aria-invalid", validDuration(duration.value) === null ? "true" : "false");
             });
             durationField.appendChild(duration);
             fields.appendChild(durationField);
@@ -1805,22 +1859,13 @@ function createModelSetupDetails(node) {
                 refresh.disabled = true;
                 refresh.textContent = "Loading…";
                 try {
-                    const response = await api.fetchApi("/minimax_h3_prompt_enhancer/models", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            endpoint: node.widgets?.find((widget) => widget.name === "endpoint")?.value ?? "",
-                            api_key: node.widgets?.find((widget) => widget.name === "api_key")?.value ?? "",
-                            allow_remote_endpoint: node.widgets?.find((widget) => widget.name === "allow_remote_endpoint")?.value === true,
-                        }),
-                    });
-                    const payload = await response.json();
-                    if (!response.ok) throw new Error(payload?.error ?? `HTTP ${response.status}`);
+                    const models = await requestDiscoveredModels(node);
                     discovered.replaceChildren();
-                    addSelectOptions(discovered, [[AUTOMATIC_MODEL, AUTOMATIC_MODEL], ...(payload.models ?? []).map((value) => [value, value])]);
+                    addSelectOptions(discovered, [[AUTOMATIC_MODEL, AUTOMATIC_MODEL], ...models.map((value) => [value, value])]);
                     const current = String(node.widgets?.find((widget) => widget.name === "model")?.value ?? "");
                     discovered.value = current && [...discovered.options].some((option) => option.value === current)
                         ? current : AUTOMATIC_MODEL;
+                    if (!models.length) notifyModelDiscoveryError("The endpoint returned no chat-capable models.");
                 } catch (error) {
                     notifyModelDiscoveryError(error?.message ?? String(error));
                 } finally {
@@ -2113,6 +2158,7 @@ function addCreativeDirectionPanel(node) {
         advancedSettings,
     };
     observeCreativePanelLayout(node);
+    installCreativePanelCleanup(node);
     const managedNames = new Set([
         ...(modelSetup?.canonicalNames ?? []),
         ...(chainedSettings?.canonicalNames ?? []),
@@ -2197,6 +2243,34 @@ function notifyModelDiscoveryError(message) {
     }
 }
 
+// Single request/response contract for both discovery entry points (the canvas
+// button and the panel button). Non-JSON answers used to surface as a cryptic
+// parser error in the panel; both now get the explicit "backend not loaded"
+// diagnosis.
+async function requestDiscoveredModels(node) {
+    const response = await api.fetchApi("/minimax_h3_prompt_enhancer/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            endpoint: node.widgets?.find((widget) => widget.name === "endpoint")?.value ?? "",
+            api_key: node.widgets?.find((widget) => widget.name === API_KEY_WIDGET)?.value ?? "",
+            allow_remote_endpoint: node.widgets?.find((widget) => widget.name === "allow_remote_endpoint")?.value === true,
+        }),
+    });
+    const rawResponse = await response.text();
+    let payload;
+    try {
+        payload = JSON.parse(rawResponse);
+    } catch {
+        if ([404, 405].includes(response.status)) {
+            throw new Error("The model-list backend is not loaded. Restart ComfyUI, then refresh the page.");
+        }
+        throw new Error(`The server returned a non-JSON response (HTTP ${response.status}).`);
+    }
+    if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+    return Array.isArray(payload?.models) ? payload.models.filter(Boolean) : [];
+}
+
 function addRemoteModelDiscovery(node) {
     if (node.__minimaxModelDiscoveryAdded) return;
     node.__minimaxModelDiscoveryAdded = true;
@@ -2213,34 +2287,11 @@ function addRemoteModelDiscovery(node) {
     picker.label = "Choose discovered model";
 
     const refresh = node.addWidget("button", API_MODEL_REFRESH, null, async () => {
-        const endpoint = node.widgets?.find((widget) => widget.name === "endpoint")?.value ?? "";
-        const apiKey = node.widgets?.find((widget) => widget.name === "api_key")?.value ?? "";
-        const allowRemote = node.widgets?.find((widget) => widget.name === "allow_remote_endpoint")?.value === true;
         const previousLabel = refresh.label;
         refresh.label = "Loading models…";
         node.graph?.setDirtyCanvas?.(true, true);
         try {
-            const response = await api.fetchApi("/minimax_h3_prompt_enhancer/models", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    endpoint,
-                    api_key: apiKey,
-                    allow_remote_endpoint: allowRemote,
-                }),
-            });
-            const rawResponse = await response.text();
-            let payload;
-            try {
-                payload = JSON.parse(rawResponse);
-            } catch {
-                if ([404, 405].includes(response.status)) {
-                    throw new Error("The model-list backend is not loaded. Restart ComfyUI, then refresh the page.");
-                }
-                throw new Error(`The server returned a non-JSON response (HTTP ${response.status}).`);
-            }
-            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-            const discovered = Array.isArray(payload.models) ? payload.models.filter(Boolean) : [];
+            const discovered = await requestDiscoveredModels(node);
             const current = String(modelWidget.value ?? "").trim();
             const values = [AUTOMATIC_MODEL, ...discovered];
             if (current && !values.includes(current)) values.push(current);
@@ -2409,6 +2460,59 @@ function enforceConditionalVisibility(node) {
     for (const name of managed) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false);
 }
 
+// enforceConditionalVisibility is idempotent, but it walks every widget on every
+// call. onDrawForeground runs per frame, so it compares this signature of the
+// drivers the function actually reads and re-runs only when one of them changed.
+function conditionalVisibilitySignature(node) {
+    const value = (name) => node.widgets?.find((widget) => widget.name === name)?.value;
+    return [
+        node.widgets?.length ?? 0,
+        node.__minimaxProxyManagedWidgets?.size ?? 0,
+        node.__minimaxInstrumentalStyleProxy ? 1 : 0,
+        String(value("use_remote_model")),
+        String(value("mode")),
+        String(value("background_score_policy")),
+        String(value("show_advanced_controls")),
+        String(value("reference_context") ?? "").trim() ? 1 : 0,
+        String(value("media_manifest") ?? "").trim() ? 1 : 0,
+        Number(value("frame_count") ?? 0) > 0 ? 1 : 0,
+    ].join("|");
+}
+
+function protectApiKeyWidget(node) {
+    const widget = node.widgets?.find((candidate) => candidate.name === API_KEY_WIDGET);
+    if (!widget || widget.__minimaxApiKeyProtected) return;
+    // Saved workflows (and the workflow embedded in generated media) must not
+    // carry the key in plain text, but the running graph still needs it.
+    // Persistence goes through node.serialize()/asSerialisable(), while
+    // graphToPrompt reads widget.serializeValue() directly, so a scope flag set
+    // around the serializer separates both callers.
+    // serialize stays true on purpose: dropping the widget from widgets_values
+    // would shift every later value (see repairLegacyModelDiscoveryShift).
+    let guarded = false;
+    for (const method of ["serialize", "asSerialisable"]) {
+        const original = node[method];
+        if (typeof original !== "function") continue;
+        guarded = true;
+        node[method] = function (...args) {
+            const previous = node.__minimaxSerializingWorkflow;
+            node.__minimaxSerializingWorkflow = true;
+            try {
+                return original.apply(this, args);
+            } finally {
+                node.__minimaxSerializingWorkflow = previous;
+            }
+        };
+    }
+    if (!guarded) return;
+    widget.__minimaxApiKeyProtected = true;
+    const originalSerializeValue = widget.serializeValue;
+    widget.serializeValue = function (...args) {
+        if (node.__minimaxSerializingWorkflow) return "";
+        return originalSerializeValue ? originalSerializeValue.apply(this, args) : widget.value;
+    };
+}
+
 function applyLabels(node) {
     for (const [name, label] of Object.entries(DISPLAY_LABELS)) {
         const widget = node.widgets?.find((candidate) => candidate.name === name);
@@ -2507,6 +2611,7 @@ function wrapRefreshCallback(node, widgetName, refresh) {
 function configureAudioNode(node) {
     applyMultilineTitles(node);
     applyLabels(node);
+    protectApiKeyWidget(node);
     normalizeMigratedRuntimeWidgets(node);
     addInstrumentalStyleProxy(node);
     wrapRefreshCallback(node, "background_score_policy", refreshInstrumentalWidget);
@@ -2523,6 +2628,17 @@ function configureAudioNode(node) {
     enforceConditionalVisibility(node);
 }
 
+// onDrawForeground is a canvas-only hook: the Vue-nodes frontend may never call
+// it, which used to leave legacy workflows unmigrated and conditional widgets
+// visible. Both passes are idempotent, so they also run from the lifecycle
+// hooks. __minimaxWidgetMigrationComplete is deliberately left untouched here so
+// the canvas frontend keeps its original one-shot pass on the first frame, for
+// the case where widget values only settle after onConfigure returns.
+function applyRuntimeWidgetState(node) {
+    normalizeMigratedRuntimeWidgets(node, true);
+    enforceConditionalVisibility(node);
+}
+
 app.registerExtension({
     name: "MiniMaxH3PromptEnhancer.BackendToggle",
     beforeRegisterNodeDef(nodeType, nodeData) {
@@ -2536,6 +2652,7 @@ app.registerExtension({
             configureAudioNode(this);
             configureCreativeDirectionNode(this, NODE_NAME);
             refreshBackendWidgets(this);
+            applyRuntimeWidgetState(this);
             return result;
         };
         const originalConfigured = nodeType.prototype.onConfigure;
@@ -2548,6 +2665,7 @@ app.registerExtension({
             configureAudioNode(this);
             configureCreativeDirectionNode(this, NODE_NAME);
             refreshBackendWidgets(this);
+            applyRuntimeWidgetState(this);
             return result;
         };
         const originalDrawForeground = nodeType.prototype.onDrawForeground;
@@ -2556,7 +2674,12 @@ app.registerExtension({
                 normalizeMigratedRuntimeWidgets(this, true);
                 this.__minimaxWidgetMigrationComplete = true;
             }
-            enforceConditionalVisibility(this);
+            // Per-frame hook: only re-enforce when a driver value changed.
+            const visibilitySignature = conditionalVisibilitySignature(this);
+            if (this.__minimaxVisibilitySignature !== visibilitySignature) {
+                this.__minimaxVisibilitySignature = visibilitySignature;
+                enforceConditionalVisibility(this);
+            }
             const panel = this.__minimaxCreativePanel;
             if (panel) {
                 const expectedWidth = Math.max(240, (Number(this.size?.[0]) || MIN_NODE_WIDTH) - 20);

@@ -29,6 +29,8 @@ NEW_FIELDS = [
 ]
 JSON_FIELDS = NEW_FIELDS[:3]
 NEW_FIELD_DEFAULTS = ["", "", "", "none", "none", "off"]
+# Appended after NEW_FIELDS on the two LLM-backed nodes only; the guide builder never calls an LLM.
+CACHING_FIELDS = ["always_re_enhance"]
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 CREATIVE = '{"schemaVersion":1,"genre":"action","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOTS = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"One shot."}]}'
@@ -38,6 +40,11 @@ CINEMATOGRAPHY = '{"schemaVersion":1,"colorPalette":"warm","cameraMotion":"push_
 def _input_names(node_class):
     inputs = node_class.INPUT_TYPES()
     return [*inputs["required"], *inputs.get("optional", {})]
+
+
+def _appended_fields(node_class):
+    caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
+    return [*NEW_FIELDS, *caching]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -60,13 +67,16 @@ def test_new_serialized_inputs_are_appended_after_every_legacy_node_input():
         current = _input_names(node_class)
         legacy = fixture["nodes"][name]
         assert current[:len(legacy)] == legacy
-        assert current[len(legacy):] == NEW_FIELDS
+        assert current[len(legacy):] == _appended_fields(node_class)
 
 
 def test_new_serialized_inputs_have_neutral_migration_defaults():
     for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer, MiniMaxH3PromptGuideBuilder):
         optional = node_class.INPUT_TYPES()["optional"]
-        assert list(optional)[-len(NEW_FIELDS):] == NEW_FIELDS
+        appended = _appended_fields(node_class)
+        assert list(optional)[-len(appended):] == appended
+        for name in appended[len(NEW_FIELDS):]:
+            assert optional[name][1]["default"] is False
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -108,20 +118,24 @@ def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
 
 
 def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
-    callables = (
-        build_user_request,
-        prompt_enhancer.enhance_prompt_with_completion,
-        prompt_enhancer.enhance_prompt,
-        gguf_server.enhance_prompt_with_gguf_server,
-        MiniMaxH3PromptGuideBuilder.build,
-        MiniMaxH3PromptEnhancer.enhance,
-        MiniMaxH3GGUFPromptEnhancer.enhance,
-    )
-    for callable_ in callables:
+    callables = {
+        build_user_request: [],
+        prompt_enhancer.enhance_prompt_with_completion: [],
+        prompt_enhancer.enhance_prompt: [],
+        gguf_server.enhance_prompt_with_gguf_server: [],
+        MiniMaxH3PromptGuideBuilder.build: [],
+        MiniMaxH3PromptEnhancer.enhance: CACHING_FIELDS,
+        MiniMaxH3GGUFPromptEnhancer.enhance: CACHING_FIELDS,
+    }
+    for callable_, caching in callables.items():
         parameters = [
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        if caching:
+            assert [parameter.name for parameter in parameters[-len(caching):]] == caching
+            assert [parameter.default for parameter in parameters[-len(caching):]] == [False] * len(caching)
+            parameters = parameters[:-len(caching)]
         assert [parameter.name for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELDS
         assert [parameter.default for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELD_DEFAULTS
 

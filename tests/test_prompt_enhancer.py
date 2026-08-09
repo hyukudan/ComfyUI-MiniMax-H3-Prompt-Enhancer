@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import json
+from urllib.error import HTTPError
 
 import pytest
 
@@ -14,6 +16,19 @@ VALID_PROMPT = """integrated_multimodal_description: [Shot 1] Live-action, cinem
 overall_soundscape: Rain falls while armor plates move with each step.
 
 non_diegetic_music: N/A"""
+
+
+NATIVE_URL = "http://127.0.0.1:1234/api/v1/chat"
+CHAT_URL = "http://127.0.0.1:1234/v1/chat/completions"
+MESSAGES = [{"role": "system", "content": "rules"}, {"role": "user", "content": "request"}]
+
+
+@pytest.fixture(autouse=True)
+def _forget_probed_native_endpoints():
+    """The native-endpoint probe cache is process-wide; keep every test order-independent."""
+    prompt_enhancer._reset_native_chat_cache()
+    yield
+    prompt_enhancer._reset_native_chat_cache()
 
 
 class FakeResponse:
@@ -28,6 +43,30 @@ class FakeResponse:
 
     def read(self):
         return json.dumps(self.payload).encode("utf-8")
+
+
+def _http_error(url, code):
+    return HTTPError(url, code, "failed", {}, io.BytesIO(b"{}"))
+
+
+def _record_completions(monkeypatch, calls, native_error=None):
+    """Run `calls` identical completions and return every requested URL in order."""
+    urls = []
+
+    def fake_urlopen(request, timeout):
+        urls.append(request.full_url)
+        if request.full_url.endswith("/api/v1/chat"):
+            if native_error is not None:
+                raise _http_error(request.full_url, native_error)
+            return FakeResponse({"output": [{"type": "message", "content": VALID_PROMPT}]})
+        return FakeResponse({"choices": [{"message": {"content": VALID_PROMPT}}]})
+
+    monkeypatch.setattr(prompt_enhancer, "urlopen", fake_urlopen)
+    for _ in range(calls):
+        assert prompt_enhancer._completion(
+            "http://127.0.0.1:1234/v1", "qwen", MESSAGES, "", 0.1, 500, 30, True,
+        ) == VALID_PROMPT
+    return urls
 
 
 def test_enhancer_auto_discovers_model_and_never_puts_api_key_in_manifest(monkeypatch):
@@ -341,3 +380,31 @@ def test_pipeline_records_requested_and_applied_instrumental_style():
     assert active["instrumentalStyleApplied"] == "jazz"
     assert inactive["instrumentalStyleRequested"] == "jazz"
     assert inactive["instrumentalStyleApplied"] == "none"
+
+
+def test_a_missing_native_endpoint_is_probed_once_per_root(monkeypatch):
+    urls = _record_completions(monkeypatch, 2, native_error=404)
+    assert urls == [NATIVE_URL, CHAT_URL, CHAT_URL]
+
+
+def test_a_server_exposing_the_native_endpoint_keeps_using_it(monkeypatch):
+    assert _record_completions(monkeypatch, 2) == [NATIVE_URL, NATIVE_URL]
+
+
+def test_an_authentication_failure_does_not_mark_the_root_as_non_native(monkeypatch):
+    # 401/403/407 answer the credential question, not the endpoint-shape question, so the root
+    # is probed again on the next call instead of being remembered as OpenAI-compatible only.
+    urls = _record_completions(monkeypatch, 2, native_error=401)
+    assert urls == [NATIVE_URL, CHAT_URL, NATIVE_URL, CHAT_URL]
+
+
+def test_a_native_root_that_stops_answering_falls_back_and_stops_being_probed(monkeypatch):
+    assert _record_completions(monkeypatch, 1) == [NATIVE_URL]
+    urls = _record_completions(monkeypatch, 2, native_error=405)
+    assert urls == [NATIVE_URL, CHAT_URL, CHAT_URL]
+
+
+def test_resetting_the_probe_cache_restores_native_probing(monkeypatch):
+    assert _record_completions(monkeypatch, 2, native_error=404) == [NATIVE_URL, CHAT_URL, CHAT_URL]
+    prompt_enhancer._reset_native_chat_cache()
+    assert _record_completions(monkeypatch, 1, native_error=404) == [NATIVE_URL, CHAT_URL]

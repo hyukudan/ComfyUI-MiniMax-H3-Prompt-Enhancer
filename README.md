@@ -343,6 +343,7 @@ Generation and repair controls:
 | `timeout_seconds` | `300` | 10–1800 seconds for endpoint model discovery and each endpoint completion |
 | `repair_attempts` | `2` | 0–4 additional attempts for both applicable dialogue-ledger planning and main-prompt repair |
 | `disable_thinking` | enabled | Requests reasoning-off output where supported; see [Remote API behavior](#remote-api-behavior) |
+| `always_re_enhance` | disabled | Disabled reuses the cached enhancement while every input stays identical, so requeueing does not rewrite the prompt and force the H3 sampler to regenerate; enable it to call the LLM on every queue |
 
 Remote-only controls:
 
@@ -350,7 +351,7 @@ Remote-only controls:
 |---|---:|---|
 | `endpoint` | `http://127.0.0.1:1234/v1` | OpenAI-compatible API root; a trailing `/chat/completions` is normalized back to its root |
 | `model` | blank | Exact server model ID; blank discovers and chooses a compact chat/instruct candidate |
-| `api_key` | blank | Bearer token; blank falls back to `MINIMAX_H3_PROMPT_ENHANCER_API_KEY` for enhancement requests |
+| `api_key` | blank | Bearer token, never saved into the workflow file; blank falls back to `MINIMAX_H3_PROMPT_ENHANCER_API_KEY` for enhancement requests |
 | `allow_remote_endpoint` | disabled | Required for every host except `localhost`, `::1`, and `127.*` |
 
 Main-node local controls:
@@ -1659,9 +1660,14 @@ When `disable_thinking=true`, the endpoint route first tries LM Studio's native 
 `/chat/completions` with `chat_template_kwargs.enable_thinking=false`. Other servers may ignore that optional argument.
 With `disable_thinking=false`, the node uses `/chat/completions` directly and sends no reasoning-disable option.
 
-An empty API-key widget falls back to `MINIMAX_H3_PROMPT_ENHANCER_API_KEY` during enhancement. Browser model discovery
-does not read that environment fallback; on an authenticated server, enter the model ID manually or temporarily enter
-the key to refresh the picker. The backend sends it only as `Authorization: Bearer ...`.
+An empty API-key widget falls back to `MINIMAX_H3_PROMPT_ENHANCER_API_KEY` during enhancement. The widget value is not
+serialized into saved workflows, so the environment variable is the recommended way to supply a long-lived key. Browser
+model discovery does not read that environment fallback; on an authenticated server, enter the model ID manually or
+temporarily enter the key to refresh the picker. The backend sends it only as `Authorization: Bearer ...`.
+
+The first `/api/v1/chat` probe per endpoint root is remembered for the ComfyUI process: a server that answers `404`,
+`405`, or any other non-authentication HTTP error there is not probed again, so repair attempts and dialogue-planner
+calls go straight to `/chat/completions`. Authentication failures and unreachable endpoints do not disable the probe.
 
 ### GGUF discovery
 
@@ -1775,8 +1781,10 @@ configuration hook can run before queueing it.
 
 - Remote endpoints are blocked unless they are loopback or `allow_remote_endpoint=true`.
 - API keys are sent only as authorization headers and are excluded from manifests.
-- The password-style API-key widget masks the value on screen but ComfyUI may still serialize it in the workflow.
-  Clear it before sharing workflow JSON, or leave it blank and use `MINIMAX_H3_PROMPT_ENHANCER_API_KEY`.
+- The password-style API-key widget masks the value on screen, and as of this version its value is kept out of saved
+  workflow JSON, so a key typed into the node has to be retyped after reloading the workflow. Use
+  `MINIMAX_H3_PROMPT_ENHANCER_API_KEY` for anything long-lived. Workflows saved by older versions may already contain
+  the key in plain text; scrub that field before sharing or publishing them.
 - A remote endpoint receives the basic prompt, generated guide, reference notes, media metadata, shot descriptions,
   and any exact dialogue needed for rewriting. It never receives actual image/video/audio bytes from this node, but
   the text may still be sensitive. Use only an endpoint whose privacy policy you accept.

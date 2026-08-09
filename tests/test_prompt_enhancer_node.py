@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 import json
+import math
 
 import prompt_enhancer_node
-from prompt_enhancer_node import MiniMaxH3PromptEnhancer, MiniMaxH3PromptGuideBuilder
+from prompt_enhancer_node import (
+    MiniMaxH3GGUFPromptEnhancer,
+    MiniMaxH3PromptEnhancer,
+    MiniMaxH3PromptGuideBuilder,
+    MiniMaxH3UnloadGGUFServer,
+)
 
 
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
@@ -142,3 +148,62 @@ def test_non_numeric_shifted_local_runtime_values_fall_back_safely():
     assert prompt_enhancer_node._local_runtime_limits(
         r"D:\models\llama-server.exe", "follow_prompt",
     ) == (16384, 180)
+
+
+def test_identical_inputs_reuse_the_cached_enhancement():
+    inputs = {"basic_prompt": "a knight", "mode": "t2va", "duration_seconds": 5.0, "repair_attempts": 2}
+    digest = MiniMaxH3PromptEnhancer.IS_CHANGED(**inputs)
+    assert digest == MiniMaxH3PromptEnhancer.IS_CHANGED(**inputs)
+    assert len(digest) == 64
+    assert digest != MiniMaxH3PromptEnhancer.IS_CHANGED(**{**inputs, "basic_prompt": "a pirate"})
+    assert digest == MiniMaxH3GGUFPromptEnhancer.IS_CHANGED(**inputs)
+
+
+def test_input_digest_ignores_keyword_ordering():
+    assert MiniMaxH3PromptEnhancer.IS_CHANGED(
+        basic_prompt="a knight", mode="t2va", duration_seconds=5.0,
+    ) == MiniMaxH3PromptEnhancer.IS_CHANGED(
+        duration_seconds=5.0, mode="t2va", basic_prompt="a knight",
+    )
+
+
+def test_missing_and_unserializable_inputs_still_produce_a_digest():
+    assert len(MiniMaxH3PromptEnhancer.IS_CHANGED()) == 64
+    unserializable = MiniMaxH3PromptEnhancer.IS_CHANGED(media_manifest=frozenset(("picture",)))
+    assert unserializable == MiniMaxH3PromptEnhancer.IS_CHANGED(media_manifest=frozenset(("picture",)))
+    assert unserializable != MiniMaxH3PromptEnhancer.IS_CHANGED()
+
+
+def test_always_re_enhance_restores_the_uncacheable_nan_marker():
+    for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
+        marker = node.IS_CHANGED(basic_prompt="a knight", always_re_enhance=True)
+        assert math.isnan(marker)
+        assert marker != marker
+    assert math.isnan(MiniMaxH3UnloadGGUFServer.IS_CHANGED(unload=True))
+
+
+def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
+    for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
+        optional = node.INPUT_TYPES()["optional"]
+        assert list(optional)[-1] == "always_re_enhance"
+        assert optional["always_re_enhance"][0] == "BOOLEAN"
+        assert optional["always_re_enhance"][1]["default"] is False
+    assert "always_re_enhance" not in MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]
+
+
+def test_api_key_widget_documents_the_environment_variable_fallback():
+    tooltip = MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]["api_key"][1]["tooltip"]
+    assert "MINIMAX_H3_PROMPT_ENHANCER_API_KEY" in tooltip
+    assert "no longer saved into workflow" in tooltip
+
+
+def test_enhance_accepts_the_caching_flag_without_changing_the_result(monkeypatch):
+    monkeypatch.setattr(
+        prompt_enhancer_node, "enhance_prompt",
+        lambda *_args: ("remote prompt", VALIDATION, {"provider": "remote"}),
+    )
+    result = MiniMaxH3PromptEnhancer().enhance(
+        "idea", "t2va", 7.5, "", "http://127.0.0.1:1234/v1", "model", "", 0.2,
+        4096, 300, 1, True, False, always_re_enhance=True,
+    )
+    assert result[0] == "remote prompt"

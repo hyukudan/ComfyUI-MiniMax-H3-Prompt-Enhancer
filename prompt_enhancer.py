@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import threading
 from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -72,6 +73,39 @@ def discover_models(endpoint: str, api_key: str = "", allow_remote_endpoint: boo
     return available_models(root, str(api_key or ""), max(3, min(int(timeout), 60)))
 
 
+_NATIVE_CHAT_SUPPORT: dict[str, bool] = {}
+_NATIVE_CHAT_LOCK = threading.Lock()
+_AUTH_HTTP_CODES = frozenset({401, 403, 407})
+
+
+def _reset_native_chat_cache() -> None:
+    """Forget every probed LM Studio native-endpoint result (test helper)."""
+    with _NATIVE_CHAT_LOCK:
+        _NATIVE_CHAT_SUPPORT.clear()
+
+
+def _native_chat_supported(native_root: str) -> bool:
+    """Unprobed roots are optimistic; only a recorded failure skips the native attempt."""
+    with _NATIVE_CHAT_LOCK:
+        return _NATIVE_CHAT_SUPPORT.get(native_root, True)
+
+
+def _record_native_chat_support(native_root: str, supported: bool) -> None:
+    with _NATIVE_CHAT_LOCK:
+        _NATIVE_CHAT_SUPPORT[native_root] = supported
+
+
+def _is_missing_native_endpoint(error: Exception) -> bool:
+    """Tell "this server has no native chat route" apart from credential or transport failures.
+
+    _request_json embeds the HTTP status in its RuntimeError message. A 404/405/400 answers the
+    endpoint-shape question, so the root is remembered as non-native. Authentication failures and
+    unreachable-endpoint errors say nothing about the shape and leave the cache untouched.
+    """
+    match = re.search(r"returned HTTP (\d{3})", str(error))
+    return bool(match) and int(match.group(1)) not in _AUTH_HTTP_CODES
+
+
 def _compact_model_rank(model_id: str) -> tuple[int, int]:
     """Prefer a small local instruct model for auto mode instead of accidentally loading a 30B model."""
     value = model_id.lower()
@@ -93,8 +127,8 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
                 temperature: float, max_tokens: int, timeout: int,
                 disable_thinking: bool = True,
                 prefer_lm_studio_native: bool = True) -> str:
-    if disable_thinking and prefer_lm_studio_native:
-        native_root = root[:-3] if root.endswith("/v1") else root
+    native_root = root[:-3] if root.endswith("/v1") else root
+    if disable_thinking and prefer_lm_studio_native and _native_chat_supported(native_root):
         native_payload = {
             "model": model,
             "system_prompt": "\n\n".join(
@@ -119,10 +153,16 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
                 if item.get("type") == "message" and item.get("content")
             ).strip()
             if content:
+                _record_native_chat_support(native_root, True)
                 return strip_markdown_fence(content)
-        except RuntimeError:
-            # Non-LM-Studio OpenAI-compatible servers do not expose this endpoint.
-            pass
+            # An answered but empty native response is treated as a one-off, not as proof that the
+            # endpoint is missing: this call falls through without touching the cache.
+        except RuntimeError as exc:
+            # Non-LM-Studio OpenAI-compatible servers do not expose this endpoint. Remember that
+            # so later calls stop paying for a failing round-trip, including a server that used to
+            # answer natively and was replaced by another implementation.
+            if _is_missing_native_endpoint(exc):
+                _record_native_chat_support(native_root, False)
 
     payload = {
         "model": model,
