@@ -7,6 +7,7 @@ import pytest
 from prompt_guides import (
     BASE_SECTIONS,
     REFERENCE_SECTIONS,
+    SYSTEM_PROMPT,
     alignment_instruction,
     build_user_request,
     normalize_audio_policy,
@@ -23,9 +24,12 @@ from prompt_guides import (
     system_prompt_for_mode,
     validate_prompt,
     _official_reference_model,
+    _dialogue_authoring_request,
     _explicit_source_fact_errors,
     _source_dialogue_contracts,
+    _GRADING_ONLY_PALETTE_PATTERNS,
 )
+from creative_treatments import CINEMATOGRAPHY_CHOICES
 
 
 def test_auto_mode_is_conservative():
@@ -117,6 +121,115 @@ non_diegetic_music: N/A"""
         cinematography_json=cinematography,
     )
     assert report["valid"], report
+
+
+_GRADING_ONLY_SOURCE = "A mechanic walks through a neutral workshop."
+_GRADING_ONLY_TEMPLATE = """integrated_multimodal_description: [Shot 1] A mechanic walks through a neutral workshop {body}.
+
+overall_soundscape: Footsteps cross the concrete floor.
+
+non_diegetic_music: N/A"""
+
+
+def _grading_only_errors(palette, body, source=_GRADING_ONLY_SOURCE):
+    report = validate_prompt(
+        _GRADING_ONLY_TEMPLATE.format(body=body), "t2va", 5.0, source,
+        cinematography_json=json.dumps({"schemaVersion": 1, "colorPalette": palette}),
+    )
+    return [error for error in report["errors"] if "grading-only presentation control" in error]
+
+
+@pytest.mark.parametrize(
+    ("palette", "invented", "legitimate"),
+    (
+        (
+            "two_color_process",
+            "under red-orange lighting thrown by a practical lamp",
+            "with no red-orange lighting added, holding the constrained two-color reproduction as an image treatment",
+        ),
+        (
+            "bleach_bypass",
+            "under a blue glow spilling across the floor",
+            "without any blue glow, keeping reduced chroma and dense metallic tones as a grade",
+        ),
+        (
+            "teal_orange",
+            "beneath teal lighting and orange lamps",
+            "with no teal lighting invented, keeping complementary separation as a grade",
+        ),
+        (
+            "cross_processed",
+            "as light leaks streak the frame",
+            "without light leaks, keeping the shadow-to-highlight hue crossover as a stable grade",
+        ),
+        (
+            "sepia",
+            "as a sepia glow rises from unseen lamps",
+            "with no amber lighting added, keeping the warm monochrome separation as a grade",
+        ),
+        (
+            "classic_western_earth_sky",
+            "bathed in golden-hour light",
+            "without golden-hour light, keeping ochre, sienna and umber material relationships as a grade",
+        ),
+        (
+            "revisionist_western_earth",
+            "under a dirty yellow glow from a swinging bulb",
+            "with no yellow cast, keeping tobacco, umber and stone-gray relationships as a grade",
+        ),
+        (
+            "telenovela_broadcast_color",
+            "beside neon signs and orange lighting",
+            "without neon signs or orange lighting, keeping luminous protected skin and open midtones as a grade",
+        ),
+    ),
+)
+def test_stylized_grading_palettes_reject_invented_illumination_and_accept_grade_language(
+    palette, invented, legitimate,
+):
+    violations = _grading_only_errors(palette, invented)
+    assert violations
+    assert all(f"colorPalette={palette}" in error for error in violations)
+    assert not _grading_only_errors(palette, legitimate)
+
+
+@pytest.mark.parametrize("palette", ("natural", "warm", "cool", "restrained", "vibrant", "monochrome"))
+def test_neutral_palettes_carry_no_grading_only_guard(palette):
+    # These authorize an overall colour bias, so guarding "warm light" style wording
+    # would reject legitimate description of the source's own illumination.
+    assert palette not in _GRADING_ONLY_PALETTE_PATTERNS
+    assert not _grading_only_errors(palette, "under warm amber lighting and a cool blue glow")
+
+
+def test_grading_only_guards_only_reference_catalogued_palettes():
+    assert set(_GRADING_ONLY_PALETTE_PATTERNS) <= set(CINEMATOGRAPHY_CHOICES["color_palette"])
+
+
+@pytest.mark.parametrize(
+    ("palette", "body"),
+    (
+        # "cast", "wash" and "filter" name the colour grade the palette already authorizes,
+        # so they must never be read as invented diegetic light.
+        ("sepia", "while a sepia cast holds the whole frame"),
+        ("sepia", "while an ochre wash settles over the walls"),
+        ("bleach_bypass", "while a silver wash sits on the metalwork"),
+        ("cross_processed", "while a green cast settles into the shadows"),
+        ("classic_western_earth_sky", "while an ochre wash covers the rock face"),
+        ("revisionist_western_earth", "in olive wash coveralls"),
+        ("teal_orange", "along an orange-washed corridor"),
+        # A traffic signal is a diegetic object, not a grade the palette invented.
+        ("telenovela_broadcast_color", "as the traffic signal turns green"),
+    ),
+)
+def test_grading_only_guards_accept_grade_vocabulary_and_ordinary_objects(palette, body):
+    assert not _grading_only_errors(palette, body)
+
+
+def test_teal_orange_guard_allows_colored_light_supplied_by_the_source():
+    source = "A mechanic walks through a neutral workshop lit by an orange lamp."
+    assert not _grading_only_errors(
+        "teal_orange", "under that orange lamp while cooler environmental tones stay separated", source,
+    )
 
 
 def test_selected_creative_profile_id_must_not_leak_into_final_prompt():
@@ -1513,3 +1626,365 @@ N/A"""
     assert "An off-screen narrator (S1) says in an off-screen voiceover" in fixed
     assert "(Sx)" not in fixed
     assert "The two tagged lines are the only intelligible speech" in fixed
+
+
+def test_system_prompt_teaches_official_camera_amplitude_speed_and_cut_vocabulary():
+    base = system_prompt_for_mode("t2va")
+    assert '"with small amplitude"/"with large amplitude"' in base
+    assert '"at slow speed"/"at fast speed"' in base
+    assert "omit medium amplitude and normal speed" in base
+    assert '"the shot transitions to"' in base
+    assert "use cross-dissolve, fade, or" in base
+    assert "wipe only when the user asks" in base
+
+
+def test_system_prompt_no_longer_stacks_camera_labels_or_free_cut_wording():
+    base = system_prompt_for_mode("t2va")
+    assert "Write camera motion naturally using motion type" not in base
+    assert "Write camera motion as a natural action inside the shot" in base
+
+
+def test_system_prompt_teaches_scenetrans_pairs_and_continuity_phrasings():
+    base = system_prompt_for_mode("t2va")
+    reference = system_prompt_for_mode("ref2va")
+    for contract in (base, reference):
+        # The layout must stay compatible with the quote validator, which requires each
+        # source line exactly once inside a single <d> block.
+        flowed = " ".join(contract.split())
+        assert "keep the full line in a single <d> block in the shot where it begins" in flowed
+        assert "never split across two <d> blocks" in flowed
+        assert "place <scenetrans> outside <d> at the connecting point in both shots" in flowed
+        assert "continues seamlessly across the cut" in contract
+        assert "continues uninterrupted into the next shot" in contract
+        assert "carries over from the previous shot" in contract
+        assert "remains audible across the transition" in contract
+
+
+def test_system_prompt_uses_official_cutoff_semantics_not_intentional_truncation():
+    base = system_prompt_for_mode("t2va")
+    assert "Use <cutoff> only when speech is truncated by the end of the video" in base
+    assert "only for intentionally truncated speech" not in base
+
+
+def test_system_prompt_establishes_first_appearance_speaker_identity_outside_the_tag():
+    base = system_prompt_for_mode("t2va")
+    assert "At a speaker's first appearance, establish a stable" in base
+    assert "vocal identity outside <d> from source-supported context" in base
+    assert "pitch, timbre, speaking rate, or accent" in base
+
+
+def test_system_prompt_uses_the_official_completely_closed_lips_wording():
+    base = system_prompt_for_mode("t2va")
+    assert base.count("lips remain completely closed") == 2
+    assert "lips remain closed" not in base.replace("lips remain completely closed", "")
+
+
+def test_non_diegetic_music_rule_bans_mood_words_and_relocates_diegetic_music():
+    base = system_prompt_for_mode("t2va")
+    assert "never through abstract mood words or the score's emotional function" in base
+    assert "singing, played instruments, radio, television, phone" in base
+
+
+def test_ref2va_contract_states_the_video_editing_summary_opener():
+    reference = system_prompt_for_mode("ref2va")
+    base = system_prompt_for_mode("t2va")
+    assert 'The target video is an edited version of <Video 1>.' in reference
+    assert "introduces no new one" in reference
+    assert "edited version of <Video 1>" not in base
+
+
+def _scenetrans_prompt(continuity: str) -> str:
+    """A real line crossing a cut, laid out exactly as the system contract now teaches.
+
+    The full quoted line stays in one <d> block in the shot where it begins, both
+    <scenetrans> markers sit outside <d>, and the continuity statement lands at the
+    natural end of the second shot - deliberately more than 300 characters after the
+    second marker, which the old windowed check would have missed.
+    """
+    return (
+        "integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium shot frames a woman beside "
+        "a train window. The quiet young woman (S1), in her mid-twenties with a soft mid-range voice, "
+        "says: <d>[Original language] I get off at the next "
+        "station.</d> <scenetrans>\n\n"
+        "[Shot 2] At 00:03.000, the camera cuts to the platform, <scenetrans> where the same woman (S1) is framed "
+        "in a matching medium shot as she steps down onto wet concrete. The camera trucks right at slow speed, "
+        "holding her at the same height in frame while the carriage windows slide past behind her and the "
+        "overhead canopy lights streak along the wet ground. She keeps her gaze fixed on the exit stairs, one "
+        "hand closed around the strap of her bag, her expression unchanged. "
+        f"Her line {continuity}.\n\n"
+        "overall_soundscape: Steady wheels hum beneath a low ventilation drone.\n\n"
+        "non_diegetic_music: N/A"
+    )
+
+
+SCENETRANS_SOURCE = 'A woman says "I get off at the next station." No music.'
+
+
+def test_scenetrans_pair_with_official_continuity_statement_is_accepted():
+    report = validate_prompt(_scenetrans_prompt("continues seamlessly across the cut"), "t2va", 8.0,
+                             SCENETRANS_SOURCE)
+    assert report["valid"], report
+
+
+@pytest.mark.parametrize("continuity", [
+    "continues uninterrupted into the next shot",
+    "carries over from the previous shot",
+    "remains audible across the transition",
+])
+def test_every_official_continuity_phrasing_is_accepted(continuity):
+    report = validate_prompt(_scenetrans_prompt(continuity), "t2va", 8.0, SCENETRANS_SOURCE)
+    assert report["valid"], report
+
+
+def test_scenetrans_pair_without_a_continuity_statement_is_rejected():
+    report = validate_prompt(_scenetrans_prompt("ends there"), "t2va", 8.0, SCENETRANS_SOURCE)
+    assert any("audio continues across the cut" in item for item in report["errors"])
+
+
+def test_odd_scenetrans_count_still_reports_the_missing_connecting_point():
+    prompt = _scenetrans_prompt("continues seamlessly across the cut").replace(" <scenetrans> where", " where")
+    errors = validate_prompt(prompt, "t2va", 8.0, SCENETRANS_SOURCE)["errors"]
+    assert any("both connecting points" in item for item in errors)
+    assert not any("audio continues across the cut" in item for item in errors)
+
+
+def test_continuity_statement_is_found_far_beyond_the_old_three_hundred_character_window():
+    prompt = _scenetrans_prompt("continues seamlessly across the cut")
+    second_marker = prompt.rindex("<scenetrans>")
+    assert prompt.index("continues seamlessly across the cut") - second_marker > 300
+    assert validate_prompt(prompt, "t2va", 8.0, SCENETRANS_SOURCE)["valid"]
+
+
+def test_uppercase_scenetrans_is_canonicalized_and_still_counted():
+    shouted = _scenetrans_prompt("continues seamlessly across the cut").replace("<scenetrans>", "<SCENETRANS>")
+    normalized = normalize_dialogue_tags(shouted)
+    assert "<SCENETRANS>" not in normalized
+    assert normalized.count("<scenetrans>") == 2
+    assert validate_prompt(normalized, "t2va", 8.0, SCENETRANS_SOURCE)["valid"]
+    # Even unnormalized, a shouted marker must not evade the pairing check.
+    odd = shouted.replace(" <SCENETRANS> where", " where")
+    assert any("both connecting points" in item
+               for item in validate_prompt(odd, "t2va", 8.0, SCENETRANS_SOURCE)["errors"])
+
+
+def test_uppercase_cutoff_does_not_evade_the_placement_check():
+    misplaced = _scenetrans_prompt("continues seamlessly across the cut").replace(
+        "Her line continues", "<CUTOFF> Her line continues",
+    )
+    errors = validate_prompt(misplaced, "t2va", 8.0, SCENETRANS_SOURCE)["errors"]
+    assert any("final dialogue block" in item for item in errors)
+
+
+@pytest.mark.parametrize("continuity", [
+    "continues across the cut",
+    "continues uninterrupted",
+    "carries over",
+    "remains audible through the cut",
+    "is heard without interruption across the transition",
+])
+def test_natural_variants_of_the_official_continuity_families_are_accepted(continuity):
+    report = validate_prompt(_scenetrans_prompt(continuity), "t2va", 8.0, SCENETRANS_SOURCE)
+    assert report["valid"], report
+
+
+CUTOFF_SOURCE = (
+    "A courier reaches a closed bridge. Write the dialogue in English; her final line is truncated by the end "
+    "of the video. No music."
+)
+CUTOFF_PROMPT = """integrated_multimodal_description: [Shot 1] Live-action, cinematic, a wide shot frames a courier stopping at a closed bridge. The young courier with a clear, breathless voice (S1) says: <d>[English] The bridge is clo<cutoff></d>
+
+overall_soundscape: Wind pushes across the empty deck while loose gravel shifts under her boots.
+
+non_diegetic_music: N/A"""
+
+
+def test_cutoff_inside_the_final_truncated_dialogue_block_is_accepted():
+    report = validate_prompt(CUTOFF_PROMPT, "t2va", 6.0, CUTOFF_SOURCE)
+    assert report["valid"], report
+
+
+def test_cutoff_after_the_last_dialogue_block_is_rejected():
+    prompt = CUTOFF_PROMPT.replace(
+        "The bridge is clo<cutoff></d>",
+        "The bridge is closed.</d> The signal light blinks <cutoff> long after her voice ends.",
+    )
+    errors = validate_prompt(prompt, "t2va", 6.0, CUTOFF_SOURCE)["errors"]
+    assert any("<cutoff> must occur inside the final dialogue block" in item for item in errors)
+
+
+@pytest.mark.parametrize("language", [
+    "Arabic", "Chinese", "English", "French", "German", "Italian",
+    "Japanese", "Korean", "Portuguese", "Russian", "Spanish", "Catalan",
+])
+def test_every_supported_dialogue_language_resolves_to_its_canonical_name(language):
+    authorized, resolved = _dialogue_authoring_request(f"Write the dialogue in {language}.")
+    assert authorized
+    assert resolved == language
+
+
+@pytest.mark.parametrize("request_text,expected", [
+    ("genera el diálogo en français", "French"),
+    ("escribe el diálogo en deutsch", "German"),
+    ("escribe el diálogo en italiano", "Italian"),
+    ("escribe el diálogo en português brasileiro", "Portuguese"),
+    ("write the dialogue in 日本語", "Japanese"),
+    ("write the dialogue in 한국어", "Korean"),
+    ("write the dialogue in 中文", "Chinese"),
+    ("write the dialogue in mandarin", "Chinese"),
+    ("write the dialogue in русский", "Russian"),
+    ("write the dialogue in العربية", "Arabic"),
+    ("escribe el diálogo en castellano", "Spanish"),
+    ("escribe el diálogo en català", "Catalan"),
+    # Unaccented "catala" was an alias with no detection entry, so it never resolved.
+    ("escribe el diálogo en catala", "Catalan"),
+])
+def test_endonym_dialogue_requests_resolve_to_the_canonical_tag_name(request_text, expected):
+    authorized, resolved = _dialogue_authoring_request(request_text)
+    assert authorized
+    assert resolved == expected
+
+
+def test_cantonese_is_not_folded_into_chinese():
+    assert _dialogue_authoring_request("write the dialogue in cantonese")[1] == "Cantonese"
+
+
+@pytest.mark.parametrize("garment", [
+    "mandarin collar", "mandarin collars", "mandarin jacket", "mandarin dress",
+    "mandarin gown", "mandarin robe", "mandarin duck", "mandarin oranges",
+])
+def test_garment_and_food_senses_of_mandarin_do_not_tag_dialogue_as_chinese(garment):
+    # "dressed in mandarin collar" used to make an English line come back as [Chinese].
+    source = f'A tailor dressed in {garment} says "Hold still, please."'
+    assert _source_dialogue_contracts(source) == [("Original language", "Hold still, please.", False)]
+    assert _dialogue_authoring_request(f"Write the dialogue. The tailor wears a {garment}.")[1] == (
+        "Original language"
+    )
+
+
+def test_the_language_sense_of_mandarin_still_resolves_to_chinese():
+    assert _dialogue_authoring_request("write the dialogue in mandarin")[1] == "Chinese"
+    assert _source_dialogue_contracts('She says in mandarin: "你好。"') == [("Chinese", "你好。", False)]
+
+
+def test_bare_brasileiro_is_not_read_as_a_requested_language():
+    # It is an ordinary demonym; only the "português brasileiro" forms name a language.
+    source = 'A brasileiro street vendor says "Two for one."'
+    assert _source_dialogue_contracts(source) == [("Original language", "Two for one.", False)]
+    assert _source_dialogue_contracts('Dice en português brasileiro: "Bom dia."') == [
+        ("Portuguese", "Bom dia.", False)
+    ]
+
+
+def test_unspaced_endonyms_are_detected_without_ascii_word_boundaries():
+    # 日本語 is immediately followed by another CJK character, where \b never holds.
+    assert _source_dialogue_contracts('El personaje dice en 日本語写: "こんにちは。"') == [
+        ("Japanese", "こんにちは。", False)
+    ]
+    assert _source_dialogue_contracts('He says in 中文写的台词: "你好。"') == [("Chinese", "你好。", False)]
+
+
+def test_unknown_language_still_falls_through_to_capitalize():
+    assert _source_dialogue_contracts('She says in the Swedish language: "Hej."') == [
+        ("Swedish", "Hej.", False)
+    ]
+    # Lowercase aliased names keep using the plain .capitalize() fallthrough.
+    assert _dialogue_authoring_request("write the dialogue in dutch")[1] == "Dutch"
+    # An unlisted language keeps the pre-existing conservative authoring default.
+    assert _dialogue_authoring_request("Write the dialogue in Swedish.")[1] == "Original language"
+
+
+def test_endonym_language_reaches_the_dialogue_authoring_contract():
+    request = build_user_request("Un vendedor abre su puesto. Genera el diálogo en français.", "t2va", 6.0)
+    assert "<d>[French] concrete authored words</d>" in request
+
+
+_BUDGET_SOURCE = "A mechanic walks through a workshop."
+
+
+def _budget_prompt(body):
+    return f"""integrated_multimodal_description: [Shot 1] {body}
+
+overall_soundscape: Footsteps cross the concrete floor.
+
+non_diegetic_music: N/A"""
+
+
+def test_oversized_prompt_only_warns_about_the_official_api_text_block_limit():
+    # ~11 chars/word keeps this above 7000 characters while staying under the word cap,
+    # so the two budget advisories are proven independent.
+    body = "A mechanic walks through a workshop. " + (
+        "The characteristically methodical instrumentation demonstrates uncompromising "
+        "professionalization throughout. " * 70
+    )
+    report = validate_prompt(_budget_prompt(body), "t2va", 5.0, _BUDGET_SOURCE)
+    assert len(_budget_prompt(body)) > 7000
+    assert report["valid"], report
+    assert report["errors"] == []
+    assert any("MiniMax API v2 accepts at most 7000 characters" in warning for warning in report["warnings"])
+    assert any("Local open-weights inference is unaffected" in warning for warning in report["warnings"])
+    assert not any("350-500 is recommended" in warning for warning in report["warnings"])
+
+
+def test_overlong_description_body_warns_about_the_recommended_word_range():
+    body = "A mechanic walks through a workshop. " + (
+        "The mechanic moves past a row of tools and the light stays even across the room. " * 45
+    )
+    report = validate_prompt(_budget_prompt(body), "t2va", 5.0, _BUDGET_SOURCE)
+    assert report["valid"], report
+    assert any(
+        "integrated_multimodal_description has" in warning and "350-500 is recommended" in warning
+        for warning in report["warnings"]
+    )
+    assert not any("MiniMax API v2" in warning for warning in report["warnings"])
+
+
+def test_prompts_inside_both_budgets_raise_no_length_warning():
+    report = validate_prompt(
+        _budget_prompt("A mechanic walks through a workshop and stops beside a workbench."),
+        "t2va", 5.0, _BUDGET_SOURCE,
+    )
+    assert report["valid"], report
+    assert not any(
+        "MiniMax API v2" in warning or "350-500 is recommended" in warning
+        for warning in report["warnings"]
+    )
+
+
+def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budgets():
+    # Measured 2026-08: SYSTEM_PROMPT 10401 chars, worst-case user request 24974 chars.
+    # Caps are the measurement plus ~15%; exceeding one means prompt growth that
+    # silently degrades small local GGUF models and must be reviewed deliberately.
+    assert len(SYSTEM_PROMPT) < 12000
+    creative = json.dumps({
+        "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
+        "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
+    })
+    cinematography = json.dumps({
+        "schemaVersion": 1, "colorPalette": "classic_western_earth_sky", "exposureContrast": "low_key",
+        "cameraMotion": "tracking", "cameraAmplitude": "large", "cameraSpeed": "fast",
+        "optics": "compressed_telephoto", "depthOfField": "shallow", "imageTexture": "film_35mm",
+        "lensEffects": "restrained_halation", "motionRendering": "energetic_blur",
+    })
+    shot_plan = json.dumps({
+        "schemaVersion": 1, "timingMode": "exact",
+        "shots": [
+            {"id": f"s{index}", "description": f"Shot {index} description of the action.", "durationSeconds": 2.0}
+            for index in range(1, 6)
+        ],
+    })
+    manifest = json.dumps({
+        "schemaVersion": 1,
+        "assets": [
+            {"label": "Image 1", "kind": "image", "role": "subject", "notes": "A woman in a red coat."},
+            {"label": "Video 1", "kind": "video", "role": "scene", "notes": "Street plate."},
+        ],
+    })
+    request = build_user_request(
+        'A woman in a red coat walks to a car and says "I am leaving now." '
+        "Write dialogue in English for the closing beat.",
+        "fl2va", 10.0, "Image 1: a woman in a red coat.\nVideo 1: street plate.",
+        True, "ensure_audible", "add_instrumental", "audible", "Slow trumpet and brushed drums.",
+        "16:9", manifest, 5, 0, "Same woman", "Same voice", "Same street",
+        (("English", "I am leaving now."),), creative, shot_plan, cinematography, "chinese_martial_arts",
+    )
+    assert len(request) < 29000

@@ -570,6 +570,10 @@ marker, normalize later timestamp syntax, enforce an exact shot-plan timeline, r
 normalize reference definitions, and apply the selected audio policy. It does not use normalization as permission to
 change source facts.
 
+Validation also emits non-blocking budget advisories: a warning when the final prompt exceeds the official
+MiniMax API v2 limit of 7000 characters per text block (local open-weights inference is unaffected) and a
+warning when the description body exceeds 600 words against the officially recommended 350–500.
+
 If errors remain, each repair attempt receives the complete previous answer and the concrete validation errors.
 Source-fidelity, exact dialogue, missing planned dialogue, invented references, and required ending errors receive a
 higher candidate penalty. The node returns the best candidate seen, not automatically the last candidate. Exhausting
@@ -1089,7 +1093,7 @@ The enhancer now creates an explicit mandatory-dialogue contract before generati
 
 - speech cues such as `says`, `asking`, `preguntando`, or `gritando` identify spoken quotes;
 - requested language names become the `[Language]` marker;
-- common variants such as `Catalonian`, `Catalan`, `catalán`, and `català` normalize to `[Catalan]`;
+- all eleven officially supported dialogue languages (Arabic, Chinese, English, French, German, Italian, Japanese, Korean, Portuguese, Russian, Spanish) plus Catalan are recognized, including endonyms and common variants such as `français`, `deutsch`, `italiano`, `português (brasileiro)`, `日本語`, `한국어`, `中文`, `mandarin`, `русский`, `العربية`, `castellano`, and `català`, which normalize to the canonical `[Language]` marker (Cantonese stays `[Cantonese]` rather than being folded into Chinese);
 - every quoted spoken line is copied verbatim, without translation, censorship, or paraphrase;
 - if an LLM still omits the line, it is restored to the timeline inside `<d>` before validation.
 - each source dialogue line must occur exactly once inside the timeline;
@@ -1134,8 +1138,11 @@ voiceover” are treated as prohibitions, not as dialogue-writing requests.
 
 Visible on-screen text is also preserved exactly, but it is not converted to dialogue unless the source contains a speech cue.
 
-Advanced official dialogue markers are preserved when used correctly. A line that continues across a cut uses
-`<scenetrans>` at both connected points and explicitly states that its audio continues across the transition.
+Advanced official dialogue markers are preserved when used correctly. A line that continues across a cut keeps
+its full quoted text in a single `<d>` block in the shot where it begins, places `<scenetrans>` outside `<d>`
+at the connecting point in both shots, and explicitly states that its audio continues across the transition
+(the validator now requires that continuity statement and accepts the official phrasings and their natural
+variants; tag case is canonicalized, so `<SCENETRANS>` cannot evade the check).
 `<cutoff>` belongs only inside the final `<d>` block when the video intentionally ends before that utterance finishes.
 Singing and lyrics use a stable vocal source plus `<d>[Language] exact lyrics</d>`. Keep dialogue, lyrics, and
 shot-synchronized diegetic sound in the timeline; `overall_soundscape` is one paragraph of 1–4 English sentences, and
@@ -1204,8 +1211,11 @@ The selected style is authoritative for arrangement, while explicit tempo, timin
 instruments remain authoritative source facts. Every style remains strictly instrumental: no singing, lyrics, speech,
 chants, choir or vocal samples. Semantic adherence is LLM-driven; the Validator checks the normal music policy and
 output structure but does not score whether the final prose sounds sufficiently jazz, orchestral or electronic.
-Cinematography has one additional bounded literal guard: grading-only sci-fi palettes trigger repair if generated
-prose turns them into colored lights, glow, neon fixtures, or emissions absent from the source. This checks a specific
+Cinematography has one additional bounded literal guard covering eleven grading-only palettes (the sci-fi trio
+plus sepia, teal–orange, bleach bypass, cross-processed, two-color process, both western looks, and the
+telenovela broadcast look): repair triggers if generated prose turns a color grade into invented light
+sources — colored lights, glow, lamps, neon fixtures, or emissions absent from the source. Grade vocabulary
+itself (`sepia cast`, `green cast`, washes) is always accepted. This checks a specific
 forbidden invention; it is not a general aesthetic-quality score.
 
 `silent_mouth_acting_experimental` intentionally removes the dialogue words, `<d>` blocks, and speaker IDs from the

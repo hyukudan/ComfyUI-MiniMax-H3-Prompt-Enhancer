@@ -52,6 +52,12 @@ TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multis
 AMBIENCE_FOLEY_POLICIES = ("auto", "ensure_audible", "off")
 BACKGROUND_SCORE_POLICIES = ("follow_prompt", "add_instrumental", "off")
 VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
+# Budget advisories only. The official MiniMax API v2 accepts at most 7000 characters
+# per text block, and the public guide recommends 350-500 words of description for
+# generation tasks. Local open-weights inference has neither limit, so exceeding these
+# is always a warning and never an error.
+_API_V2_TEXT_BLOCK_CHARACTER_LIMIT = 7000
+_DESCRIPTION_WORD_WARNING_LIMIT = 600
 INSTRUMENTAL_STYLE_CHOICES = (
     "none",
     "cinematic_orchestral",
@@ -231,6 +237,22 @@ _CONTINUOUS_PROGRESSION_RE = re.compile(
     r"apareciendo|materializa|materializan|materializándose|coalesce|coalesces)\b",
     re.IGNORECASE,
 )
+# Continuity phrasings that must accompany a <scenetrans> pair. The official guide lists four
+# phrases as examples of how continuity "may be expressed", so natural variants of the same four
+# families are accepted; stating continuity at all stays mandatory. Plural subjects ("her words
+# continue seamlessly...") conjugate the same phrases, so the verb number is free.
+_SCENETRANS_CONTINUITY_RE = re.compile(
+    r"continues?\s+(?:seamlessly\s+)?across\s+the\s+(?:cut|transition)|"
+    r"continues?\s+uninterrupted(?:\s+into\s+the\s+next\s+shot)?|"
+    r"(?:carries|carry|carrying)\s+over(?:\s+from\s+the\s+previous\s+shot)?|"
+    r"remains?\s+audible\s+(?:across|through|throughout)\s+the\s+(?:cut|transition)|"
+    r"without\s+interruption\s+across\s+the\s+(?:cut|transition)",
+    re.IGNORECASE,
+)
+# H3 documents stable dialogue for Arabic, Chinese, English, French, German, Italian, Japanese,
+# Korean, Portuguese, Russian, and Spanish. Only endonyms and variants whose .capitalize() would
+# not already produce the canonical <d>[Language] name need an entry. Cantonese stays Cantonese:
+# folding it into Chinese would silently change the spoken language the user asked for.
 _LANGUAGE_ALIASES = {
     "catalonian": "Catalan",
     "catalan": "Catalan",
@@ -240,10 +262,62 @@ _LANGUAGE_ALIASES = {
     "castilian": "Spanish",
     "castellano": "Spanish",
     "español": "Spanish",
+    "espanol": "Spanish",
+    "français": "French",
+    "francais": "French",
+    "deutsch": "German",
+    "italiano": "Italian",
+    "português brasileiro": "Portuguese",
+    "portugues brasileiro": "Portuguese",
+    "português": "Portuguese",
+    "portugues": "Portuguese",
+    "brasileiro": "Portuguese",
+    "nihongo": "Japanese",
+    "日本語": "Japanese",
+    "hangugeo": "Korean",
+    "한국어": "Korean",
+    "mandarin": "Chinese",
+    "putonghua": "Chinese",
+    "中文": "Chinese",
+    "汉语": "Chinese",
+    "普通话": "Chinese",
+    "粤语": "Cantonese",
+    "廣東話": "Cantonese",
+    "russkiy": "Russian",
+    "русский": "Russian",
+    "العربية": "Arabic",
 }
+# Spaced scripts (Latin, Cyrillic, Arabic) keep letter boundaries; CJK and Hangul aliases are
+# written without separators and agglutinate particles, so \b-style assertions never hold there.
+_SPACED_DIALOGUE_LANGUAGES = (
+    "english", "spanish", "french", "german", "italian", "portuguese", "japanese", "korean",
+    "chinese", "cantonese", "russian", "arabic", "hindi", "dutch", "polish", "turkish",
+    "catalonian", "catalan", "catalán", "català", "catala", "español", "espanol", "castilian",
+    "castellano", "français", "francais", "deutsch", "italiano",
+    "português brasileiro", "portugues brasileiro",
+    "português", "portugues", "nihongo", "hangugeo", "putonghua",
+    "russkiy", "русский", "العربية",
+)
+_UNSPACED_DIALOGUE_LANGUAGES = ("日本語", "한국어", "普通话", "汉语", "中文", "粤语", "廣東話")
+# "mandarin" also names a collar, a jacket, a duck and a fruit, and bare "brasileiro" is an
+# ordinary demonym, so neither may sit in the plain alternation: "dressed in mandarin collar"
+# used to tag English dialogue as [Chinese].  "mandarin" keeps a guarded alternative below;
+# "brasileiro" survives only inside its "português brasileiro" forms.  Both stay in
+# _LANGUAGE_ALIASES so an explicitly named language still resolves to its canonical tag.
+_MANDARIN_LANGUAGE_SENSE = r"mandarin(?!\s+(?:collars?|jackets?|dress|gown|robe|duck|oranges?))"
+
+
+def _language_alternation(names: tuple[str, ...]) -> str:
+    parts = [re.escape(name) for name in sorted(names, key=len, reverse=True) if name]
+    assert parts, "language alternation must not be empty: an empty branch matches everywhere"
+    return "|".join(parts)
+
+
+# The group carries its own boundaries, so call sites must not wrap it in \b.
 _DIALOGUE_LANGUAGE_PATTERN = (
-    r"english|spanish|french|german|italian|portuguese|japanese|korean|chinese|russian|arabic|"
-    r"hindi|dutch|polish|turkish|catalonian|catalan|catalán|català|español|castilian|castellano"
+    r"(?<![^\W\d_])(?:" + _language_alternation(_SPACED_DIALOGUE_LANGUAGES)
+    + r"|" + _MANDARIN_LANGUAGE_SENSE + r")(?![^\W\d_])|"
+    + _language_alternation(_UNSPACED_DIALOGUE_LANGUAGES)
 )
 _DIALOGUE_AUTHORING_RE = re.compile(
     r"\b(?:generate|write|create|invent|compose|provide|draft|author|make\s+up|come\s+up\s+with|"
@@ -311,8 +385,8 @@ def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
 
     language_mentions = []
     language_patterns = (
-        rf"\b(?:in|en)\s+(?:(?:the\s+)?(?:language|idioma)\s+)?({_DIALOGUE_LANGUAGE_PATTERN})\b",
-        rf"\b({_DIALOGUE_LANGUAGE_PATTERN})\s+(?:language\s+)?(?:dialogue|dialog|lines?|voice[ -]?over|"
+        rf"\b(?:in|en)\s+(?:(?:the\s+)?(?:language|idioma)\s+)?({_DIALOGUE_LANGUAGE_PATTERN})",
+        rf"({_DIALOGUE_LANGUAGE_PATTERN})\s+(?:language\s+)?(?:dialogue|dialog|lines?|voice[ -]?over|"
         rf"narration|speech|di[aá]logo|l[ií]neas?|voz\s+en\s+off|narraci[oó]n)\b",
     )
     for pattern in language_patterns:
@@ -320,7 +394,7 @@ def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
             language_mentions.append((match.start(), match.group(1)))
     if not language_mentions:
         return True, "Original language"
-    raw = max(language_mentions, key=lambda item: item[0])[1]
+    raw = re.sub(r"\s+", " ", max(language_mentions, key=lambda item: item[0])[1]).strip()
     return True, _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
 
 
@@ -367,15 +441,26 @@ Shared timeline rules:
   according to each shot's information load rather than padding every shot equally.
 - Shot 1 has no timestamp. Later shots are sequential and begin with strictly increasing [Shot N] At MM:SS.mmm,
   cut times inside the requested duration.
-- Describe style and initial composition at Shot 1. Write camera motion naturally using motion type and, only when
-  useful, amplitude and speed. Prefer camera movement over a cut that reveals no new information.
-- Give each actual vocal source a stable (S1), (S2), ... ID. Put only the exact spoken words and a language tag
+- Describe style and initial composition at Shot 1. Write camera motion as a natural action inside the shot: motion
+  type plus, only when meaningful, "with small amplitude"/"with large amplitude" and "at slow speed"/"at fast speed";
+  omit medium amplitude and normal speed. Cut with "the camera cuts to", "the shot cuts to",
+  "the shot transitions to", "the shot changes to", or "the shot switches to", and use cross-dissolve, fade, or
+  wipe only when the user asks. A cut must add new subject, space, state, viewpoint, or time information; prefer
+  camera movement over a cut that reveals none.
+- Give each actual vocal source a stable (S1), (S2), ... ID. At a speaker's first appearance, establish a stable
+  vocal identity outside <d> from source-supported context such as character type, age, gender, on- or off-screen
+  presence, pitch, timbre, speaking rate, or accent. Put only the exact spoken words and a language tag
   inside <d>[Language] ...</d>. For voiceover say "says in an off-screen voiceover" and state that the visible
-  character's lips remain closed. Never convert visible dialogue into voiceover unless the source explicitly asks
-  for voiceover or narration. Treat a quoted thought or internal monologue as audible voiceover: use the exact phrase
-  "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker, describe it as an internal
-  monologue outside the tag, and state that the character's lips remain closed. Use
-  <scenetrans> across cuts and <cutoff> only for intentionally truncated speech.
+  character's lips remain completely closed. Never convert visible dialogue into voiceover unless the source
+  explicitly asks for voiceover or narration. Treat a quoted thought or internal monologue as audible voiceover: use
+  the exact phrase "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker,
+  describe it as an internal monologue outside the tag, and state that the character's
+  lips remain completely closed. When one line of dialogue or lyrics crosses a cut, keep the full line in a
+  single <d> block in the shot where it begins, never split across two <d> blocks; place <scenetrans> outside
+  <d> at the connecting point in both shots, and state that the audio continues across the cut with
+  "continues seamlessly across the cut", "continues uninterrupted into the next shot",
+  "carries over from the previous shot", or "remains audible across the transition".
+  Use <cutoff> only when speech is truncated by the end of the video.
 - For visible audible dialogue, keep the identity, stable speaker ID, explicit vocal action, delivery, and matching
   <d> block in one sentence. Natural official forms include says, replies, asks, shouts, whispers, sings, and group
   speech with compound IDs such as (S1,S2). Explains and narrates are also valid when they name the requested
@@ -410,7 +495,9 @@ Shared timeline rules:
 - overall_soundscape is one continuous paragraph of 1-4 sentences covering ambience, physical sounds, and
   non-verbal human sounds. Do not repeat dialogue or audience-only music there.
 - non_diegetic_music is 1-3 sentences describing only audience-only music through instrumentation, tempo, rhythm,
-  and dynamics. Use N/A when none is requested.
+  and dynamics, never through abstract mood words or the score's emotional function. Music the characters can hear
+  (singing, played instruments, radio, television, phone) is a diegetic event that belongs in the timeline instead.
+  Use N/A when none is requested.
 
 Base-mode output has exactly these three sections in order:
 integrated_multimodal_description, overall_soundscape, non_diegetic_music.
@@ -429,7 +516,9 @@ Use stable <Subject N>, <Picture N>, <Video N>, and <Audio N> meanings. Subject 
 content; Picture labels are concrete frame/composition anchors; Video labels describe whole-video edit, continuation,
 or temporal structure; Audio labels describe copied or referenced signals. The summary starts with bracketed task
 types chosen from keyframe completion, reference generation, video editing, video continuation, audio reuse, and
-audio reference. Join multiple task types with the exact separator " + ". retention_analysis uses only the documented visual markers fully_preserved, partially_preserved,
+audio reference. Join multiple task types with the exact separator " + ". A video editing summary continues right
+after that prefix with "The target video is an edited version of <Video 1>." The summary reuses only already defined
+labels and introduces no new one. retention_analysis uses only the documented visual markers fully_preserved, partially_preserved,
 attribute_transfer, weak_reference and audio markers fully_copy, partially_copy, reference, weak_reference.
 When verbal content belongs only to a copied soundtrack or BGM, attribute its <d> block to <Audio N> without
 inventing a speaker ID. A concrete person, narrator, or independent vocal source uses a stable (Sx); an Audio
@@ -1662,10 +1751,18 @@ def normalize_section_headers(text: str) -> str:
 
 def normalize_dialogue_tags(text: str) -> str:
     """Keep dialogue parseable when a small LLM omits only the required language marker."""
+    # H3 reads these markers literally, so a shouted <SCENETRANS>/<CUTOFF> is canonicalized
+    # rather than left to evade the pairing and placement checks.
+    value = re.sub(
+        r"<(scenetrans|cutoff)>",
+        lambda match: f"<{match.group(1).lower()}>",
+        str(text),
+        flags=re.IGNORECASE,
+    )
     value = re.sub(
         r"<d>\s*(?!\[[^\]]+\])",
         "<d>[Original language] ",
-        str(text),
+        value,
         flags=re.IGNORECASE,
     )
     value = re.sub(r"(<d>\[[^\]]+\])\s*", r"\1 ", value, flags=re.IGNORECASE)
@@ -1689,22 +1786,18 @@ def _source_dialogue_language(source_prompt: str, quote_match) -> str:
         flags=re.IGNORECASE,
     )
     if matches:
-        raw = next((part for part in matches[-1] if part), "").strip()
+        raw = re.sub(r"\s+", " ", next((part for part in matches[-1] if part), "")).strip()
         return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
     known = re.findall(
-        r"\b(?:in|en)\s+(english|spanish|french|german|italian|portuguese|japanese|korean|"
-        r"chinese|russian|arabic|hindi|dutch|polish|turkish|catalonian|catalan|catalán|català|"
-        r"español|castilian|castellano)\b",
+        rf"\b(?:in|en)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
         window,
         flags=re.IGNORECASE,
     )
     if known:
-        raw = known[-1]
-        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
+        raw = re.sub(r"\s+", " ", known[-1]).strip()
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
     trailing_known = re.match(
-        r"^\s*(?:,\s*)?(?:in|en)\s+(english|spanish|french|german|italian|portuguese|japanese|"
-        r"korean|chinese|russian|arabic|hindi|dutch|polish|turkish|catalonian|catalan|catalán|"
-        r"català|español|castilian|castellano)\b",
+        rf"^\s*(?:,\s*)?(?:in|en)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
         trailing,
         flags=re.IGNORECASE,
     )
@@ -2547,7 +2640,69 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
     return {"valid": not errors, "mode": "chained_multishot", "errors": errors, "warnings": warnings, "promptCount": len(prompts)}
 
 
+# Only stylized palettes whose catalog contract defines them as a colour grade may
+# be guarded here, and only with patterns naming that palette's own hues.  The
+# neutral/naturalistic palettes (natural, warm, cool, restrained, vibrant,
+# monochrome) are deliberately absent: they authorize an overall colour bias, so any
+# "warm light"/"cool light" pattern would reject legitimate wording about the
+# source's own illumination.  midcentury_dye_transfer and saturated_slide_film are
+# also absent because they name no hue whose invention as a practical could be
+# recognized; their real failure mode is invented print/projection damage, which the
+# catalog text already forbids explicitly.
+# Only nouns naming a light SOURCE may appear in these guards.  "cast", "wash" and
+# "filter" name the colour grade itself, which is exactly what the palette authorizes,
+# so guarding them rejected legitimate wording ("a sepia cast holds the frame").  Hue
+# groups that belong to different senses are also split into separate entries: the
+# source-exemption below disables a whole matching pattern, so one shared source phrase
+# should not unlock every hue the palette owns.
 _GRADING_ONLY_PALETTE_PATTERNS = {
+    "two_color_process": (
+        r"\b(?:red[- ]orange|orange[- ]red|cyan[- ]blue[- ]green|cyan|turquoise)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+    ),
+    "bleach_bypass": (
+        # "silver" is dropped entirely: desaturated metallic tone is the look itself.
+        r"\b(?:blue|cyan|steel[- ]?blue)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+    ),
+    "teal_orange": (
+        r"\b(?:teal|orange|amber|cyan)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|beams?|practicals?)s?\b",
+        # "orange-washed" is grade-adjacent wording the palette authorizes; only a lit
+        # scene claim is an invented practical.
+        r"\b(?:teal|orange)[- ]lit\b",
+    ),
+    "cross_processed": (
+        r"\blight\s+leaks?\b",
+        r"\b(?:magenta|green)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+        r"\b(?:cyan|yellow)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+    ),
+    "sepia": (
+        r"\b(?:sepia|amber|brown)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|beams?|practicals?)s?\b",
+        r"\bochre\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|beams?|practicals?)s?\b",
+    ),
+    "classic_western_earth_sky": (
+        # Bare "sunset"/"dusk" wording is deliberately not guarded: the palette
+        # preserves the supplied time of day, so a source-established sunset may be
+        # described. Only the invented golden-hour look is caught.
+        r"\bgolden[- ]hour\s+(?:light(?:ing)?|glow|sun|illumination)s?\b",
+        # "ochre" is omitted here: this palette's contract names it as a material colour.
+        r"\b(?:golden|amber)\s+(?:light(?:ing)?|glow)s?\b",
+    ),
+    "revisionist_western_earth": (
+        r"\b(?:dirty\s+)?(?:yellow|amber|olive)\s+"
+        r"(?:light(?:ing)?|glow|illumination)s?\b",
+    ),
+    "telenovela_broadcast_color": (
+        r"\bneon\s+(?:tube|sign|light|lighting|glow|emission|fixture)s?\b",
+        # "green" is omitted: a green light is a common diegetic object (traffic signal).
+        r"\b(?:orange|yellow)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+    ),
     "cold_steel_blue": (
         r"\b(?:steel[- ]?blue|blue|cyan)(?:[- ]biased)?\s+(?:light(?:ing)?|glow|emission|illumination|reflection)s?\b",
     ),
@@ -2743,6 +2898,19 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)
+    if len(text) > _API_V2_TEXT_BLOCK_CHARACTER_LIMIT:
+        warnings.append(
+            f"The final prompt is {len(text)} characters; the official MiniMax API v2 accepts at most "
+            f"{_API_V2_TEXT_BLOCK_CHARACTER_LIMIT} characters per text block and would truncate or reject it. "
+            "Local open-weights inference is unaffected"
+        )
+    # Ref2VA already reports its own 350-500 word target below; this covers the other modes.
+    description_words = len(re.findall(r"\b[\w'-]+\b", timeline))
+    if resolved != "ref2va" and description_words > _DESCRIPTION_WORD_WARNING_LIMIT:
+        warnings.append(
+            f"{timeline_section} has {description_words} words; 350-500 is recommended for generation tasks "
+            "and very long bodies reduce instruction adherence"
+        )
     shots = list(_SHOT_RE.finditer(timeline))
     if not shots:
         errors.append("At least [Shot 1] is required")
@@ -2835,9 +3003,18 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     if text.count("<d>") != text.count("</d>"):
         errors.append("Dialogue tags are unbalanced")
-    if timeline.count("<scenetrans>") % 2:
+    # Case-insensitive throughout: a stray <SCENETRANS>/<CUTOFF> must not slip past these checks.
+    scenetrans_markers = re.findall(r"(?i)<scenetrans>", timeline)
+    if len(scenetrans_markers) % 2:
         errors.append("<scenetrans> must appear at both connecting points when dialogue crosses a cut")
-    if "<cutoff>" in timeline:
+    elif scenetrans_markers and not _SCENETRANS_CONTINUITY_RE.search(timeline):
+        # The statement belongs at the natural end of a shot, arbitrarily far from either
+        # marker, so the whole timeline is the window.
+        errors.append(
+            "<scenetrans> requires an explicit statement that the audio continues across the cut, such as "
+            "'continues seamlessly across the cut'"
+        )
+    if re.search(r"(?i)<cutoff>", timeline):
         last_dialogue_end = timeline.lower().rfind("</d>")
         if last_dialogue_end < 0 or timeline.lower().rfind("<cutoff>") > last_dialogue_end:
             errors.append("<cutoff> must occur inside the final dialogue block truncated by the video ending")
