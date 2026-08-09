@@ -140,6 +140,16 @@ const SHOT_PLAN_SCHEMA_VERSION = 1;
 const CINEMATOGRAPHY_SCHEMA_VERSION = 1;
 const MAX_SHOTS = 64;
 const DEFAULT_EXACT_SHOT_DURATION = 1;
+// Look presets live in the browser profile, not in the workflow: they are a
+// personal library that must be reusable across scenes, graphs and node types.
+const LOOK_STORAGE_KEY = "minimax_h3_looks_v1";
+const LOOK_SCHEMA_VERSION = 1;
+// Hard cap with oldest-first eviction (by savedAt). 50 named looks stay well
+// under any localStorage quota and keep the picker usable; saving a 51st look
+// drops the least recently saved one and says so in the panel status.
+const MAX_LOOK_PRESETS = 50;
+const MAX_LOOK_NAME_LENGTH = 64;
+const MAX_LOOK_PAYLOAD_LENGTH = 20000;
 const CREATIVE_CHOICES = {
     genre: [
         ["none", "No preference"],
@@ -184,6 +194,7 @@ const CREATIVE_CHOICES = {
         ["live_action_classic_black_and_white", "Classic high-contrast black-and-white cinema"],
         ["live_action_gritty", "Gritty immediate live action"],
         ["live_action_expressionist", "Expressionist live action"],
+        ["storybook_symmetrical", "Symmetrical storybook tableau"],
         ["live_action_visceral_horror", "Visceral practical-effects horror"],
         ["live_action_1980s_television", "1980s television drama"],
         ["live_action_latin_american_telenovela", "Latin American telenovela"],
@@ -193,13 +204,18 @@ const CREATIVE_CHOICES = {
         ["live_action_revisionist_western", "Revisionist western cinema"],
         ["live_action_1950s_studio_color", "1950s studio color cinema"],
         ["live_action_midcentury_technicolor_epic", "Mid-century Technicolor epic"],
+        ["1970s_new_hollywood", "1970s New Hollywood 35mm"],
+        ["silent_era_1920s", "1920s silent era"],
         ["documentary_observational", "Observational documentary"],
+        ["surveillance_found_footage", "Surveillance / found footage"],
+        ["home_camcorder_1990s", "1990s home camcorder"],
         ["clean_commercial", "Clean commercial presentation"],
     ],
     worldAesthetic: [
         ["none", "No preference"],
         ["cyberpunk", "Cyberpunk"],
         ["film_noir", "Film noir"],
+        ["nordic_noir", "Nordic noir"],
         ["science_fiction", "Science fiction"],
         ["high_fantasy", "High fantasy"],
         ["retrofuturism", "Retrofuturism"],
@@ -207,6 +223,7 @@ const CREATIVE_CHOICES = {
         ["gothic", "Gothic"],
         ["solarpunk", "Solarpunk"],
         ["steampunk", "Steampunk"],
+        ["dieselpunk", "Dieselpunk"],
         ["post_apocalyptic", "Post-apocalyptic"],
         ["historical_period", "Historical period"],
         ["analog_1980s", "Analog 1980s"],
@@ -214,6 +231,7 @@ const CREATIVE_CHOICES = {
         ["retrofuturism_atomic_age", "Atomic-age retrofuturism"],
         ["retrofuturism_cassette", "Cassette futurism"],
         ["retrofuturism_y2k", "Y2K futurism"],
+        ["liminal_institutional", "Liminal institutional spaces"],
     ],
     tone: [
         ["none", "No preference"],
@@ -243,11 +261,14 @@ const VISUAL_LANGUAGE_GROUPS = [
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
     ["Physical animation", ["stop_motion_handcrafted"]],
-    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_classic_black_and_white", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_television", "live_action_latin_american_telenovela", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_classic_western", "live_action_revisionist_western", "live_action_1950s_studio_color", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
+    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_classic_black_and_white", "live_action_gritty", "live_action_expressionist", "storybook_symmetrical", "live_action_visceral_horror", "live_action_1980s_television", "live_action_latin_american_telenovela", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_classic_western", "live_action_revisionist_western", "live_action_1950s_studio_color", "live_action_midcentury_technicolor_epic", "silent_era_1920s", "1970s_new_hollywood", "documentary_observational"]],
+    // Captured on non-cinema hardware: the look comes from the recording device
+    // rather than from a film or animation tradition.
+    ["Non-cinema cameras", ["surveillance_found_footage", "home_camcorder_1990s"]],
     ["Commercial & presentation", ["clean_commercial"]],
 ];
 const CINEMATOGRAPHY_CHOICES = {
-    colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"], ["midcentury_dye_transfer", "Mid-century dye-transfer color"], ["two_color_process", "Early two-color process"], ["bleach_bypass", "Bleach bypass"], ["teal_orange", "Teal–orange separation"], ["cross_processed", "Cross-processed color"], ["sepia", "Sepia monochrome"], ["saturated_slide_film", "Saturated slide-film color"], ["classic_western_earth_sky", "Classic western earth & sky"], ["revisionist_western_earth", "Revisionist western muted earth"], ["telenovela_broadcast_color", "Telenovela broadcast color"], ["cold_steel_blue", "Cold steel-blue sci-fi"], ["sterile_white_cyan", "Sterile white–cyan sci-fi"], ["neon_cyan_magenta", "Neon cyan–magenta"]],
+    colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"], ["midcentury_dye_transfer", "Mid-century dye-transfer color"], ["two_color_process", "Early two-color process"], ["bleach_bypass", "Bleach bypass"], ["teal_orange", "Teal–orange separation"], ["cross_processed", "Cross-processed color"], ["sepia", "Sepia monochrome"], ["saturated_slide_film", "Saturated slide-film color"], ["classic_western_earth_sky", "Classic western earth & sky"], ["revisionist_western_earth", "Revisionist western muted earth"], ["telenovela_broadcast_color", "Telenovela broadcast color"], ["cold_steel_blue", "Cold steel-blue sci-fi"], ["sterile_white_cyan", "Sterile white–cyan sci-fi"], ["neon_cyan_magenta", "Neon cyan–magenta"], ["soft_pastel", "Soft pastel grade"], ["day_for_night", "Day-for-night moonlight"], ["infrared_aerochrome", "Infrared Aerochrome false color"]],
     exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
     shotScale: [["none", "No preference"], ["extreme_close_up", "Extreme close-up"], ["close_up", "Close-up"], ["medium_close_up", "Medium close-up"], ["medium", "Medium"], ["medium_wide", "Medium wide"], ["wide", "Wide"], ["extreme_wide", "Extreme wide"]],
     cameraAngle: [["none", "No preference"], ["eye_level", "Eye level"], ["low_angle", "Low angle"], ["high_angle", "High angle"], ["overhead", "Overhead"], ["dutch_static", "Dutch (static cant)"], ["worms_eye", "Worm's eye"]],
@@ -257,7 +278,7 @@ const CINEMATOGRAPHY_CHOICES = {
     cameraSpeed: [["auto", "Automatic"], ["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
     optics: [["none", "No preference"], ["wide_perspective", "Wide perspective"], ["natural_perspective", "Natural perspective"], ["compressed_telephoto", "Compressed telephoto"], ["lens_18mm", "18mm lens"], ["lens_35mm", "35mm lens"], ["lens_50mm", "50mm lens"], ["lens_85mm_compressed", "85mm compressed lens"]],
     depthOfField: [["none", "No preference"], ["deep", "Deep focus"], ["balanced", "Balanced depth"], ["shallow", "Shallow focus"]],
-    imageTexture: [["none", "No preference"], ["clean_digital", "Clean digital"], ["subtle_stable_grain", "Subtle stable grain"], ["film_16mm", "16mm-inspired"], ["film_35mm", "35mm-inspired"]],
+    imageTexture: [["none", "No preference"], ["clean_digital", "Clean digital"], ["subtle_stable_grain", "Subtle stable grain"], ["film_16mm", "16mm-inspired"], ["film_35mm", "35mm-inspired"], ["vhs_analog_video", "VHS analog video"], ["early_digital_dv", "Early MiniDV digital video"]],
     lensEffects: [["none", "No preference"], ["clean", "Clean optics"], ["subtle_diffusion", "Subtle diffusion"], ["restrained_halation", "Restrained halation"]],
     motionRendering: [["none", "No preference"], ["crisp", "Crisp motion"], ["natural_blur", "Natural motion blur"], ["energetic_blur", "Energetic motion blur"]],
 };
@@ -700,10 +721,108 @@ function ensureFieldTitleStyles() {
             grid-column: 1 / -1;
             color: var(--error-text, #e99);
         }
+        .minimax-h3-summary-label {
+            display: inline-block;
+            max-width: calc(100% - 104px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .minimax-h3-explore-button,
+        .minimax-h3-look-button {
+            min-height: 23px;
+            padding: 2px 8px;
+            border: 1px solid var(--border-color, #666);
+            border-radius: 4px;
+            background: var(--comfy-input-bg, #292929);
+            color: var(--input-text, #ddd);
+            cursor: pointer;
+            font: inherit;
+        }
+        .minimax-h3-explore-button {
+            float: right;
+            margin-left: 8px;
+            font-weight: 600;
+            line-height: 1.1;
+        }
+        .minimax-h3-explore-button:hover:not(:disabled),
+        .minimax-h3-look-button:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--comfy-input-bg, #292929) 68%, #fff 12%);
+        }
+        .minimax-h3-look-button:disabled {
+            cursor: default;
+            opacity: 0.38;
+        }
+        .minimax-h3-look-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+            gap: 6px;
+        }
+        .minimax-h3-look-row .minimax-h3-look-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .minimax-h3-look-field {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .minimax-h3-look-field > span {
+            overflow: hidden;
+            color: var(--descrip-text, #aaa);
+            font-size: 10.5px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .minimax-h3-look-field input[type="text"] {
+            width: 100%;
+            height: 27px;
+            padding: 2px 5px;
+            border: 1px solid var(--border-color, #666);
+            border-radius: 4px;
+            outline: none;
+            background: var(--comfy-input-bg, #222);
+            color: var(--input-text, #ddd);
+            font: inherit;
+        }
+        .minimax-h3-look-field input[type="text"]:focus-visible,
+        .minimax-h3-look-transfer:focus-visible,
+        .minimax-h3-creative-panel .minimax-h3-explore-button:focus-visible,
+        .minimax-h3-creative-panel .minimax-h3-look-button:focus-visible {
+            border-color: var(--p-primary-color, #7ca6ff);
+            box-shadow: 0 0 0 1px var(--p-primary-color, #7ca6ff);
+        }
+        .minimax-h3-look-transfer {
+            min-height: 64px;
+            padding: 4px 6px;
+            resize: vertical;
+            font-size: 10.5px;
+            line-height: 1.35;
+        }
+        .minimax-h3-look-transfer[hidden] {
+            display: none;
+        }
+        .minimax-h3-look-status {
+            display: none;
+        }
+        .minimax-h3-look-status[data-visible="true"] {
+            display: block;
+        }
+        .minimax-h3-look-status[data-invalid="true"] {
+            background: color-mix(in srgb, var(--error-text, #e66) 18%, transparent);
+            color: var(--error-text, #e99);
+            font-weight: 600;
+        }
         @media (max-width: 520px) {
             .minimax-h3-treatment-grid,
             .minimax-h3-shot-toolbar,
-            .minimax-h3-settings-grid {
+            .minimax-h3-settings-grid,
+            .minimax-h3-look-row {
                 grid-template-columns: minmax(0, 1fr);
             }
             .minimax-h3-settings-grid .minimax-h3-wide {
@@ -1113,6 +1232,106 @@ function serializeShotPlan(state) {
     return JSON.stringify(sanitized);
 }
 
+// ---------------------------------------------------------------------------
+// Look presets. A "look" is the reusable half of the panel: creative treatment
+// plus cinematography. The shot plan is deliberately excluded because it is
+// scene-specific. Storage is the browser profile (this is a ComfyUI frontend
+// extension), never the workflow, so nothing here can shift widgets_values.
+// ---------------------------------------------------------------------------
+function lookStorageArea() {
+    // Hardened profiles throw on the very access to localStorage.
+    try {
+        return window.localStorage ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function normalizeLookName(value) {
+    return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_LOOK_NAME_LENGTH);
+}
+
+// Defensive by contract: unknown keys are ignored, missing sections fall back to
+// the documented defaults, and malformed input returns null instead of throwing.
+function sanitizeLookEnvelope(value, fallbackName = "") {
+    const parsed = parseJsonObject(value);
+    if (!parsed) return null;
+    const name = normalizeLookName(parsed.name) || normalizeLookName(fallbackName);
+    if (!name) return null;
+    if (parsed.creativeTreatment === undefined && parsed.cinematography === undefined) return null;
+    const savedAt = Number(parsed.savedAt);
+    return {
+        name,
+        schemaVersion: LOOK_SCHEMA_VERSION,
+        savedAt: Number.isFinite(savedAt) && savedAt > 0 ? savedAt : Date.now(),
+        creativeTreatment: sanitizeCreativeTreatment(parsed.creativeTreatment),
+        cinematography: sanitizeCinematography(parsed.cinematography),
+    };
+}
+
+function readLookPresets() {
+    const storage = lookStorageArea();
+    if (!storage) return {};
+    let raw = null;
+    try {
+        raw = storage.getItem(LOOK_STORAGE_KEY);
+    } catch {
+        return {};
+    }
+    const parsed = parseJsonObject(raw);
+    if (!parsed) return {};
+    const presets = {};
+    for (const [key, value] of Object.entries(parsed)) {
+        const envelope = sanitizeLookEnvelope(value, key);
+        if (envelope) presets[envelope.name] = envelope;
+    }
+    return presets;
+}
+
+function writeLookPresets(presets) {
+    const storage = lookStorageArea();
+    if (!storage) return false;
+    try {
+        storage.setItem(LOOK_STORAGE_KEY, JSON.stringify(presets));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function sortedLookNames(presets) {
+    return Object.keys(presets).sort((left, right) => left.localeCompare(right));
+}
+
+// Oldest-first eviction keeps the library bounded without ever refusing a save.
+function evictOldestLooks(presets) {
+    const names = Object.keys(presets);
+    if (names.length <= MAX_LOOK_PRESETS) return [];
+    const ordered = names.sort((left, right) => (presets[left]?.savedAt ?? 0) - (presets[right]?.savedAt ?? 0));
+    const evicted = ordered.slice(0, names.length - MAX_LOOK_PRESETS);
+    for (const name of evicted) delete presets[name];
+    return evicted;
+}
+
+function lookEnvelopeFromNode(node, name) {
+    return {
+        name: normalizeLookName(name),
+        schemaVersion: LOOK_SCHEMA_VERSION,
+        savedAt: Date.now(),
+        creativeTreatment: sanitizeCreativeTreatment(node.__minimaxCreativeTreatmentState),
+        cinematography: sanitizeCinematography(node.__minimaxCinematographyState),
+    };
+}
+
+function serializeLookEnvelope(envelope) {
+    return JSON.stringify({
+        name: envelope?.name ?? "",
+        schemaVersion: LOOK_SCHEMA_VERSION,
+        creativeTreatment: sanitizeCreativeTreatment(envelope?.creativeTreatment),
+        cinematography: sanitizeCinematography(envelope?.cinematography),
+    });
+}
+
 function hideJsonStorageWidget(widget) {
     if (!widget) return;
     if (!widget.__minimaxJsonStorageHidden) {
@@ -1494,6 +1713,101 @@ function commitCinematography(node) {
     updateCinematographySummary(node);
 }
 
+// Both halves go through the same canonical write path the selects use
+// (writeJsonStorage on the JSON storage widgets), then the panel is rehydrated
+// from those widgets: selects, summaries, the unavailable-value warning and the
+// enhancement notice all rebuild from the stored JSON, never from a side state.
+function applyLookEnvelope(node, envelope) {
+    if (!envelope) return false;
+    const creativeWidget = node.widgets?.find((candidate) => candidate.name === CREATIVE_TREATMENT_WIDGET);
+    const cinematographyWidget = node.widgets?.find((candidate) => candidate.name === CINEMATOGRAPHY_WIDGET);
+    if (!creativeWidget || !cinematographyWidget) return false;
+    // Applied verbatim: serializeCreativeTreatment preserves values that this
+    // build's catalog does not know, so hydration can flag them through
+    // ensureUnavailableOption instead of silently rewriting the workflow.
+    writeJsonStorage(node, creativeWidget, serializeCreativeTreatment(envelope.creativeTreatment));
+    writeJsonStorage(node, cinematographyWidget, serializeCinematography(envelope.cinematography));
+    hydrateCreativeDirectionPanel(node);
+    return true;
+}
+
+function setLookStatus(node, message, invalid = false) {
+    const status = node.__minimaxCreativePanel?.looks?.status;
+    if (!status) return;
+    status.textContent = message ?? "";
+    status.dataset.visible = message ? "true" : "false";
+    status.dataset.invalid = invalid ? "true" : "false";
+    scheduleCreativePanelLayout(node);
+}
+
+function refreshLookPresets(node) {
+    const looks = node.__minimaxCreativePanel?.looks;
+    if (!looks) return {};
+    const presets = readLookPresets();
+    const names = sortedLookNames(presets);
+    const previous = looks.select.value;
+    looks.select.replaceChildren();
+    if (names.length) addSelectOptions(looks.select, names.map((name) => [name, name]));
+    else addSelectOptions(looks.select, [["", "No saved looks yet"]]);
+    looks.select.value = names.includes(previous) ? previous : (names[0] ?? "");
+    looks.select.disabled = !names.length;
+    looks.applyButton.disabled = !names.length;
+    looks.deleteButton.disabled = !names.length;
+    looks.summary.textContent = `Looks · ${names.length ? `${names.length} saved` : "None saved"}`;
+    return presets;
+}
+
+function randomFrom(values) {
+    return values[Math.floor(Math.random() * values.length)];
+}
+
+function randomCatalogValue(choices, neutral) {
+    const values = (choices ?? []).map(([token]) => token).filter((token) => token !== neutral);
+    return values.length ? randomFrom(values) : neutral;
+}
+
+// The backend's conflict-resolution pass already reconciles clashing axes at
+// generation time, so Explore intentionally carries no compatibility matrix: it
+// only has to produce catalog-valid values and let the backend arbitrate.
+function exploreLookEnvelope(node, { includeCinematography = false } = {}) {
+    const creativeTreatment = sanitizeCreativeTreatment(node.__minimaxCreativeTreatmentState);
+    for (const { key } of CREATIVE_FIELD_DEFINITIONS) {
+        creativeTreatment[key] = randomCatalogValue(CREATIVE_CHOICES[key], "none");
+    }
+    const cinematography = sanitizeCinematography(node.__minimaxCinematographyState);
+    // Colour is part of the gamble on every roll; roughly a third of the rolls
+    // leave the palette to the model.
+    cinematography.colorPalette = Math.random() < 0.3
+        ? "none"
+        : randomCatalogValue(CINEMATOGRAPHY_CHOICES.colorPalette, "none");
+    if (includeCinematography) {
+        for (const [key] of CINEMATOGRAPHY_FIELDS) {
+            if (key === "colorPalette") continue;
+            const neutral = ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none";
+            cinematography[key] = Math.random() < 0.3
+                ? randomCatalogValue(CINEMATOGRAPHY_CHOICES[key], neutral)
+                : neutral;
+        }
+    }
+    return {
+        name: "Explore",
+        schemaVersion: LOOK_SCHEMA_VERSION,
+        savedAt: Date.now(),
+        creativeTreatment,
+        cinematography,
+    };
+}
+
+function runCreativeExplore(node, fullCinematography) {
+    applyLookEnvelope(node, exploreLookEnvelope(node, { includeCinematography: fullCinematography }));
+    setLookStatus(
+        node,
+        fullCinematography
+            ? "Explore · new creative direction and full cinematography. The shot plan was left untouched."
+            : "Explore · new creative direction and color palette. Shift-click to also roll the cinematography.",
+    );
+}
+
 function updateCinematographySummary(node) {
     const panel = node.__minimaxCreativePanel;
     const state = node.__minimaxCinematographyState;
@@ -1526,7 +1840,10 @@ function updateCreativeTreatmentSummary(node) {
     const prefix = node.__minimaxCreativeNodeName === "MiniMaxH3PromptValidator"
         ? "Creative direction to validate"
         : "Creative direction";
-    panel.treatmentSummary.textContent = `${prefix} · ${active.length ? active.join(" · ") : "No preferences"}`;
+    // Writes the label span, not the <summary>: the Explore button is a sibling
+    // inside that summary and must survive every refresh.
+    const target = panel.treatmentSummaryLabel ?? panel.treatmentSummary;
+    target.textContent = `${prefix} · ${active.length ? active.join(" · ") : "No preferences"}`;
 }
 
 function commitShotPlan(node) {
@@ -1990,6 +2307,263 @@ function createAdvancedSettingsDetails(node) {
     return { details, summary, body, canonicalNames, proxies, refreshSummary };
 }
 
+// Looks section: save / apply / delete / share the reusable half of the panel.
+// Everything it owns lives inside the existing DOM widget, so no node widget is
+// created and widgets_values cannot move.
+function createLooksDetails(node) {
+    const details = createPanelElement("details", "minimax-h3-looks-details");
+    details.open = accordionState(node, "looks");
+    const summary = createPanelElement("summary", "", "Looks · None saved");
+    summary.title = "Reusable presets: creative direction + cinematography. The shot plan stays scene-specific and is never stored in a look.";
+    const body = createPanelElement("div", "minimax-h3-panel-body");
+    const help = createPanelElement(
+        "p",
+        "minimax-h3-panel-help",
+        `Saved in this browser (up to ${MAX_LOOK_PRESETS} looks; saving beyond that drops the oldest one). A look stores creative direction and cinematography, never the shot plan.`,
+    );
+
+    const saveRow = createPanelElement("div", "minimax-h3-look-row");
+    const nameField = createPanelElement("label", "minimax-h3-look-field");
+    nameField.appendChild(createPanelElement("span", "", "Look name"));
+    const nameInput = createPanelElement("input", "");
+    nameInput.type = "text";
+    nameInput.maxLength = MAX_LOOK_NAME_LENGTH;
+    nameInput.placeholder = "Name this look…";
+    nameInput.setAttribute("aria-label", "Look name");
+    nameInput.title = "Name the current creative direction + cinematography, then press Enter or Save.";
+    nameField.appendChild(nameInput);
+    const saveActions = createPanelElement("div", "minimax-h3-look-actions");
+    const saveButton = createPanelElement("button", "minimax-h3-look-button", "Save current look…");
+    saveButton.type = "button";
+    saveButton.setAttribute("aria-label", "Save the current look");
+    saveButton.title = "Stores the current creative direction and cinematography under the name on the left.";
+    saveActions.appendChild(saveButton);
+    saveRow.append(nameField, saveActions);
+
+    const presetRow = createPanelElement("div", "minimax-h3-look-row");
+    const presetField = createPanelElement("label", "minimax-h3-look-field");
+    presetField.appendChild(createPanelElement("span", "", "Saved looks"));
+    const select = createPanelElement("select", "");
+    select.setAttribute("aria-label", "Saved looks");
+    select.title = "Pick a saved look, then Apply. Enter applies the selected look.";
+    presetField.appendChild(select);
+    const presetActions = createPanelElement("div", "minimax-h3-look-actions");
+    const applyButton = createPanelElement("button", "minimax-h3-look-button", "Apply");
+    applyButton.type = "button";
+    applyButton.setAttribute("aria-label", "Apply the selected look");
+    applyButton.title = "Overwrites creative direction and cinematography with the selected look.";
+    const deleteButton = createPanelElement("button", "minimax-h3-look-button", "Delete");
+    deleteButton.type = "button";
+    deleteButton.setAttribute("aria-label", "Delete the selected look");
+    deleteButton.title = "Removes the selected look from this browser.";
+    presetActions.append(applyButton, deleteButton);
+    presetRow.append(presetField, presetActions);
+
+    const transferActions = createPanelElement("div", "minimax-h3-setting-actions");
+    const copyButton = createPanelElement("button", "minimax-h3-look-button", "Copy look");
+    copyButton.type = "button";
+    copyButton.setAttribute("aria-label", "Copy the look as JSON");
+    copyButton.title = "Copies the selected look (or the current panel state) to the clipboard as JSON.";
+    const pasteButton = createPanelElement("button", "minimax-h3-look-button", "Paste look");
+    pasteButton.type = "button";
+    pasteButton.setAttribute("aria-label", "Paste a look from JSON");
+    pasteButton.title = "Reads a look from the clipboard, or opens a box to paste the JSON into.";
+    transferActions.append(copyButton, pasteButton);
+
+    const transfer = createPanelElement("textarea", "minimax-h3-look-transfer");
+    transfer.hidden = true;
+    transfer.spellcheck = false;
+    transfer.setAttribute("aria-label", "Look JSON");
+    const status = createPanelElement("p", "minimax-h3-panel-status minimax-h3-look-status");
+    status.setAttribute("role", "status");
+    status.dataset.visible = "false";
+    status.dataset.invalid = "false";
+
+    body.append(help, saveRow, presetRow, transferActions, transfer, status);
+    details.append(summary, body);
+
+    const hideTransfer = () => {
+        transfer.hidden = true;
+        transfer.value = "";
+        delete transfer.dataset.mode;
+        scheduleCreativePanelLayout(node);
+    };
+    const showTransfer = (mode, value) => {
+        transfer.hidden = false;
+        transfer.dataset.mode = mode;
+        transfer.readOnly = mode === "copy";
+        transfer.value = value;
+        transfer.setAttribute("aria-label", mode === "copy" ? "Look JSON to copy" : "Look JSON to import");
+        scheduleCreativePanelLayout(node);
+        if (mode === "copy") {
+            transfer.focus();
+            transfer.select();
+        } else {
+            transfer.focus();
+        }
+    };
+
+    const saveLook = () => {
+        const name = normalizeLookName(nameInput.value) || normalizeLookName(select.value);
+        if (!name) {
+            setLookStatus(node, "Name the look before saving it.", true);
+            nameInput.focus();
+            return;
+        }
+        const presets = readLookPresets();
+        const existed = Object.prototype.hasOwnProperty.call(presets, name);
+        presets[name] = lookEnvelopeFromNode(node, name);
+        const evicted = evictOldestLooks(presets);
+        if (!writeLookPresets(presets)) {
+            setLookStatus(node, "This browser refused to store the look (private mode or full storage).", true);
+            return;
+        }
+        refreshLookPresets(node);
+        select.value = name;
+        nameInput.value = "";
+        const evictionNote = evicted.length ? ` Oldest look removed: “${evicted.join("”, “")}”.` : "";
+        setLookStatus(node, `${existed ? "Updated" : "Saved"} “${name}” (creative direction + cinematography).${evictionNote}`);
+    };
+
+    const applyLook = () => {
+        const name = select.value;
+        const presets = refreshLookPresets(node);
+        const envelope = presets[name];
+        if (!envelope) {
+            setLookStatus(node, "That look is no longer stored in this browser.", true);
+            return;
+        }
+        select.value = name;
+        if (!applyLookEnvelope(node, envelope)) {
+            setLookStatus(node, "This node has no creative-direction storage to write to.", true);
+            return;
+        }
+        setLookStatus(node, `Applied “${name}”. The shot plan was left untouched.`);
+    };
+
+    const deleteLook = () => {
+        const name = select.value;
+        const presets = readLookPresets();
+        if (!Object.prototype.hasOwnProperty.call(presets, name)) {
+            refreshLookPresets(node);
+            setLookStatus(node, "That look is no longer stored in this browser.", true);
+            return;
+        }
+        delete presets[name];
+        if (!writeLookPresets(presets)) {
+            setLookStatus(node, "This browser refused to update the stored looks.", true);
+            return;
+        }
+        refreshLookPresets(node);
+        setLookStatus(node, `Deleted “${name}”. The applied direction is unchanged.`);
+    };
+
+    const importLookText = (text) => {
+        const raw = String(text ?? "").trim();
+        if (!raw) {
+            setLookStatus(node, "There is nothing to import.", true);
+            return;
+        }
+        if (raw.length > MAX_LOOK_PAYLOAD_LENGTH) {
+            setLookStatus(node, "That payload is too large to be a look.", true);
+            return;
+        }
+        const envelope = sanitizeLookEnvelope(raw, "Imported look");
+        if (!envelope) {
+            setLookStatus(node, "That text is not a valid look. Expected JSON with name, creativeTreatment and cinematography.", true);
+            return;
+        }
+        if (!applyLookEnvelope(node, envelope)) {
+            setLookStatus(node, "This node has no creative-direction storage to write to.", true);
+            return;
+        }
+        nameInput.value = envelope.name;
+        hideTransfer();
+        setLookStatus(node, `Imported “${envelope.name}” and applied it. Use “Save current look…” to keep it in this browser.`);
+    };
+
+    const copyLook = async () => {
+        const presets = readLookPresets();
+        const selected = presets[select.value];
+        const envelope = selected ?? lookEnvelopeFromNode(node, normalizeLookName(nameInput.value) || "Current look");
+        const payload = serializeLookEnvelope(envelope);
+        const source = selected ? `saved look “${envelope.name}”` : "current panel state";
+        let copied = false;
+        if (navigator.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(payload);
+                copied = true;
+            } catch {
+                copied = false;
+            }
+        }
+        if (copied) {
+            hideTransfer();
+            setLookStatus(node, `Copied the ${source} to the clipboard.`);
+            return;
+        }
+        showTransfer("copy", payload);
+        setLookStatus(node, `The clipboard is unavailable. The ${source} is selected in the box below — copy it with Ctrl/Cmd+C.`);
+    };
+
+    const pasteLook = async () => {
+        if (transfer.dataset.mode === "paste" && transfer.value.trim()) {
+            importLookText(transfer.value);
+            return;
+        }
+        let text = "";
+        if (navigator.clipboard?.readText) {
+            try {
+                text = String((await navigator.clipboard.readText()) ?? "");
+            } catch {
+                text = "";
+            }
+        }
+        if (!text.trim()) {
+            showTransfer("paste", "");
+            setLookStatus(node, "Paste the look JSON into the box below, then press “Paste look” again.");
+            return;
+        }
+        importLookText(text);
+    };
+
+    saveButton.addEventListener("click", saveLook);
+    applyButton.addEventListener("click", applyLook);
+    deleteButton.addEventListener("click", deleteLook);
+    copyButton.addEventListener("click", () => {
+        // Never let a rejected clipboard promise reach the console.
+        copyLook().catch(() => setLookStatus(node, "The look could not be copied.", true));
+    });
+    pasteButton.addEventListener("click", () => {
+        pasteLook().catch(() => setLookStatus(node, "The look could not be read from the clipboard.", true));
+    });
+    nameInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        saveLook();
+    });
+    select.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        applyLook();
+    });
+
+    return {
+        details,
+        summary,
+        body,
+        nameInput,
+        select,
+        saveButton,
+        applyButton,
+        deleteButton,
+        copyButton,
+        pasteButton,
+        transfer,
+        status,
+    };
+}
+
 function addCreativeDirectionPanel(node) {
     const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
     const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
@@ -2015,11 +2589,20 @@ function addCreativeDirectionPanel(node) {
     const chainedSettings = createChainedSettingsDetails(node);
     const treatmentDetails = createPanelElement("details", "minimax-h3-treatment-details");
     treatmentDetails.open = accordionState(node, "creativeDirection");
-    const treatmentSummary = createPanelElement(
-        "summary",
-        "",
+    const treatmentSummary = createPanelElement("summary", "");
+    // The label lives in its own span so the summary can also host the Explore
+    // button: updateCreativeTreatmentSummary rewrites the span, never the
+    // summary element, which would otherwise wipe the button.
+    const exploreButton = createPanelElement("button", "minimax-h3-explore-button", "🎲 Explore");
+    exploreButton.type = "button";
+    exploreButton.setAttribute("aria-label", "Explore: random creative direction");
+    exploreButton.title = "Rolls a random genre, visual language, world and tone (plus a color palette). Shift-click also rolls the full cinematography set.";
+    const treatmentSummaryLabel = createPanelElement(
+        "span",
+        "minimax-h3-summary-label",
         isValidator ? "Creative direction context" : "Creative direction · No preferences",
     );
+    treatmentSummary.append(exploreButton, treatmentSummaryLabel);
     treatmentSummary.title = isValidator
         ? "Parses the expected treatment and enables supported literal contract checks; it cannot score aesthetic adherence."
         : "Adds creative direction without rewriting the story or creating cuts.";
@@ -2124,9 +2707,14 @@ function addCreativeDirectionPanel(node) {
     shotBody.append(shotHelp, toolbar, shotList, shotSummary);
     shotDetails.append(shotSummaryLabel, shotBody);
     const advancedSettings = createAdvancedSettingsDetails(node);
+    // A look is treatment + cinematography, so the section sits right after the
+    // two accordions it captures. It exists wherever the creative-direction
+    // section exists, i.e. on every node type that owns the JSON storage
+    // widgets, without any extra node-type gate.
+    const looks = createLooksDetails(node);
     if (modelSetup) root.appendChild(modelSetup.details);
     if (chainedSettings) root.appendChild(chainedSettings.details);
-    root.append(treatmentDetails, cinematographyDetails, shotDetails);
+    root.append(treatmentDetails, cinematographyDetails, looks.details, shotDetails);
     if (advancedSettings) root.appendChild(advancedSettings.details);
 
     const panelWidget = node.addDOMWidget(
@@ -2141,6 +2729,9 @@ function addCreativeDirectionPanel(node) {
         widget: panelWidget,
         treatmentDetails,
         treatmentSummary,
+        treatmentSummaryLabel,
+        exploreButton,
+        looks,
         treatmentBody,
         treatmentStatus,
         creativeSelects,
@@ -2187,7 +2778,23 @@ function addCreativeDirectionPanel(node) {
     bindAccordion(chainedSettings?.details, "chainedMultishot");
     bindAccordion(treatmentDetails, "creativeDirection");
     bindAccordion(cinematographyDetails, "cinematography");
+    bindAccordion(looks.details, "looks");
     bindAccordion(shotDetails, "shotPlan");
+    // The library is shared by every panel in the tab, so re-read it whenever
+    // the section is opened instead of on every hydration.
+    looks.details.addEventListener("toggle", () => {
+        if (looks.details.open) refreshLookPresets(node);
+    });
+    exploreButton.addEventListener("click", (event) => {
+        // Inside a <summary>: without this the click would also toggle the
+        // accordion, both for pointer and for keyboard activation.
+        event.preventDefault();
+        event.stopPropagation();
+        runCreativeExplore(node, Boolean(event.shiftKey));
+    });
+    exploreButton.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+    });
     bindAccordion(advancedSettings?.details, "advancedSettings");
     timingSelect.addEventListener("change", () => {
         const state = node.__minimaxShotPlanState;
@@ -2220,6 +2827,7 @@ function addCreativeDirectionPanel(node) {
         });
     });
 
+    refreshLookPresets(node);
     hydrateCreativeDirectionPanel(node);
     scheduleCreativePanelLayout(node);
 }

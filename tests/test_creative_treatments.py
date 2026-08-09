@@ -52,6 +52,8 @@ CANONICAL_CHOICES = {
         "live_action_classic_western", "live_action_revisionist_western",
         "live_action_1950s_studio_color",
         "live_action_midcentury_technicolor_epic",
+        "surveillance_found_footage", "home_camcorder_1990s", "1970s_new_hollywood",
+        "silent_era_1920s", "storybook_symmetrical",
         "stylized_3d_animation",
         "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d", "cel_shaded_3d",
         "stop_motion_handcrafted", "painterly_2d", "watercolor_2d", "gouache_2d",
@@ -61,7 +63,7 @@ CANONICAL_CHOICES = {
         "none", "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",
         "near_future_functional", "gothic", "solarpunk", "steampunk", "post_apocalyptic",
         "historical_period", "retrofuturism_atomic_age", "retrofuturism_cassette", "retrofuturism_y2k",
-        "analog_1980s", "urban_industrial",
+        "analog_1980s", "urban_industrial", "dieselpunk", "nordic_noir", "liminal_institutional",
     ),
     "tone": (
         "none", "epic", "intimate", "dark", "tense", "hopeful", "melancholic", "playful", "restrained",
@@ -193,6 +195,9 @@ def test_midcentury_dye_transfer_is_an_independent_color_treatment():
         ("cold_steel_blue", "cold steel-blue science-fiction", "Do not turn the scene into night"),
         ("sterile_white_cyan", "sterile white-cyan science-fiction", "Do not force high-key exposure"),
         ("neon_cyan_magenta", "neon cyan-magenta", "do not invent neon tubes"),
+        ("soft_pastel", "soft pastel color treatment as grading only", "do not repaint materials"),
+        ("day_for_night", "day-for-night interpretation as grading only", "do not invent a visible moon"),
+        ("infrared_aerochrome", "false-color infrared aerochrome treatment", "do not invent red or magenta light sources"),
     ),
 )
 def test_named_color_treatments_are_specific_and_non_narrative(palette, phrase, guardrail):
@@ -202,6 +207,31 @@ def test_named_color_treatments_are_specific_and_non_narrative(palette, phrase, 
     }))
     assert phrase in instruction
     assert guardrail in instruction
+
+
+@pytest.mark.parametrize(
+    ("texture", "phrase", "guardrail"),
+    (
+        (
+            "vhs_analog_video",
+            "faint head-switching band at the very bottom of the frame",
+            "do not add tracking errors, dropouts, rolling distortion, rewind or pause artifacts",
+        ),
+        (
+            "early_digital_dv",
+            "slight edge aliasing on high-contrast diagonals",
+            "do not add datamosh, block glitches, macroblocking",
+        ),
+    ),
+)
+def test_analog_and_early_digital_video_textures_stay_honest_captures(texture, phrase, guardrail):
+    instruction = cinematography_instruction(parse_cinematography({
+        "schemaVersion": 1,
+        "imageTexture": texture,
+    }))
+    assert phrase in instruction
+    assert guardrail in instruction
+    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
 
 
 def test_cinematography_rejects_invalid_or_orphaned_motion_modifiers():
@@ -408,6 +438,111 @@ def test_live_action_variants_are_distinct_and_do_not_invent_genre_content():
         instruction = creative_treatment_instruction(treatment)
         for phrase in phrases:
             assert phrase in instruction
+
+
+def test_capture_and_period_visual_languages_carry_distinct_complete_contracts():
+    checks = {
+        "surveillance_found_footage": (
+            "raw captured recording",
+            "rigid high mounted corner viewpoint",
+            "Crimes, intruders",
+        ),
+        "home_camcorder_1990s": (
+            "consumer camcorder home recording",
+            "abrupt motorized zoom that overshoots",
+            "burned-in dates",
+        ),
+        "1970s_new_hollywood": (
+            "location-shot 35mm American drama of the early 1970s",
+            "warm Eastman-style negative color",
+            "needle-drop songs",
+        ),
+        "silent_era_1920s": (
+            "1920s silent-film craft",
+            "iris-in to open",
+            "Intertitles, title cards",
+        ),
+        "storybook_symmetrical": (
+            "Compose planimetrically",
+            "right-angled whip pan",
+            "Whimsy, quirk, twee props",
+        ),
+    }
+    for profile, phrases in checks.items():
+        treatment = compose_creative_treatment(visual_language=profile)
+        assert treatment["profileVersions"] == {f"visual_language:{profile}": 1}
+        assert set(treatment["dimensions"]) == set(PROFILE_DIMENSIONS)
+        instruction = creative_treatment_instruction(treatment)
+        for phrase in phrases:
+            assert phrase in instruction
+
+    # The two capture languages and the two period languages must not read as each
+    # other or as their nearest existing neighbour.
+    neighbours = {
+        "surveillance_found_footage": "documentary_observational",
+        "home_camcorder_1990s": "documentary_observational",
+        "silent_era_1920s": "live_action_classic_black_and_white",
+        "1970s_new_hollywood": "live_action_cinematic",
+        "storybook_symmetrical": "live_action_expressionist",
+    }
+    for profile, neighbour in neighbours.items():
+        other = creative_treatment_instruction(compose_creative_treatment(visual_language=neighbour))
+        assert checks[profile][0] not in other
+        assert checks[profile][1] not in other
+
+
+def test_silent_era_visual_language_never_forces_silence_or_fights_the_dialogue_contract():
+    treatment = compose_creative_treatment(visual_language="silent_era_1920s")
+    sound = " ".join(treatment["dimensions"]["sound_treatment"])
+    assert "never imply a silent track and never mute a voice" in sound
+    assert "stays fully audible and lip-synced under the audio policy" in sound
+    # Music stays subordinate to the audio policy: the profile shapes it only when the
+    # policy already permits it, and never requests a score of its own.
+    assert "When the audio policy already permits music" in sound
+    assert "score-forward accompaniment" in sound
+    forbidden = " ".join(treatment["dimensions"]["must_not_invent"])
+    assert "silence" in forbidden
+    assert "muted or filtered speech" in forbidden
+    assert "Intertitles" in forbidden
+
+
+def test_new_world_aesthetics_are_distinct_from_their_established_neighbours():
+    checks = {
+        "dieselpunk": ("interwar diesel vocabulary", "riveted plate steel", "airships"),
+        "nordic_noir": (
+            "functional civic and domestic modernity",
+            "prosperous but impersonal upkeep",
+            "Scandinavia",
+        ),
+        "liminal_institutional": (
+            "maintained, mostly vacated interior",
+            "plain wayfinding geometry with non-legible signage",
+            "backrooms lore",
+        ),
+    }
+    neighbours = {
+        "dieselpunk": ("steampunk", "retrofuturism_atomic_age"),
+        "nordic_noir": ("film_noir", "near_future_functional"),
+        "liminal_institutional": ("urban_industrial", "post_apocalyptic"),
+    }
+    for profile, phrases in checks.items():
+        treatment = compose_creative_treatment(world_aesthetic=profile)
+        assert treatment["profileVersions"] == {f"world_aesthetic:{profile}": 1}
+        assert set(treatment["dimensions"]) == set(PROFILE_DIMENSIONS)
+        assert treatment["dimensions"]["camera_and_framing"]
+        instruction = creative_treatment_instruction(treatment)
+        for phrase in phrases:
+            assert phrase in instruction
+        for neighbour in neighbours[profile]:
+            other = creative_treatment_instruction(compose_creative_treatment(world_aesthetic=neighbour))
+            assert phrases[0] not in other
+            assert phrases[1] not in other
+    # liminal_institutional is maintained, not ruined: it must forbid the decay language
+    # that post_apocalyptic exists to supply.
+    liminal = compose_creative_treatment(world_aesthetic="liminal_institutional")
+    forbidden = " ".join(liminal["dimensions"]["must_not_invent"]).lower()
+    for word in ("abandonment", "ruin", "decay", "distortion", "entities"):
+        assert word in forbidden
 
 
 def test_period_action_combinations_preserve_unique_cross_axis_guidance():
@@ -893,6 +1028,35 @@ def test_explicit_cinematography_outranks_every_creative_axis():
     assert [item["loser"] for item in handheld_conflicts] == ["locked"]
     assert treatment_warnings(locked, shake)[0].startswith("cameraMotion 'shake_slightly' is a legacy value")
     assert any("camera_energy conflict" in warning for warning in treatment_warnings(locked, shake))
+
+
+def test_new_profile_camera_tags_join_the_existing_antagonism_vocabulary():
+    # The new profiles add no new conflict mechanism: they reuse the catalogued
+    # camera_energy vocabulary, so an explicit shake still outranks them and the normal
+    # axis precedence still resolves them against each other.
+    shake = parse_cinematography({"schemaVersion": 1, "cameraMotion": "shake"})
+    for profile, loser in (("silent_era_1920s", "locked"), ("storybook_symmetrical", "choreographed")):
+        conflicts = detect_treatment_conflicts(compose_creative_treatment(visual_language=profile), shake)
+        assert conflicts
+        assert {item["winnerAxis"] for item in conflicts} == {"cinematography"}
+        assert {item["loser"] for item in conflicts} == {loser}
+
+    observational = compose_creative_treatment(genre="action", visual_language="surveillance_found_footage")
+    conflicts = detect_treatment_conflicts(observational, parse_cinematography(""))
+    assert {item["winner"] for item in conflicts} == {"observational"}
+    assert {item["loserAxis"] for item in conflicts} == {"genre"}
+
+    handheld = compose_creative_treatment(
+        visual_language="home_camcorder_1990s", world_aesthetic="liminal_institutional",
+    )
+    conflicts = detect_treatment_conflicts(handheld, parse_cinematography(""))
+    assert {item["winner"] for item in conflicts} == {"locked"}
+    assert {item["loserAxis"] for item in conflicts} == {"visual_language"}
+
+    # 1970s_new_hollywood only claims a pacing tag, so it stays compatible with an
+    # explicit camera move instead of fighting it.
+    unhurried = compose_creative_treatment(visual_language="1970s_new_hollywood")
+    assert detect_treatment_conflicts(unhurried, shake) == []
 
 
 def test_compatible_selections_produce_no_conflicts_and_no_dropped_lines():

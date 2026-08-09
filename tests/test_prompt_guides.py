@@ -185,6 +185,21 @@ def _grading_only_errors(palette, body, source=_GRADING_ONLY_SOURCE):
             "beside neon signs and orange lighting",
             "without neon signs or orange lighting, keeping luminous protected skin and open midtones as a grade",
         ),
+        (
+            "soft_pastel",
+            "under a pink glow spilling from a tube overhead",
+            "with no pink glow added, keeping the lifted low end and gentle candy tints as a grade",
+        ),
+        (
+            "day_for_night",
+            "beneath blue lighting and a full moon over the roofline",
+            "with no blue lighting or moon invented, keeping the pulled-down exposure reading as night",
+        ),
+        (
+            "infrared_aerochrome",
+            "under magenta lighting thrown across the wall",
+            "without magenta lighting, keeping foliage red-to-magenta as a false-color grade",
+        ),
     ),
 )
 def test_stylized_grading_palettes_reject_invented_illumination_and_accept_grade_language(
@@ -222,6 +237,14 @@ def test_grading_only_guards_only_reference_catalogued_palettes():
         ("teal_orange", "along an orange-washed corridor"),
         # A traffic signal is a diegetic object, not a grade the palette invented.
         ("telenovela_broadcast_color", "as the traffic signal turns green"),
+        # The new grading palettes name their own hues; only a claimed light source is
+        # an invented practical, so grade vocabulary and material colour stay legal.
+        ("soft_pastel", "while a pastel wash settles over the walls"),
+        ("soft_pastel", "in a pink overall he keeps buttoned"),
+        ("day_for_night", "while the daylight shadows read as moonlight in the grade"),
+        ("day_for_night", "under a deep blue cast that holds the whole frame"),
+        ("infrared_aerochrome", "as the foliage outside renders red and magenta"),
+        ("infrared_aerochrome", "while a red cast settles into the leaves"),
     ),
 )
 def test_grading_only_guards_accept_grade_vocabulary_and_ordinary_objects(palette, body):

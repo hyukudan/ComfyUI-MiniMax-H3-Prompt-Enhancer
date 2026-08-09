@@ -2832,6 +2832,33 @@ _GRADING_ONLY_PALETTE_PATTERNS = {
         r"\b(?:saturated|neon)\s+glow\b",
         r"\bglow(?:ing)?\b",
     ),
+    # soft_pastel is guarded, but narrowly: the palette authorizes lifted low-saturation
+    # candy tints as a grade, so "pastel wash", "pink cast" and "pastel tint" stay legal
+    # wording. Only the palette's own hues attached to a light SOURCE ("a pink glow",
+    # "pastel lamps") are an invented practical, which is exactly the failure this catches.
+    "soft_pastel": (
+        r"\b(?:pastel|pink|lilac|mint)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+    ),
+    # day_for_night: "moonlight" and "blue" name the interpretation itself, so they are
+    # only guarded when attached to a source noun. The second entry catches the invented
+    # celestial source the palette explicitly forbids; it is a separate group so a source
+    # prompt that legitimately mentions blue light does not unlock an invented moon.
+    "day_for_night": (
+        r"\b(?:blue|cyan|steel[- ]?blue)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+        r"\b(?:moonlight|moonlit)\s+(?:glow|emission|illumination|lamps?|beams?|shafts?|practicals?)s?\b",
+        r"\bmoonbeams?\b",
+        r"\b(?:full|crescent|rising)\s+moon\b|\bstarry\s+(?:sky|night)\b",
+    ),
+    # infrared_aerochrome: red/magenta on foliage IS the false-color response the palette
+    # authorizes, so only red/magenta attached to a light source is guarded, plus the
+    # invented infrared emitter.
+    "infrared_aerochrome": (
+        r"\b(?:red|magenta|crimson|pink)\s+"
+        r"(?:light(?:ing)?|glow|emission|illumination|lamps?|tubes?|beams?|practicals?)s?\b",
+        r"\binfrared\s+(?:lamps?|illuminators?|emitters?|beams?|light(?:ing)?)s?\b",
+    ),
 }
 
 

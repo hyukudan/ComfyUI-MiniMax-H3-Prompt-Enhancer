@@ -19,9 +19,9 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 16
+CREATIVE_PROFILE_CATALOG_VERSION = 17
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
-CINEMATOGRAPHY_CATALOG_VERSION = 5
+CINEMATOGRAPHY_CATALOG_VERSION = 6
 SHOT_PLAN_SCHEMA_VERSION = 1
 
 CREATIVE_AXES = ("genre", "visual_language", "world_aesthetic", "tone")
@@ -898,6 +898,158 @@ VISUAL_LANGUAGE_PROFILES = {
             "Mythology, antiquity, historical periods, empires, royalty, heroes, armies, crowds, battles, voyages, monsters, temples, palaces, deserts, seas, costumes, weapons, matte paintings, miniatures, theatrical acting, painted backdrops, overtures, fanfares, orchestral music, film damage, or franchise imitation.",
         ),
     ),
+    "surveillance_found_footage": _profile(
+        tags={"camera_energy": "observational", "pacing": "long_takes"},
+        editing_and_pacing=(
+            "Present the material as raw captured recording from a device implied by the location: continuous unedited runs, actions that enter and leave the recorded field at their own pace, and retained dead time before and after the supplied event.",
+            "Let any change of viewpoint read as a switch between separately captured segments rather than authored coverage; add no montage, replay, freeze frame, or dramatic cut.",
+        ),
+        camera_and_framing=(
+            "Use either a rigid high mounted corner viewpoint or a chest-height body-worn viewpoint, one wide slightly barrel-distorted field, indifferent centering, and subjects allowed to sit small, cropped, or partly outside the frame.",
+            "Keep required action inside the recorded field and identifiable, but grant the device no operator craft: it never reframes for emphasis, racks focus for drama, or finds a flattering angle.",
+        ),
+        lighting_and_color=(
+            "Use only the illumination the location already has, with blown windows, unreadable dim corners kept away from required detail, mixed uncorrected white balance, narrow dynamic range, and flat compression-limited color.",
+            "Preserve supplied colors, time of day, and light sources; do not add night-vision green, infrared rendering, colored emergency light, or a deliberate cinematic grade.",
+        ),
+        production_design=(
+            "Photograph the supplied space exactly as installed, with ordinary functional clutter and unstyled surfaces filling the fixed field of view; nothing is dressed, hidden, or arranged for the lens.",
+        ),
+        blocking_and_performance=(
+            "Keep behavior unperformed and unaware of the recording: people cross the field on their own business, turn away, occlude one another, and complete gestures off-frame without playing to the device.",
+        ),
+        sound_treatment=(
+            "When allowed, use thin on-device mono capture with the room's own ambience, uneven distance, speech that thins or muffles at range, and no sweetening, score, or added effects.",
+        ),
+        may_fill_unspecified=(
+            "Mounted or body-worn viewpoint, wide indifferent framing, available-light exposure limits, flat compressed color, unperformed behavior, and thin on-device ambience.",
+        ),
+        must_not_invent=(
+            "Crimes, intruders, theft, violence, accidents, security staff, operators, watchers, evidence, alarms, jump scares, reveals, timestamps, camera identifiers, overlay graphics, crosshairs, recording indicators, night-vision green, infrared, static, dropouts, scan bars, or degraded audio absent from the source.",
+        ),
+    ),
+    "home_camcorder_1990s": _profile(
+        tags={"camera_energy": "handheld"},
+        editing_and_pacing=(
+            "Present the material as a consumer camcorder home recording: one continuous take begun slightly late and stopped slightly early, ordinary lulls kept, and no editorial shaping of the supplied moment.",
+            "Let a change of viewpoint read as the operator physically turning within the same take; add no cutaway, montage, or edited highlight.",
+        ),
+        camera_and_framing=(
+            "Hold the camera in one hand at chest or eye height with constant micro-jitter, small corrections, occasional tilt, and an abrupt motorized zoom that overshoots and then settles.",
+            "Let the small-sensor lens keep nearly every plane in focus while autofocus and auto-exposure visibly hunt after each move, render motion with video-native smoothness rather than a film shutter, and allow casual framing that clips heads, feet, or a shoulder without losing the required action.",
+        ),
+        lighting_and_color=(
+            "Use whatever domestic illumination exists, with auto white balance drifting between window daylight and ceiling fixtures, clipped window highlights, backlit faces falling dark, and modest video color that is neither filmic nor graded.",
+            "Preserve supplied colors and time of day; do not add tape damage, chroma smear beyond honest video capture, a faded vintage grade, or a darkened frame edge.",
+        ),
+        production_design=(
+            "Photograph the supplied domestic space unstyled, with furniture left in its real arrangement, everyday objects where they already sit, and the operator's own hand or body occasionally crossing the frame.",
+        ),
+        blocking_and_performance=(
+            "Let people acknowledge the camera casually, glancing at it, waving it away, speaking past it, or drifting out of frame mid-gesture, without performing for it or staging an occasion.",
+        ),
+        sound_treatment=(
+            "When allowed, use the built-in microphone's near-field mono perspective: close voices loud, distant voices thin, live room reverberation, handling and wind noise on the body, and zoom-motor detail only while a zoom is visible.",
+        ),
+        may_fill_unspecified=(
+            "Handheld micro-jitter, hunting autofocus and exposure, abrupt zooms, deep small-sensor focus, casual clipped framing, drifting auto white balance, and on-camera microphone perspective.",
+        ),
+        must_not_invent=(
+            "Birthdays, holidays, weddings, graduations, children, pets, family relationships, home-movie occasions, a 1990s setting, period wardrobe or objects, burned-in dates, timecode, recording or battery icons, tracking errors, dropouts, rewind or pause artifacts, tape hiss beyond honest capture, nostalgia, or narration.",
+        ),
+    ),
+    "1970s_new_hollywood": _profile(
+        tags={"pacing": "long_takes"},
+        editing_and_pacing=(
+            "Present photographed live action as location-shot 35mm American drama of the early 1970s: scenes allowed to begin before and end after their point, unhurried coverage, and cuts that arrive only once a performance beat has finished.",
+            "Let incidental business and overlapping speech run through the beat instead of compressing it into montage or trailer rhythm.",
+        ),
+        camera_and_framing=(
+            "Observe from a modest distance on longer lenses, using slow motivated zooms that creep in or out during the take, faintly imprecise operating, and real foreground obstruction between camera and performer.",
+            "Let the frame breathe with off-center placement and generous space beside and above people, reframing with the actor rather than anticipating the move.",
+        ),
+        lighting_and_color=(
+            "Use available and lightly supplemented location light with hot windows blooming into visible halation, faces permitted to fall into shadow, honest photochemical grain, and warm Eastman-style negative color with slightly open blacks.",
+            "Preserve supplied colors, weather, and time of day; do not add sepia, a faded archival grade, teal-orange separation, scratches, gate weave, or projector artifacts.",
+        ),
+        production_design=(
+            "Photograph the supplied locations, wardrobe, and objects as genuinely lived-in, with real wear, working practical fixtures, and unglamorous surfaces; never redress the scene into another decade or replace it with a built set.",
+        ),
+        blocking_and_performance=(
+            "Favor performance-led staging in which actors find their own positions, gestures stay small and unresolved, glances land late, speech overlaps, and reactions continue after the important line.",
+        ),
+        sound_treatment=(
+            "When allowed, keep location-recorded dialogue with true room and street perspective, overlapping voices, and honest background presence; the profile grants no song, score, looped clean dialogue, or narration.",
+        ),
+        may_fill_unspecified=(
+            "Unhurried scene length, longer-lens observation distance, slow motivated zooms, window halation, warm negative color with honest grain, lived-in location texture, and overlapping naturalistic performance.",
+        ),
+        must_not_invent=(
+            "The 1970s, historical events, politics, protest, war, counterculture, drugs, crime, cars, costumes, hairstyles, decor or props beyond what the source supplies, cigarettes, needle-drop songs, popular music, score, voice-over, sepia nostalgia, film damage, or a downbeat outcome.",
+        ),
+    ),
+    "silent_era_1920s": _profile(
+        tags={"camera_energy": "locked"},
+        editing_and_pacing=(
+            "Present the scene with 1920s silent-film craft: complete actions played inside sustained held shots, beats separated by graphic punctuation rather than modern coverage, and a slightly accelerated overall motion cadence.",
+            "Use an iris-in to open and an iris-out or fade to close only at a shot boundary the plan already contains; the era's punctuation never adds a cut, chapter, or scene.",
+        ),
+        camera_and_framing=(
+            "Compose a 4:3-minded centered tableau inside the delivered aspect ratio: frontal staging, the acting area presented squarely to the lens, full figures kept whole, and depth arranged in flat parallel bands.",
+            "Keep the camera tripod-mounted with only measured pans or tilts, and darken the extreme frame corners with a soft vignette that never hides required detail.",
+        ),
+        lighting_and_color=(
+            "Render a monochrome image with strong art-directed contrast, hard key modeling, luminous faces, deep architectural shadow, and clearly separated grayscale luminance for every supplied local color.",
+            "Do not add tinting, toning, sepia, scratches, dust, flicker, gate weave, splices, or projector damage; era texture stops at honest photographic monochrome.",
+        ),
+        production_design=(
+            "Give the supplied people, wardrobe, and locations bold graphic shape that reads as silhouette and tone, with strong contour, patterned surfaces, and deliberate scale, without importing period decor or objects the source does not supply.",
+        ),
+        blocking_and_performance=(
+            "Let expressive pantomime carry meaning physically: full-body attitude, clear directional gesture, held poses, deliberate turns and approaches, and reactions readable from a wide framing.",
+            "Keep every gesture motivated by the supplied action; the style adds no mugging, swooning, cowering, villainy, or comic pratfalls.",
+        ),
+        sound_treatment=(
+            "Silent-era visuals never imply a silent track and never mute a voice: any dialogue the source supplies stays fully audible and lip-synced under the audio policy.",
+            "When the audio policy already permits music, shape it as continuous score-forward accompaniment that follows the action, and keep diegetic foley minimal, selective, and impressionistic rather than densely detailed.",
+        ),
+        may_fill_unspecified=(
+            "Centered frontal tableau staging, tripod-fixed camera, iris and fade punctuation at existing boundaries, high-contrast monochrome modeling, corner vignetting, accelerated motion cadence, and pantomime clarity.",
+        ),
+        must_not_invent=(
+            "Intertitles, title cards, dialogue cards, captions, on-screen text, a 1920s setting, period wardrobe or vehicles, melodrama, villains, damsels, chases, pratfalls, silence, muted or filtered speech, hiss, crackle, projector noise, scratches, dust, flicker, gate weave, tinting, sepia, or archival damage.",
+        ),
+    ),
+    "storybook_symmetrical": _profile(
+        tags={"camera_energy": "choreographed"},
+        editing_and_pacing=(
+            "Present the scene as a series of composed tableaux, each framing held flat and deadpan for its whole beat with metronomic timing and no drifting coverage.",
+            "Where a move is warranted, use one right-angled whip pan or one straight push along the lens axis, starting and stopping cleanly on a composed frame without adding a cut.",
+        ),
+        camera_and_framing=(
+            "Compose planimetrically: the camera sits exactly square to the rear plane in one-point perspective, or exactly in profile at ninety degrees, with the subject centered and the frame's halves balanced around a vertical axis.",
+            "Keep verticals plumb, horizontals level, and depth stacked in parallel planes; there is no oblique three-quarter staging, canted horizon, or handheld drift.",
+        ),
+        lighting_and_color=(
+            "Light frontally and evenly so every plane reads with equal clarity, and organize the image into controlled, flat, deliberate color fields with clean boundaries between them.",
+            "Preserve the supplied colors of people, wardrobe, objects, and locations; this composition language sets no palette of its own and neither tints nor recolors anything.",
+        ),
+        production_design=(
+            "Arrange the supplied objects, furniture, signage, and architecture with meticulous order, using aligned edges, repeated intervals, and centered hero placement, without adding props, decoration, or a miniature conceit.",
+        ),
+        blocking_and_performance=(
+            "Stage the ensemble in choreographed straight lines with even spacing, moving in unison or strictly one at a time along lateral or frontal axes, delivering level unhurried behavior with gaze aimed straight down the lens axis or exactly in profile.",
+        ),
+        sound_treatment=(
+            "When allowed, keep sound dry, close, and precisely placed, with individually articulated footsteps, latches, and handling detail in an acoustically small space; add no narrator, comic effect, or whimsical instrumentation.",
+        ),
+        may_fill_unspecified=(
+            "Frontal or profile geometry, axial symmetry, deadpan held framings, right-angled whip pans, even frontal light, flat controlled color fields, meticulous alignment, and dry articulated foley.",
+        ),
+        must_not_invent=(
+            "Whimsy, quirk, twee props, curiosities, miniatures, dioramas, dollhouses, uniforms, chapter titles, captions, labels, readable text, narration, a pastel or any other palette the source does not supply, symmetrical architecture the location does not have, storybook plot beats, or comic music.",
+        ),
+    ),
     "stylized_3d_animation": _profile(
         version=2,
         editing_and_pacing=("Present unmistakable stylized 3D animation with clear pose-to-pose timing, readable arcs, controlled overlap, intentional holds, and stable spatial continuity rather than live action with a CG filter.",),
@@ -1315,6 +1467,38 @@ WORLD_AESTHETIC_PROFILES = {
         may_fill_unspecified=("Functional infrastructure detail, structural depth, material wear, circulation logic, practical light behavior, and spatial mechanical ambience."),
         must_not_invent=("Cities, factories, warehouses, machinery, pipes, ducts, cables, workers, traffic, trains, cranes, smoke, steam, pollution, rain, decay, poverty, danger, crime, cyberpunk technology, alarms, or industrial music."),
     ),
+    "dieselpunk": _profile(
+        editing_and_pacing=("Let the mass, inertia, and warm-up time of already present diesel-age machinery set a heavy deliberate rhythm without adding urgency or mechanical incident."),
+        camera_and_framing=("Favor bold frontal geometry, strong diagonals, and slightly low viewpoints that read the riveted bulk and load-bearing weight of existing structures and machines."),
+        lighting_and_color=("Use hard practical light across oiled metal and enameled steel with restrained smoky depth only where physically supported; do not force amber, soot, night, or a monochrome industrial grade."),
+        production_design=("Style unspecified attributes of already authorized machinery, vehicles, architecture, and clothing with one coherent interwar diesel vocabulary: riveted plate steel, cast housings, stepped art-deco geometry, bakelite and enamel fittings, canvas, oiled leather, and heavy wool."),
+        blocking_and_performance=("Keep operation of existing controls effortful and mechanical through levers, cranks, wheels, and heavy switches, without implying labor, discipline, or command."),
+        sound_treatment=("When allowed, give visible mechanisms low-frequency diesel throb, linkage detail, and forced ventilation without implying new engines, sirens, or aircraft."),
+        may_fill_unspecified=("Interwar diesel-age construction, riveted and cast material logic, art-deco proportion, heavy fittings, and effortful mechanical operation."),
+        must_not_invent=("Engines, turbines, aircraft, airships, tanks, factories, refineries, uniforms, militaries, war, propaganda, goggles, smoke, steam, oil spills, or alternate history unless already authorized."),
+    ),
+    "nordic_noir": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
+        editing_and_pacing=("Use patient procedural observation and unemphatic transitions that let supplied facts accumulate without adding investigation, suspicion, or menace."),
+        camera_and_framing=("Favor orderly compositions with generous empty margin, level horizons, and existing glazing, thresholds, or open ground used to hold the subject at a measured distance."),
+        lighting_and_color=("Use thin low-angle daylight and sparse interior sources with desaturated blue-gray relationships, soft directionless modeling, and protected skin; do not force snow, rain, darkness, or a crushed blue grade."),
+        production_design=("Apply unshowy functional civic and domestic modernity only to unspecified attributes of existing places and objects: pale wood, matte finishes, clean joinery, unornamented public surfaces, careful order, and prosperous but impersonal upkeep."),
+        blocking_and_performance=("Preserve supplied behavior with contained gesture, unhurried movement, and few words; restraint here is manner, not grief, guilt, or repression."),
+        sound_treatment=("Use only physically supported quiet room tone, weather, and building services; add no ominous drone, wind bed, or melancholic score."),
+        may_fill_unspecified=("Functional civic modernity, pale matte materials, thin daylight quality, measured spatial distance, careful order, and quiet ambience."),
+        must_not_invent=("Crime, bodies, victims, police, detectives, investigations, missing persons, corruption, secrets, Scandinavia, Nordic locations or language, snow, ice, forests, fjords, winter, rain, alcohol, cigarettes, grief, or brooding music."),
+    ),
+    "liminal_institutional": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
+        editing_and_pacing=("Let the maintained, mostly vacated interior set an even uneventful rhythm; it adds no arrival, disappearance, or dread beat."),
+        camera_and_framing=("Favor centered axial views along existing corridors, aisles, and repeated bays, holding the vanishing point and reading human scale against repeating doors, columns, or seating rows."),
+        lighting_and_color=("Use flat even overhead fluorescent-style illumination with no shadow direction, mild green-gray neutrality, and fully readable corners; do not add flicker, darkness, or colored emergency light."),
+        production_design=("Apply well-kept institutional finishing only to unspecified attributes of the supplied interior: continuous single-tone carpet or vinyl, suspended ceiling grids, painted block walls, handrails, fire doors, waiting seating, and plain wayfinding geometry with non-legible signage."),
+        blocking_and_performance=("Preserve supplied behavior and route people along the building's intended circulation; emptiness implies no fear, searching, or being watched."),
+        sound_treatment=("Use only physically supported ventilation hum, distant plumbing, and long hard-surfaced reverberation; add no unexplained footsteps or music."),
+        may_fill_unspecified=("Maintained institutional finishing, corridor repetition, even overhead illumination, wayfinding geometry, circulation logic, and reverberant building ambience."),
+        must_not_invent=("Entities, figures, watchers, monsters, hauntings, backrooms lore, abandonment, ruin, decay, dust, damage, graffiti, flicker, distortion, warped geometry, endless space, time loops, alarms, whispers, or dread music."),
+    ),
 }
 
 
@@ -1548,6 +1732,9 @@ CINEMATOGRAPHY_CHOICES = {
         "cold_steel_blue": "Apply a cold steel-blue science-fiction color treatment with controlled blue and cyan bias, clean neutral metals and grays, protected natural skin, readable shadow detail, and restrained warm accents from sources already present. Do not turn the scene into night, recolor every object blue, or invent technology, screens, emissions, haze, or light sources.",
         "sterile_white_cyan": "Apply a sterile white-cyan science-fiction palette with clean differentiated whites, cool neutral surfaces, restrained cyan separation, protected skin and local colors, and fully retained highlight detail. Do not force high-key exposure, clip whites, remove material texture, or invent laboratories, medical spaces, technology, screens, or luminous fixtures.",
         "neon_cyan_magenta": "Apply a vivid but controlled neon cyan-magenta color treatment using selective complementary separation, protected skin and authoritative colors, clean channel detail, and stable saturation across time. Treat it as grading only: do not invent neon tubes, signs, city lights, holograms, rain, reflections, colored light sources, cyberpunk objects, or emissive effects.",
+        "soft_pastel": "Apply a soft pastel color treatment as grading only: lift the low end so the darkest values read as soft gray rather than true black, hold saturation low and even, bias hues toward gentle candy tints, and roll highlights off smoothly with protected skin and no clipped channel. Preserve explicit local colors and do not repaint materials, wardrobe, or products, and do not invent pastel light sources, glow, or hazy diffusion.",
+        "day_for_night": "Apply a day-for-night interpretation as grading only: pull overall exposure down, bias the image blue, keep contrast firm with dense but readable shadows, protect skin and eye legibility, and let the supplied daylight shadows and highlights read as moonlight. Preserve the supplied light sources, weather, staging, and stated time of day as facts; do not invent a visible moon, moonbeam, stars, night sky, street lamps, or any new practical light.",
+        "infrared_aerochrome": "Apply a false-color infrared aerochrome treatment as grading only: render living foliage and grass in saturated red-to-magenta, deepen sky toward dark cyan-blue, let skin turn pale porcelain with faint pink undertone, and keep clean channel separation with protected highlight detail. Recolor only living vegetation, sky, and skin, leaving wardrobe, painted surfaces, products, and other objects in their explicit colors, and do not invent red or magenta light sources, emissions, or glow.",
     },
     "exposure_contrast": {
         "none": "",
@@ -1637,6 +1824,8 @@ CINEMATOGRAPHY_CHOICES = {
         "subtle_stable_grain": "Apply fine, subtle, temporally stable photographic grain without shimmer or loss of facial and text detail.",
         "film_16mm": "Use a restrained 16mm-inspired photographic texture with fine stable grain and protected detail, not scratches or gate damage.",
         "film_35mm": "Use a restrained 35mm-inspired photographic texture with fine stable grain and smooth tonal response, not scratches or gate damage.",
+        "vhs_analog_video": "Use an honest consumer analog video texture with softened luma detail, mild chroma bleed at saturated edges, a faint head-switching band at the very bottom of the frame, and interlace-era motion smoothness. Keep the image stable and legible: do not add tracking errors, dropouts, rolling distortion, rewind or pause artifacts, snow, or timecode.",
+        "early_digital_dv": "Use an early MiniDV or Digital8 texture with crisp video sharpness, slight edge aliasing on high-contrast diagonals, mild oversharpen halos, deep small-sensor focus, and clinical unfilmic color. Keep it clean and temporally stable: do not add datamosh, block glitches, macroblocking, dropouts, grain, or halation.",
     },
     "lens_effects": {
         "none": "",
