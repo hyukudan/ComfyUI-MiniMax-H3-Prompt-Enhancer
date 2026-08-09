@@ -1,6 +1,6 @@
 [project]
 name = "minimax-h3-prompt-enhancer"
-version = "0.6.5"
+version = "0.6.6"
 description = "Guide-constrained MiniMax H3 prompt enhancement with OpenAI-compatible and isolated local GGUF backends"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -681,6 +681,35 @@ VISUAL_LANGUAGE_PROFILES = {
             "A 1980s setting, period wardrobe, big hair, shoulder pads, CRTs, VHS tapes, cassettes, arcades, analog equipment, neon, smoke, sitcoms, soap opera, police or hospital plots, act breaks, recaps, title cards, credits, broadcast logos, captions, 4:3 framing, overscan, scanlines, chroma bleed, tracking errors, tape noise, flicker, degraded resolution, canned laughter, audience applause, announcers, commercials, mono audio, synth music, or nostalgia cues.",
         ),
     ),
+    "live_action_latin_american_telenovela": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the emphatic dialogue-and-reaction grammar of a polished Latin American telenovela: clearly staged conversational beats, deliberate revelation pauses, readable emotional reversals, and sustained reaction holds only where the supplied dialogue or action already supports them.",
+            "When automatic planning or the authoritative source already permits multiple shots, favor lucid two-shots, shot/reverse-shot exchanges, progressively tighter close-ups, concise hard cuts on supplied verbal or visual turns, and an ordered reaction chain among participants already present. When cuts are fixed or a single shot is required, preserve that boundary and express the cadence through blocking, focus, reframing, and zoom rather than inventing coverage.",
+        ),
+        camera_and_framing=(
+            "Use clear eye-level medium shots, medium close-ups, clean over-shoulders, balanced two-shots, frontal or three-quarter reaction close-ups, and stable eyelines that keep every speaker and relationship legible.",
+            "Use a brief physically plausible optical zoom-in or decisive settled push only to emphasize an emotional turn, recognition, accusation, disclosure, or reaction already explicit in the source; start from readable context, land cleanly on the intended face or detail, and hold long enough for the beat to register without repeated pumping, digital punch-ins, snap zoom gimmicks, or unrequested camera shake.",
+        ),
+        lighting_and_color=(
+            "Use clean high-output studio-and-location television lighting with luminous protected skin, open readable midtones, gently lifted clean blacks, lively but broadcast-safe local color, simple warm/cool separation, bright protected practical highlights, mild optical diffusion, and restrained stable bloom around existing bright sources.",
+            "Preserve explicit skin, wardrobe, set, product, time-of-day, and source-light colors; do not impose an orange or yellow regional filter, excessive saturation, clipped reds, green cast, crushed contrast, neon, haze, beauty smoothing, VHS damage, scanlines, chroma bleed, or unstable video texture.",
+        ),
+        production_design=(
+            "Photograph the supplied interiors, exteriors, wardrobe, jewelry, furniture, props, vehicles, and architecture with clear color hierarchy, polished practical materials, and uncluttered conversational staging without upgrading wealth, adding luxury, or changing place, culture, era, or social class.",
+        ),
+        blocking_and_performance=(
+            "Strengthen only emotion and intention already present through precise eyelines, composed turns, held gaze, controlled breath, readable hand gesture, incremental facial response, purposeful approach or withdrawal, and a clean final reaction state; do not manufacture tears, shouting, seduction, hostility, shock, fainting, slaps, or melodrama.",
+        ),
+        sound_treatment=(
+            "When allowed, keep dialogue forward, clean, and intelligible with consistent room perspective and restrained synchronized foley; the style grants no accented speech, Spanish or Portuguese language, dubbing, echo, dramatic sting, romantic theme, orchestral swell, commercial break, narrator, recap voice, or exaggerated gasp.",
+        ),
+        may_fill_unspecified=(
+            "Dialogue-led television coverage, progressive medium-to-close framing within authorized cuts, ordered reactions, motivated settled optical emphasis, luminous protected skin, open midtones, broadcast-safe color, mild diffusion, restrained practical-light bloom, and readable emotionally specific performance.",
+        ),
+        must_not_invent=(
+            "Romance, betrayal, secrets, affairs, jealousy, revenge, family conflict, wealth, poverty, mansions, hospitals, offices, haciendas, crime, villains, class conflict, weddings, pregnancies, illness, death, accusations, revelations, confrontations, tears, shouting, gasps, slaps, kisses, fainting, seduction, melodrama, Latin American nationality, ethnicity, location, culture, Spanish or Portuguese language, accents, dubbed voices, extra characters, reaction shots beyond authorized cuts, repeated zooms, snap zooms, 4:3 framing, broadcast logos, captions, VHS artifacts, dramatic stings, romantic themes, orchestral swells, recaps, commercials, or franchise imitation.",
+        ),
+    ),
     "live_action_1980s_action": _profile(
         editing_and_pacing=(
             "Present photographed live action with the decisive visual grammar of a polished 1980s practical-action feature: clear setup, preparation, action, impact, reaction, and recovery only for events already supplied by the prompt.",
@@ -1468,6 +1497,7 @@ CINEMATOGRAPHY_CHOICES = {
         "saturated_slide_film": "Apply a pristine saturated slide-film color treatment with rich but controlled primaries, crisp color separation, clean neutral blacks, luminous local color, and protected highlights. Do not add underexposure, crushed shadows, grain, frame borders, projector artifacts, fading, or nostalgic subject matter.",
         "classic_western_earth_sky": "Apply a classic western earth-and-sky color treatment with protected warm skin, rich ochre, sienna and umber material relationships, restrained sage and weathered green, dusty blue-to-cyan skies only where sky already exists, controlled red accents, dense neutral blacks, and smooth highlight roll-off. Preserve explicit local colors, location, weather, season and time of day; do not invent desert, dust, sunset, frontier scenery, teal shadows, sepia, fading, grain or vintage damage.",
         "revisionist_western_earth": "Apply a subdued revisionist-western earth treatment with tobacco brown, umber, weathered ochre, dry olive, stone gray, muted blue and restrained brick-red relationships, protected natural skin, firm readable contrast and controlled saturation. Preserve explicit colors and supplied lighting; do not add a dirty yellow cast, underexposure, blown skies, bleach bypass, dust, smoke, desaturation, grain, scratches, fading or western subject matter.",
+        "telenovela_broadcast_color": "Apply polished telenovela broadcast color with luminous protected skin, open readable midtones, gently lifted clean blacks, lively but broadcast-safe primary and jewel accents, warm cream and wood relationships, restrained cool blue-cyan separation, bright protected practical highlights, and temporally stable chroma. Preserve explicit skin, wardrobe, set, product and source-light colors; do not add an orange or yellow regional filter, clipped reds, green cast, neon, excessive saturation, beauty smoothing, diffusion, bloom, VHS damage, scanlines, chroma bleed, cultural markers, or melodramatic content.",
         "cold_steel_blue": "Apply a cold steel-blue science-fiction color treatment with controlled blue and cyan bias, clean neutral metals and grays, protected natural skin, readable shadow detail, and restrained warm accents from sources already present. Do not turn the scene into night, recolor every object blue, or invent technology, screens, emissions, haze, or light sources.",
         "sterile_white_cyan": "Apply a sterile white-cyan science-fiction palette with clean differentiated whites, cool neutral surfaces, restrained cyan separation, protected skin and local colors, and fully retained highlight detail. Do not force high-key exposure, clip whites, remove material texture, or invent laboratories, medical spaces, technology, screens, or luminous fixtures.",
         "neon_cyan_magenta": "Apply a vivid but controlled neon cyan-magenta color treatment using selective complementary separation, protected skin and authoritative colors, clean channel detail, and stable saturation across time. Treat it as grading only: do not invent neon tubes, signs, city lights, holograms, rain, reflections, colored light sources, cyberpunk objects, or emissive effects.",
