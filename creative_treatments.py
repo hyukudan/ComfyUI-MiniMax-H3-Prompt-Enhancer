@@ -652,6 +652,35 @@ VISUAL_LANGUAGE_PROFILES = {
             "Blood, wounds, injuries, mutilation, exposed anatomy, bodily fluids, decay, disease, infection, surgery, medical procedures, prosthetics, monsters, transformations, torture, violence, victims, weapons, tools, grime, insects, disgust reactions, screams, wet sound effects, shock cuts, censorship, or graphic events absent from the source.",
         ),
     ),
+    "live_action_1980s_television": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the clear episodic visual grammar of a polished 1980s television drama: complete scene beats, readable entrances and reactions, economical continuity coverage, and unhurried causal action without feature-film spectacle or modern streaming-style hypercutting.",
+            "Favor sustained masters, functional inserts, and reaction holds only where the supplied action supports them; do not invent act breaks, recaps, title sequences, cliffhangers, or extra cuts.",
+        ),
+        camera_and_framing=(
+            "Use practical studio-and-location television coverage with stable eye-level geography, confident medium shots and medium close-ups, clean over-shoulders, restrained pedestal or dolly movement, and motivated optical zooms that settle before the important performance beat.",
+            "Preserve the selected aspect ratio and all supplied shot instructions; do not force 4:3 framing, overscan-safe centering, multicamera staging, broadcast graphics, or flat proscenium composition.",
+        ),
+        lighting_and_color=(
+            "Use a temporally stable late-analog broadcast and telecine color impression: warm protected skin, modestly saturated local color, simple warm/cool practical-source separation, readable slightly lifted shadow values, soft highlight roll-off, and characteristic restrained bloom around existing bright practicals.",
+            "Add gentle period-compatible optical softness and restrained halation without obscuring eyes, hands, text, or material detail; preserve authoritative colors, time of day, and light sources, and do not add VHS damage, scanlines, chroma bleed, tape noise, flicker, tracking errors, neon, or a faded nostalgia grade.",
+        ),
+        production_design=(
+            "Photograph the supplied wardrobe, rooms, streets, furniture, vehicles, props, and technology with coherent practical-set material response while preserving their stated era; this capture language must not retrofit the scene with 1980s décor or objects.",
+        ),
+        blocking_and_performance=(
+            "Use precise marks, clear eyelines, readable ensemble spacing, complete gestures, measured reaction timing, and grounded television performance without sitcom broadness, soap-opera melodrama, or feature-action posturing.",
+        ),
+        sound_treatment=(
+            "When allowed, keep dialogue present and intelligible over coherent production ambience and synchronized practical foley; the profile grants no mono filtering, canned laughter, audience response, synth score, broadcast compression, tape hiss, commercial sting, or announcer voice.",
+        ),
+        may_fill_unspecified=(
+            "Episodic television coverage, stable medium-shot geography, motivated settled zooms, warm protected skin, modest analog color separation, readable lifted shadows, gentle optical softness, and restrained practical-light bloom.",
+        ),
+        must_not_invent=(
+            "A 1980s setting, period wardrobe, big hair, shoulder pads, CRTs, VHS tapes, cassettes, arcades, analog equipment, neon, smoke, sitcoms, soap opera, police or hospital plots, act breaks, recaps, title cards, credits, broadcast logos, captions, 4:3 framing, overscan, scanlines, chroma bleed, tracking errors, tape noise, flicker, degraded resolution, canned laughter, audience applause, announcers, commercials, mono audio, synth music, or nostalgia cues.",
+        ),
+    ),
     "live_action_1980s_action": _profile(
         editing_and_pacing=(
             "Present photographed live action with the decisive visual grammar of a polished 1980s practical-action feature: clear setup, preparation, action, impact, reaction, and recovery only for events already supplied by the prompt.",
@@ -710,6 +739,34 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
         must_not_invent=(
             "Fights, opponents, attacks, martial-arts techniques, schools, masters, training, tournaments, revenge, honor codes, weapons, swords, staffs, wirework, impossible jumps, acrobatics, powers, energy, speed effects, period costumes, temples, dynasties, dubbed voices, impact exaggeration, or franchise imitation.",
+        ),
+    ),
+    "live_action_1950s_studio_color": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the polished continuity grammar of a premium 1950s studio color feature: complete dramatic beats, measured entrances and reactions, clear classical coverage, and decisive dissolves or cuts only when already compatible with the supplied shot plan.",
+        ),
+        camera_and_framing=(
+            "Use composed classical framing, clean profile and three-quarter staging, balanced foreground-to-background planes, stable screen direction, restrained dollies and pans, and purposeful closer views for supplied expressions, gestures, objects, and contact.",
+            "Preserve the selected aspect ratio and scene scale; do not force Academy framing, widescreen spectacle, theatrical proscenium staging, iris transitions, or static tableaux.",
+        ),
+        lighting_and_color=(
+            "Use luminous studio-controlled or exterior photography with protected warm skin, carefully modeled faces, rich but differentiated dye-transfer-like local color, clean red-green-blue separation, dense readable blacks, polished highlights, and stable saturated accents without clipping.",
+            "Apply gentle classic optical diffusion and restrained halation around existing bright highlights while retaining facial, hand, textile, and surface detail; preserve explicit palette, weather, time of day, and light sources without adding golden light, pastel tint, sepia, fading, print damage, gate weave, flicker, or heavy grain.",
+        ),
+        production_design=(
+            "Photograph only the supplied wardrobe, sets, locations, furnishings, props, vehicles, and materials with carefully separated studio-feature color and tangible construction; do not infer a historical era or replace ordinary scenery with glamorous period décor.",
+        ),
+        blocking_and_performance=(
+            "Use readable body angles, precise eyelines, composed hand placement, sustained posture, measured gesture, and complete physical interaction while preserving the requested performance intensity without automatic theatrical diction or melodrama.",
+        ),
+        sound_treatment=(
+            "When allowed, preserve clean intelligible dialogue, controlled room perspective, and material-specific production sound; color styling grants no mono filtering, dubbed cadence, orchestral score, overture, hiss, crackle, or vintage audio degradation.",
+        ),
+        may_fill_unspecified=(
+            "Classical continuity coverage, composed depth planes, luminous modeled faces, warm protected skin, rich dye-transfer-like local color, clean primary separation, gentle optical diffusion, restrained highlight halation, and pristine studio-feature polish.",
+        ),
+        must_not_invent=(
+            "A 1950s setting, period costumes, hairstyles, cars, furniture, appliances, architecture, social customs, glamour, romance, musicals, dancing, stars, theatrical dialogue, painted backdrops, studio sets, Academy framing, intermissions, titles, credits, matte paintings, orchestral music, mono audio, dubbing, sepia, faded color, scratches, dust, flicker, gate weave, projector noise, or franchise imitation.",
         ),
     ),
     "live_action_midcentury_technicolor_epic": _profile(

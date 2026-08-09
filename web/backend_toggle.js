@@ -182,8 +182,10 @@ const CREATIVE_CHOICES = {
         ["live_action_gritty", "Gritty immediate live action"],
         ["live_action_expressionist", "Expressionist live action"],
         ["live_action_visceral_horror", "Visceral practical-effects horror"],
+        ["live_action_1980s_television", "1980s television drama"],
         ["live_action_1980s_action", "1980s practical action cinema"],
         ["live_action_classic_chinese_martial_arts", "Classic Chinese-language martial-arts cinema"],
+        ["live_action_1950s_studio_color", "1950s studio color cinema"],
         ["live_action_midcentury_technicolor_epic", "Mid-century Technicolor epic"],
         ["documentary_observational", "Observational documentary"],
         ["clean_commercial", "Clean commercial presentation"],
@@ -235,7 +237,7 @@ const VISUAL_LANGUAGE_GROUPS = [
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
     ["Physical animation", ["stop_motion_handcrafted"]],
-    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_classic_black_and_white", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
+    ["Live action", ["live_action_naturalistic", "live_action_cinematic", "live_action_classic_black_and_white", "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror", "live_action_1980s_television", "live_action_1980s_action", "live_action_classic_chinese_martial_arts", "live_action_1950s_studio_color", "live_action_midcentury_technicolor_epic", "documentary_observational"]],
     ["Commercial & presentation", ["clean_commercial"]],
 ];
 const CINEMATOGRAPHY_CHOICES = {

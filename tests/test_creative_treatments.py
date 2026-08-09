@@ -35,7 +35,8 @@ CANONICAL_CHOICES = {
         "documentary_observational", "live_action_naturalistic", "live_action_cinematic",
         "live_action_classic_black_and_white",
         "live_action_gritty", "live_action_expressionist", "live_action_visceral_horror",
-        "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "live_action_1980s_television", "live_action_1980s_action", "live_action_classic_chinese_martial_arts",
+        "live_action_1950s_studio_color",
         "live_action_midcentury_technicolor_epic",
         "stylized_3d_animation",
         "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d", "cel_shaded_3d",
@@ -327,8 +328,10 @@ def test_live_action_variants_are_distinct_and_do_not_invent_genre_content():
         "live_action_gritty": ("immediate textured live action", "gratuitous shake", "gore"),
         "live_action_expressionist": ("expressionist live action", "graphic shadow structure", "hallucinations"),
         "live_action_visceral_horror": ("visceral practical-effects horror language", "material cause-and-effect", "Blood"),
+        "live_action_1980s_television": ("polished 1980s television drama", "restrained bloom", "scanlines"),
         "live_action_1980s_action": ("1980s practical-action feature", "photochemical", "Fights"),
         "live_action_classic_chinese_martial_arts": ("classic Chinese-language martial-arts cinema", "full-body master shots", "wirework"),
+        "live_action_1950s_studio_color": ("premium 1950s studio color feature", "dye-transfer-like local color", "period costumes"),
         "live_action_midcentury_technicolor_epic": ("premium mid-century 1950s–1960s color epic", "dye-transfer release print", "Mythology"),
     }
     for profile, phrases in checks.items():
