@@ -50,7 +50,7 @@ try:
     )
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -60,7 +60,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     )
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, validate_prompt
+    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -73,8 +73,8 @@ FRAME_COUNT_INPUT = {"default": 0, "min": 0, "max": 3600, "step": 1,
 class MiniMaxH3PromptGuideBuilder:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "build"
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("system_prompt", "user_prompt", "resolved_mode")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("system_prompt", "user_prompt", "resolved_mode", "treatment_warnings")
     DESCRIPTION = (
         "Build the official MiniMax H3 rewriting instructions without running an LLM. Connect these outputs to "
         "QwenVL Prompt Enhancer, a GGUF node, Ollama, LM Studio, or any other text-generation node."
@@ -105,6 +105,8 @@ class MiniMaxH3PromptGuideBuilder:
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
+            "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
+            "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -113,7 +115,8 @@ class MiniMaxH3PromptGuideBuilder:
               media_manifest="", multishot_shot_count=0, frame_count=0,
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
-              cinematography_json="", instrumental_style="none"):
+              cinematography_json="", instrumental_style="none", acoustic_space="none",
+              dialogue_coverage="off"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -126,17 +129,23 @@ class MiniMaxH3PromptGuideBuilder:
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                 (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
+                acoustic_space, dialogue_coverage,
             ),
             resolved,
+            treatment_warning_report(
+                creative_treatment_json, cinematography_json, shot_plan_json, duration_seconds,
+                frame_count, resolved, enhance_description,
+            ),
         )
 
 
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
+        "treatment_warnings",
     )
     DESCRIPTION = (
         "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
@@ -185,6 +194,8 @@ class MiniMaxH3PromptEnhancer:
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
+            "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
+            "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
         }}
 
     @classmethod
@@ -209,7 +220,7 @@ class MiniMaxH3PromptEnhancer:
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
-                instrumental_style="none"):
+                instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -224,11 +235,11 @@ class MiniMaxH3PromptEnhancer:
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
-                    instrumental_style != "none")):
+                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off")):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                 creative_treatment_json, shot_plan_json, cinematography_json,
-                                instrumental_style)
+                                instrumental_style, acoustic_space, dialogue_coverage)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -245,11 +256,11 @@ class MiniMaxH3PromptEnhancer:
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
-                    instrumental_style != "none")):
+                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off")):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                creative_treatment_json, shot_plan_json, cinematography_json,
-                               instrumental_style)
+                               instrumental_style, acoustic_space, dialogue_coverage)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -257,15 +268,17 @@ class MiniMaxH3PromptEnhancer:
             json.dumps(manifest, ensure_ascii=False, indent=2),
             _effective_duration(validation, duration_seconds),
             str(aspect_ratio),
+            "\n".join(manifest.get("treatmentWarnings", ())),
         )
 
 
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
+        "treatment_warnings",
     )
     DESCRIPTION = (
         "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
@@ -310,6 +323,8 @@ class MiniMaxH3GGUFPromptEnhancer:
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
+            "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
+            "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
         }}
 
     @classmethod
@@ -325,7 +340,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
-                instrumental_style="none"):
+                instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
@@ -340,6 +355,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
+            acoustic_space, dialogue_coverage,
         )
         return (
             prompt,
@@ -347,6 +363,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             json.dumps(manifest, ensure_ascii=False, indent=2),
             _effective_duration(validation, duration_seconds),
             str(aspect_ratio),
+            "\n".join(manifest.get("treatmentWarnings", ())),
         )
 
 

@@ -179,15 +179,41 @@ The controls resolve by domain rather than through one ambiguous global ranking:
 1. Content facts come from the Basic prompt, connected-reference metadata, exact text/dialogue, explicit shot rows,
    and chained identity/voice/setting locks. The enhancer cannot replace them.
 2. Audio policies are absolute gates for ambience/foley, audience-only score, and voice performance. Creative profiles
-   cannot turn a disabled layer back on.
+   cannot turn a disabled layer back on. Acoustic space and dialogue coverage are rendering instructions inside those
+   gates; they never re-enable a disabled layer and never add a source, a line, or a cut.
 3. A specific instruction in a shot row or source/reference description overrides a conflicting global presentation
-   preference for that shot.
-4. Global Cinematography overrides conflicting Creative direction advice in the same presentation domain.
+   preference for that shot. A row's own `cameraMotion` and `transitionIn` win over the global Cinematography motion
+   for that row.
+4. Global Cinematography overrides conflicting Creative direction advice in the same presentation domain. The injected
+   contract states this literally: *“These controls also override any conflicting camera, optical, exposure, or color
+   advice coming from the secondary creative treatment.”*
 5. Creative direction and active description enhancement fill only compatible unspecified direction.
 
-Examples: `action + Static shot` retains action staging without camera movement; `dark + high-key` keeps the explicit
-high-key exposure while dark can still influence pacing or performance; a reference-authoritative red jacket remains
-red even if monochrome treatment would otherwise apply.
+Within Creative direction the four axes are ranked **tone > world aesthetic > visual language > genre**. The official
+MiniMax guides do not rank them, so this project fixes that order deliberately: tone is the most explicit statement of
+authorial intent, the world aesthetic then constrains the physical world, the visual language constrains rendering,
+and genre is the broadest and most easily displaced convention. The complete resolution order is therefore
+**explicit content and audio gates > shot row > Cinematography > tone > world aesthetic > visual language > genre**.
+
+That order is enforced mechanically, not only in prose. Catalog profiles and camera selections carry machine-readable
+tags (`camera_energy` = handheld / locked / observational / choreographed, `pacing` = fast_cuts / long_takes, and
+`movement` = static / dynamic). When two sources assert opposing tags on the same dimension, the lower-precedence
+source's tagged lines are dropped from the composed treatment before the request is assembled, and each drop is
+reported on the new `treatment_warnings` output of the Enhancer, GGUF Enhancer, and Guide Builder nodes (and in
+`treatmentConflicts` / `treatmentWarnings` inside the enhancement manifest). Only listed antagonisms conflict:
+handheld versus locked, handheld versus choreographed, choreographed versus observational, fast cutting versus long
+takes, and static versus dynamic. There is no prose interpretation, so compatible selections are never silently
+weakened.
+
+Examples: `action + Static shot` retains action staging without camera movement, and reports that the explicit static
+camera dropped action's dynamic-movement framing lines; `action + documentary observational` keeps the observational
+camera and drops action's choreographed framing lines; `dark + high-key` keeps the explicit high-key exposure while
+dark can still influence pacing or performance; a reference-authoritative red jacket remains red even if monochrome
+treatment would otherwise apply.
+
+Legacy Cinematography values also report through the same channel: `shake_slightly` and `shake_strongly` resolve to
+`shake` plus a small or large amplitude, `pov` resolves to `cameraViewpoint=pov` with no camera motion, and a legacy
+value's implied amplitude wins over a conflicting explicit amplitude with a warning.
 
 ### What Enhance description changes
 
@@ -280,6 +306,7 @@ Outputs:
 | `enhancement_manifest` | Backend/model/mode/memory metadata; never contains an API key |
 | `duration_seconds` | Effective downstream duration; in chained mode this is the duration of each independent segment, not their combined runtime |
 | `aspect_ratio` | Selected target geometry (`auto`, `21:9`, `16:9`, `4:3`, `1:1`, `3:4`, or `9:16`) for downstream routing; it does not calculate pixels |
+| `treatment_warnings` | One line per resolved creative-direction conflict, legacy value mapping, or shot-row note; empty when the selections are compatible |
 
 Shared controls:
 
@@ -297,6 +324,8 @@ Shared controls:
 | `creative_treatment_json` | blank | Canonical storage for the four optional creative-direction selectors; blank is completely neutral |
 | `shot_plan_json` | blank | Canonical storage for ordered explicit shots or autonomous chained segments; blank preserves automatic planning |
 | `cinematography_json` | blank | Canonical storage for optional non-narrative image-presentation and camera controls; blank is completely neutral |
+| `acoustic_space` | `none` | Diegetic sound space for the sound the audio policies already permit; it never adds a source |
+| `dialogue_coverage` | `off` | Keeps every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter |
 | `use_remote_model` | enabled | Endpoint when enabled; local GGUF when disabled |
 | `enhance_description` | enabled | Adds bounded cinematic direction while preserving source facts and exact text |
 | `ambience_foley_policy` | `auto` | Controls non-musical, non-spoken scene sound: environment plus physical action sounds |
@@ -380,7 +409,7 @@ model is loaded. With `unload=true` it returns `unloaded=true` only when a cache
 
 ### MiniMax H3 Prompt Guide Builder
 
-Builds `system_prompt`, `user_prompt`, and `resolved_mode` without calling an LLM. Connect the two prompt outputs to an
+Builds `system_prompt`, `user_prompt`, `resolved_mode`, and `treatment_warnings` without calling an LLM. Connect the two prompt outputs to an
 existing QwenVL, GGUF, Ollama, or other text-generation node, preserving their system/user roles, then validate its
 result. It exposes the same mode, duration, reference, creative, cinematography, shot-plan, audio, aspect, frame, and chained-lock
 controls as the enhancer, but no model/runtime or repair controls. It does not normalize or repair the external
@@ -572,7 +601,11 @@ change source facts.
 
 Validation also emits non-blocking budget advisories: a warning when the final prompt exceeds the official
 MiniMax API v2 limit of 7000 characters per text block (local open-weights inference is unaffected) and a
-warning when the description body exceeds 600 words against the officially recommended 350–500.
+warning when the description body exceeds 600 words against the officially recommended 350–500. Both are
+warnings, never errors, so they never make `valid=false` and never trigger a repair attempt. They describe the
+*generated* prompt, so they surface in `validation_report.warnings`; the separate `treatment_warnings` output
+describes the *selected configuration* (creative-direction conflicts and legacy value mappings) and is available
+before any model runs. Neither channel feeds the other.
 
 If errors remain, each repair attempt receives the complete previous answer and the concrete validation errors.
 Source-fidelity, exact dialogue, missing planned dialogue, invented references, and required ending errors receive a
@@ -778,9 +811,12 @@ Every selector defaults to **No preference**, so an untouched panel adds no text
 |---|---|
 | Color palette | natural, warm, cool, restrained, vibrant, monochrome, mid-century dye-transfer, early two-color, bleach bypass, teal–orange, cross-processed, sepia, saturated slide-film, cold steel-blue sci-fi, sterile white–cyan sci-fi, or neon cyan–magenta |
 | Exposure / contrast | high-key, balanced, low-key, high-contrast, or soft-contrast |
-| Camera motion | static, zoom, push/pull, pan, truck, tilt, pedestal, arc, tracking, POV, shake, or roll |
+| Shot scale (7) | extreme close-up, close-up, medium close-up, medium, medium wide, wide, or extreme wide, each with its own anatomical and compositional anchor |
+| Camera angle (6) | eye level, low angle, high angle, overhead, static Dutch cant, or worm's eye |
+| Camera viewpoint (3) | first-person POV, over the shoulder, or through an existing mirror/reflection |
+| Camera motion (18) | static, zoom, push/pull, pan, truck, tilt, pedestal, arc, tracking, shake, or roll |
 | Camera amplitude / speed | automatic, small/medium/large and slow/normal/fast; enabled only for a moving camera |
-| Optics | wide, natural, or compressed telephoto perspective |
+| Optics | wide, natural, or compressed telephoto perspective, plus 18 mm, 35 mm, 50 mm, and 85 mm focal-length character |
 | Depth of field | deep, balanced, or shallow |
 | Image texture | clean digital, subtle stable grain, 16 mm, or 35 mm character |
 | Lens effects | clean, subtle diffusion, or restrained halation |
@@ -788,8 +824,30 @@ Every selector defaults to **No preference**, so an untouched panel adds no text
 
 The official H3 base guide describes camera direction as **motion type + amplitude + speed**, expressed in natural
 English inside the relevant shot. The node follows that grammar and supports the official motion vocabulary rather
-than emitting bracket commands from older Hailuo models. A camera choice never creates a cut. Amplitude and speed are
-invalid without a moving camera so a direct API request cannot silently create an incoherent configuration.
+than emitting bracket commands from older Hailuo models. Motion, amplitude, and speed are therefore merged into one
+continuous sentence with an explicit target instead of three separate checklist lines, for example:
+
+> The camera pushes in with small amplitude at slow speed toward the principal subject already present in the shot,
+> in one continuous move that settles before the key beat.
+
+Amplitude and speed clauses are omitted while both stay `auto`, and a large amplitude or fast speed adds its
+continuity guardrail inside the same sentence. A camera choice never creates a cut, and every motion targets content
+that already exists rather than inventing a subject. Amplitude and speed remain invalid for `none` and `static`, so a
+direct API request cannot silently create an incoherent configuration; every other motion accepts them, including a
+first-person viewpoint combined with a real move such as `cameraViewpoint=pov` + `cameraMotion=tracking` +
+`cameraAmplitude=large` + `cameraSpeed=fast`.
+
+Shot scale, camera angle, and camera viewpoint are separate axes because they answer different questions: how close
+the frame is, where the camera stands, and whose eyes the shot belongs to. `dutch_static` is an angle that holds a
+fixed cant for the whole take, which is not the same as the `roll_*` motions that rotate during the take; combining
+them reports a warning. Focal-length presets describe perspective character only and never name a camera body or
+lens model.
+
+**Corroboration note.** The core moves — static, zoom, push/pull, pan, truck, tilt, pedestal, tracking, and shake —
+appear in MiniMax's official prompt guidance. `arc`, `roll_clockwise`, `roll_counterclockwise`, and the first-person
+`pov` viewpoint are less corroborated: the official MiniMax skills guide omits them and they come from secondary
+community guides. They remain available and are written as ordinary natural English, but treat their fidelity as less
+predictable than the core vocabulary.
 
 Color, exposure, optics, depth, texture, diffusion, halation, and blur are also translated into conservative natural
 language. They are directing requests, not guaranteed renderer parameters. The official guides explicitly describe
@@ -812,10 +870,13 @@ The Cinematography panel uses its own strict serialized object:
   "schemaVersion": 1,
   "colorPalette": "restrained",
   "exposureContrast": "low_key",
+  "shotScale": "medium_close_up",
+  "cameraAngle": "low_angle",
+  "cameraViewpoint": "over_the_shoulder",
   "cameraMotion": "tracking",
   "cameraAmplitude": "medium",
   "cameraSpeed": "slow",
-  "optics": "compressed_telephoto",
+  "optics": "lens_35mm",
   "depthOfField": "shallow",
   "imageTexture": "film_35mm",
   "lensEffects": "restrained_halation",
@@ -829,18 +890,34 @@ Exact serialized values for API-format workflows:
 |---|---|
 | `colorPalette` | `none`, `natural`, `warm`, `cool`, `restrained`, `vibrant`, `monochrome`, `midcentury_dye_transfer`, `two_color_process`, `bleach_bypass`, `teal_orange`, `cross_processed`, `sepia`, `saturated_slide_film`, `classic_western_earth_sky`, `revisionist_western_earth`, `telenovela_broadcast_color`, `cold_steel_blue`, `sterile_white_cyan`, `neon_cyan_magenta` |
 | `exposureContrast` | `none`, `high_key`, `balanced`, `low_key`, `high_contrast`, `soft_contrast` |
-| `cameraMotion` | `none`, `static`, `zoom_in`, `zoom_out`, `push_in`, `pull_out`, `pan_left`, `pan_right`, `truck_left`, `truck_right`, `tilt_up`, `tilt_down`, `pedestal_up`, `pedestal_down`, `arc`, `tracking`, `pov`, `shake_slightly`, `shake_strongly`, `roll_clockwise`, `roll_counterclockwise` |
+| `shotScale` | `none`, `extreme_close_up`, `close_up`, `medium_close_up`, `medium`, `medium_wide`, `wide`, `extreme_wide` |
+| `cameraAngle` | `none`, `eye_level`, `low_angle`, `high_angle`, `overhead`, `dutch_static`, `worms_eye` |
+| `cameraViewpoint` | `none`, `pov`, `over_the_shoulder`, `mirror_or_reflection` |
+| `cameraMotion` | `none`, `static`, `zoom_in`, `zoom_out`, `push_in`, `pull_out`, `pan_left`, `pan_right`, `truck_left`, `truck_right`, `tilt_up`, `tilt_down`, `pedestal_up`, `pedestal_down`, `arc`, `tracking`, `shake`, `roll_clockwise`, `roll_counterclockwise` |
 | `cameraAmplitude` | `auto`, `small`, `medium`, `large` |
 | `cameraSpeed` | `auto`, `slow`, `normal`, `fast` |
-| `optics` | `none`, `wide_perspective`, `natural_perspective`, `compressed_telephoto` |
+| `optics` | `none`, `wide_perspective`, `natural_perspective`, `compressed_telephoto`, `lens_18mm`, `lens_35mm`, `lens_50mm`, `lens_85mm_compressed` |
 | `depthOfField` | `none`, `deep`, `balanced`, `shallow` |
 | `imageTexture` | `none`, `clean_digital`, `subtle_stable_grain`, `film_16mm`, `film_35mm` |
 | `lensEffects` | `none`, `clean`, `subtle_diffusion`, `restrained_halation` |
 | `motionRendering` | `none`, `crisp`, `natural_blur`, `energetic_blur` |
 
-Amplitude and speed must remain `auto` for `none`, `static`, and `pov`. Name the POV owner or the Arc/Tracking focal
+Amplitude and speed must remain `auto` for `none` and `static` only. Name the POV owner or the Arc/Tracking focal
 subject in the Basic prompt or shot row. Cinematography is global unless a more specific source, reference, or row
 instruction overrides it.
+
+Three superseded `cameraMotion` values from earlier releases stay loadable so saved workflows keep working. They are
+no longer offered in the panel and are mapped, with a warning on `treatment_warnings`:
+
+| Legacy value | Resolves to |
+|---|---|
+| `shake_slightly` | `cameraMotion=shake` + `cameraAmplitude=small` |
+| `shake_strongly` | `cameraMotion=shake` + `cameraAmplitude=large` |
+| `pov` | `cameraViewpoint=pov` + `cameraMotion=none` |
+
+A legacy value's implied amplitude or viewpoint wins over a conflicting explicit selection and says so in the
+warning. After mapping, a legacy selection produces exactly the same canonical JSON, digest, and request text as the
+equivalent modern selection.
 
 Unknown or duplicate keys, unsupported values, and orphaned camera amplitude/speed modifiers are rejected before an
 LLM call. In chained multishot mode the resolved presentation is restated for every independent segment. The manifest
@@ -861,8 +938,9 @@ The four visible selectors edit one stable, serialized field. This keeps workflo
 ```
 
 The selector widgets themselves are UI-only and are not appended to `widgets_values`. The canonical
-`creative_treatment_json`, `shot_plan_json`, and `cinematography_json` inputs are the final three serialized inputs on
-the main enhancer, direct-GGUF enhancer, Guide Builder, and Validator. Older workflows that contain none of these
+`creative_treatment_json`, `shot_plan_json`, and `cinematography_json` inputs are serialized after every legacy input
+on the main enhancer, direct-GGUF enhancer, Guide Builder, and Validator, followed only by later append-only fields
+such as `instrumental_style`, `acoustic_space`, and `dialogue_coverage`. Older workflows that contain none of these
 fields therefore keep their existing positional values and receive neutral empty defaults.
 
 Non-empty backend JSON is strict. Unknown or duplicate keys, unsupported schema versions or profile values, and wrong
@@ -896,6 +974,23 @@ The stored automatic-timing form is:
     {"id": "s1", "description": "She walks toward the driver's door."},
     {"id": "s2", "description": "She opens it and sits behind the wheel."},
     {"id": "s3", "description": "She closes the door, looks at camera and winks."}
+  ]
+}
+```
+
+Each row may also carry two optional keys. `cameraMotion` accepts the same values as the global Cinematography
+motion (including the legacy values, which map exactly as above) and appends that shot's own camera sentence to its
+description contract. `transitionIn` accepts `cut` (default), `match_cut`, `whip_pan`, or `hold` and adds one
+sentence describing how the existing boundary into that shot is executed; row 1 has no incoming boundary. Neither key
+can create, remove, or move a cut, and rows saved before these keys existed stay valid and byte-identical:
+
+```json
+{
+  "schemaVersion": 1,
+  "timingMode": "auto",
+  "shots": [
+    {"id": "s1", "description": "She walks toward the driver's door.", "cameraMotion": "push_in"},
+    {"id": "s2", "description": "She opens it and sits behind the wheel.", "transitionIn": "match_cut"}
   ]
 }
 ```
@@ -952,6 +1047,28 @@ contains a normalized shots package. Each item records the original timeline bod
 safe, timing metadata, audio-fidelity status, and an autonomy reason when separation is unsafe. Downstream tooling can
 therefore keep all shots together, run autonomous chained segments, or select one planned item without reparsing the
 basic prompt.
+
+### Multi-shot timeline template
+
+In every non-chained mode the system prompt enforces one fixed timeline template inside
+`integrated_multimodal_description` (or `detailed_description` for Ref2VA), whether the shots come from an explicit
+plan or from automatic planning:
+
+```
+[Shot 1] <no timestamp> …
+[Shot 2] At 00:04.000, …
+[Shot 3] At 00:07.250, …
+```
+
+Shot 1 never carries a timestamp. Every later shot begins with a `[Shot N] At MM:SS.mmm,` header whose times are
+strictly increasing and inside the requested duration: two-digit minutes, two-digit seconds, three-digit
+milliseconds, followed by a comma. Absolute times appear only in those headers, never inline in the prose. With
+`timingMode=exact` the headers are the supplied boundaries, checked within 1.5 milliseconds; with `auto` the model
+chooses increasing times while keeping the exact shot count. Normalization repairs a missing `[Shot 1]` marker and
+reformats stray timestamp spellings, so a downstream tool can rely on the pattern.
+
+`chained_multishot` is the exception: its items are autonomous prompts and must contain no `[Shot N]` labels or
+timestamps at all.
 
 ## Chained multishot and per-shot execution
 
@@ -1161,7 +1278,7 @@ markers such as Spanish inverted punctuation and accented interrogatives; otherw
 
 ## Audio policies
 
-The three audio controls are independent and are available on the main enhancer, direct-GGUF enhancer, Guide Builder,
+The three audio gates are independent and are available on the main enhancer, direct-GGUF enhancer, Guide Builder,
 and Validator:
 
 | Policy | Values | Meaning |
@@ -1169,6 +1286,29 @@ and Validator:
 | Scene sounds (ambience & foley) | `auto`, `ensure_audible`, `off` | Follow the scene, explicitly require environmental/physical sound, or suppress it |
 | Background score | `follow_prompt`, `add_instrumental`, `off` | Respect the source, add non-vocal music, or emit `non_diegetic_music: N/A` |
 | Voice performance | `audible`, `silent_mouth_acting_experimental`, `none` | Preserve exact spoken text, request non-verbal mouth acting, or suppress speech performance |
+
+Two further controls shape how the permitted sound is rendered. Both default to neutral and add nothing when unused.
+
+**Acoustic space** (`acoustic_space`) states the diegetic sound space, because H3 generates audio natively and a room
+changes how everything in it is heard. It is injected in the audio-controls part of the request, where it is
+authoritative over any sound suggestion coming from a creative profile:
+
+| ID | Rendering |
+|---|---|
+| `small_reflective_interior` | small hard-surfaced room: short bright early reflections, close perspective, clearly localized contact sounds |
+| `large_reverberant_interior` | long decaying tail, delayed distinct reflections, audible distance on voices and impacts |
+| `damped_interior` | soft furnished room: almost no tail, absorbed highs, intimate close perspective |
+| `open_exterior` | wide exterior: no tail, distant sound attenuated and diffuse, wind only if wind is visible |
+| `urban_exterior` | facade slap-back, continuous distant city floor, dry precise near sources |
+| `underwater_muffled` | attenuated highs, low pressurized rumble, muffled poorly localized distant events |
+
+An acoustic space renders existing sound; it never adds a source, room, location, weather, event, or line, and it
+never re-enables a layer that the ambience/foley, score, or voice policy disabled.
+
+**Dialogue coverage** (`dialogue_coverage`, `off` by default) adds one visual requirement when set to `on`: *“Keep
+each speaking character's mouth and eyes unobstructed and in focus for the full duration of their line, at medium
+close-up or tighter, with a stable eyeline.”* It must be achieved inside the existing shot boundaries and cannot add a
+cut, character, line, or camera control. It is skipped entirely under `voice_performance=none`, where nobody speaks.
 
 **Ambience** is the environmental sound bed: rain, wind, waves, traffic, room tone, crowd murmur, forest insects, or
 the hum of machinery. **Foley** is sound caused by visible physical action: footsteps, cloth movement, handling an
@@ -1601,6 +1741,14 @@ duration, reference, and output connections.
 
 Version 0.6.x appends `instrumental_style` after those fields on the main enhancer, specialized GGUF enhancer, and
 Guide Builder. Its neutral default is `none`; no earlier widget position or output changes.
+
+The camera, sound, and conflict update appends two more optional fields in the same append-only way,
+`acoustic_space` (`none`) and `dialogue_coverage` (`off`), and adds one `treatment_warnings` STRING output at the end
+of the main enhancer, specialized GGUF enhancer, and Guide Builder. Existing widget positions, output positions, and
+links are unchanged. Inside `cinematography_json`, `shotScale`, `cameraAngle`, and `cameraViewpoint` default to
+`none`, and the superseded `cameraMotion` values `shake_slightly`, `shake_strongly`, and `pov` stay parseable and are
+migrated on load by both the frontend panel and the backend parser. Shot-plan rows accept optional `cameraMotion` and
+`transitionIn`; rows without them are unchanged, down to their digest.
 
 On load, the frontend repairs known historical serialization shifts:
 

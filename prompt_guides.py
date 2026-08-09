@@ -20,7 +20,9 @@ try:
         parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
+        resolve_treatment_conflicts,
         shot_plan_instruction,
+        treatment_warnings,
     )
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
@@ -30,7 +32,9 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
+        resolve_treatment_conflicts,
         shot_plan_instruction,
+        treatment_warnings,
     )
     from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 
@@ -58,6 +62,46 @@ VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
 # is always a warning and never an error.
 _API_V2_TEXT_BLOCK_CHARACTER_LIMIT = 7000
 _DESCRIPTION_WORD_WARNING_LIMIT = 600
+DIALOGUE_COVERAGE_CHOICES = ("off", "on")
+DIALOGUE_COVERAGE_CONTRACT = (
+    "Keep each speaking character's mouth and eyes unobstructed and in focus for the full duration of their line, "
+    "at medium close-up or tighter, with a stable eyeline."
+)
+ACOUSTIC_SPACE_CHOICES = (
+    "none",
+    "small_reflective_interior",
+    "large_reverberant_interior",
+    "damped_interior",
+    "open_exterior",
+    "urban_exterior",
+    "underwater_muffled",
+)
+ACOUSTIC_SPACE_CONTRACTS = {
+    "small_reflective_interior": (
+        "Render sound in a small hard-surfaced room: short bright early reflections, close mic perspective, footsteps "
+        "and object contact clearly localized."
+    ),
+    "large_reverberant_interior": (
+        "Render sound in a large hard-surfaced interior: a long decaying reverb tail, delayed distinct reflections, "
+        "voices and impacts arriving with audible distance, and detail softened by the space rather than by filtering."
+    ),
+    "damped_interior": (
+        "Render sound in a soft furnished interior: almost no reverb tail, absorbed high frequencies, intimate close "
+        "perspective, and clearly separated nearby physical sounds."
+    ),
+    "open_exterior": (
+        "Render sound as a wide exterior: no reverb tail, distant sounds attenuated and diffuse, wind noise only if "
+        "wind is visible."
+    ),
+    "urban_exterior": (
+        "Render sound as a built-up exterior: slap-back reflections from facades, a continuous distant traffic and "
+        "city floor, and near sources staying dry and precise against it."
+    ),
+    "underwater_muffled": (
+        "Render sound as heard underwater: strongly attenuated high frequencies, a low pressurized rumble, muffled "
+        "and poorly localized distant events, and body-borne movement sounds close and dull."
+    ),
+}
 INSTRUMENTAL_STYLE_CHOICES = (
     "none",
     "cinematic_orchestral",
@@ -1221,7 +1265,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        creative_treatment_json: str = "",
                        shot_plan_json: str = "",
                        cinematography_json: str = "",
-                       instrumental_style: str = "none") -> str:
+                       instrumental_style: str = "none",
+                       acoustic_space: str = "none",
+                       dialogue_coverage: str = "off") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -1230,6 +1276,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         raise ValueError(f"Unsupported voice performance {voice_performance!r}")
     if instrumental_style not in INSTRUMENTAL_STYLE_CHOICES:
         raise ValueError(f"Unsupported instrumental style {instrumental_style!r}")
+    if acoustic_space not in ACOUSTIC_SPACE_CHOICES:
+        raise ValueError(f"Unsupported acoustic space {acoustic_space!r}")
+    if dialogue_coverage not in DIALOGUE_COVERAGE_CHOICES:
+        raise ValueError(f"Unsupported dialogue coverage {dialogue_coverage!r}")
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -1311,6 +1361,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "but the selected voice policy overrides it. Emit no lexical dialogue, <d> blocks, speaker IDs, "
             "narration, voiceover, or intelligible vocal sound."
         )
+    creative_treatment, _treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
     treatment_contract = creative_treatment_instruction(creative_treatment)
     if treatment_contract:
         parts.append(
@@ -1363,6 +1414,24 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         ),
     }
     parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
+    if acoustic_space != "none":
+        parts.append(
+            "DIEGETIC ACOUSTIC SPACE — AUTHORITATIVE OVER EVERY TREATMENT SOUND SUGGESTION: Render the diegetic "
+            "sound that the ambience/foley and voice policies already permit inside the selected acoustic space. It "
+            "changes how existing sounds are heard; it may not add a sound source, room, location, weather, event, "
+            "or dialogue, and it never re-enables a disabled audio layer.\n"
+            f"Selected acoustic space: {acoustic_space}.\n"
+            + ACOUSTIC_SPACE_CONTRACTS[acoustic_space]
+            + "\nOUTPUT INTEGRATION — MANDATORY: Write the resulting reflections, decay, distance, localization, and "
+            "frequency response as concrete audible prose in overall_soundscape, or compactly inside every autonomous "
+            "chained item. Do not name the preset, repeat its ID, or state that an acoustic space is applied."
+        )
+    if dialogue_coverage == "on" and voice_performance != "none":
+        parts.append(
+            "DIALOGUE COVERAGE — REQUIRED: " + DIALOGUE_COVERAGE_CONTRACT + " Achieve it inside the existing shot "
+            "boundaries through framing, blocking, and focus; do not add a cut, character, line, or camera control "
+            "that the authoritative content and explicit controls do not allow."
+        )
     requested_instrumental = str(instrumental_description or "").strip()
     if background_score_policy == "add_instrumental" and instrumental_style != "none":
         parts.append(
@@ -1728,6 +1797,18 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     parts.append("FINAL CHECK: " + "; ".join(final_checks) + ".")
     parts.append("Rewrite now using the exact section contract for this task mode.")
     return "\n\n".join(parts)
+
+
+def treatment_warning_report(creative_treatment_json: str = "", cinematography_json: str = "",
+                             shot_plan_json: str = "", duration_seconds: float = 0.0,
+                             frame_count: int = 0, mode: str = "t2va",
+                             enhance_description: bool = True) -> str:
+    """Render every creative-direction note as the plain text a node output can show."""
+    treatment = parse_creative_treatment(creative_treatment_json, enabled=bool(enhance_description))
+    cinematography = parse_cinematography(cinematography_json)
+    profile = generation_profile(duration_seconds, "auto", frame_count)
+    plan = parse_shot_plan(shot_plan_json, profile["effectiveDurationSeconds"], 0, mode)
+    return "\n".join(treatment_warnings(treatment, cinematography, plan))
 
 
 def strip_markdown_fence(text: str) -> str:

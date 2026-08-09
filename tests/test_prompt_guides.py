@@ -5,7 +5,10 @@ import json
 import pytest
 
 from prompt_guides import (
+    ACOUSTIC_SPACE_CHOICES,
+    ACOUSTIC_SPACE_CONTRACTS,
     BASE_SECTIONS,
+    DIALOGUE_COVERAGE_CHOICES,
     REFERENCE_SECTIONS,
     SYSTEM_PROMPT,
     alignment_instruction,
@@ -702,7 +705,7 @@ def test_enhancement_respects_static_camera_audio_off_and_required_score():
         background_score_policy="add_instrumental",
         cinematography_json=cinematography,
     )
-    assert "The camera holds a Static Shot" in request
+    assert "The camera holds a locked static frame on the existing composition" in request
     assert "AMBIENCE AND FOLEY POLICY — OFF" in request
     assert "NON-DIEGETIC MUSIC POLICY — REQUIRED" in request
     assert "physical sound only as permitted" in request
@@ -1628,6 +1631,34 @@ N/A"""
     assert "The two tagged lines are the only intelligible speech" in fixed
 
 
+def test_acoustic_space_catalog_is_complete_unique_and_individually_injected():
+    assert ACOUSTIC_SPACE_CHOICES[0] == "none"
+    assert set(ACOUSTIC_SPACE_CONTRACTS) == set(ACOUSTIC_SPACE_CHOICES) - {"none"}
+    assert len(set(ACOUSTIC_SPACE_CONTRACTS.values())) == len(ACOUSTIC_SPACE_CONTRACTS)
+    assert DIALOGUE_COVERAGE_CHOICES == ("off", "on")
+    for space in ACOUSTIC_SPACE_CHOICES[1:]:
+        request = build_user_request("A woman crosses a room.", "t2va", 5.0, acoustic_space=space)
+        assert ACOUSTIC_SPACE_CONTRACTS[space] in request
+        assert f"Selected acoustic space: {space}." in request
+
+
+def test_acoustic_space_and_coverage_stay_deterministic_and_do_not_override_audio_gates():
+    arguments = {
+        "acoustic_space": "underwater_muffled",
+        "dialogue_coverage": "on",
+        "ambience_foley_policy": "off",
+        "cinematography_json": json.dumps({
+            "schemaVersion": 1, "shotScale": "close_up", "cameraMotion": "shake",
+            "cameraAmplitude": "small",
+        }),
+    }
+    first = build_user_request('A diver says "Now."', "t2va", 6.0, "", **arguments)
+    second = build_user_request('A diver says "Now."', "t2va", 6.0, "", **arguments)
+    assert first == second
+    assert "AMBIENCE AND FOLEY POLICY — OFF" in first
+    assert "it never re-enables a disabled audio layer" in first
+    assert "The camera shakes with small amplitude, handheld-style" in first
+
 def test_system_prompt_teaches_official_camera_amplitude_speed_and_cut_vocabulary():
     base = system_prompt_for_mode("t2va")
     assert '"with small amplitude"/"with large amplitude"' in base
@@ -1951,9 +1982,11 @@ def test_prompts_inside_both_budgets_raise_no_length_warning():
 
 
 def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budgets():
-    # Measured 2026-08: SYSTEM_PROMPT 10401 chars, worst-case user request 24974 chars.
-    # Caps are the measurement plus ~15%; exceeding one means prompt growth that
-    # silently degrades small local GGUF models and must be reviewed deliberately.
+    # Measured 2026-08: SYSTEM_PROMPT 10523 chars, worst-case user request 27392 chars with every
+    # control at its most verbose setting, including the shot-scale/angle/viewpoint axes, the
+    # acoustic space and the dialogue-coverage clause. Caps are the measurement plus ~10-15%;
+    # exceeding one means prompt growth that silently degrades small local GGUF models and must be
+    # reviewed deliberately.
     assert len(SYSTEM_PROMPT) < 12000
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
@@ -1961,6 +1994,8 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     })
     cinematography = json.dumps({
         "schemaVersion": 1, "colorPalette": "classic_western_earth_sky", "exposureContrast": "low_key",
+        "shotScale": "extreme_close_up", "cameraAngle": "dutch_static",
+        "cameraViewpoint": "mirror_or_reflection",
         "cameraMotion": "tracking", "cameraAmplitude": "large", "cameraSpeed": "fast",
         "optics": "compressed_telephoto", "depthOfField": "shallow", "imageTexture": "film_35mm",
         "lensEffects": "restrained_halation", "motionRendering": "energetic_blur",
@@ -1986,5 +2021,6 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
         True, "ensure_audible", "add_instrumental", "audible", "Slow trumpet and brushed drums.",
         "16:9", manifest, 5, 0, "Same woman", "Same voice", "Same street",
         (("English", "I am leaving now."),), creative, shot_plan, cinematography, "chinese_martial_arts",
+        "large_reverberant_interior", "on",
     )
     assert len(request) < 29000

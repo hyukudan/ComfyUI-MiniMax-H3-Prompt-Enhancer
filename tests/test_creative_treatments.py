@@ -9,17 +9,26 @@ import re
 import pytest
 
 from creative_treatments import (
+    CAMERA_MOTION_HEADS,
     CINEMATOGRAPHY_CHOICES,
     CREATIVE_AXES,
+    LEGACY_CAMERA_MOTIONS,
     PROFILE_DIMENSIONS,
+    SHOT_TRANSITION_CHOICES,
+    camera_motion_sentence,
     compose_creative_treatment,
+    cinematography_choices,
     cinematography_instruction,
     creative_treatment_choices,
     creative_treatment_instruction,
+    detect_treatment_conflicts,
     parse_creative_treatment,
     parse_cinematography,
     parse_shot_plan,
+    resolve_treatment_conflicts,
     shot_plan_instruction,
+    shot_transition_choices,
+    treatment_warnings,
     _profile_lineage,
 )
 
@@ -75,6 +84,8 @@ def test_cinematography_blank_is_neutral_and_all_choices_parse():
     for field, choices in CINEMATOGRAPHY_CHOICES.items():
         external = {
             "color_palette": "colorPalette", "exposure_contrast": "exposureContrast",
+            "shot_scale": "shotScale", "camera_angle": "cameraAngle",
+            "camera_viewpoint": "cameraViewpoint",
             "camera_motion": "cameraMotion", "camera_amplitude": "cameraAmplitude",
             "camera_speed": "cameraSpeed", "optics": "optics", "depth_of_field": "depthOfField",
             "image_texture": "imageTexture", "lens_effects": "lensEffects",
@@ -99,69 +110,54 @@ def test_cinematography_uses_h3_camera_grammar_and_hard_fidelity_contract():
     })
     instruction = cinematography_instruction(parsed)
     assert "motion type + amplitude + speed" in instruction
-    assert "Pushes In" in instruction
-    assert "small camera-motion amplitude" in instruction
-    assert "slow camera-motion speed" in instruction
+    assert (
+        "The camera pushes in with small amplitude at slow speed toward the principal subject already present "
+        "in the shot"
+    ) in instruction
+    assert "Use small camera-motion amplitude." not in instruction
+    assert "Use slow camera-motion speed." not in instruction
     assert "temporally stable" in instruction
     assert "may not create a cut" in instruction
 
 
-CAMERA_MOTION_PHRASES = {
-    "none": "",
-    "static": "holds a Static Shot",
-    "zoom_in": "Zooms In",
-    "zoom_out": "Zooms Out",
-    "push_in": "Pushes In",
-    "pull_out": "Pulls Out",
-    "pan_left": "Pans Left",
-    "pan_right": "Pans Right",
-    "truck_left": "Trucks Left",
-    "truck_right": "Trucks Right",
-    "tilt_up": "Tilts Up",
-    "tilt_down": "Tilts Down",
-    "pedestal_up": "Pedestals Up",
-    "pedestal_down": "Pedestals Down",
-    "arc": "performs an Arc Shot around the supplied focal subject",
-    "tracking": "performs a Tracking Shot following the supplied moving subject",
-    "pov": "explicitly established subject's POV",
-    "shake_slightly": "Shakes Slightly",
-    "shake_strongly": "Shakes Strongly",
-    "roll_clockwise": "Rolls Clockwise",
-    "roll_counterclockwise": "Rolls Counterclockwise",
-}
+# Ported from the concurrent device work. The canonical phrase table is
+# CAMERA_MOTION_HEADS in creative_treatments; these tests read it instead of
+# restating a second copy of the catalog wording.
+def test_camera_motion_head_table_covers_the_whole_catalog_in_order():
+    assert tuple(CAMERA_MOTION_HEADS) == tuple(CINEMATOGRAPHY_CHOICES["camera_motion"])[1:]
 
 
-def test_camera_motion_phrase_table_covers_the_whole_catalog():
-    assert tuple(CAMERA_MOTION_PHRASES) == tuple(CINEMATOGRAPHY_CHOICES["camera_motion"])
-
-
-@pytest.mark.parametrize(("motion", "phrase"), tuple(CAMERA_MOTION_PHRASES.items()))
-def test_every_camera_motion_renders_its_canonical_h3_phrase(motion, phrase):
+@pytest.mark.parametrize("motion", tuple(CINEMATOGRAPHY_CHOICES["camera_motion"]))
+def test_every_camera_motion_renders_its_canonical_h3_phrase(motion):
     instruction = cinematography_instruction(parse_cinematography({
         "schemaVersion": 1,
         "cameraMotion": motion,
     }))
-    if not phrase:
+    if motion == "none":
         assert instruction == ""
         return
-    assert phrase in instruction
+    assert CAMERA_MOTION_HEADS[motion] in instruction
     assert CINEMATOGRAPHY_CHOICES["camera_motion"][motion] in instruction
 
 
 @pytest.mark.parametrize("motion", ("push_in", "pan_left", "arc", "roll_counterclockwise"))
 def test_camera_amplitude_and_speed_compose_with_the_selected_motion(motion):
-    instruction = cinematography_instruction(parse_cinematography({
+    parsed = parse_cinematography({
         "schemaVersion": 1,
         "cameraMotion": motion,
         "cameraAmplitude": "small",
         "cameraSpeed": "fast",
-    }))
-    assert CAMERA_MOTION_PHRASES[motion] in instruction
-    assert "Use small camera-motion amplitude." in instruction
-    assert "Use fast camera-motion speed while preserving spatial legibility." in instruction
+    })
+    instruction = cinematography_instruction(parsed)
+    sentence = camera_motion_sentence(parsed)
+    assert sentence in instruction
+    assert sentence.startswith(f"{CAMERA_MOTION_HEADS[motion]} with small amplitude at fast speed")
+    assert sentence.endswith(", still preserving spatial legibility.")
+    assert "Use small camera-motion amplitude." not in instruction
+    assert "Use fast camera-motion speed while preserving spatial legibility." not in instruction
 
 
-@pytest.mark.parametrize("motion", ("none", "static", "pov"))
+@pytest.mark.parametrize("motion", ("none", "static"))
 def test_camera_amplitude_and_speed_require_a_moving_motion(motion):
     for modifier in ({"cameraAmplitude": "small"}, {"cameraSpeed": "fast"}):
         with pytest.raises(ValueError, match="require a moving cameraMotion"):
@@ -662,6 +658,293 @@ def test_shot_description_cannot_turn_itself_into_extra_editing_authority():
     assert "add five shots" in instruction
 
 
+CANONICAL_CINEMATOGRAPHY_CHOICES = {
+    "shot_scale": (
+        "none", "extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide",
+        "extreme_wide",
+    ),
+    "camera_angle": (
+        "none", "eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye",
+    ),
+    "camera_viewpoint": ("none", "pov", "over_the_shoulder", "mirror_or_reflection"),
+    "camera_motion": (
+        "none", "static", "zoom_in", "zoom_out", "push_in", "pull_out", "pan_left", "pan_right",
+        "truck_left", "truck_right", "tilt_up", "tilt_down", "pedestal_up", "pedestal_down", "arc",
+        "tracking", "shake", "roll_clockwise", "roll_counterclockwise",
+    ),
+    "optics": (
+        "none", "wide_perspective", "natural_perspective", "compressed_telephoto", "lens_18mm",
+        "lens_35mm", "lens_50mm", "lens_85mm_compressed",
+    ),
+}
+
+
+@pytest.mark.parametrize("field", tuple(CANONICAL_CINEMATOGRAPHY_CHOICES))
+def test_camera_axis_catalogs_are_complete_unique_and_individually_described(field):
+    assert cinematography_choices(field) == CANONICAL_CINEMATOGRAPHY_CHOICES[field]
+    texts = [text for value, text in CINEMATOGRAPHY_CHOICES[field].items() if value != "none"]
+    assert all(texts)
+    assert len(set(texts)) == len(texts)
+    assert CINEMATOGRAPHY_CHOICES[field]["none"] == ""
+
+
+def test_camera_motion_presets_are_lowercase_targeted_sentences_with_splice_points():
+    motions = CINEMATOGRAPHY_CHOICES["camera_motion"]
+    for motion, text in motions.items():
+        if motion == "none":
+            continue
+        assert text.startswith(CAMERA_MOTION_HEADS[motion])
+        assert text.endswith(".")
+        assert text.split()[2].islower()
+        assert re.search(r"[A-Z]", text[len("The camera"):]) is None
+    anchored = {motion for motion, text in motions.items() if "already present in the shot" in text}
+    assert {"push_in", "pull_out", "arc", "tracking", "zoom_in", "zoom_out"} <= anchored
+    assert "the supplied focal subject" not in motions["arc"]
+    assert "the supplied moving subject" not in motions["tracking"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "phrase"),
+    (
+        ("shotScale", "medium_close_up", "from mid-chest up, with the eyes on the upper third"),
+        ("shotScale", "extreme_wide", "small inside the existing environment"),
+        ("cameraAngle", "low_angle", "below the subject's eye line, tilted slightly up"),
+        ("cameraAngle", "dutch_static", "canted a few degrees off level for the whole shot"),
+        ("cameraViewpoint", "pov", "first-person point of view of the principal character"),
+        ("cameraViewpoint", "over_the_shoulder", "just behind one character's shoulder"),
+        ("cameraViewpoint", "mirror_or_reflection", "through a mirror or reflective surface already present"),
+        ("optics", "lens_35mm", "natural human-scale perspective, mild environmental context"),
+        ("optics", "lens_85mm_compressed", "compressed planes, flattering facial proportion"),
+    ),
+)
+def test_new_camera_axes_reach_the_cinematography_contract(field, value, phrase):
+    instruction = cinematography_instruction(parse_cinematography({"schemaVersion": 1, field: value}))
+    assert phrase in instruction
+    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
+
+
+def test_motion_amplitude_and_speed_are_fused_into_one_sentence():
+    parsed = parse_cinematography({
+        "schemaVersion": 1,
+        "cameraMotion": "push_in",
+        "cameraAmplitude": "small",
+        "cameraSpeed": "slow",
+    })
+    sentence = camera_motion_sentence(parsed)
+    assert sentence == (
+        "The camera pushes in with small amplitude at slow speed toward the principal subject already "
+        "present in the shot, in one continuous move that settles before the key beat."
+    )
+    instruction = cinematography_instruction(parsed)
+    assert instruction.count("The camera pushes in") == 1
+    assert "Use small camera-motion amplitude." not in instruction
+    assert "Use slow camera-motion speed." not in instruction
+    fast = camera_motion_sentence(parse_cinematography({
+        "schemaVersion": 1, "cameraMotion": "arc", "cameraAmplitude": "large", "cameraSpeed": "fast",
+    }))
+    assert fast.count(".") == 1
+    assert "with large amplitude at fast speed" in fast
+    assert "still preserving continuity, required visibility, and spatial legibility." in fast
+    auto = camera_motion_sentence(parse_cinematography({"schemaVersion": 1, "cameraMotion": "pan_left"}))
+    assert "amplitude" not in auto
+    assert "speed" not in auto
+
+
+def test_legacy_shake_values_resolve_to_shake_plus_amplitude_and_warn():
+    assert set(LEGACY_CAMERA_MOTIONS) == {"pov", "shake_slightly", "shake_strongly"}
+    assert "shake_slightly" not in cinematography_choices("camera_motion")
+    assert "shake_strongly" not in cinematography_choices("camera_motion")
+
+    slight = parse_cinematography({"schemaVersion": 1, "cameraMotion": "shake_slightly"})
+    assert slight["cameraMotion"] == "shake"
+    assert slight["cameraAmplitude"] == "small"
+    assert any("legacy value" in warning for warning in slight["warnings"])
+
+    strong = parse_cinematography({"schemaVersion": 1, "cameraMotion": "shake_strongly"})
+    assert strong["cameraMotion"] == "shake"
+    assert strong["cameraAmplitude"] == "large"
+    assert strong["digest"] == parse_cinematography({
+        "schemaVersion": 1, "cameraMotion": "shake", "cameraAmplitude": "large",
+    })["digest"]
+
+    conflicting = parse_cinematography({
+        "schemaVersion": 1, "cameraMotion": "shake_slightly", "cameraAmplitude": "large",
+    })
+    assert conflicting["cameraAmplitude"] == "small"
+    assert any(
+        "implies cameraAmplitude=small; it overrides the requested cameraAmplitude=large" in warning
+        for warning in conflicting["warnings"]
+    )
+
+
+def test_legacy_pov_motion_becomes_a_viewpoint_and_real_motion_stays_expressible():
+    legacy = parse_cinematography({"schemaVersion": 1, "cameraMotion": "pov"})
+    assert legacy["cameraMotion"] == "none"
+    assert legacy["cameraViewpoint"] == "pov"
+    assert any("cameraViewpoint=pov" in warning for warning in legacy["warnings"])
+    assert "pov" not in cinematography_choices("camera_motion")
+
+    moving = parse_cinematography({
+        "schemaVersion": 1,
+        "cameraViewpoint": "pov",
+        "cameraMotion": "tracking",
+        "cameraAmplitude": "large",
+        "cameraSpeed": "fast",
+    })
+    assert moving["warnings"] == []
+    instruction = cinematography_instruction(moving)
+    assert "first-person point of view of the principal character" in instruction
+    assert "The camera tracks with large amplitude at fast speed alongside the principal subject" in instruction
+
+
+def test_dutch_static_warns_when_combined_with_a_rolling_motion():
+    canted = parse_cinematography({
+        "schemaVersion": 1, "cameraAngle": "dutch_static", "cameraMotion": "roll_clockwise",
+    })
+    assert any("holds a fixed cant" in warning for warning in canted["warnings"])
+    assert parse_cinematography({
+        "schemaVersion": 1, "cameraAngle": "dutch_static", "cameraMotion": "push_in",
+    })["warnings"] == []
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ({"schemaVersion": 1, "shotScale": "gigantic"}, "Unsupported cinematography shotScale"),
+        ({"schemaVersion": 1, "cameraAngle": "dutch"}, "Unsupported cinematography cameraAngle"),
+        ({"schemaVersion": 1, "cameraViewpoint": "drone"}, "Unsupported cinematography cameraViewpoint"),
+        ({"schemaVersion": 1, "cameraMotion": "orbit"}, "Unsupported cinematography cameraMotion"),
+        ({"schemaVersion": 1, "optics": "lens_9000mm"}, "Unsupported cinematography optics"),
+        ({"schemaVersion": 1, "shotScale": 7}, "shotScale must be a string"),
+    ),
+)
+def test_invalid_camera_axis_values_fail_before_they_can_steer_the_llm(payload, message):
+    with pytest.raises(ValueError, match=message):
+        parse_cinematography(payload)
+
+
+def test_amplitude_and_speed_restrictions_apply_only_to_none_and_static():
+    with pytest.raises(ValueError, match="require a moving"):
+        parse_cinematography({"schemaVersion": 1, "cameraViewpoint": "pov", "cameraAmplitude": "large"})
+    allowed = parse_cinematography({
+        "schemaVersion": 1, "cameraViewpoint": "over_the_shoulder", "cameraMotion": "shake",
+        "cameraAmplitude": "large", "cameraSpeed": "fast",
+    })
+    assert allowed["cameraAmplitude"] == "large"
+
+
+def test_every_world_aesthetic_profile_now_carries_camera_and_framing_direction():
+    for profile in creative_treatment_choices("world_aesthetic")[1:]:
+        treatment = compose_creative_treatment(world_aesthetic=profile)
+        assert treatment["dimensions"]["camera_and_framing"]
+    gothic = creative_treatment_instruction(compose_creative_treatment(world_aesthetic="gothic"))
+    assert "tall negative space above the subject" in gothic
+    assert "layered thresholds and arches already present" in gothic
+    solarpunk = creative_treatment_instruction(compose_creative_treatment(world_aesthetic="solarpunk"))
+    assert "generous natural light in the frame" in solarpunk
+
+
+def test_both_contracts_declare_their_precedence_and_output_integration():
+    cinematography = cinematography_instruction(parse_cinematography({
+        "schemaVersion": 1, "cameraMotion": "push_in",
+    }))
+    assert (
+        "These controls also override any conflicting camera, optical, exposure, or color advice coming from "
+        "the secondary creative treatment."
+    ) in cinematography
+    treatment = creative_treatment_instruction(compose_creative_treatment(genre="horror"))
+    assert "OUTPUT INTEGRATION — MANDATORY" in treatment
+    assert "do not merely name a profile, repeat its ID, mention this control panel" in treatment
+    assert "The final prompt must remain self-contained if all control metadata is removed." in treatment
+
+
+def test_conflicting_creative_axes_drop_the_lower_precedence_camera_lines():
+    treatment = compose_creative_treatment("action", "documentary_observational", "film_noir", "serene")
+    conflicts = detect_treatment_conflicts(treatment, parse_cinematography(""))
+    assert [item["dimension"] for item in conflicts] == ["camera_energy", "camera_energy"]
+    assert {item["winner"] for item in conflicts} == {"observational"}
+    assert {item["loser"] for item in conflicts} == {"choreographed"}
+    assert {item["winnerAxis"] for item in conflicts} == {"visual_language"}
+    assert {item["loserAxis"] for item in conflicts} == {"genre"}
+
+    resolved, same_conflicts = resolve_treatment_conflicts(treatment, parse_cinematography(""))
+    assert same_conflicts == conflicts
+    camera = resolved["dimensions"]["camera_and_framing"]
+    assert not any("wide tracking or lateral staging" in line for line in camera)
+    assert not any("Keep trajectories, screen direction" in line for line in camera)
+    assert any("the camera observes rather than choreographs" in line for line in camera)
+    assert resolved["droppedLines"] == [item["droppedText"] for item in conflicts]
+    assert set(resolved["droppedLines"]) <= set(treatment["dimensions"]["camera_and_framing"])
+    assert all(item["droppedText"] in item["message"] for item in conflicts)
+
+
+def test_explicit_cinematography_outranks_every_creative_axis():
+    treatment = compose_creative_treatment(genre="action", tone="kinetic")
+    static = parse_cinematography({"schemaVersion": 1, "cameraMotion": "static"})
+    conflicts = detect_treatment_conflicts(treatment, static)
+    assert conflicts
+    assert {item["winnerAxis"] for item in conflicts} == {"cinematography"}
+    assert {item["winnerProfile"] for item in conflicts} == {"cameraMotion=static"}
+    assert {item["dimension"] for item in conflicts} == {"movement"}
+
+    shake = parse_cinematography({"schemaVersion": 1, "cameraMotion": "shake_slightly"})
+    locked = compose_creative_treatment(world_aesthetic="film_noir")
+    handheld_conflicts = detect_treatment_conflicts(locked, shake)
+    assert [item["loser"] for item in handheld_conflicts] == ["locked"]
+    assert treatment_warnings(locked, shake)[0].startswith("cameraMotion 'shake_slightly' is a legacy value")
+    assert any("camera_energy conflict" in warning for warning in treatment_warnings(locked, shake))
+
+
+def test_compatible_selections_produce_no_conflicts_and_no_dropped_lines():
+    treatment = compose_creative_treatment("action", "anime_shonen", "cyberpunk", "epic")
+    cinematography = parse_cinematography({"schemaVersion": 1, "cameraMotion": "tracking"})
+    assert detect_treatment_conflicts(treatment, cinematography) == []
+    resolved, conflicts = resolve_treatment_conflicts(treatment, cinematography)
+    assert conflicts == []
+    assert resolved["dimensions"] == treatment["dimensions"]
+    assert treatment_warnings(treatment, cinematography) == []
+
+
+def test_shot_rows_accept_optional_camera_and_transition_without_changing_legacy_rows():
+    assert shot_transition_choices() == ("cut", "match_cut", "whip_pan", "hold")
+    assert set(SHOT_TRANSITION_CHOICES) == set(shot_transition_choices())
+
+    legacy = parse_shot_plan(_plan([{"id": "s1", "description": "She waits."}]), 8.0)
+    assert legacy["shots"] == [{"id": "s1", "description": "She waits."}]
+    assert legacy["warnings"] == []
+
+    plan = parse_shot_plan(_plan([
+        {"id": "s1", "description": "She waits.", "cameraMotion": "push_in"},
+        {"id": "s2", "description": "She leaves.", "transitionIn": "match_cut", "cameraMotion": "shake_strongly"},
+        {"id": "s3", "description": "She is gone.", "transitionIn": "cut"},
+    ]), 8.0)
+    assert plan["shots"][0]["cameraMotion"] == "push_in"
+    assert plan["shots"][1]["cameraMotion"] == "shake"
+    assert plan["shots"][1]["transitionIn"] == "match_cut"
+    assert "transitionIn" not in plan["shots"][2]
+    assert any("legacy value" in warning for warning in plan["warnings"])
+
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert 'camera="The camera pushes in toward the principal subject' in instruction
+    assert 'camera="The camera shakes, handheld-style' in instruction
+    assert 'transition="Enter this shot on a match cut' in instruction
+    assert "Append each listed camera sentence to its own shot only" in instruction
+    assert "never adds, removes, or moves a cut" in instruction
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    (
+        (_plan([{"id": "s1", "description": "One", "cameraMotion": "orbit"}]), "cameraMotion 'orbit' must be one of"),
+        (_plan([{"id": "s1", "description": "One", "cameraMotion": 5}]), "cameraMotion must be a string"),
+        (_plan([{"id": "s1", "description": "One", "transitionIn": "dissolve"}]), "transitionIn 'dissolve' must be one of"),
+        (_plan([{"id": "s1", "description": "One", "transitionIn": 3}]), "transitionIn must be a string"),
+        (_plan([{"id": "s1", "description": "One", "camera": "push_in"}]), "unsupported keys"),
+    ),
+)
+def test_invalid_shot_row_camera_and_transition_values_fail_safely(value, message):
+    with pytest.raises(ValueError, match=message):
+        parse_shot_plan(value, 8.0, mode="t2va")
 # Pairs that already exceed the similarity threshold. They are known debt pending an
 # inheritance refactor (the painterly family should share one base profile, and the 2D
 # animation languages should stop restating animation_2d wording verbatim); the entries
@@ -734,8 +1017,9 @@ def test_allowlisted_near_duplicate_profiles_are_still_real_debt():
 
 def test_worst_case_creative_treatment_instruction_stays_inside_its_token_budget():
     # Measured 2026-08: the longest combination is sports_competition + anime_shojo_pastel
-    # + analog_1980s + pulp_heightened at 11017 characters. The cap is that plus ~15%;
-    # exceeding it means unbounded prompt growth that degrades small local models.
+    # + analog_1980s + pulp_heightened, at 11491 characters once the mandatory output-integration
+    # block is included (11017 before it). The cap is that plus ~11%; exceeding it means unbounded
+    # prompt growth that degrades small local models.
     longest = {}
     for axis in CREATIVE_AXES:
         longest[axis] = max(

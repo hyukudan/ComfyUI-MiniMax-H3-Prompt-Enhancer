@@ -19,9 +19,9 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 15
+CREATIVE_PROFILE_CATALOG_VERSION = 16
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
-CINEMATOGRAPHY_CATALOG_VERSION = 4
+CINEMATOGRAPHY_CATALOG_VERSION = 5
 SHOT_PLAN_SCHEMA_VERSION = 1
 
 CREATIVE_AXES = ("genre", "visual_language", "world_aesthetic", "tone")
@@ -43,16 +43,21 @@ PROFILE_DIMENSIONS = (
 )
 
 
-def _profile(*, version=1, inherits=(), editing_and_pacing=(), camera_and_framing=(),
+def _profile(*, version=1, inherits=(), tags=(), editing_and_pacing=(), camera_and_framing=(),
              lighting_and_color=(), production_design=(), blocking_and_performance=(),
              sound_treatment=(), may_fill_unspecified=(), must_not_invent=()) -> dict[str, Any]:
-    """Keep every profile structurally identical and easy to version/review."""
+    """Keep every profile structurally identical and easy to version/review.
+
+    ``tags`` is the optional machine-readable antagonism vocabulary used by
+    ``detect_treatment_conflicts``; it never reaches the language model.
+    """
     def items(value):
         return (value,) if isinstance(value, str) else tuple(value)
 
     return {
         "version": int(version),
         "inherits": items(inherits),
+        "tags": dict(tags),
         "editing_and_pacing": items(editing_and_pacing),
         "camera_and_framing": items(camera_and_framing),
         "lighting_and_color": items(lighting_and_color),
@@ -67,6 +72,7 @@ def _profile(*, version=1, inherits=(), editing_and_pacing=(), camera_and_framin
 GENRE_PROFILES = {
     "none": _profile(),
     "action": _profile(
+        tags={"camera_energy": "choreographed", "movement": "dynamic"},
         editing_and_pacing=(
             "Build readable anticipation, action, impact, and recovery beats around actions the user requested.",
             "Use cuts only at motivated changes of action, reaction, impact, viewpoint, time, or information.",
@@ -93,6 +99,7 @@ GENRE_PROFILES = {
         ),
     ),
     "horror": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=(
             "Use patience, withheld information, and a gradual reveal when those choices fit the requested event.",
             "Let stillness and delayed reactions carry tension instead of multiplying cuts.",
@@ -176,6 +183,7 @@ GENRE_PROFILES = {
         must_not_invent=("Jokes, punchlines, pratfalls, slapstick, humiliation, funny voices, audience laughter, or extra comic characters."),
     ),
     "drama": _profile(
+        tags={"pacing": "long_takes"},
         editing_and_pacing=("Use sustained, motivated takes and let requested emotional changes develop without melodramatic acceleration.",),
         camera_and_framing=("Favor restrained medium and close framing only where expression, gesture, or relationship is narratively relevant.",),
         lighting_and_color=("Use motivated naturalistic light, plausible contrast, and lived-in tonal variation.",),
@@ -216,6 +224,7 @@ GENRE_PROFILES = {
         must_not_invent=("Crimes, criminals, police, detectives, victims, suspects, clues, evidence, weapons, drugs, theft, corruption, pursuit, betrayal, arrests, guilt, danger, violence, sirens, interrogation, or revelations."),
     ),
     "western": _profile(
+        tags={"pacing": "long_takes"},
         editing_and_pacing=("Use patient spatial establishment, measured approach and reaction timing, and decisive completion of confrontations or physical tasks only when already supplied.",),
         camera_and_framing=("Favor readable human-to-landscape scale, lateral geography, thresholds, profile spacing, and held eyelines while preserving the supplied setting and shot plan.",),
         lighting_and_color=("Use source-consistent directional light, tactile earth and material color, protected sky or interior highlights, and readable shadow without forcing heat, sunset, dust, sepia, or desaturation."),
@@ -476,6 +485,7 @@ VISUAL_LANGUAGE_PROFILES = {
     ),
     "documentary_observational": _profile(
         version=2,
+        tags={"camera_energy": "observational", "pacing": "long_takes"},
         editing_and_pacing=(
             "Present events with observational documentary immediacy, preserving real-time causal continuity, complete actions, incidental pauses, and longer takes unless explicit edits require otherwise.",
         ),
@@ -516,6 +526,7 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Beauty filters, glamour retouching, fantasy physics, stylized deformation, synthetic lens effects, melodrama, commercial posing, cinematic spectacle, or documentary claims."),
     ),
     "live_action_cinematic": _profile(
+        tags={"camera_energy": "choreographed"},
         editing_and_pacing=(
             "Present unmistakably photographed cinematic live action with deliberate narrative coverage, complete performance beats, motivated edits, and polished temporal continuity rather than documentary observation or commercial montage.",
         ),
@@ -566,6 +577,7 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("An old era, 1930s–1950s setting, detectives, crime, noir plot, femme fatale, trench coats, hats, cigarettes, fog, rain, venetian-blind shadows, period cars, vintage props, 4:3 framing, letterbox bars, intertitles, silent-film acting, sepia, tinting, scratches, dust, flicker, gate weave, projector artifacts, mono audio, hiss, crackle, narration, or period music."),
     ),
     "live_action_gritty": _profile(
+        tags={"camera_energy": "handheld"},
         editing_and_pacing=(
             "Present immediate textured live action with complete real-time actions, imperfect human timing, restrained editorial polish, and direct causal continuity rather than a glossy cinematic or commercial finish.",
         ),
@@ -711,6 +723,7 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
     ),
     "live_action_1980s_action": _profile(
+        tags={"camera_energy": "choreographed", "movement": "dynamic"},
         editing_and_pacing=(
             "Present photographed live action with the decisive visual grammar of a polished 1980s practical-action feature: clear setup, preparation, action, impact, reaction, and recovery only for events already supplied by the prompt.",
             "Use assertive but spatially coherent cutting, letting practical movement and consequences complete on screen without modern hypercutting, speed ramps, or trailer montage.",
@@ -741,6 +754,7 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
     ),
     "live_action_classic_chinese_martial_arts": _profile(
+        tags={"camera_energy": "choreographed"},
         editing_and_pacing=(
             "Present photographed live action with the lucid rhythmic grammar of classic Chinese-language martial-arts cinema, applying preparation, exchange, contact, reaction, reset, and escalation beats only to martial movement already supplied by the prompt.",
             "Let choreography read through complete physical phrases and purposeful cuts rather than fragmenting motion into unrelated close-ups or modern hypercutting.",
@@ -827,6 +841,7 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
     ),
     "live_action_1950s_studio_color": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=(
             "Present photographed live action with the polished continuity grammar of a premium 1950s studio color feature: complete dramatic beats, measured entrances and reactions, clear classical coverage, and decisive dissolves or cuts only when already compatible with the supplied shot plan.",
         ),
@@ -855,6 +870,7 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
     ),
     "live_action_midcentury_technicolor_epic": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=(
             "Present photographed live action with the stately visual grammar of a premium mid-century 1950s–1960s color epic: complete dramatic entrances, formal scene development, measured reactions, and decisive transitions without imposing spectacle or a long runtime.",
         ),
@@ -1158,6 +1174,7 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Implants, hackers, corporations, police, weapons, holograms, robots, vehicles, surveillance events, or functional plot technology."),
     ),
     "film_noir": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=("Use deliberate information release and controlled pauses without imposing a crime narrative.",),
         camera_and_framing=("Favor geometric depth, frames within frames, reflections, oblique lines, silhouettes, and negative space while keeping required action readable.",),
         lighting_and_color=("Use motivated chiaroscuro, hard/soft contrast, pools of light, and restrained color or monochrome only when compatible with explicit color requirements.",),
@@ -1198,6 +1215,9 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Rockets, robots, ray guns, flying cars, atomic technology, propaganda, fictional brands, or alternate-history events."),
     ),
     "near_future_functional": _profile(
+        version=2,
+        tags={"camera_energy": "locked"},
+        camera_and_framing=("Favor clean orthogonal framing, unobtrusive eye-level viewpoints, and steady functional coverage of the existing space, letting already present devices, surfaces, and sight lines organize the composition.",),
         production_design=("Apply restrained near-future refinement only to unspecified attributes of already authorized architecture, clothing, props, machines, and interfaces, using plausible manufacturing and clear affordances.",),
         lighting_and_color=("Keep illumination practical and contemporary, with controlled emissions only from existing devices.",),
         blocking_and_performance=("Treat existing technology as familiar and functional without changing behavior or capability.",),
@@ -1206,6 +1226,9 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Holograms, implants, robots, artificial intelligence, floating interfaces, surveillance, weapons, vehicles, or new technological capability."),
     ),
     "gothic": _profile(
+        version=2,
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
+        camera_and_framing=("Favor vertical composition, tall negative space above the subject, layered thresholds and arches already present, and slow deliberate reframing that reveals architectural scale without inventing locations.",),
         production_design=("Use compatible vertical rhythm, aged craft, carved detail, stone, dark wood, iron, and textile weight only on already authorized structures and objects.",),
         lighting_and_color=("Use source-motivated directional contrast and restrained color without forcing night, candles, fog, or underexposure.",),
         blocking_and_performance=("Preserve supplied behavior; gothic design does not imply fear, solemnity, menace, or ritual.",),
@@ -1214,6 +1237,9 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Churches, castles, crypts, ruins, graves, crosses, candles, fog, storms, monsters, ghosts, ritual, or religious symbolism."),
     ),
     "solarpunk": _profile(
+        version=2,
+        tags={"pacing": "long_takes"},
+        camera_and_framing=("Favor open airy framing with generous natural light in the frame, layered greenery or daylight surfaces already present, and unhurried reframing that keeps people and their existing surroundings in the same shot.",),
         production_design=("Apply repairable, resource-aware, climate-responsive design only to unspecified attributes of existing places, garments, and devices.",),
         lighting_and_color=("Favor natural illumination and material color while preserving supplied weather, season, vegetation, and time of day.",),
         blocking_and_performance=("Do not change social behavior or assign environmental purpose to neutral actions.",),
@@ -1222,6 +1248,8 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Plants, gardens, solar panels, wind turbines, water systems, utopian communities, activism, new technology, or ecological plot claims."),
     ),
     "steampunk": _profile(
+        version=2,
+        camera_and_framing=("Favor tactile framing that keeps existing mechanisms, controls, and the hands operating them in the same composition, with modest depth staging and deliberate moves rather than sweeping spectacle.",),
         production_design=("Style unspecified attributes of existing authorized mechanisms with one coherent period craft, fastener, pipe, gauge, and material logic.",),
         lighting_and_color=("Use plausible period practical light and material reflections without adding steam, smoke, sparks, or sepia grading.",),
         blocking_and_performance=("Preserve supplied operation and capability; controls remain mechanically legible and physically reachable.",),
@@ -1230,6 +1258,9 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Steam engines, pipes, gauges, gears, goggles, airships, automatons, weapons, Victorian characters, smoke, or alternate history unless already authorized."),
     ),
     "post_apocalyptic": _profile(
+        version=2,
+        tags={"pacing": "long_takes"},
+        camera_and_framing=("Favor grounded framing with the subject small against the space already present, patient wide coverage of existing distances, and close inserts only on wear and repair that are genuinely visible.",),
         production_design=("Apply functional repair, reuse, scarcity, and weathering only to unspecified attributes of already supplied places, garments, vehicles, and objects.",),
         lighting_and_color=("Preserve the explicit environment and palette; do not force dust, desaturation, smoke, harsh sun, or ruined atmosphere.",),
         blocking_and_performance=("Preserve supplied affect and behavior; wear does not imply fear, aggression, hunger, or survival activity.",),
@@ -1238,6 +1269,9 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Disaster, ruins, corpses, violence, weapons, gangs, mutants, radiation, fire, abandoned vehicles, dust storms, or survival plot facts."),
     ),
     "historical_period": _profile(
+        version=2,
+        tags={"camera_energy": "locked"},
+        camera_and_framing=("Favor composed, comparatively formal framing with stable viewpoints, balanced staging of the people already present, and restrained movement that reads the existing space rather than modern coverage.",),
         production_design=("Use only the era explicitly named by the source, keeping architecture, construction, clothing, objects, typography, and manufacturing mutually consistent.",),
         lighting_and_color=("Use lighting sources and material response plausible for the supplied era without imposing a vintage grade.",),
         blocking_and_performance=("Preserve supplied behavior and avoid stereotyped formality, class, occupation, or social custom.",),
@@ -1261,6 +1295,7 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("Web graphics, logos, gadgets, internet culture, futuristic vehicles, holograms, robots, or readable interface text."),
     ),
     "analog_1980s": _profile(
+        tags={"camera_energy": "locked"},
         editing_and_pacing=("Use period-compatible editorial clarity and complete physical beats without adding retro montage, channel switching, freeze frames, or music-driven cutting."),
         camera_and_framing=("Use plausible late-1970s-to-1980s photographed perspective and camera support without forcing zooms, handheld operation, broadcast framing, or modern stabilized movement."),
         lighting_and_color=("Use practical-source color separation, restrained photochemical contrast, protected skin and local colors, modest highlight bloom, and a stable period-compatible film response without degrading the image."),
@@ -1286,6 +1321,7 @@ WORLD_AESTHETIC_PROFILES = {
 TONE_PROFILES = {
     "none": _profile(),
     "epic": _profile(
+        tags={"camera_energy": "choreographed"},
         editing_and_pacing=("Build clear escalation, preserve breathing room before the principal requested culmination, and let its consequence register.",),
         camera_and_framing=("Use scale contrast, depth, purposeful low or wide viewpoints, and decisive movement without making every shot grandiose.",),
         lighting_and_color=("Use strong directional separation and atmospheric scale while preserving supplied time, weather, and colors.",),
@@ -1296,6 +1332,7 @@ TONE_PROFILES = {
         must_not_invent=("Heroism, victory, armies, applause, speeches, destruction, slow motion, choir, orchestra, or any music."),
     ),
     "intimate": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=("Use patient timing and let small requested changes register without unnecessary edits.",),
         camera_and_framing=("Favor close but respectful proximity, stable eyelines, selective focus, and limited camera travel.",),
         lighting_and_color=("Use soft motivated falloff and localized practical light while retaining accurate skin, wardrobe, and object color.",),
@@ -1336,6 +1373,7 @@ TONE_PROFILES = {
         must_not_invent=("Success, rescue, reconciliation, smiles, sunrise, growth, applause, inspirational dialogue, choir, orchestra, or any music."),
     ),
     "melancholic": _profile(
+        tags={"pacing": "long_takes"},
         editing_and_pacing=("Use reflective pacing and allow the requested ending or change to linger briefly.",),
         camera_and_framing=("Favor measured distance, gentle drift, and compositions that retain environmental context.",),
         lighting_and_color=("Use restrained chroma, soft transitions, and cool/warm balance motivated by the setting, not a mandatory blue grade.",),
@@ -1356,6 +1394,7 @@ TONE_PROFILES = {
         must_not_invent=("Smiles, laughter, celebration, dancing, children, pets, confetti, jokes, applause, or upbeat music."),
     ),
     "restrained": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=("Use minimal editorial emphasis, sustained continuity, and only the cuts explicitly required or materially justified.",),
         camera_and_framing=("Keep camera movement precise, economical, and subordinate to the supplied action.",),
         lighting_and_color=("Favor controlled contrast, natural color relationships, and limited stylization.",),
@@ -1366,6 +1405,7 @@ TONE_PROFILES = {
         must_not_invent=("Flourishes, montage, spectacle, melodrama, visual effects, symbolic inserts, exaggerated reactions, or musical emphasis."),
     ),
     "serene": _profile(
+        tags={"camera_energy": "locked", "pacing": "long_takes"},
         editing_and_pacing=("Use unhurried continuity, complete actions, and comfortable holds without suppressing required events.",),
         camera_and_framing=("Favor stable composition, gentle motivated movement, and clear spatial balance.",),
         lighting_and_color=("Use balanced exposure and harmonious source-consistent color without forcing warmth, daylight, or softness.",),
@@ -1406,6 +1446,7 @@ TONE_PROFILES = {
         must_not_invent=("Dreams, hallucinations, symbols, floating objects, portals, transformations, duplicated subjects, reversed motion, impossible anatomy, or hidden meaning."),
     ),
     "clinical": _profile(
+        tags={"camera_energy": "locked"},
         editing_and_pacing=("Use exact, procedural, information-first timing without omitting required human or environmental detail.",),
         camera_and_framing=("Favor stable, orthogonal, clearly scaled views and consistent subject distance.",),
         lighting_and_color=("Use neutral white balance, even readable exposure, and restrained contrast without forcing a white environment.",),
@@ -1416,6 +1457,7 @@ TONE_PROFILES = {
         must_not_invent=("Hospitals, laboratories, uniforms, instruments, screens, data, beeps, sterility, diagnosis, or scientific claims."),
     ),
     "raw": _profile(
+        tags={"camera_energy": "handheld"},
         editing_and_pacing=("Preserve immediate real-time causality and avoid ornamental smoothing, montage, or beautifying holds.",),
         camera_and_framing=("Use direct physically plausible proximity and responsive framing without gratuitous shake or poor composition.",),
         lighting_and_color=("Preserve source-consistent exposure and color with minimal grading; raw does not mean underexposed, noisy, or damaged.",),
@@ -1426,6 +1468,7 @@ TONE_PROFILES = {
         must_not_invent=("Handheld shake, sensor noise, clipping, distortion, dirt, damage, sweat, aggression, documentary claims, or degraded audio."),
     ),
     "kinetic": _profile(
+        tags={"movement": "dynamic"},
         editing_and_pacing=("Increase the cadence and decisiveness of supplied movement through concise anticipation, committed execution, immediate response, and efficient recovery without creating new actions or cuts."),
         camera_and_framing=("Keep moving subjects, trajectories, contacts, and changing spatial relationships continuously legible; use responsive framing only within explicit camera and shot-plan constraints."),
         lighting_and_color=("Maintain clear value and color separation through motion without adding flashes, pulses, speed effects, or a more aggressive grade."),
@@ -1436,6 +1479,7 @@ TONE_PROFILES = {
         must_not_invent=("Action, fights, chases, attacks, danger, speed, athletic ability, impacts, destruction, cuts, shake, whip pans, speed ramps, slow motion, flashes, whooshes, or energetic music."),
     ),
     "pulp_heightened": _profile(
+        tags={"camera_energy": "choreographed"},
         editing_and_pacing=("Present supplied conflict, revelation, danger, romance, or spectacle with bold economical emphasis, clean reversals, and decisive held reactions without manufacturing melodrama or plot escalation."),
         camera_and_framing=("Use strong silhouettes, graphic staging, assertive scale changes, and purposeful angles only where they clarify supplied information; preserve anatomy and spatial coherence."),
         lighting_and_color=("Use controlled high-contrast color separation and bold local-color relationships while preserving explicit palette, exposure, skin, time, and source lighting."),
@@ -1469,6 +1513,9 @@ PROFILE_CATALOGS = {
 CINEMATOGRAPHY_JSON_KEYS = {
     "colorPalette": "color_palette",
     "exposureContrast": "exposure_contrast",
+    "shotScale": "shot_scale",
+    "cameraAngle": "camera_angle",
+    "cameraViewpoint": "camera_viewpoint",
     "cameraMotion": "camera_motion",
     "cameraAmplitude": "camera_amplitude",
     "cameraSpeed": "camera_speed",
@@ -1510,28 +1557,51 @@ CINEMATOGRAPHY_CHOICES = {
         "high_contrast": "Use a strong but controlled contrast curve with protected highlights and legible shadows.",
         "soft_contrast": "Use gentle tonal transitions and soft contrast without haze, diffusion, or loss of material definition.",
     },
+    "shot_scale": {
+        "none": "",
+        "extreme_close_up": "Frame the principal subject in an extreme close-up, filling the frame with one feature such as the eyes, mouth, or hands, close enough to read micro-expression and material texture.",
+        "close_up": "Frame the principal subject in a close-up, from the shoulders up, with the whole face inside the frame and the eyes on the upper third.",
+        "medium_close_up": "Frame the principal subject in a medium close-up, from mid-chest up, with the eyes on the upper third.",
+        "medium": "Frame the principal subject in a medium shot, from the waist up, keeping hand gestures and the immediate foreground props inside the frame.",
+        "medium_wide": "Frame the principal subject in a medium-wide shot, from mid-thigh or the knees up, showing stance and the nearest part of the surrounding space.",
+        "wide": "Frame the principal subject in a wide shot: the full body stands inside the frame with headroom and floor contact visible, and the location reads around it.",
+        "extreme_wide": "Frame the principal subject in an extreme-wide shot, small inside the existing environment, so scale and geography dominate while the subject remains identifiable.",
+    },
+    "camera_angle": {
+        "none": "",
+        "eye_level": "Place the camera at the subject's eye line, level with the horizon, for a neutral non-editorializing viewpoint.",
+        "low_angle": "Place the camera below the subject's eye line, tilted slightly up, without distorting anatomy or the horizon.",
+        "high_angle": "Place the camera above the subject's eye line, tilted slightly down, without turning the shot into a top-down view.",
+        "overhead": "Place the camera directly above the action, looking straight down, so the floor plane and the spatial layout read graphically.",
+        "dutch_static": "Hold the frame canted a few degrees off level for the whole shot, without rolling during the take.",
+        "worms_eye": "Place the camera at ground level looking steeply up, keeping the subject's feet or base and the vertical lines above them readable.",
+    },
+    "camera_viewpoint": {
+        "none": "",
+        "pov": "Render the shot from the first-person point of view of the principal character, seeing what they see, with natural head-motion framing.",
+        "over_the_shoulder": "Render the shot from just behind one character's shoulder, keeping that shoulder and part of the head as soft foreground while the facing subject stays sharp.",
+        "mirror_or_reflection": "Render the shot through a mirror or reflective surface already present in the scene, keeping the reflected subject readable and the geometry of the reflection consistent.",
+    },
     "camera_motion": {
         "none": "",
-        "static": "The camera holds a Static Shot.",
-        "zoom_in": "The camera Zooms In.",
-        "zoom_out": "The camera Zooms Out.",
-        "push_in": "The camera Pushes In.",
-        "pull_out": "The camera Pulls Out.",
-        "pan_left": "The camera Pans Left.",
-        "pan_right": "The camera Pans Right.",
-        "truck_left": "The camera Trucks Left.",
-        "truck_right": "The camera Trucks Right.",
-        "tilt_up": "The camera Tilts Up.",
-        "tilt_down": "The camera Tilts Down.",
-        "pedestal_up": "The camera Pedestals Up.",
-        "pedestal_down": "The camera Pedestals Down.",
-        "arc": "The camera performs an Arc Shot around the supplied focal subject.",
-        "tracking": "The camera performs a Tracking Shot following the supplied moving subject.",
-        "pov": "Use the explicitly established subject's POV while preserving all required visible information.",
-        "shake_slightly": "The camera Shakes Slightly without obscuring required action.",
-        "shake_strongly": "The camera Shakes Strongly while keeping required action identifiable.",
-        "roll_clockwise": "The camera Rolls Clockwise around the lens axis.",
-        "roll_counterclockwise": "The camera Rolls Counterclockwise around the lens axis.",
+        "static": "The camera holds a locked static frame on the existing composition, without drift, reframing, or handheld float.",
+        "zoom_in": "The camera zooms in on the principal subject already present in the shot, tightening the framing optically while the camera body stays where it is.",
+        "zoom_out": "The camera zooms out from the principal subject already present in the shot, widening the framing optically while the camera body stays where it is.",
+        "push_in": "The camera pushes in toward the principal subject already present in the shot, in one continuous move that settles before the key beat.",
+        "pull_out": "The camera pulls out away from the principal subject already present in the shot, revealing more of the space that is already around it.",
+        "pan_left": "The camera pans left from a fixed position, sweeping across the existing space and settling on the required action.",
+        "pan_right": "The camera pans right from a fixed position, sweeping across the existing space and settling on the required action.",
+        "truck_left": "The camera trucks left, travelling bodily sideways across the scene while keeping the required action inside the frame.",
+        "truck_right": "The camera trucks right, travelling bodily sideways across the scene while keeping the required action inside the frame.",
+        "tilt_up": "The camera tilts up from a fixed position, following the existing vertical line from the principal subject toward what is already above it.",
+        "tilt_down": "The camera tilts down from a fixed position, following the existing vertical line from the principal subject toward what is already below it.",
+        "pedestal_up": "The camera pedestals up, rising vertically on its axis while holding the same framing angle on the principal subject already present in the shot.",
+        "pedestal_down": "The camera pedestals down, lowering vertically on its axis while holding the same framing angle on the principal subject already present in the shot.",
+        "arc": "The camera arcs around the principal subject already present in the shot, keeping it centred while the changing background reveals the existing depth.",
+        "tracking": "The camera tracks alongside the principal subject already present in the shot, holding a steady following distance as that subject moves.",
+        "shake": "The camera shakes, handheld-style, while keeping the required action identifiable.",
+        "roll_clockwise": "The camera rolls clockwise around the lens axis, canting the horizon progressively without moving the subject through the scene.",
+        "roll_counterclockwise": "The camera rolls counterclockwise around the lens axis, canting the horizon progressively without moving the subject through the scene.",
     },
     "camera_amplitude": {
         "auto": "",
@@ -1550,6 +1620,10 @@ CINEMATOGRAPHY_CHOICES = {
         "wide_perspective": "Use a moderately wide perspective with readable spatial depth and controlled edge distortion.",
         "natural_perspective": "Use a natural human-scale perspective without conspicuous wide-angle or telephoto distortion.",
         "compressed_telephoto": "Use a compressed telephoto-like perspective while keeping subject-to-background relationships understandable.",
+        "lens_18mm": "Render the scene as photographed on an 18mm lens: expansive spatial depth, exaggerated near-to-far separation, and edge stretch kept off faces.",
+        "lens_35mm": "Render the scene as photographed on a 35mm lens: natural human-scale perspective, mild environmental context, no wide-angle edge stretch.",
+        "lens_50mm": "Render the scene as photographed on a 50mm lens: near-neutral perspective with faithful facial proportion and undistorted spatial relationships.",
+        "lens_85mm_compressed": "Render the scene as photographed on an 85mm lens: compressed planes, flattering facial proportion, and a background pulled visually closer to the subject.",
     },
     "depth_of_field": {
         "none": "",
@@ -1576,6 +1650,56 @@ CINEMATOGRAPHY_CHOICES = {
         "natural_blur": "Use physically plausible natural motion blur proportional to existing movement and camera speed.",
         "energetic_blur": "Use stronger directional motion blur only on fast supplied movement while preserving identity and action readability.",
     },
+}
+
+
+CAMERA_MOTION_HEADS = {
+    "static": "The camera holds a locked static frame",
+    "zoom_in": "The camera zooms in",
+    "zoom_out": "The camera zooms out",
+    "push_in": "The camera pushes in",
+    "pull_out": "The camera pulls out",
+    "pan_left": "The camera pans left",
+    "pan_right": "The camera pans right",
+    "truck_left": "The camera trucks left",
+    "truck_right": "The camera trucks right",
+    "tilt_up": "The camera tilts up",
+    "tilt_down": "The camera tilts down",
+    "pedestal_up": "The camera pedestals up",
+    "pedestal_down": "The camera pedestals down",
+    "arc": "The camera arcs",
+    "tracking": "The camera tracks",
+    "shake": "The camera shakes",
+    "roll_clockwise": "The camera rolls clockwise",
+    "roll_counterclockwise": "The camera rolls counterclockwise",
+}
+
+CAMERA_AMPLITUDE_CLAUSES = {
+    "small": " with small amplitude",
+    "medium": " with medium amplitude",
+    "large": " with large amplitude",
+}
+
+CAMERA_SPEED_CLAUSES = {
+    "slow": " at slow speed",
+    "normal": " at normal speed",
+    "fast": " at fast speed",
+}
+
+CAMERA_MOTION_GUARDRAILS = {
+    ("large", "fast"): ", still preserving continuity, required visibility, and spatial legibility",
+    ("large", ""): ", still preserving continuity and required visibility",
+    ("", "fast"): ", still preserving spatial legibility",
+}
+
+LEGACY_CAMERA_MOTIONS = {
+    "pov": {"camera_motion": "none", "camera_viewpoint": "pov"},
+    "shake_slightly": {"camera_motion": "shake", "camera_amplitude": "small"},
+    "shake_strongly": {"camera_motion": "shake", "camera_amplitude": "large"},
+}
+
+_CINEMATOGRAPHY_EXTERNAL_KEYS = {
+    internal: external for external, internal in CINEMATOGRAPHY_JSON_KEYS.items()
 }
 
 
@@ -1639,6 +1763,19 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
 
     selections: dict[str, str] = {}
     canonical: dict[str, Any] = {"schemaVersion": CINEMATOGRAPHY_SCHEMA_VERSION}
+    warnings: list[str] = []
+    requested_motion = raw.get("cameraMotion", "")
+    legacy_motion = requested_motion.strip().lower() if isinstance(requested_motion, str) else ""
+    legacy_overrides = LEGACY_CAMERA_MOTIONS.get(legacy_motion, {})
+    if legacy_overrides:
+        warnings.append(
+            f"cameraMotion {legacy_motion!r} is a legacy value; it now resolves to "
+            + ", ".join(
+                f"{_CINEMATOGRAPHY_EXTERNAL_KEYS[internal]}={value}"
+                for internal, value in legacy_overrides.items()
+            )
+            + "."
+        )
     for external, internal in CINEMATOGRAPHY_JSON_KEYS.items():
         default = "auto" if internal in {"camera_amplitude", "camera_speed"} else "none"
         selected = raw.get(external, default)
@@ -1647,6 +1784,14 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
         if not isinstance(selected, str):
             raise ValueError(f"cinematography_json {external} must be a string")
         selected = selected.strip().lower()
+        if internal in legacy_overrides:
+            implied = legacy_overrides[internal]
+            if selected not in (default, implied, legacy_motion):
+                warnings.append(
+                    f"cameraMotion {legacy_motion!r} implies {external}={implied}; it overrides the "
+                    f"requested {external}={selected}."
+                )
+            selected = implied
         choices = CINEMATOGRAPHY_CHOICES[internal]
         if selected not in choices:
             raise ValueError(
@@ -1657,10 +1802,15 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
         canonical[external] = selected
 
     motion = selections["camera_motion"]
-    if motion in {"none", "static", "pov"} and (
+    if motion in {"none", "static"} and (
         selections["camera_amplitude"] != "auto" or selections["camera_speed"] != "auto"
     ):
         raise ValueError("cameraAmplitude and cameraSpeed require a moving cameraMotion")
+    if selections["camera_angle"] == "dutch_static" and motion in {"roll_clockwise", "roll_counterclockwise"}:
+        warnings.append(
+            "cameraAngle 'dutch_static' holds a fixed cant while cameraMotion "
+            f"{motion!r} rolls during the take; keep only one of them."
+        )
 
     directives = []
     for field in CINEMATOGRAPHY_CHOICES:
@@ -1679,9 +1829,27 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
         "requested": requested,
         "applied": requested,
         "directives": directives,
+        "warnings": warnings,
         "digest": _canonical_digest(digest_payload),
         "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
     }
+
+
+def camera_motion_sentence(cinematography: Mapping[str, Any]) -> str:
+    """Fuse motion, amplitude, and speed into one continuous natural sentence."""
+    motion = str(cinematography.get("cameraMotion", "none"))
+    head = CAMERA_MOTION_HEADS.get(motion, "")
+    text = CINEMATOGRAPHY_CHOICES["camera_motion"].get(motion, "")
+    if not head or not text.startswith(head):
+        return text
+    amplitude = str(cinematography.get("cameraAmplitude", "auto"))
+    speed = str(cinematography.get("cameraSpeed", "auto"))
+    clauses = CAMERA_AMPLITUDE_CLAUSES.get(amplitude, "") + CAMERA_SPEED_CLAUSES.get(speed, "")
+    guardrail = CAMERA_MOTION_GUARDRAILS.get(
+        (amplitude if amplitude == "large" else "", speed if speed == "fast" else ""), "",
+    )
+    sentence = head + clauses + text[len(head):]
+    return sentence.rstrip(".") + guardrail + "." if guardrail else sentence
 
 
 def cinematography_instruction(cinematography: Mapping[str, Any]) -> str:
@@ -1704,9 +1872,44 @@ def cinematography_instruction(cinematography: Mapping[str, Any]) -> str:
         "camera behavior, optics, focus, texture, and motion rendering; do not merely name a preset, repeat its ID, "
         "mention this control panel, or say that a look is applied. The final prompt must remain self-contained if all "
         "control metadata is removed.",
+        "These controls also override any conflicting camera, optical, exposure, or color advice coming from the "
+        "secondary creative treatment.",
     ]
-    lines.extend(f"- {item['instruction']}" for item in cinematography.get("directives", ()))
+    for item in cinematography.get("directives", ()):
+        if item["field"] in {"camera_amplitude", "camera_speed"}:
+            continue
+        if item["field"] == "camera_motion":
+            lines.append("- " + camera_motion_sentence(cinematography))
+            continue
+        lines.append(f"- {item['instruction']}")
     return "\n".join(lines)
+
+
+CONFLICT_PRECEDENCE = ("cinematography", "tone", "world_aesthetic", "visual_language", "genre")
+
+CONFLICT_TAG_DIMENSIONS = {
+    "camera_energy": "camera_and_framing",
+    "movement": "camera_and_framing",
+    "pacing": "editing_and_pacing",
+}
+
+CONFLICT_ANTAGONISMS = {
+    "camera_energy": (
+        ("handheld", "locked"),
+        ("handheld", "choreographed"),
+        ("choreographed", "observational"),
+    ),
+    "movement": (("static", "dynamic"),),
+    "pacing": (("fast_cuts", "long_takes"),),
+}
+
+CINEMATOGRAPHY_MOTION_TAGS = {
+    "static": {"camera_energy": "locked", "movement": "static"},
+    "shake": {"camera_energy": "handheld", "movement": "dynamic"},
+}
+
+_MOVING_MOTION_TAGS = {"movement": "dynamic"}
+_CATALOG_TAG_SOURCES: dict[tuple[str, str], tuple[str, str, str]] = {}
 
 
 def creative_treatment_choices(axis: str) -> tuple[str, ...]:
@@ -1863,6 +2066,149 @@ def compose_creative_treatment(genre: str = "none", visual_language: str = "none
     }, enabled=enabled)
 
 
+def _profile_tags(axis: str, name: str, stack: tuple[str, ...] = ()) -> dict[str, str]:
+    """Resolve the antagonism tags of one profile; a child overrides its parents."""
+    key = f"{axis}:{name}"
+    if key in stack:
+        raise RuntimeError(f"Creative-treatment inheritance cycle detected at {key}")
+    profile = PROFILE_CATALOGS[axis][name]
+    tags: dict[str, str] = {}
+    for parent in profile.get("inherits", ()):
+        tags.update(_profile_tags(axis, str(parent), (*stack, key)))
+    tags.update(profile.get("tags", {}))
+    return tags
+
+
+def _precedence_rank(axis: str) -> int:
+    return CONFLICT_PRECEDENCE.index(axis) if axis in CONFLICT_PRECEDENCE else len(CONFLICT_PRECEDENCE)
+
+
+def _tag_sources(profile_ids: tuple[str, ...]) -> dict[tuple[str, str], tuple[str, str, str]]:
+    """Map every tagged line of the candidate profiles to its owning axis and tag value."""
+    if not profile_ids and _CATALOG_TAG_SOURCES:
+        return _CATALOG_TAG_SOURCES
+    candidates = (
+        [(axis, name) for axis, catalog in PROFILE_CATALOGS.items() for name in catalog if name != "none"]
+        if not profile_ids else
+        [(axis, name) for axis, _, name in (item.partition(":") for item in profile_ids)]
+    )
+    sources: dict[tuple[str, str], tuple[str, str, str]] = {} if profile_ids else _CATALOG_TAG_SOURCES
+    for axis, name in candidates:
+        if axis not in PROFILE_CATALOGS or name not in PROFILE_CATALOGS[axis]:
+            continue
+        tags = _profile_tags(axis, name)
+        if not tags:
+            continue
+        resolved = _resolve_profile(axis, name)
+        for tag, value in tags.items():
+            for line in resolved[CONFLICT_TAG_DIMENSIONS[tag]]:
+                key = (tag, line.casefold())
+                current = sources.get(key)
+                if current is None or _precedence_rank(axis) < _precedence_rank(current[0]):
+                    sources[key] = (axis, name, value)
+    return sources
+
+
+def _opposed(dimension: str, first: str, second: str) -> bool:
+    return any(
+        {first, second} == set(pair) for pair in CONFLICT_ANTAGONISMS.get(dimension, ())
+    )
+
+
+def detect_treatment_conflicts(resolved_dimensions: Mapping[str, Any],
+                               cinematography_selection: Mapping[str, Any] | None = None) -> list[dict]:
+    """Report tagged treatment lines that a higher-precedence source contradicts.
+
+    ``resolved_dimensions`` accepts a composed treatment or its bare ``dimensions``
+    mapping.  The comparison is an explicit antagonism table over machine-readable
+    catalog tags, never an interpretation of the prose itself.
+    """
+    treatment = resolved_dimensions if "dimensions" in resolved_dimensions else None
+    dimensions = treatment["dimensions"] if treatment else resolved_dimensions
+    profile_ids = tuple(treatment.get("profileIds", ())) if treatment else ()
+    sources = _tag_sources(profile_ids)
+    selection = dict(cinematography_selection or {})
+    motion = str(selection.get("cameraMotion", "none"))
+    motion_tags = CINEMATOGRAPHY_MOTION_TAGS.get(
+        motion, _MOVING_MOTION_TAGS if motion not in {"none", "static"} else {},
+    )
+
+    conflicts: list[dict] = []
+    dropped: set[str] = set()
+    for tag, dimension in CONFLICT_TAG_DIMENSIONS.items():
+        entries = [
+            {"axis": "cinematography", "profile": f"cameraMotion={motion}", "value": motion_tags[tag], "line": ""}
+        ] if tag in motion_tags else []
+        for line in dimensions.get(dimension, ()):
+            source = sources.get((tag, str(line).casefold()))
+            if source:
+                axis, name, value = source
+                entries.append({"axis": axis, "profile": name, "value": value, "line": str(line)})
+        for entry in entries:
+            if not entry["line"] or entry["line"].casefold() in dropped:
+                continue
+            winner = next(
+                (
+                    other for other in entries
+                    if _precedence_rank(other["axis"]) < _precedence_rank(entry["axis"])
+                    and _opposed(tag, entry["value"], other["value"])
+                ),
+                None,
+            )
+            if winner is None:
+                continue
+            dropped.add(entry["line"].casefold())
+            conflicts.append({
+                "dimension": tag,
+                "winner": winner["value"],
+                "loser": entry["value"],
+                "winnerAxis": winner["axis"],
+                "loserAxis": entry["axis"],
+                "winnerProfile": winner["profile"],
+                "loserProfile": entry["profile"],
+                "droppedText": entry["line"],
+                "message": (
+                    f"{tag} conflict: {winner['axis']} '{winner['profile']}' ({winner['value']}) overrides "
+                    f"{entry['axis']} '{entry['profile']}' ({entry['value']}); dropped line: {entry['line']}"
+                ),
+            })
+    return conflicts
+
+
+def resolve_treatment_conflicts(treatment: Mapping[str, Any],
+                                cinematography: Mapping[str, Any] | None = None,
+                                ) -> tuple[dict[str, Any], list[dict]]:
+    """Return the treatment without its losing lines plus every resolved conflict."""
+    if not treatment.get("applied"):
+        return dict(treatment), []
+    conflicts = detect_treatment_conflicts(treatment, cinematography)
+    if not conflicts:
+        return dict(treatment), []
+    dropped = {item["droppedText"].casefold() for item in conflicts}
+    dimensions = {
+        dimension: [value for value in values if value.casefold() not in dropped]
+        for dimension, values in treatment.get("dimensions", {}).items()
+    }
+    resolved = {
+        **treatment,
+        "dimensions": dimensions,
+        "droppedLines": [item["droppedText"] for item in conflicts],
+    }
+    return resolved, conflicts
+
+
+def treatment_warnings(treatment: Mapping[str, Any],
+                       cinematography: Mapping[str, Any] | None = None,
+                       shot_plan: Mapping[str, Any] | None = None) -> list[str]:
+    """Collect every human-readable note these selections produce, in a stable order."""
+    _resolved, conflicts = resolve_treatment_conflicts(treatment, cinematography)
+    return [
+        *(cinematography or {}).get("warnings", ()),
+        *(shot_plan or {}).get("warnings", ()),
+        *(item["message"] for item in conflicts),
+    ]
+
+
 def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
     """Render a composed treatment as subordinate, non-narrative user guidance."""
     if not treatment.get("applied"):
@@ -1887,6 +2233,11 @@ def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
         "or the number/order/boundaries of shots. A profile never creates a cut, plot event, subject, object, "
         "location, ability, relationship, sound source, dialogue, or music merely because it is conventional for "
         "that genre/style. Resolve any conflict in favor of the authoritative user content and explicit controls.",
+        "OUTPUT INTEGRATION — MANDATORY: Translate every resolved treatment line into concrete visible or audible "
+        "prompt wording inside the applicable shot or autonomous segment. Describe the resulting editing rhythm, "
+        "framing, light, color, production design, performance, and permitted sound; do not merely name a profile, "
+        "repeat its ID, mention this control panel, or say that a treatment is applied. The final prompt must remain "
+        "self-contained if all control metadata is removed.",
     ]
     dimensions = treatment.get("dimensions", {})
     for dimension in PROFILE_DIMENSIONS:
@@ -1895,6 +2246,19 @@ def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
             lines.append(headings[dimension] + ":")
             lines.extend(f"- {item}" for item in values)
     return "\n".join(lines)
+
+
+SHOT_TRANSITION_CHOICES = {
+    "cut": "",
+    "match_cut": "Enter this shot on a match cut that continues a shape, movement, or composition already present at the end of the previous shot.",
+    "whip_pan": "Enter this shot through a fast whip-pan blur that starts at the end of the previous shot and resolves into this framing.",
+    "hold": "Enter this shot after holding the previous framing one extra beat, without adding a transition effect.",
+}
+
+
+def shot_transition_choices() -> tuple[str, ...]:
+    """Return the stable per-row transition choices."""
+    return tuple(SHOT_TRANSITION_CHOICES)
 
 
 def _effective_duration(duration_seconds: float, frame_count: int) -> float:
@@ -1907,6 +2271,7 @@ def empty_shot_plan(duration_seconds: float = 0.0, frame_count: int = 0) -> dict
     canonical = {"schemaVersion": SHOT_PLAN_SCHEMA_VERSION, "timingMode": "auto", "shots": []}
     return {
         **canonical,
+        "warnings": [],
         "provided": False,
         "applied": False,
         "shotCount": 0,
@@ -1970,11 +2335,12 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
         raise ValueError("shot_plan_json supports at most 64 shots")
 
     shots = []
+    warnings: list[str] = []
     ids: set[str] = set()
     for index, item in enumerate(raw_shots, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"shot_plan_json shot {index} must be an object")
-        allowed_item = {"id", "description", "durationSeconds"}
+        allowed_item = {"id", "description", "durationSeconds", "cameraMotion", "transitionIn"}
         unknown_item = sorted(set(item) - allowed_item)
         if unknown_item:
             raise ValueError(f"shot_plan_json shot {index} contains unsupported keys: {unknown_item}")
@@ -1998,6 +2364,40 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
         if "\x00" in description:
             raise ValueError(f"shot_plan_json shot {index} description contains a NUL character")
         shot = {"id": shot_id, "description": description}
+        raw_motion = item.get("cameraMotion", "none")
+        if raw_motion in (None, ""):
+            raw_motion = "none"
+        if not isinstance(raw_motion, str):
+            raise ValueError(f"shot_plan_json shot {index} cameraMotion must be a string")
+        motion = raw_motion.strip().lower()
+        legacy_motion = LEGACY_CAMERA_MOTIONS.get(motion, {})
+        if legacy_motion:
+            resolved_motion = legacy_motion["camera_motion"]
+            warnings.append(
+                f"shot_plan_json shot {index} cameraMotion {motion!r} is a legacy value; it now resolves to "
+                f"cameraMotion={resolved_motion}."
+            )
+            motion = resolved_motion
+        if motion not in CINEMATOGRAPHY_CHOICES["camera_motion"]:
+            raise ValueError(
+                f"shot_plan_json shot {index} cameraMotion {motion!r} must be one of: "
+                + ", ".join(CINEMATOGRAPHY_CHOICES["camera_motion"])
+            )
+        if motion != "none":
+            shot["cameraMotion"] = motion
+        raw_transition = item.get("transitionIn", "cut")
+        if raw_transition in (None, ""):
+            raw_transition = "cut"
+        if not isinstance(raw_transition, str):
+            raise ValueError(f"shot_plan_json shot {index} transitionIn must be a string")
+        transition = raw_transition.strip().lower()
+        if transition not in SHOT_TRANSITION_CHOICES:
+            raise ValueError(
+                f"shot_plan_json shot {index} transitionIn {transition!r} must be one of: "
+                + ", ".join(SHOT_TRANSITION_CHOICES)
+            )
+        if transition != "cut":
+            shot["transitionIn"] = transition
         has_duration = "durationSeconds" in item and item.get("durationSeconds") not in (None, "")
         if timing_mode == "auto" and has_duration:
             raise ValueError(
@@ -2055,6 +2455,7 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
     }
     return {
         **canonical,
+        "warnings": warnings,
         "provided": True,
         "applied": True,
         "shotCount": len(shots),
@@ -2126,7 +2527,26 @@ def shot_plan_instruction(plan: Mapping[str, Any], mode: str) -> str:
             timing = f"; duration {float(shot['durationSeconds']):.3f}s; no timestamp"
         description_json = json.dumps(shot["description"], ensure_ascii=False)
         item_label = "Independent Prompt Item" if chained else "Shot"
-        lines.append(f"- {item_label} {index}; stable id {shot['id']!r}{timing}; description={description_json}")
+        camera = CINEMATOGRAPHY_CHOICES["camera_motion"].get(shot.get("cameraMotion", "none"), "")
+        transition = SHOT_TRANSITION_CHOICES.get(shot.get("transitionIn", "cut"), "")
+        camera_text = f"; camera={json.dumps(camera, ensure_ascii=False)}" if camera else ""
+        transition_text = (
+            f"; transition={json.dumps(transition, ensure_ascii=False)}" if transition and index > 1 else ""
+        )
+        lines.append(
+            f"- {item_label} {index}; stable id {shot['id']!r}{timing}; description={description_json}"
+            + camera_text + transition_text
+        )
+    if any(shot.get("cameraMotion") for shot in plan["shots"]):
+        lines.append(
+            "Append each listed camera sentence to its own shot only, as natural English inside that shot's prose; "
+            "it overrides a conflicting global camera preference for that shot and never creates a cut."
+        )
+    if any(shot.get("transitionIn") for shot in plan["shots"][1:]):
+        lines.append(
+            "Write each listed transition sentence once at the boundary where that shot begins; it describes how the "
+            "existing cut is executed and never adds, removes, or moves a cut."
+        )
     return "\n".join(lines)
 
 

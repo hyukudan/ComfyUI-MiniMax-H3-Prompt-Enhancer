@@ -10,13 +10,14 @@ VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 
 
 def test_guide_builder_can_feed_an_existing_llm_node():
-    system, user, mode = MiniMaxH3PromptGuideBuilder().build(
+    system, user, mode, warnings = MiniMaxH3PromptGuideBuilder().build(
         'A detective enters a ramen shop and says "Good evening."', "t2va", 5.0, "",
     )
     assert "MiniMax H3" in system
     assert "TARGET DURATION: 5.000 seconds" in user
     assert '"Good evening."' in user
     assert mode == "t2va"
+    assert warnings == ""
 
 
 def test_main_enhancer_preserves_remote_defaults_and_appends_duration(monkeypatch):
@@ -86,8 +87,10 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-2:] == ("duration_seconds", "aspect_ratio")
-    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-2:] == ("FLOAT", "STRING")
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-3:] == (
+        "duration_seconds", "aspect_ratio", "treatment_warnings",
+    )
+    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-3:] == ("FLOAT", "STRING", "STRING")
 
 
 def test_empty_multiline_controls_expose_non_serialized_ux_placeholders():

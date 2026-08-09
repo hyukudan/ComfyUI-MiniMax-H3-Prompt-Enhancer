@@ -9,8 +9,8 @@ import pytest
 
 from creative_treatments import build_shots_package, parse_shot_plan
 from prompt_enhancer import enhance_prompt_with_completion
-from prompt_enhancer_node import MiniMaxH3ShotSelector
-from prompt_guides import build_user_request, validate_prompt
+from prompt_enhancer_node import MiniMaxH3PromptGuideBuilder, MiniMaxH3ShotSelector
+from prompt_guides import build_user_request, treatment_warning_report, validate_prompt
 
 
 TWO_SHOT_PROMPT = """integrated_multimodal_description:
@@ -100,9 +100,9 @@ non_diegetic_music: N/A"""
     assert legacy[1] == explicit[1]
     manifest = explicit[2]
     assert manifest["creativeTreatmentSchemaVersion"] == 1
-    assert manifest["creativeProfileCatalogVersion"] == 15
+    assert manifest["creativeProfileCatalogVersion"] == 16
     assert manifest["cinematographySchemaVersion"] == 1
-    assert manifest["cinematographyCatalogVersion"] == 4
+    assert manifest["cinematographyCatalogVersion"] == 5
     assert manifest["shotPlanSchemaVersion"] == 1
     assert manifest["shotsPackageSchemaVersion"] == 1
     assert manifest["creativeTreatment"]["applied"] is False
@@ -151,9 +151,12 @@ def test_cinematography_is_injected_as_bounded_h3_direction_and_recorded():
     request = captured[0]
     assert "EXPLICIT CINEMATOGRAPHY — AUTHORITATIVE PRESENTATION CONTROL" in request
     assert "motion type + amplitude + speed" in request
-    assert "Tracking Shot" in request
-    assert "medium camera-motion amplitude" in request
-    assert "slow camera-motion speed" in request
+    assert (
+        "The camera tracks with medium amplitude at slow speed alongside the principal subject already present "
+        "in the shot"
+    ) in request
+    assert "Use medium camera-motion amplitude." not in request
+    assert "Use slow camera-motion speed." not in request
     assert "may not create a cut" in request
     assert "light source" in request
     assert report["valid"], report
@@ -420,3 +423,139 @@ def test_invalid_complete_prompt_disables_every_autonomous_package_item():
     assert package["allAutonomous"] is False
     assert all(not shot["autonomous"] and not shot["autonomousPrompt"] for shot in package["shots"])
     assert all("failed validation" in shot["autonomyReason"] for shot in package["shots"])
+
+
+def test_new_camera_axes_and_merged_motion_reach_the_assembled_request():
+    request = build_user_request(
+        "A woman studies a map.", "t2va", 5.0, "",
+        cinematography_json=json.dumps({
+            "schemaVersion": 1,
+            "shotScale": "medium_close_up",
+            "cameraAngle": "low_angle",
+            "cameraViewpoint": "over_the_shoulder",
+            "cameraMotion": "truck_right",
+            "cameraAmplitude": "medium",
+            "cameraSpeed": "normal",
+            "optics": "lens_50mm",
+        }),
+    )
+    assert "Frame the principal subject in a medium close-up, from mid-chest up" in request
+    assert "below the subject's eye line, tilted slightly up" in request
+    assert "just behind one character's shoulder" in request
+    assert "The camera trucks right with medium amplitude at normal speed" in request
+    assert "photographed on a 50mm lens" in request
+    assert "override any conflicting camera, optical, exposure, or color advice" in request
+
+
+def test_acoustic_space_lands_in_the_audio_controls_and_stays_subordinate():
+    request = build_user_request(
+        "A woman reads aloud in a chapel.", "t2va", 5.0, "",
+        acoustic_space="large_reverberant_interior",
+    )
+    assert "DIEGETIC ACOUSTIC SPACE — AUTHORITATIVE OVER EVERY TREATMENT SOUND SUGGESTION" in request
+    assert "Selected acoustic space: large_reverberant_interior." in request
+    assert "a long decaying reverb tail" in request
+    assert "it never re-enables a disabled audio layer" in request
+    assert request.index("AMBIENCE AND FOLEY POLICY") < request.index("DIEGETIC ACOUSTIC SPACE")
+    assert "DIEGETIC ACOUSTIC SPACE" not in build_user_request("A woman reads aloud.", "t2va", 5.0, "")
+
+
+def test_dialogue_coverage_is_injected_only_when_a_voice_can_be_seen():
+    active = build_user_request(
+        'A woman says "Hola."', "t2va", 5.0, "", dialogue_coverage="on",
+    )
+    assert "DIALOGUE COVERAGE — REQUIRED" in active
+    assert (
+        "Keep each speaking character's mouth and eyes unobstructed and in focus for the full duration of "
+        "their line, at medium close-up or tighter, with a stable eyeline."
+    ) in active
+    assert "do not add a cut, character, line, or camera control" in active
+    assert "DIALOGUE COVERAGE" not in build_user_request('A woman says "Hola."', "t2va", 5.0, "")
+    assert "DIALOGUE COVERAGE" not in build_user_request(
+        'A woman says "Hola."', "t2va", 5.0, "", voice_performance="none", dialogue_coverage="on",
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    (
+        ({"acoustic_space": "cathedral"}, "Unsupported acoustic space"),
+        ({"dialogue_coverage": "maybe"}, "Unsupported dialogue coverage"),
+    ),
+)
+def test_invalid_sound_and_coverage_controls_fail_before_assembly(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        build_user_request("A woman speaks.", "t2va", 5.0, "", **kwargs)
+
+
+def test_conflicting_treatment_lines_are_dropped_from_the_assembled_request():
+    quartet = json.dumps({
+        "schemaVersion": 1,
+        "genre": "action",
+        "visualLanguage": "documentary_observational",
+        "worldAesthetic": "film_noir",
+        "tone": "serene",
+    })
+    request = build_user_request(
+        "A woman runs across a station.", "t2va", 8.0, "", creative_treatment_json=quartet,
+    )
+    assert "the camera observes rather than choreographs attention theatrically" in request
+    assert "wide tracking or lateral staging" not in request
+    warnings = treatment_warning_report(quartet, "", "", 8.0)
+    assert len(warnings.splitlines()) == 2
+    assert all("camera_energy conflict" in line for line in warnings.splitlines())
+    assert all(
+        "visual_language 'documentary_observational' (observational) overrides genre 'action'" in line
+        for line in warnings.splitlines()
+    )
+
+
+def test_pipeline_surfaces_treatment_warnings_through_the_manifest_and_node_output():
+    prompt, _report, manifest = enhance_prompt_with_completion(
+        "A woman approaches a car and enters through the driver's door. No music.",
+        "t2va", 8.0, "", lambda _messages: TWO_SHOT_PROMPT, 0, {"provider": "test"},
+        ambience_foley_policy="off", background_score_policy="off",
+        creative_treatment_json=json.dumps({"schemaVersion": 1, "genre": "action"}),
+        cinematography_json=json.dumps({"schemaVersion": 1, "cameraMotion": "shake_slightly"}),
+    )
+    assert prompt
+    assert manifest["cinematography"]["warnings"]
+    assert [item["dimension"] for item in manifest["treatmentConflicts"]] == ["camera_energy"] * 2
+    assert manifest["treatmentWarnings"][0].startswith("cameraMotion 'shake_slightly' is a legacy value")
+    assert any("camera_energy conflict" in warning for warning in manifest["treatmentWarnings"])
+    recorded = manifest["creativeTreatment"]
+    assert recorded["droppedLines"] == [item["droppedText"] for item in manifest["treatmentConflicts"]]
+    assert not any(
+        line in recorded["dimensions"]["camera_and_framing"] for line in recorded["droppedLines"]
+    )
+
+    _system, _request, _mode, warnings = MiniMaxH3PromptGuideBuilder().build(
+        "A woman approaches a car.", "t2va", 8.0, "",
+        creative_treatment_json=json.dumps({"schemaVersion": 1, "genre": "action"}),
+        cinematography_json=json.dumps({"schemaVersion": 1, "cameraMotion": "shake_slightly"}),
+    )
+    assert warnings.splitlines() == manifest["treatmentWarnings"]
+
+
+def test_shot_rows_carry_their_own_camera_and_transition_into_the_request():
+    plan = json.dumps({
+        "schemaVersion": 1,
+        "timingMode": "auto",
+        "shots": [
+            {"id": "approach", "description": "She approaches the door.", "cameraMotion": "push_in"},
+            {"id": "entry", "description": "She sits behind the wheel.", "transitionIn": "whip_pan"},
+        ],
+    })
+    request = build_user_request(
+        "A woman approaches a car and enters.", "t2va", 8.0, "", shot_plan_json=plan,
+    )
+    assert 'camera="The camera pushes in toward the principal subject' in request
+    assert 'transition="Enter this shot through a fast whip-pan blur' in request
+    assert treatment_warning_report("", "", plan, 8.0) == ""
+
+    legacy_row = json.dumps({
+        "schemaVersion": 1,
+        "timingMode": "auto",
+        "shots": [{"id": "approach", "description": "She approaches the door.", "cameraMotion": "pov"}],
+    })
+    assert "legacy value" in treatment_warning_report("", "", legacy_row, 8.0)

@@ -83,6 +83,8 @@ const DISPLAY_LABELS = {
     background_score_policy: "Background score",
     instrumental_description: "Instrumental description",
     instrumental_style: "Music genre / style",
+    acoustic_space: "Acoustic space (diegetic sound)",
+    dialogue_coverage: "Dialogue coverage",
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
     media_manifest: "Media metadata JSON (optional)",
@@ -246,10 +248,13 @@ const VISUAL_LANGUAGE_GROUPS = [
 const CINEMATOGRAPHY_CHOICES = {
     colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"], ["midcentury_dye_transfer", "Mid-century dye-transfer color"], ["two_color_process", "Early two-color process"], ["bleach_bypass", "Bleach bypass"], ["teal_orange", "Teal–orange separation"], ["cross_processed", "Cross-processed color"], ["sepia", "Sepia monochrome"], ["saturated_slide_film", "Saturated slide-film color"], ["classic_western_earth_sky", "Classic western earth & sky"], ["revisionist_western_earth", "Revisionist western muted earth"], ["telenovela_broadcast_color", "Telenovela broadcast color"], ["cold_steel_blue", "Cold steel-blue sci-fi"], ["sterile_white_cyan", "Sterile white–cyan sci-fi"], ["neon_cyan_magenta", "Neon cyan–magenta"]],
     exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
-    cameraMotion: [["none", "No preference"], ["static", "Static shot"], ["zoom_in", "Zoom in"], ["zoom_out", "Zoom out"], ["push_in", "Push in"], ["pull_out", "Pull out"], ["pan_left", "Pan left"], ["pan_right", "Pan right"], ["truck_left", "Truck left"], ["truck_right", "Truck right"], ["tilt_up", "Tilt up"], ["tilt_down", "Tilt down"], ["pedestal_up", "Pedestal up"], ["pedestal_down", "Pedestal down"], ["arc", "Arc shot"], ["tracking", "Tracking shot"], ["pov", "POV"], ["shake_slightly", "Shake slightly"], ["shake_strongly", "Shake strongly"], ["roll_clockwise", "Roll clockwise"], ["roll_counterclockwise", "Roll counterclockwise"]],
+    shotScale: [["none", "No preference"], ["extreme_close_up", "Extreme close-up"], ["close_up", "Close-up"], ["medium_close_up", "Medium close-up"], ["medium", "Medium"], ["medium_wide", "Medium wide"], ["wide", "Wide"], ["extreme_wide", "Extreme wide"]],
+    cameraAngle: [["none", "No preference"], ["eye_level", "Eye level"], ["low_angle", "Low angle"], ["high_angle", "High angle"], ["overhead", "Overhead"], ["dutch_static", "Dutch (static cant)"], ["worms_eye", "Worm's eye"]],
+    cameraViewpoint: [["none", "No preference"], ["pov", "First-person POV"], ["over_the_shoulder", "Over the shoulder"], ["mirror_or_reflection", "Mirror or reflection"]],
+    cameraMotion: [["none", "No preference"], ["static", "Static shot"], ["zoom_in", "Zoom in"], ["zoom_out", "Zoom out"], ["push_in", "Push in"], ["pull_out", "Pull out"], ["pan_left", "Pan left"], ["pan_right", "Pan right"], ["truck_left", "Truck left"], ["truck_right", "Truck right"], ["tilt_up", "Tilt up"], ["tilt_down", "Tilt down"], ["pedestal_up", "Pedestal up"], ["pedestal_down", "Pedestal down"], ["arc", "Arc shot"], ["tracking", "Tracking shot"], ["shake", "Handheld shake"], ["roll_clockwise", "Roll clockwise"], ["roll_counterclockwise", "Roll counterclockwise"]],
     cameraAmplitude: [["auto", "Automatic"], ["small", "Small"], ["medium", "Medium"], ["large", "Large"]],
     cameraSpeed: [["auto", "Automatic"], ["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
-    optics: [["none", "No preference"], ["wide_perspective", "Wide perspective"], ["natural_perspective", "Natural perspective"], ["compressed_telephoto", "Compressed telephoto"]],
+    optics: [["none", "No preference"], ["wide_perspective", "Wide perspective"], ["natural_perspective", "Natural perspective"], ["compressed_telephoto", "Compressed telephoto"], ["lens_18mm", "18mm lens"], ["lens_35mm", "35mm lens"], ["lens_50mm", "50mm lens"], ["lens_85mm_compressed", "85mm compressed lens"]],
     depthOfField: [["none", "No preference"], ["deep", "Deep focus"], ["balanced", "Balanced depth"], ["shallow", "Shallow focus"]],
     imageTexture: [["none", "No preference"], ["clean_digital", "Clean digital"], ["subtle_stable_grain", "Subtle stable grain"], ["film_16mm", "16mm-inspired"], ["film_35mm", "35mm-inspired"]],
     lensEffects: [["none", "No preference"], ["clean", "Clean optics"], ["subtle_diffusion", "Subtle diffusion"], ["restrained_halation", "Restrained halation"]],
@@ -257,10 +262,22 @@ const CINEMATOGRAPHY_CHOICES = {
 };
 const CINEMATOGRAPHY_FIELDS = [
     ["colorPalette", "Color palette"], ["exposureContrast", "Exposure / contrast"],
+    ["shotScale", "Shot scale"], ["cameraAngle", "Camera angle"],
+    ["cameraViewpoint", "Camera viewpoint"],
     ["cameraMotion", "H3 camera motion"], ["cameraAmplitude", "Motion amplitude"],
     ["cameraSpeed", "Motion speed"], ["optics", "Optics"],
     ["depthOfField", "Depth of field"], ["imageTexture", "Image texture"],
     ["lensEffects", "Lens effects"], ["motionRendering", "Motion rendering"],
+];
+// Values saved by older workflows stay loadable: they resolve exactly as the
+// backend parser resolves them.
+const LEGACY_CAMERA_MOTIONS = {
+    pov: { cameraMotion: "none", cameraViewpoint: "pov" },
+    shake_slightly: { cameraMotion: "shake", cameraAmplitude: "small" },
+    shake_strongly: { cameraMotion: "shake", cameraAmplitude: "large" },
+};
+const SHOT_TRANSITION_CHOICES = [
+    ["cut", "Cut"], ["match_cut", "Match cut"], ["whip_pan", "Whip pan"], ["hold", "Hold"],
 ];
 const CREATIVE_FIELD_DEFINITIONS = [
     {
@@ -639,6 +656,26 @@ function ensureFieldTitleStyles() {
         .minimax-h3-shot-duration[aria-invalid="true"] {
             border-color: var(--error-text, #e66);
         }
+        .minimax-h3-shot-camera-field,
+        .minimax-h3-shot-transition-field {
+            display: flex;
+            min-width: 0;
+            grid-column: 1 / -1;
+            align-items: center;
+            gap: 6px;
+        }
+        .minimax-h3-shot-camera-field > span,
+        .minimax-h3-shot-transition-field > span {
+            color: var(--descrip-text, #aaa);
+            font-size: 10px;
+            white-space: nowrap;
+        }
+        .minimax-h3-shot-camera,
+        .minimax-h3-shot-transition {
+            min-width: 0;
+            height: 25px;
+            flex: 1;
+        }
         .minimax-h3-shot-description[aria-invalid="true"] {
             border-color: var(--error-text, #e66);
         }
@@ -898,6 +935,9 @@ function defaultCinematography() {
         schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION,
         colorPalette: "none",
         exposureContrast: "none",
+        shotScale: "none",
+        cameraAngle: "none",
+        cameraViewpoint: "none",
         cameraMotion: "none",
         cameraAmplitude: "auto",
         cameraSpeed: "auto",
@@ -950,11 +990,12 @@ function allowedCinematographyValue(key, value) {
 function sanitizeCinematography(value) {
     const parsed = parseJsonObject(value);
     if (!parsed || parsed.schemaVersion !== CINEMATOGRAPHY_SCHEMA_VERSION) return defaultCinematography();
+    const legacy = LEGACY_CAMERA_MOTIONS[parsed.cameraMotion] ?? null;
     const state = { schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION };
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
-        state[key] = allowedCinematographyValue(key, parsed[key]);
+        state[key] = allowedCinematographyValue(key, legacy?.[key] ?? parsed[key]);
     }
-    if (["none", "static", "pov"].includes(state.cameraMotion)) {
+    if (["none", "static"].includes(state.cameraMotion)) {
         state.cameraAmplitude = "auto";
         state.cameraSpeed = "auto";
     }
@@ -1007,6 +1048,14 @@ function sanitizeShotPlan(value) {
                 ? source.description.replaceAll("\0", "").slice(0, 8000)
                 : "",
         };
+        const motion = LEGACY_CAMERA_MOTIONS[source.cameraMotion]?.cameraMotion ?? source.cameraMotion;
+        const cameraMotion = allowedCinematographyValue("cameraMotion", motion);
+        if (cameraMotion !== "none") shot.cameraMotion = cameraMotion;
+        const transitions = SHOT_TRANSITION_CHOICES.map(([token]) => token);
+        if (typeof source.transitionIn === "string" && transitions.includes(source.transitionIn)
+            && source.transitionIn !== "cut") {
+            shot.transitionIn = source.transitionIn;
+        }
         if (requestedTiming === "exact") {
             const duration = validDuration(source.durationSeconds);
             if (duration === null) {
@@ -1024,6 +1073,8 @@ function sanitizeShotPlan(value) {
     if (timingMode === "auto") {
         for (const shot of shots) delete shot.durationSeconds;
     }
+    // Row 1 has no incoming boundary, so it never carries a transition.
+    if (shots.length) delete shots[0].transitionIn;
     return {
         schemaVersion: SHOT_PLAN_SCHEMA_VERSION,
         timingMode,
@@ -1046,7 +1097,7 @@ function serializeCinematography(state) {
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
         result[key] = allowedCinematographyValue(key, state?.[key]);
     }
-    if (["none", "static", "pov"].includes(result.cameraMotion)) {
+    if (["none", "static"].includes(result.cameraMotion)) {
         result.cameraAmplitude = "auto";
         result.cameraSpeed = "auto";
     }
@@ -1410,7 +1461,7 @@ function updateCinematographySummary(node) {
         .filter(([key, value]) => !(["cameraAmplitude", "cameraSpeed"].includes(key) ? value === "auto" : value === "none"))
         .map(([key, value]) => cinematographyChoiceLabel(key, value));
     panel.cinematographySummary.textContent = `Cinematography · ${active.length ? active.join(" · ") : "No preferences"}`;
-    const moving = !["none", "static", "pov"].includes(state.cameraMotion);
+    const moving = !["none", "static"].includes(state.cameraMotion);
     for (const key of ["cameraAmplitude", "cameraSpeed"]) {
         const select = panel.cinematographySelects?.[key];
         if (select) {
@@ -1561,6 +1612,41 @@ function renderShotRows(node) {
             });
             durationField.appendChild(duration);
             fields.appendChild(durationField);
+        }
+
+        const cameraField = createPanelElement("label", "minimax-h3-shot-camera-field");
+        cameraField.appendChild(createPanelElement("span", "", "Camera"));
+        const cameraSelect = createPanelElement("select", "minimax-h3-shot-camera");
+        cameraSelect.setAttribute("aria-label", `Camera motion for row ${index + 1}`);
+        cameraSelect.title = "Optional. This motion applies to this shot only and never creates a cut.";
+        addSelectOptions(cameraSelect, CINEMATOGRAPHY_CHOICES.cameraMotion);
+        cameraSelect.value = shot.cameraMotion ?? "none";
+        cameraSelect.addEventListener("change", () => {
+            const selected = allowedCinematographyValue("cameraMotion", cameraSelect.value);
+            if (selected === "none") delete shot.cameraMotion;
+            else shot.cameraMotion = selected;
+            commitShotPlan(node);
+        });
+        cameraField.appendChild(cameraSelect);
+        fields.appendChild(cameraField);
+
+        if (index > 0) {
+            const transitionField = createPanelElement("label", "minimax-h3-shot-transition-field");
+            transitionField.appendChild(createPanelElement("span", "", "Transition in"));
+            const transitionSelect = createPanelElement("select", "minimax-h3-shot-transition");
+            transitionSelect.setAttribute("aria-label", `Incoming transition for row ${index + 1}`);
+            transitionSelect.title = "How this existing cut is executed. It never adds or moves a cut.";
+            addSelectOptions(transitionSelect, SHOT_TRANSITION_CHOICES);
+            transitionSelect.value = shot.transitionIn ?? "cut";
+            transitionSelect.addEventListener("change", () => {
+                const tokens = SHOT_TRANSITION_CHOICES.map(([token]) => token);
+                const selected = tokens.includes(transitionSelect.value) ? transitionSelect.value : "cut";
+                if (selected === "cut") delete shot.transitionIn;
+                else shot.transitionIn = selected;
+                commitShotPlan(node);
+            });
+            transitionField.appendChild(transitionSelect);
+            fields.appendChild(transitionField);
         }
 
         const actions = createPanelElement("div", "minimax-h3-shot-actions");
@@ -1949,7 +2035,7 @@ function addCreativeDirectionPanel(node) {
             const state = node.__minimaxCinematographyState;
             if (!state) return;
             state[key] = allowedCinematographyValue(key, select.value);
-            if (key === "cameraMotion" && ["none", "static", "pov"].includes(state.cameraMotion)) {
+            if (key === "cameraMotion" && ["none", "static"].includes(state.cameraMotion)) {
                 state.cameraAmplitude = "auto";
                 state.cameraSpeed = "auto";
                 cinematographySelects.cameraAmplitude.value = "auto";
@@ -2258,6 +2344,11 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "instrumental_style", [
         ...INSTRUMENTAL_STYLE_CHOICES.map(([value]) => value),
     ], "none");
+    sanitizeEnumWidget(node, "acoustic_space", [
+        "none", "small_reflective_interior", "large_reverberant_interior", "damped_interior",
+        "open_exterior", "urban_exterior", "underwater_muffled",
+    ], "none");
+    sanitizeEnumWidget(node, "dialogue_coverage", ["off", "on"], "off");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeBooleanWidget(node, "use_remote_model", true);

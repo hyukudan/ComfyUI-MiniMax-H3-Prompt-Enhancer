@@ -14,11 +14,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
+    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, treatment_warnings
     from .media_manifest import generation_profile, manifest_context
     from .prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
+    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, treatment_warnings
     from media_manifest import generation_profile, manifest_context
     from prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
@@ -270,6 +270,8 @@ def enhance_prompt_with_completion(
     shot_plan_json: str = "",
     cinematography_json: str = "",
     instrumental_style: str = "none",
+    acoustic_space: str = "none",
+    dialogue_coverage: str = "off",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -285,6 +287,8 @@ def enhance_prompt_with_completion(
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved_mode,
     )
+    treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
+    creative_treatment, treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
@@ -292,6 +296,7 @@ def enhance_prompt_with_completion(
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
+        acoustic_space, dialogue_coverage,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -314,6 +319,7 @@ def enhance_prompt_with_completion(
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
+            acoustic_space, dialogue_coverage,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -437,6 +443,8 @@ def enhance_prompt_with_completion(
         "multishotPromptCount": validation.get("promptCount", 0),
         "creativeTreatment": creative_treatment,
         "cinematography": cinematography,
+        "treatmentConflicts": treatment_conflicts,
+        "treatmentWarnings": treatment_notes,
         "shotPlan": explicit_shot_plan,
         "shotsPackage": shots_package,
         "frameCount": int(frame_count or 0),
@@ -487,7 +495,9 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    multishot_voice_lock: str = "", multishot_setting_lock: str = "",
                    creative_treatment_json: str = "", shot_plan_json: str = "",
                    cinematography_json: str = "",
-                   instrumental_style: str = "none") -> tuple[str, dict, dict]:
+                   instrumental_style: str = "none",
+                   acoustic_space: str = "none",
+                   dialogue_coverage: str = "off") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -533,4 +543,6 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         shot_plan_json,
         cinematography_json,
         instrumental_style,
+        acoustic_space,
+        dialogue_coverage,
     )
