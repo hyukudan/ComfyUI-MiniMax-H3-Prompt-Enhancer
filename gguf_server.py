@@ -82,7 +82,7 @@ def available_gguf_models() -> list[str]:
                 resolved = str(path.resolve())
                 if resolved not in models:
                     models.append(resolved)
-    return [NO_GGUF_MODELS, *sorted(models, key=str.casefold)]
+    return sorted(models, key=str.casefold) if models else [NO_GGUF_MODELS]
 
 
 def available_llama_servers() -> list[str]:
@@ -287,6 +287,9 @@ def enhance_prompt_with_gguf_server(
     multishot_identity_lock: str = "",
     multishot_voice_lock: str = "",
     multishot_setting_lock: str = "",
+    creative_treatment_json: str = "",
+    shot_plan_json: str = "",
+    cinematography_json: str = "",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -384,6 +387,9 @@ def enhance_prompt_with_gguf_server(
                 multishot_identity_lock,
                 multishot_voice_lock,
                 multishot_setting_lock,
+                creative_treatment_json,
+                shot_plan_json,
+                cinematography_json,
             )
         finally:
             if not bool(keep_server_loaded):

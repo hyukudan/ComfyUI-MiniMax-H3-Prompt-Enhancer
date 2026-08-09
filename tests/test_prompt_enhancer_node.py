@@ -77,8 +77,8 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-1] == "duration_seconds"
-    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-1] == "FLOAT"
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-2:] == ("duration_seconds", "aspect_ratio")
+    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-2:] == ("FLOAT", "STRING")
 
 
 def test_empty_multiline_controls_expose_non_serialized_ux_placeholders():

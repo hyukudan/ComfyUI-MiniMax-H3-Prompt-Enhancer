@@ -14,9 +14,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
+    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
     from .media_manifest import generation_profile, manifest_context
     from .prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan
     from media_manifest import generation_profile, manifest_context
     from prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
@@ -264,28 +266,44 @@ def enhance_prompt_with_completion(
     multishot_identity_lock: str = "",
     multishot_voice_lock: str = "",
     multishot_setting_lock: str = "",
+    creative_treatment_json: str = "",
+    shot_plan_json: str = "",
+    cinematography_json: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
     resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    generation = generation_profile(duration_seconds, aspect_ratio, frame_count)
+    effective_duration = generation["effectiveDurationSeconds"]
+    creative_treatment = parse_creative_treatment(
+        creative_treatment_json, enabled=bool(enhance_description),
+    )
+    cinematography = parse_cinematography(cinematography_json)
+    explicit_shot_plan = parse_shot_plan(
+        shot_plan_json, effective_duration, 0, resolved_mode,
+    )
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+        (), creative_treatment_json, shot_plan_json, cinematography_json,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
     if dialogue_authoring and voice_performance == "audible":
-        effective_duration = generation_profile(duration_seconds, aspect_ratio, frame_count)["effectiveDurationSeconds"]
         dialogue_ledger, dialogue_planning_repairs = _plan_dialogue_ledger(
             basic_prompt,
             dialogue_language,
             effective_duration,
-            multishot_shot_count if resolved_mode == "chained_multishot" else 1,
+            (
+                explicit_shot_plan["shotCount"]
+                if resolved_mode == "chained_multishot" and explicit_shot_plan["provided"]
+                else multishot_shot_count if resolved_mode == "chained_multishot" else 1
+            ),
             completion,
             repair_attempts,
         )
@@ -294,6 +312,7 @@ def enhance_prompt_with_completion(
             ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -311,7 +330,7 @@ def enhance_prompt_with_completion(
         value = normalize_dialogue_tags(value)
         value = normalize_first_shot_marker(value, resolved_mode)
         value = normalize_shot_timestamps(value)
-        value = normalize_shot_timeline(value, resolved_mode, duration_seconds)
+        value = normalize_shot_timeline(value, resolved_mode, effective_duration, explicit_shot_plan)
         value = normalize_reference_definitions(value, basic_prompt, effective_reference_context)
         value = normalize_unassigned_subjects(value, basic_prompt, effective_reference_context)
         value = normalize_source_dialogue(value, basic_prompt, resolved_mode, voice_performance)
@@ -326,6 +345,7 @@ def enhance_prompt_with_completion(
         ambience_foley_policy, background_score_policy, voice_performance,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
+        creative_treatment_json, shot_plan_json, cinematography_json,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -382,12 +402,16 @@ def enhance_prompt_with_completion(
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
             best_validation = validation
     enhanced = best_enhanced
     validation = best_validation
+    shots_package = build_shots_package(
+        enhanced, resolved_mode, explicit_shot_plan, bool(validation.get("valid")),
+    )
     result_manifest = {
         **manifest,
         "mode": validation["mode"],
@@ -397,6 +421,12 @@ def enhance_prompt_with_completion(
         "referenceSemanticsVersion": 2,
         "audioPolicyVersion": 1,
         "promptContractVersion": 3,
+        "creativeTreatmentSchemaVersion": creative_treatment["schemaVersion"],
+        "creativeProfileCatalogVersion": creative_treatment["catalogVersion"],
+        "cinematographySchemaVersion": cinematography["schemaVersion"],
+        "cinematographyCatalogVersion": cinematography["catalogVersion"],
+        "shotPlanSchemaVersion": explicit_shot_plan["schemaVersion"],
+        "shotsPackageSchemaVersion": shots_package.get("schemaVersion", 1),
         "mediaManifestSchemaVersion": 1,
         "mediaManifestDigest": (
             hashlib.sha256(str(media_manifest).encode("utf-8")).hexdigest()
@@ -404,6 +434,10 @@ def enhance_prompt_with_completion(
         ),
         "aspectRatio": aspect_ratio,
         "multishotPromptCount": validation.get("promptCount", 0),
+        "creativeTreatment": creative_treatment,
+        "cinematography": cinematography,
+        "shotPlan": explicit_shot_plan,
+        "shotsPackage": shots_package,
         "frameCount": int(frame_count or 0),
         "effectiveDurationSeconds": validation.get("generationProfile", {}).get("effectiveDurationSeconds", float(duration_seconds)),
         "multishotLocksApplied": sum(bool(str(value).strip()) for value in (
@@ -445,7 +479,9 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    instrumental_description: str = "", aspect_ratio: str = "auto",
                    media_manifest: str = "", multishot_shot_count: int = 0,
                    frame_count: int = 0, multishot_identity_lock: str = "",
-                   multishot_voice_lock: str = "", multishot_setting_lock: str = "") -> tuple[str, dict, dict]:
+                   multishot_voice_lock: str = "", multishot_setting_lock: str = "",
+                   creative_treatment_json: str = "", shot_plan_json: str = "",
+                   cinematography_json: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -487,4 +523,7 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         multishot_identity_lock,
         multishot_voice_lock,
         multishot_setting_lock,
+        creative_treatment_json,
+        shot_plan_json,
+        cinematography_json,
     )

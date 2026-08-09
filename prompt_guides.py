@@ -8,13 +8,30 @@ T2VA/I2VA/FL2VA/L2VA and full-reference prompt-writing guides.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 import json
 import re
 from typing import Any
 
 try:
+    from .creative_treatments import (
+        cinematography_instruction,
+        creative_treatment_instruction,
+        parse_cinematography,
+        parse_creative_treatment,
+        parse_shot_plan,
+        shot_plan_instruction,
+    )
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from creative_treatments import (
+        cinematography_instruction,
+        creative_treatment_instruction,
+        parse_cinematography,
+        parse_creative_treatment,
+        parse_shot_plan,
+        shot_plan_instruction,
+    )
     from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 
 
@@ -229,6 +246,12 @@ happens. If the request includes an AUTHORITATIVE DIALOGUE LEDGER, copy every le
 additional words. Keep requested identities, actions, camera behavior, timing, reference roles, and ending intact.
 
 Shared timeline rules:
+- Make every added detail concretely visible or audible. Develop the timeline in playback order through style,
+  initial composition, subject appearance and position, environment and key props, actions and reactions, observable
+  state changes, camera, and synchronized diegetic sound. Preserve concrete spatial relationships and causality.
+- At a subject's first clear appearance, establish only source-supported identity, appearance, frame position, and
+  current action; later mentions must remain consistent without repeatedly redefining the subject. Allocate detail
+  according to each shot's information load rather than padding every shot equally.
 - Shot 1 has no timestamp. Later shots are sequential and begin with strictly increasing [Shot N] At MM:SS.mmm,
   cut times inside the requested duration.
 - Describe style and initial composition at Shot 1. Write camera motion naturally using motion type and, only when
@@ -280,9 +303,12 @@ Base-mode output has exactly these three sections in order:
 integrated_multimodal_description, overall_soundscape, non_diegetic_music.
 Each section name must be followed by a literal colon, for example integrated_multimodal_description:.
 T2VA begins directly with the sections. I2VA begins with the exact first-frame alignment sentence supplied in the
-request. FL2VA begins with the exact first/last alignment sentence supplied in the request and normally uses one
-continuous shot that visibly connects both anchors. L2VA begins with the exact last-frame alignment sentence supplied
-in the request and converges toward that final frame.
+request, establishes the referenced style, subjects, composition, and scene anchors, then follows first-frame anchor
+to action onset, continuous development, and visible result or reaction. FL2VA begins with the exact first/last
+alignment sentence supplied in the request and normally uses one continuous shot that moves through observable
+intermediate changes, progressively narrows the differences, and visibly reaches the last-frame anchor. L2VA begins
+with the exact last-frame alignment sentence supplied in the request and moves from a plausible preceding state
+through an explicit transition path to gradual convergence and a visible final-frame landing.
 
 Ref2VA output has exactly these six sections in order:
 subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.
@@ -311,13 +337,14 @@ separate H3 conditioning pass, so write it as fluent standalone English prose an
 
 Repeat the stable identity, wardrobe, environment, visual style, and voice description verbatim in every segment
 where they remain applicable. Prefer six to eight concrete identity attributes when the source provides enough
-facts, but never invent attributes merely to reach a count. Preserve exact source-provided dialogue and visible text.
-Author new spoken words only when the user explicitly requests dialogue writing or supplies an unscripted
+facts, but never invent attributes merely to reach a count. Preserve exact source-provided dialogue only when the
+explicit voice policy permits audible speech; always preserve exact visible text. Author new spoken words only when
+the voice policy is audible and the user explicitly requests dialogue writing or supplies an unscripted
 speech/narration brief; then write concrete natural lines in the requested language and place each line in its
 corresponding segment. An AUTHORITATIVE DIALOGUE LEDGER fixes the exact new words: copy every ledger line once and
 author no others. Allocate spoken material to the requested segment only; do not duplicate it. End each segment in a concrete visible state
 that can serve as the chained first frame of the next segment, and begin the next segment compatibly with that state.
-Include coherent ambience and physical sound naturally in each segment. Do not use the base three-section or Ref2VA
+    Apply ambience, physical sound, score, and voice only as permitted by the explicit user policies. Do not use the base three-section or Ref2VA
 six-section formats: those contracts describe a single generation, while this output drives independent passes.
 """
 
@@ -988,7 +1015,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        multishot_identity_lock: str = "",
                        multishot_voice_lock: str = "",
                        multishot_setting_lock: str = "",
-                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> str:
+                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                       creative_treatment_json: str = "",
+                       shot_plan_json: str = "",
+                       cinematography_json: str = "") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -1001,6 +1031,26 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(basic_prompt)
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = profile["effectiveDurationSeconds"]
+    creative_treatment = parse_creative_treatment(
+        creative_treatment_json, enabled=bool(enhance_description),
+    )
+    cinematography = parse_cinematography(cinematography_json)
+    explicit_shot_plan = parse_shot_plan(
+        shot_plan_json, effective_duration, 0, resolved,
+    )
+    if explicit_shot_plan["provided"] and int(multishot_shot_count or 0):
+        if resolved == "chained_multishot" and int(multishot_shot_count) != explicit_shot_plan["shotCount"]:
+            raise ValueError(
+                "multishot_shot_count conflicts with the explicit shot_plan_json shot count "
+                f"({int(multishot_shot_count)} versus {explicit_shot_plan['shotCount']})"
+            )
+    source_explicit_count = _required_explicit_shot_count(basic_prompt)
+    if (explicit_shot_plan["provided"] and source_explicit_count
+            and source_explicit_count != explicit_shot_plan["shotCount"]):
+        raise ValueError(
+            "shot_plan_json conflicts with explicit cut commands in basic_prompt "
+            f"({explicit_shot_plan['shotCount']} planned versus {source_explicit_count} required)"
+        )
     alignment = alignment_instruction(resolved, effective_duration)
     parts = [
         f"TASK MODE: {resolved.upper()}",
@@ -1009,6 +1059,13 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET ASPECT RATIO: {aspect_ratio}",
         "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
     ]
+    if aspect_ratio != "auto":
+        parts.append(
+            f"AUTHORITATIVE COMPOSITION FRAME — {aspect_ratio}: Compose every shot or autonomous segment for this "
+            "target frame. Keep required subjects, interactions, contact points, movement paths, and visible text "
+            "readable inside the frame; choose shot scale, placement, and negative space that use this geometry. "
+            "Do not invent letterboxing, cropping, a second canvas, or story changes to fill the aspect ratio."
+        )
     fidelity_contract = _source_fidelity_contract(basic_prompt)
     if fidelity_contract:
         parts.append(fidelity_contract)
@@ -1049,8 +1106,96 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "but the selected voice policy overrides it. Emit no lexical dialogue, <d> blocks, speaker IDs, "
             "narration, voiceover, or intelligible vocal sound."
         )
+    treatment_contract = creative_treatment_instruction(creative_treatment)
+    if treatment_contract:
+        parts.append(
+            treatment_contract
+            + "\nSELECTED AUDIO CONTROLS (authoritative over every treatment sound suggestion): "
+            f"ambience_foley_policy={ambience_foley_policy}; "
+            f"background_score_policy={background_score_policy}; "
+            f"voice_performance={voice_performance}."
+        )
+    cinematography_contract = cinematography_instruction(cinematography)
+    if cinematography_contract:
+        parts.append(cinematography_contract)
+    explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
+    if explicit_plan_contract:
+        parts.append(explicit_plan_contract)
+    if reference_context.strip():
+        parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
+    positional_contract = _official_reference_contract(basic_prompt, reference_context)
+    if positional_contract:
+        parts.append(positional_contract)
+
+    ambience_contracts = {
+        "auto": (
+            "AMBIENCE AND FOLEY POLICY — AUTO: Preserve requested ambience, physical sounds, and non-verbal human "
+            "sounds. With description enhancement, add only coherent physically motivated non-vocal sounds."
+        ),
+        "ensure_audible": (
+            "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
+            "room tone, environmental ambience, physically motivated foley, impacts, movement, and appropriate "
+            "non-verbal human sounds. Do not invent intelligible background speech."
+        ),
+        "off": (
+            "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "
+            "breathing, laughter, crowd chatter, or other non-musical sound."
+        ),
+    }
+    score_contracts = {
+        "follow_prompt": (
+            "NON-DIEGETIC MUSIC POLICY — FOLLOW SOURCE: Preserve explicitly requested audience-only music. If the "
+            "source does not request it, generate no audience-only music: use non_diegetic_music: N/A in structured "
+            "single-generation output and omit score from autonomous chained prose. Never invent a score."
+        ),
+        "add_instrumental": (
+            "NON-DIEGETIC MUSIC POLICY — REQUIRED: Create an audience-only instrumental score appropriate to the "
+            "scene and describe instrumentation, tempo, rhythm, and dynamics. Add no vocals or lyrics."
+        ),
+        "off": (
+            "NON-DIEGETIC MUSIC POLICY — OFF: No audience-only background music, score, or instrumental underscore "
+            "is audible anywhere in the output. Use non_diegetic_music: N/A in structured single-generation output."
+        ),
+    }
+    parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
+    requested_instrumental = str(instrumental_description or "").strip()
+    if background_score_policy == "add_instrumental" and requested_instrumental:
+        parts.append(
+            "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
+            "audience-only score. Preserve concrete instrumentation, tempo, rhythm, and dynamics. Translate any "
+            "abstract mood wording into those audible musical parameters instead of repeating the mood label. "
+            "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
+            "singing, lyrics, or vocal samples:\n" + requested_instrumental
+        )
     if resolved == "chained_multishot":
-        count = max(0, int(multishot_shot_count or 0))
+        if bool(enhance_description):
+            parts.append(
+                "ACTIVE DIRECTORIAL ENHANCEMENT — AUTONOMOUS SEGMENTS (develop the request, without changing it):\n"
+                "- Turn each terse item into concrete, vivid standalone audiovisual prose across its full target "
+                "duration. Every added detail must be visibly observable or audibly motivated.\n"
+                "- Establish visual style and opening composition, then source-supported subject appearance and frame "
+                "position, environment and key props, blocking, actions and reactions, observable state changes, "
+                "lighting, material response, atmosphere, camera behavior, and physical sound permitted by the selected "
+                "audio policy in playback "
+                "order. Preserve spatial relationships, causality, action count, and the requested ending.\n"
+                "- Make action mechanics, contacts, weight transfer, eyelines, expressions, and consequences readable "
+                "where the source supports them. Allocate enough screen time for every requested action and spoken line; "
+                "do not pad the segment with generic cinematic adjectives or unrelated background activity.\n"
+                "- Begin from a concrete opening state and finish in a concrete visible state suitable for chaining. "
+                "Develop camera movement and staging inside the item without inventing an edit, extra event, dialogue, "
+                "character, prop, reference, light source, weather change, damage, or stronger explicitness."
+            )
+        else:
+            parts.append(
+                "CONSERVATIVE FORMAT ADAPTATION — AUTONOMOUS SEGMENTS:\n"
+                "Convert each requested item into self-contained H3 prose with only the detail needed for continuity "
+                "and valid chaining. Preserve the source's level of specificity; do not creatively expand staging, "
+                "performance, production design, camera, lighting, atmosphere, story, or sound."
+            )
+        count = (
+            explicit_shot_plan["shotCount"]
+            if explicit_shot_plan["provided"] else max(0, int(multishot_shot_count or 0))
+        )
         locks = [
             ("IDENTITY LOCK", multishot_identity_lock),
             ("VOICE LOCK", multishot_voice_lock),
@@ -1060,7 +1205,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             if str(lock).strip():
                 parts.append(f"{label} (repeat verbatim in every prompt item):\n{str(lock).strip()}")
         shot_segments = _explicit_shot_segments(basic_prompt)
-        if shot_segments and (not count or len(shot_segments) == count):
+        if not explicit_shot_plan["provided"] and shot_segments and (not count or len(shot_segments) == count):
             parts.append(
                 "AUTHORITATIVE MULTISHOT ITEM PLAN: Each source cut creates the next independent prompt item. "
                 "Do not move actions, dialogue occurrences, reactions, transformations, or wardrobe states between "
@@ -1072,7 +1217,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             )
         dialogue_contracts = _source_dialogue_contracts(basic_prompt)
         dialogue_items = _source_dialogue_shot_indices(basic_prompt)
-        if dialogue_contracts and len(dialogue_items) == len(dialogue_contracts):
+        if (voice_performance == "audible" and dialogue_contracts
+                and len(dialogue_items) == len(dialogue_contracts)):
             parts.append(
                 "MULTISHOT DIALOGUE LEDGER: Keep every occurrence in its assigned item. Terminal punctuation such as "
                 "an exclamation mark controls emphasis and may be expressed through forceful delivery, but never omit "
@@ -1082,12 +1228,42 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                     for item, (language, quote, _internal) in zip(dialogue_items, dialogue_contracts)
                 )
             )
+        if voice_performance == "audible":
+            parts.append(
+                "VOICE POLICY — AUDIBLE: Preserve every exact source or planned dialogue occurrence once in its "
+                "assigned item using a stable vocal source and <d>[Language] exact words</d>. Author no additional "
+                "speech unless the explicit dialogue-authoring contract permits it."
+            )
+        elif voice_performance == "silent_mouth_acting_experimental":
+            profiles = []
+            for language, quote, internal in dialogue_contracts:
+                word_count = len(re.findall(r"\b[\wÀ-ÿ'-]+\b", quote))
+                pauses = len(re.findall(r"[,;:…]|\.\.\.", quote))
+                profiles.append(
+                    f"- {'Internal/off-screen thought' if internal else 'Visible speech'}: {language}; approximately "
+                    f"{word_count} words; {pauses} marked pause(s)."
+                )
+            profile_text = ("\n" + "\n".join(profiles)) if profiles else ""
+            parts.append(
+                "VOICE POLICY — SILENT MOUTH ACTING (EXPERIMENTAL): Emit no dialogue words, quotations, <d> blocks, "
+                "speaker IDs, narration, voiceover, singing, whispering, or intelligible vocal sound. For visible "
+                "source speech, describe only silent natural mouth/jaw acting through language, approximate word "
+                "count, cadence, and pauses; internal or off-screen speech keeps lips closed."
+                + profile_text
+            )
+        else:
+            parts.append(
+                "VOICE POLICY — NONE: Emit no dialogue words, quotations, <d> blocks, speaker IDs, narration, "
+                "voiceover, singing, whispering, intelligible background speech, or speech-like mouth performance. "
+                "Preserve only associated non-vocal visible actions and expressions."
+            )
         parts.extend([
             "CHAINED MULTISHOT CONTRACT:\n"
             "- Each JSON array item is an independent H3 conditioning pass and must be self-contained fluent prose.\n"
             "- Repeat supplied stable identity, wardrobe, environment, style, and voice facts verbatim where applicable.\n"
             "- End each segment in a concrete chainable visual state and make the following segment compatible with it.\n"
-            "- Preserve every intended dialogue occurrence; include coherent physical audio in every segment; use no section/shot labels.\n"
+            "- Preserve every dialogue occurrence permitted by the voice policy; obey the ambience, score, and voice "
+            "policies independently in every segment; use no section/shot labels.\n"
             "- Treat 2.5 spoken words per second only as a diagnostic planning heuristic, never as permission to "
             + ("write beyond the explicit dialogue-authoring brief." if dialogue_authoring else "invent dialogue."),
             (f"OUTPUT EXACTLY {count} PROMPT ITEMS." if count else
@@ -1095,13 +1271,35 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "Return only valid JSON shaped exactly as {\"prompts\":[\"...\"]}.",
         ])
         return "\n\n".join(parts)
+    if explicit_shot_plan["provided"]:
+        edit_enhancement_guidance = (
+            "- Treat the supplied explicit shot plan as the entire edit map. Develop camera movement, staging, and "
+            "information inside each listed shot, but do not add, remove, merge, split, reorder, or relocate a cut.\n"
+        )
+    else:
+        edit_enhancement_guidance = (
+            "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
+            "otherwise prefer a motivated continuous camera move.\n"
+            "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
+            "invent inserts, cutaways, or extra shots merely to dramatize an object, impact, or already-visible action.\n"
+        )
     if bool(enhance_description):
         parts.append(
             "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
             "- Turn terse wording into a concrete, vivid audiovisual sequence across the full target duration.\n"
-            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera motion, "
-            "action continuity, pacing, physical sound, and requested musical treatment. If the user did not request "
-            "music, non_diegetic_music must be N/A.\n"
+            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera behavior, "
+            "action continuity, and pacing only within explicit source, shot-plan, reference, Cinematography, and audio "
+            "constraints. Develop physical sound only as permitted by the ambience/foley policy; musical treatment is "
+            "governed exclusively by the background-score policy.\n"
+            "- At the beginning of every shot, establish a useful shot scale and the current frame positions, "
+            "orientation, eyelines, and relevant prop states. Across cuts preserve screen direction, handed contact, "
+            "object possession, pose continuity, and states such as open/closed or intact/changed unless the requested "
+            "action visibly changes them.\n"
+            "- When the source contains physical interaction, describe the actor, limb or manipulated object, point of "
+            "contact, physically readable response, and resulting state. Complete requested actions and let their "
+            "visible results register before the final frame unless the source explicitly requests interruption.\n"
+            "- Prefer observable geometry, materials, position, movement, and cause-and-effect over generic cinematic "
+            "adjectives or unrelated background activity.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
             "- Treat repeated action/trigger/transformation cycles as a state ladder. For every cycle, preserve the "
@@ -1112,10 +1310,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- For an explicit fly/propel/move-offscreen consequence, keep a sufficiently wide view on the named "
             "subject's readable trajectory until it fully exits the frame; a cut, disappearance, close-up, implied "
             "aftermath, or simple fall does not satisfy that requested action.\n"
-            "- Add a cut only when it creates a meaningful change of viewpoint, time, location, scale, or information; "
-            "otherwise prefer a motivated continuous camera move.\n"
-            "- Default to one continuous shot when the source describes one simultaneous moment or action. Do not "
-            "invent inserts, cutaways, or extra shots merely to dramatize an object, impact, or already-visible action.\n"
+            + edit_enhancement_guidance +
             "- Express absolute cut times only in [Shot N] headers. Do not add competing numeric timestamps inside a "
             "shot, and never create another shot or vocal cue to repeat or continue the same short line.\n"
             "- Enrich delivery around quoted speech, but never rewrite, extend, translate, censor, or replace its words.\n"
@@ -1206,50 +1401,22 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "actions and expressions associated with the source."
         )
 
-    ambience_contracts = {
-        "auto": (
-            "AMBIENCE AND FOLEY POLICY — AUTO: Preserve requested ambience, physical sounds, and non-verbal human "
-            "sounds. With description enhancement, add only coherent physically motivated non-vocal sounds."
-        ),
-        "ensure_audible": (
-            "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
-            "room tone, environmental ambience, physically motivated foley, impacts, movement, and appropriate "
-            "non-verbal human sounds. Do not invent intelligible background speech."
-        ),
-        "off": (
-            "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "
-            "breathing, laughter, crowd chatter, or other non-musical sound."
-        ),
-    }
-    score_contracts = {
-        "follow_prompt": (
-            "NON-DIEGETIC MUSIC POLICY — FOLLOW SOURCE: Preserve explicitly requested audience-only music. If the "
-            "source does not request it, non_diegetic_music must be N/A. Never invent a score."
-        ),
-        "add_instrumental": (
-            "NON-DIEGETIC MUSIC POLICY — REQUIRED: Create an audience-only instrumental score appropriate to the "
-            "scene and describe instrumentation, tempo, rhythm, and dynamics. Add no vocals or lyrics."
-        ),
-        "off": (
-            "NON-DIEGETIC MUSIC POLICY — OFF: No audience-only background music is audible. non_diegetic_music must "
-            "be exactly N/A, with no score or instrumental underscore elsewhere."
-        ),
-    }
-    parts.extend((ambience_contracts[ambience_foley_policy], score_contracts[background_score_policy]))
-    requested_instrumental = str(instrumental_description or "").strip()
-    if background_score_policy == "add_instrumental" and requested_instrumental:
-        parts.append(
-            "USER-SPECIFIED INSTRUMENTAL SCORE (authoritative): Use the following musical direction for the "
-            "audience-only score. Preserve concrete instrumentation, tempo, rhythm, and dynamics. Translate any "
-            "abstract mood wording into those audible musical parameters instead of repeating the mood label. "
-            "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
-            "singing, lyrics, or vocal samples:\n" + requested_instrumental
-        )
     required_explicit_shots = _required_explicit_shot_count(basic_prompt)
-    simultaneous_single_shot = _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
-    continuous_progression = _requires_single_continuous_progression(basic_prompt)
+    simultaneous_single_shot = (
+        False if explicit_shot_plan["provided"]
+        else _requires_single_simultaneous_shot(basic_prompt, duration_seconds)
+    )
+    continuous_progression = (
+        False if explicit_shot_plan["provided"]
+        else _requires_single_continuous_progression(basic_prompt)
+    )
     single_shot = simultaneous_single_shot or continuous_progression
-    if required_explicit_shots:
+    if explicit_shot_plan["provided"]:
+        # The complete plan was already injected before the mode fork.  Do not
+        # append inferred or source-derived edit guidance that could compete
+        # with its exact boundaries.
+        pass
+    elif required_explicit_shots:
         shot_segments = _explicit_shot_segments(basic_prompt)
         parts.append(
             f"EXPLICIT EDIT PLAN: Use exactly {required_explicit_shots} shots because the source contains "
@@ -1281,11 +1448,6 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "at most two shots only if one motivated cut materially improves viewpoint or information. Never divide the "
             "duration into evenly spaced shots merely to fill time; actions and reveals are beats inside a shot."
         )
-    if reference_context.strip():
-        parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
-    positional_contract = _official_reference_contract(basic_prompt, reference_context)
-    if positional_contract:
-        parts.append(positional_contract)
     if alignment:
         label = "REQUIRED FIRST-LINE TEMPLATE (replace N with the actual final shot number):" if resolved in {"fl2va", "l2va"} else "REQUIRED FIRST LINE:"
         parts.append(label + "\n" + alignment)
@@ -1329,7 +1491,11 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_scope_check,
         "use numeric cut times only in later [Shot N] headers",
     ]
-    if required_explicit_shots:
+    if explicit_shot_plan["provided"]:
+        final_checks.insert(0, f"use exactly {explicit_shot_plan['shotCount']} shots in the supplied order")
+        if explicit_shot_plan["timingMode"] == "exact":
+            final_checks.append("use every exact supplied shot boundary")
+    elif required_explicit_shots:
         final_checks.insert(0, f"use exactly {required_explicit_shots} shots and preserve every explicit source cut")
     elif single_shot:
         final_checks.insert(0, "exactly one continuous shot")
@@ -2019,7 +2185,8 @@ def normalize_shot_timestamps(text: str) -> str:
     )
 
 
-def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> str:
+def normalize_shot_timeline(text: str, mode: str, duration_seconds: float,
+                            explicit_shot_plan: Mapping[str, Any] | None = None) -> str:
     """Replace missing/placeholder later-shot times with deterministic in-duration cut points."""
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
     section_match = re.search(
@@ -2032,9 +2199,15 @@ def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> st
     markers = list(re.finditer(r"\[Shot\s+(\d+)\]", body, flags=re.IGNORECASE))
     if len(markers) < 2:
         return str(text)
+    plan = explicit_shot_plan or {}
     shot_count = max(int(item.group(1)) for item in markers)
+    exact_cuts = list(plan.get("expectedCutTimesSeconds", ())) if plan.get("timingMode") == "exact" else []
     for shot_number in range(2, shot_count + 1):
-        cut = float(duration_seconds) * (shot_number - 1) / shot_count
+        cut = (
+            float(exact_cuts[shot_number - 2])
+            if shot_number - 2 < len(exact_cuts)
+            else float(duration_seconds) * (shot_number - 1) / shot_count
+        )
         minutes = int(cut // 60)
         seconds = cut - minutes * 60
         timestamp = f"{minutes:02d}:{seconds:06.3f}"
@@ -2043,10 +2216,11 @@ def normalize_shot_timeline(text: str, mode: str, duration_seconds: float) -> st
             re.IGNORECASE,
         )
         match = pattern.search(body)
-        if match and not re.fullmatch(
+        valid_complete_header = bool(match and re.fullmatch(
             rf"\[Shot\s+{shot_number}\]\s+At\s+\d{{2}}:\d{{2}}\.\d{{3}},?",
             match.group(0), flags=re.IGNORECASE,
-        ):
+        ))
+        if match and (exact_cuts or not valid_complete_header):
             body = body[:match.start()] + f"[Shot {shot_number}] At {timestamp}," + body[match.end():]
     return str(text)[:section_match.start()] + section_match.group(1) + body + str(text)[section_match.end():]
 
@@ -2127,6 +2301,7 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         if len(common) < min(4, len(set(source_facts))):
             warnings.append("Few concrete source attributes repeat across independent prompts; identity or scene continuity may drift")
     source_contracts = _source_dialogue_contracts(source_prompt)
+    expected_source_contracts = source_contracts if voice_performance == "audible" else []
     spoken_keys = {_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts}
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(source_prompt)
     dialogue_authoring = dialogue_authoring and voice_performance == "audible"
@@ -2139,7 +2314,9 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         ]
         return [key for key in raw + tagged if key in spoken_keys]
 
-    expected_spoken = Counter(_dialogue_lexical_key(quote) for _language, quote, _internal in source_contracts)
+    expected_spoken = Counter(
+        _dialogue_lexical_key(quote) for _language, quote, _internal in expected_source_contracts
+    )
     observed_spoken = Counter(key for item in prompts for key in item_spoken_keys(item))
     if observed_spoken != expected_spoken:
         missing = list((expected_spoken - observed_spoken).elements())
@@ -2206,7 +2383,8 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
                 errors.append(f"Chained prompts added dialogue outside the planned ledger: {extra}")
 
     dialogue_items = _source_dialogue_shot_indices(source_prompt)
-    if prompts and len(dialogue_items) == len(source_contracts) and _explicit_shot_segments(source_prompt):
+    if (voice_performance == "audible" and prompts and len(dialogue_items) == len(source_contracts)
+            and _explicit_shot_segments(source_prompt)):
         expected_by_item: dict[int, Counter[str]] = {}
         for item_number, (_language, quote, _internal) in zip(dialogue_items, source_contracts):
             expected_by_item.setdefault(item_number, Counter())[_dialogue_lexical_key(quote)] += 1
@@ -2248,19 +2426,48 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     multishot_identity_lock: str = "",
                     multishot_voice_lock: str = "",
                     multishot_setting_lock: str = "",
-                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
+                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                    creative_treatment_json: str = "",
+                    shot_plan_json: str = "",
+                    cinematography_json: str = "") -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
     reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
+    configuration_errors: list[str] = []
+    try:
+        parse_creative_treatment(creative_treatment_json)
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+    try:
+        parse_cinematography(cinematography_json)
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
+    try:
+        explicit_shot_plan = parse_shot_plan(
+            shot_plan_json, profile["effectiveDurationSeconds"], 0, resolved,
+        )
+    except ValueError as exc:
+        configuration_errors.append(str(exc))
+        explicit_shot_plan = parse_shot_plan("", profile["effectiveDurationSeconds"], 0, resolved)
     if resolved == "chained_multishot":
-        profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
         locks = (multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+        expected_count = (
+            explicit_shot_plan["shotCount"]
+            if explicit_shot_plan["provided"] else multishot_shot_count
+        )
+        if (explicit_shot_plan["provided"] and int(multishot_shot_count or 0)
+                and int(multishot_shot_count) != explicit_shot_plan["shotCount"]):
+            configuration_errors.append(
+                "multishot_shot_count conflicts with the explicit shot_plan_json shot count"
+            )
         report = _validate_multishot(
-            prompt, profile["effectiveDurationSeconds"], source_prompt, multishot_shot_count, locks,
+            prompt, profile["effectiveDurationSeconds"], source_prompt, expected_count, locks,
             voice_performance, authored_dialogue_ledger,
         )
         parsed = parse_media_manifest(media_manifest)
+        report["errors"].extend(configuration_errors)
         report["errors"].extend(parsed["errors"])
         report["warnings"].extend(parsed["warnings"])
         report["errors"].extend(profile["errors"])
@@ -2269,14 +2476,14 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["aspectRatio"] = aspect_ratio
         report["generationProfile"] = profile
         report["mediaManifest"] = parsed
+        report["shotPlan"] = explicit_shot_plan
         return report
     text = str(prompt).strip()
-    errors: list[str] = []
+    errors: list[str] = list(configuration_errors)
     warnings: list[str] = []
     parsed_manifest = parse_media_manifest(media_manifest)
     errors.extend(parsed_manifest["errors"])
     warnings.extend(parsed_manifest["warnings"])
-    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     errors.extend(profile["errors"])
     warnings.extend(profile["warnings"])
     duration_seconds = profile["effectiveDurationSeconds"]
@@ -2313,9 +2520,33 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append("Cut timestamps must be strictly increasing")
         if any(value <= 0 or value >= float(duration_seconds) for value in cut_times):
             errors.append("Every cut timestamp must fall strictly inside the target duration")
-    if _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1:
+        if explicit_shot_plan["provided"] and explicit_shot_plan["timingMode"] == "exact":
+            expected_cuts = list(explicit_shot_plan["expectedCutTimesSeconds"])
+            # Headers are rendered to milliseconds, so exact boundaries can be
+            # checked much more strictly than the one-frame tolerance used for
+            # accepting the sum of user-entered shot durations.
+            tolerance = 0.0015
+            if len(cut_times) == len(expected_cuts):
+                mismatches = [
+                    (expected, observed)
+                    for expected, observed in zip(expected_cuts, cut_times)
+                    if abs(expected - observed) > tolerance
+                ]
+                if mismatches:
+                    errors.append(
+                        "Explicit shot-plan cut timestamps do not match the exact requested boundaries: "
+                        + repr(mismatches)
+                    )
+    if explicit_shot_plan["provided"] and len(shots) != explicit_shot_plan["shotCount"]:
+        errors.append(
+            f"Explicit shot_plan_json requires exactly {explicit_shot_plan['shotCount']} shots; "
+            f"observed {len(shots)}"
+        )
+    if (not explicit_shot_plan["provided"]
+            and _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1):
         errors.append("The short simultaneous source requires exactly one continuous shot")
-    if _requires_single_continuous_progression(source_prompt) and len(shots) != 1:
+    if (not explicit_shot_plan["provided"]
+            and _requires_single_continuous_progression(source_prompt) and len(shots) != 1):
         errors.append("The gradual continuous progression requires exactly one continuous shot")
     required_explicit_shots = _required_explicit_shot_count(source_prompt)
     if required_explicit_shots and len(shots) != required_explicit_shots:
@@ -2323,7 +2554,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             f"The source contains mandatory cut commands and requires exactly {required_explicit_shots} shots; "
             f"observed {len(shots)}"
         )
-    implicit_limit = _implicit_shot_limit(source_prompt)
+    implicit_limit = None if explicit_shot_plan["provided"] else _implicit_shot_limit(source_prompt)
     if implicit_limit is not None and len(shots) > implicit_limit:
         errors.append(
             f"The source supplied no explicit edit structure; use at most {implicit_limit} shot(s), observed {len(shots)}"
@@ -2826,4 +3057,5 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         "aspectRatio": aspect_ratio,
         "mediaManifest": parsed_manifest,
         "generationProfile": profile,
+        "shotPlan": explicit_shot_plan,
     }

@@ -17,6 +17,9 @@ VOICE_LOCK_PLACEHOLDER = "Voice, language and delivery every chained prompt must
 SETTING_LOCK_PLACEHOLDER = "Location, lighting and continuity every chained prompt must preserve…"
 SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dialogue and visible text…"
 VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
+CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":1,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
+SHOT_PLAN_PLACEHOLDER = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"..."}]}'
+CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":1,"colorPalette":"none","cameraMotion":"none"}'
 
 
 def _local_runtime_limits(context_size, startup_timeout):
@@ -94,6 +97,9 @@ class MiniMaxH3PromptGuideBuilder:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for the four optional creative-treatment selectors. Blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -101,7 +107,8 @@ class MiniMaxH3PromptGuideBuilder:
               voice_performance="audible", instrumental_description="", aspect_ratio="auto",
               media_manifest="", multishot_shot_count=0, frame_count=0,
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
-              show_advanced_controls=False):
+              show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
+              cinematography_json=""):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -113,6 +120,7 @@ class MiniMaxH3PromptGuideBuilder:
                 instrumental_description,
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+                (), creative_treatment_json, shot_plan_json, cinematography_json,
             ),
             resolved,
         )
@@ -121,8 +129,10 @@ class MiniMaxH3PromptGuideBuilder:
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT")
-    RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING")
+    RETURN_NAMES = (
+        "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
+    )
     DESCRIPTION = (
         "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
         "or a local GGUF launched with an isolated llama-server process."
@@ -151,8 +161,8 @@ class MiniMaxH3PromptEnhancer:
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
             "voice_performance": (["audible", "silent_mouth_acting_experimental", "none"], {"default": "audible", "tooltip": "Silent mouth acting is experimental prompt guidance, not guaranteed lip sync or silence"}),
-            "local_model": (available_gguf_models(), {"tooltip": "GGUF models found in ComfyUI/models/llm_gguf"}),
-            "llama_server_path": (available_llama_servers(), {"tooltip": "Detected standalone llama-server executable"}),
+            "local_model": (available_gguf_models(), {"tooltip": "Text GGUF models found in ComfyUI/models/llm_gguf; the first discovered model is the default"}),
+            "llama_server_path": (available_llama_servers(), {"tooltip": "Detected llama.cpp llama-server executable used to run the selected GGUF; this is not a separate model or API backend"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
             "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 16384-token default (including migrated workflows)"}),
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
@@ -166,6 +176,9 @@ class MiniMaxH3PromptEnhancer:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     @classmethod
@@ -188,7 +201,8 @@ class MiniMaxH3PromptEnhancer:
                 background_score_policy="follow_prompt", voice_performance="audible",
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
-                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
+                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
+                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -201,9 +215,11 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_description,
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
-                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)):
+                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+                    creative_treatment_json, shot_plan_json, cinematography_json)):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
-                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+                                creative_treatment_json, shot_plan_json, cinematography_json)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -218,23 +234,28 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_description,
             )
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
-                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)):
+                    multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+                    creative_treatment_json, shot_plan_json, cinematography_json)):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
-                               multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+                               multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+                               creative_treatment_json, shot_plan_json, cinematography_json)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
             json.dumps(manifest, ensure_ascii=False, indent=2),
             _effective_duration(validation, duration_seconds),
+            str(aspect_ratio),
         )
 
 
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT")
-    RETURN_NAMES = ("enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING")
+    RETURN_NAMES = (
+        "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
+    )
     DESCRIPTION = (
         "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
         "downloaded, and the server is terminated after every queued invocation."
@@ -274,6 +295,9 @@ class MiniMaxH3GGUFPromptEnhancer:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
         }}
 
     @classmethod
@@ -287,7 +311,8 @@ class MiniMaxH3GGUFPromptEnhancer:
                 background_score_policy="follow_prompt", voice_performance="audible",
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
-                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
+                multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
+                creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
@@ -301,12 +326,14 @@ class MiniMaxH3GGUFPromptEnhancer:
             instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+            creative_treatment_json, shot_plan_json, cinematography_json,
         )
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
             json.dumps(manifest, ensure_ascii=False, indent=2),
             _effective_duration(validation, duration_seconds),
+            str(aspect_ratio),
         )
 
 
@@ -393,6 +420,66 @@ class MiniMaxH3ChainedMultishotOutput:
         return (script, canonical, bool(report["valid"]), report_text, float(duration_per_shot) * len(prompts))
 
 
+class MiniMaxH3ShotSelector:
+    CATEGORY = "MiniMax H3/Prompting"
+    FUNCTION = "select"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "BOOLEAN")
+    RETURN_NAMES = (
+        "shot_prompt", "timeline_body", "shot_description", "shot_id", "shot_count", "autonomous",
+    )
+    DESCRIPTION = (
+        "Select one enhanced shot from an enhancement manifest or shotsPackage. shot_prompt is emitted only when "
+        "the package marks it as a complete autonomous H3 prompt; timeline_body remains available for inspection."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "enhancement_manifest_or_package": ("STRING", {
+                "multiline": True,
+                "default": "",
+                "dynamicPrompts": False,
+                "tooltip": "Connect enhancement_manifest or paste its shotsPackage object.",
+            }),
+            "shot_index": ("INT", {"default": 1, "min": 1, "max": 64, "step": 1}),
+        }}
+
+    def select(self, enhancement_manifest_or_package, shot_index):
+        try:
+            data = json.loads(str(enhancement_manifest_or_package or ""))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Enhancement manifest/shotsPackage must be valid JSON: {exc.msg}") from exc
+        if not isinstance(data, dict):
+            raise ValueError("Enhancement manifest/shotsPackage must be a JSON object")
+        package = data.get("shotsPackage", data)
+        if not isinstance(package, dict) or package.get("schemaVersion") != 1:
+            raise ValueError("No schema-v1 shotsPackage was found")
+        shots = package.get("shots")
+        if not isinstance(shots, list) or not shots:
+            raise ValueError("shotsPackage contains no selectable shots")
+        index = int(shot_index)
+        if index < 1 or index > len(shots):
+            raise ValueError(f"shot_index must be between 1 and {len(shots)}")
+        shot = shots[index - 1]
+        if not isinstance(shot, dict):
+            raise ValueError(f"shotsPackage shot {index} is invalid")
+        autonomous = bool(shot.get("autonomous"))
+        full_prompt = str(shot.get("autonomousPrompt", shot.get("enhancedPrompt", ""))).strip() if autonomous else ""
+        timeline_body = str(shot.get("timelineBody", "")).strip()
+        description = str(shot.get("description", "")).strip()
+        shot_id = str(shot.get("id", "")).strip()
+        reason = str(shot.get("autonomyReason", "")).strip()
+        status = (
+            f"Selected autonomous shot {index}/{len(shots)} ({shot_id})."
+            if autonomous else
+            f"Shot {index}/{len(shots)} ({shot_id}) is not autonomous: {reason}"
+        )
+        return {
+            "ui": {"text": [status]},
+            "result": (full_prompt, timeline_body, description, shot_id, len(shots), autonomous),
+        }
+
+
 class MiniMaxH3PromptValidator:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "validate"
@@ -424,18 +511,23 @@ class MiniMaxH3PromptValidator:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
                  ambience_foley_policy="auto", background_score_policy="follow_prompt",
                  voice_performance="audible", aspect_ratio="auto", media_manifest="",
                  multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
-                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False):
+                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
+                 creative_treatment_json="", shot_plan_json="", cinematography_json=""):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+            (), creative_treatment_json, shot_plan_json, cinematography_json,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {
