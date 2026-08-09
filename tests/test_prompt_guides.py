@@ -2024,3 +2024,83 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
         "large_reverberant_interior", "on",
     )
     assert len(request) < 29000
+
+
+_CONTINUATION_SOURCE = (
+    "Continue seamlessly from the exact same saloon interior, with the same character positions supplied "
+    "by the preceding take. The batwing doors finish their existing return swing and settle naturally "
+    "behind him as he walks toward the bar."
+)
+_FRESH_SOURCE = "A gunslinger pushes through the batwing doors of a saloon and walks to the bar."
+
+
+def _saloon_prompt(timeline):
+    return f"""integrated_multimodal_description: {timeline}
+
+overall_soundscape: Boot heels knock against the plank floor and the door hinges creak.
+
+non_diegetic_music: N/A"""
+
+
+_SNAPPED_SHOT_1 = (
+    "[Shot 1] A gunslinger in a dust-grey duster stands just inside a wooden saloon. The batwing doors "
+    "finish their existing return swing and settle naturally behind him while he walks toward the bar."
+)
+_MID_MOTION_SHOT_1 = (
+    "[Shot 1] A gunslinger in a dust-grey duster stands just inside a wooden saloon. Behind him the "
+    "batwing doors are mid-swing and keep returning at their current speed, still travelling inward as "
+    "he walks toward the bar."
+)
+
+
+def test_continuation_prompt_warns_when_shot_one_resolves_an_inherited_transient():
+    report = validate_prompt(_saloon_prompt(_SNAPPED_SHOT_1), "t2va", 5.0, _CONTINUATION_SOURCE)
+    assert report["errors"] == []
+    matched = [
+        warning for warning in report["warnings"]
+        if "Continuation prompt resolves an in-progress transient instantly" in warning
+    ]
+    assert len(matched) == 1, report["warnings"]
+    assert "'The batwing doors finish their existing return swing'" in matched[0]
+    assert "the doors are mid-swing and keep returning at their current speed" in matched[0]
+
+
+def test_continuation_prompt_accepts_a_transient_that_stays_mid_motion():
+    report = validate_prompt(_saloon_prompt(_MID_MOTION_SHOT_1), "t2va", 5.0, _CONTINUATION_SOURCE)
+    assert report["errors"] == []
+    assert not any("in-progress transient" in warning for warning in report["warnings"])
+
+
+def test_continuation_transient_advisory_ignores_completion_after_the_opening_shot():
+    timeline = (
+        "[Shot 1] A gunslinger in a dust-grey duster crosses the saloon floor while the batwing doors "
+        "keep swinging behind him at their incoming speed. [Shot 2] At 00:02.000, the camera cuts to a "
+        "low angle at the bar and the batwing doors settle naturally against their frame."
+    )
+    report = validate_prompt(_saloon_prompt(timeline), "t2va", 5.0, _CONTINUATION_SOURCE)
+    assert report["errors"] == []
+    assert not any("in-progress transient" in warning for warning in report["warnings"])
+
+
+def test_completion_verbs_are_not_flagged_without_continuation_context():
+    report = validate_prompt(_saloon_prompt(_SNAPPED_SHOT_1), "t2va", 5.0, _FRESH_SOURCE)
+    assert report["errors"] == []
+    assert not any("in-progress transient" in warning for warning in report["warnings"])
+
+
+def test_ordinary_prompt_raises_no_continuation_transient_warning():
+    report = validate_prompt(
+        _budget_prompt("A mechanic walks through a workshop and stops beside a workbench."),
+        "t2va", 5.0, _BUDGET_SOURCE,
+    )
+    assert report["valid"], report
+    assert not any("in-progress transient" in warning for warning in report["warnings"])
+
+
+def test_system_prompt_forbids_completing_an_inherited_transient_at_the_first_frame():
+    assert "starts mid-motion at its" in SYSTEM_PROMPT
+    assert "never already completed at the first frame" in SYSTEM_PROMPT
+    assert "When the request continues a previous take" in SYSTEM_PROMPT
+    assert "When the request continues a previous take" in system_prompt_for_mode("t2va")
+    assert "When the request continues a previous take" in system_prompt_for_mode("ref2va")
+    assert len(SYSTEM_PROMPT) < 12000

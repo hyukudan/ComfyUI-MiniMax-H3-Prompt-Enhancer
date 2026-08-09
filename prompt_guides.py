@@ -281,6 +281,39 @@ _CONTINUOUS_PROGRESSION_RE = re.compile(
     r"apareciendo|materializa|materializan|materializándose|coalesce|coalesces)\b",
     re.IGNORECASE,
 )
+# A continuation take inherits whatever was still moving when the previous take ended. These are
+# the phrasings users write when the new prompt must extend an existing clip instead of opening a
+# fresh scene; only then is an opening completion verb suspicious.
+_CONTINUATION_CONTEXT_RE = re.compile(
+    r"\bcontinu(?:e|es|ing)\s+(?:seamlessly|directly|smoothly|exactly)?\s*from\b|"
+    r"\bcontinu(?:e|es|ing)\s+(?:seamlessly|directly|smoothly)\b|"
+    r"\bcontinuation\b|"
+    r"\b(?:preceding|previous|prior|earlier|last)\s+(?:take|shot|clip|video|segment)\b|"
+    r"\bsupplied\s+by\s+the\s+(?:preceding|previous|prior)\b|"
+    r"\bsame\s+[^.\n]{0,60}?\bpositions\s+supplied\b|"
+    r"\bextend(?:s|ing)?\s+the\s+(?:take|shot|clip|video)\b|"
+    r"\bpicks?\s+up\s+(?:exactly\s+)?where\b|"
+    r"\bcontinuaci[oó]n\b|\btoma\s+anterior\b",
+    re.IGNORECASE,
+)
+# Completion/settling verbs attached to an open noun phrase. The noun side stays deliberately
+# unenumerated: any scene element can carry an inherited transient. The trailing marker (a
+# determiner, an -ly adverb, a directional word, or clause-final punctuation) keeps nominal uses
+# such as "a matte finish on the bar" out.
+_TRANSIENT_COMPLETION_RE = re.compile(
+    r"\b(?:the|its|their|his|her|a|an|both)\s+(?:[\w-]+\s+){0,3}"
+    r"(?:finish(?:es|ing)?|settl(?:e|es|ing)|complet(?:e|es|ing)|"
+    r"stop(?:s|ping)?\s+(?:moving|swinging|swaying|rocking|spinning|rotating|sliding|falling)|"
+    r"clos(?:e|es|ing)\s+(?:fully|completely|shut)|"
+    r"com(?:e|es|ing)\s+to\s+(?:a\s+)?(?:rest|stop|standstill|halt))"
+    r"(?:\s+(?:the|a|an|its|their|his|her|into|onto|back|behind|against|down|shut|closed|flush)\b|"
+    r"\s+\w+ly\b|(?=\s*[,.;]))"
+    r"(?:\s+[\w-]+){0,3}",
+    re.IGNORECASE,
+)
+# Roughly the first second of a single-shot timeline: long enough to hold the opening beat, short
+# enough that a transient completing late in the shot is not flagged.
+_CONTINUATION_OPENING_CHARACTERS = 350
 # Continuity phrasings that must accompany a <scenetrans> pair. The official guide lists four
 # phrases as examples of how continuity "may be expressed", so natural variants of the same four
 # families are accepted; stating continuity at all stays mandatory. Plural subjects ("her words
@@ -521,6 +554,8 @@ Shared timeline rules:
   before a later authored line.
 - The explicit audio policies in the user request override the shared audible-dialogue and sound defaults. Silent
   mouth acting and voice-off modes must omit <d>, speaker IDs, lexical dialogue, narration, and voiceover entirely.
+- When the request continues a previous take, every transient that was still in progress starts mid-motion at its
+  incoming state and speed and is never already completed at the first frame; it may finish only later inside the shot.
 - Put visible text in straight English double quotes exactly as supplied.
 - Positional source references are immutable bindings: image/imagen/picture N always means <Picture N>, video N
   means <Video N>, and audio N means <Audio N>. They name user-provided assets, never generated shots or moments.
@@ -2880,6 +2915,33 @@ def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[st
     return errors
 
 
+def _continuation_opening_window(timeline: str) -> str:
+    """Return the opening span where a continuation must still be carrying the previous take's motion."""
+    shots = list(_SHOT_RE.finditer(timeline or ""))
+    if len(shots) > 1:
+        return timeline[shots[0].end():shots[1].start()]
+    return (timeline or "")[:_CONTINUATION_OPENING_CHARACTERS]
+
+
+def _continuation_transient_warnings(source_prompt: str, timeline: str) -> list[str]:
+    """Warn when a continuation opens by finishing a transient the previous take left in progress."""
+    if not _CONTINUATION_CONTEXT_RE.search(source_prompt or ""):
+        return []
+    fragments = list(dict.fromkeys(
+        re.sub(r"\s+", " ", match.group(0)).strip()
+        for match in _TRANSIENT_COMPLETION_RE.finditer(_continuation_opening_window(timeline))
+    ))
+    if not fragments:
+        return []
+    return [
+        "Continuation prompt resolves an in-progress transient instantly: "
+        + ", ".join(f"'{fragment}'" for fragment in fragments)
+        + ". Describe it as still mid-motion at the start (e.g. 'the doors are mid-swing and keep returning at "
+        "their current speed') so the first frames continue the previous take instead of snapping to the "
+        "finished state."
+    ]
+
+
 def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     source_prompt: str = "", reference_context: str = "",
                     ambience_foley_policy: str = "auto",
@@ -2992,6 +3054,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             f"{timeline_section} has {description_words} words; 350-500 is recommended for generation tasks "
             "and very long bodies reduce instruction adherence"
         )
+    # A warning, not an error: the same phrasing is legitimate for a transient that completes late
+    # in the shot, and the timing is not recoverable from the text.
+    warnings.extend(_continuation_transient_warnings(source_prompt, timeline))
     shots = list(_SHOT_RE.finditer(timeline))
     if not shots:
         errors.append("At least [Shot 1] is required")

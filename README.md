@@ -599,6 +599,10 @@ marker, normalize later timestamp syntax, enforce an exact shot-plan timeline, r
 normalize reference definitions, and apply the selected audio policy. It does not use normalization as permission to
 change source facts.
 
+Validation also warns when a continuation prompt (one that extends a preceding take) resolves an inherited
+in-progress transient instantly — e.g. doors that "finish their swing" at the first frame instead of staying
+mid-motion — since that phrasing makes the model snap the state at the join rather than continue it.
+
 Validation also emits non-blocking budget advisories: a warning when the final prompt exceeds the official
 MiniMax API v2 limit of 7000 characters per text block (local open-weights inference is unaffected) and a
 warning when the description body exceeds 600 words against the officially recommended 350–500. Both are
