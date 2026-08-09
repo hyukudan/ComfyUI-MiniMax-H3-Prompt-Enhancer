@@ -65,7 +65,7 @@ const DISPLAY_LABELS = {
     multishot_identity_lock: "Multishot identity lock",
     multishot_voice_lock: "Multishot voice lock",
     multishot_setting_lock: "Multishot setting lock",
-    use_remote_model: "Use LM Studio / API model",
+    use_remote_model: "Use OpenAI-compatible API model",
     allow_remote_endpoint: "Allow non-local endpoint",
     keep_server_loaded: "Keep local model loaded",
     show_advanced_controls: "Advanced settings",
