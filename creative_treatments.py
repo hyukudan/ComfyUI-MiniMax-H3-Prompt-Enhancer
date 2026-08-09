@@ -741,6 +741,62 @@ VISUAL_LANGUAGE_PROFILES = {
             "Fights, opponents, attacks, martial-arts techniques, schools, masters, training, tournaments, revenge, honor codes, weapons, swords, staffs, wirework, impossible jumps, acrobatics, powers, energy, speed effects, period costumes, temples, dynasties, dubbed voices, impact exaggeration, or franchise imitation.",
         ),
     ),
+    "live_action_classic_western": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the lucid classical grammar associated with premium mid-century western cinema: patient establishment, complete entrances and crossings, readable cause and response, decisive reaction holds, and clean continuity without inventing confrontation, travel, or spectacle.",
+        ),
+        camera_and_framing=(
+            "Favor strong human-to-environment scale, composed wide and medium-wide geography, lateral staging, readable thresholds and horizons, stable screen direction, purposeful profile groupings, restrained dollies or pans, and closer views only for supplied gaze, hands, objects, dialogue, or contact.",
+            "Preserve the supplied location, aspect ratio, terrain, architecture, and shot plan; do not force Monument Valley compositions, low-angle hero framing, vast landscapes, horseback height, or widescreen spectacle.",
+        ),
+        lighting_and_color=(
+            "Use a stable classic color-western photographic response with protected warm skin, clear sun-to-shadow separation when compatible with existing light, rich ochre-sienna-umber material relationships, restrained sage and weathered green, dusty blue-to-cyan sky relationships where sky already exists, controlled red accents, dense neutral blacks, and smooth highlight roll-off.",
+            "Preserve every authoritative local color, weather condition, season, time of day, and light source; do not impose sunset, golden hour, orange dust, teal shadows, bleach bypass, sepia, faded print color, heavy grain, or vintage damage.",
+        ),
+        production_design=(
+            "Photograph only supplied land, buildings, interiors, wardrobe, leather, wood, stone, metal, textiles, vehicles, animals, and props with tactile material separation and uncluttered functional geography; the style cannot convert the setting into a frontier or historical period.",
+        ),
+        blocking_and_performance=(
+            "Use deliberate spacing, sustained eyelines, readable hand position, grounded stance, economical gesture, complete turns and crossings, and controlled physical interaction while preserving the requested personality and emotional intensity.",
+        ),
+        sound_treatment=(
+            "When allowed, retain spacious location perspective, material-specific footsteps and handling, wind or room tone only when physically present, and clean dialogue; western styling grants no hoofbeats, gunshots, spurs, saloon ambience, whistles, harmonica, guitar, orchestra, or frontier soundscape.",
+        ),
+        may_fill_unspecified=(
+            "Classical human-to-environment scale, lateral geography, patient masters, economical reaction holds, tactile earth-and-sky color separation, protected warm skin, dense neutral blacks, and restrained physical camera movement.",
+        ),
+        must_not_invent=(
+            "A frontier, American West, desert, canyon, prairie, ranch, town, saloon, railway, homestead, sunset, dust, cowboys, outlaws, sheriffs, settlers, Indigenous people, horses, cattle, wagons, trains, hats, boots, spurs, guns, rifles, holsters, duels, standoffs, chases, violence, revenge, lawlessness, period costume, hero framing, Monument Valley imagery, sepia, faded print, film damage, hoofbeats, whistles, harmonica, guitar, orchestral score, or franchise imitation.",
+        ),
+    ),
+    "live_action_revisionist_western": _profile(
+        editing_and_pacing=(
+            "Present photographed live action with the patient, unsentimental grammar associated with revisionist western cinema: sustained observation, incomplete social ease, consequential pauses, and physically complete actions without inventing moral ambiguity, danger, violence, or historical commentary.",
+        ),
+        camera_and_framing=(
+            "Use measured distance, restrained long-lens compression or static environmental frames when compatible with the supplied shot, sparse coverage, obstructed depth, off-center human placement, and unembellished closer views that preserve geography, eyelines, hands, contacts, and horizons.",
+            "Avoid automatic heroic lows, postcard vistas, aggressive handheld operation, gratuitous zooms, or classical showdown symmetry; preserve the requested camera behavior and aspect ratio.",
+        ),
+        lighting_and_color=(
+            "Use a subdued revisionist earth palette with tobacco brown, umber, weathered ochre, dry olive, stone gray, muted blue, restrained brick red, protected natural skin, firm but readable exterior contrast, and slightly restrained saturation while preserving supplied local colors.",
+            "Keep exposure and texture stable and photographic without imposing underexposure, dirty yellow cast, bleach bypass, crushed blacks, blown skies, smoke, dust, desaturation, grain, scratches, or print fading.",
+        ),
+        production_design=(
+            "Render only supplied materials, wear, weather, terrain, architecture, clothing, animals, vehicles, and tools with practical weight and ordinary use; do not make people or places poorer, dirtier, older, harsher, or more historically specific.",
+        ),
+        blocking_and_performance=(
+            "Favor contained posture, wary or relaxed distance only as already supported, economical gesture, effort, breath, and unshowy physical completion without adding stoicism, menace, trauma, cruelty, toughness, or fatalism.",
+        ),
+        sound_treatment=(
+            "When allowed, use sparse exact production sound, broad exterior or enclosed room perspective, and material-specific movement without imposing silence, wind, flies, leather creaks, gun sounds, drones, folk instruments, or mournful score.",
+        ),
+        may_fill_unspecified=(
+            "Patient observational duration, measured environmental distance, restrained lens compression, off-center staging, subdued tobacco-umber-olive-stone relationships, protected natural skin, firm readable contrast, and unshowy physical performance.",
+        ),
+        must_not_invent=(
+            "The American West, a historical period, frontier hardship, moral ambiguity, antiheroes, corruption, colonial conflict, displacement, poverty, isolation, fatalism, cruelty, violence, guns, duels, outlaws, lawmen, soldiers, settlers, Indigenous people, horses, cattle, deserts, dust, smoke, blood, dirt, sweat, weathering, damaged wardrobe, bleak endings, silence, wind, flies, drones, harmonica, folk guitar, mournful music, or franchise imitation.",
+        ),
+    ),
     "live_action_1950s_studio_color": _profile(
         editing_and_pacing=(
             "Present photographed live action with the polished continuity grammar of a premium 1950s studio color feature: complete dramatic beats, measured entrances and reactions, clear classical coverage, and decisive dissolves or cuts only when already compatible with the supplied shot plan.",
@@ -1410,6 +1466,8 @@ CINEMATOGRAPHY_CHOICES = {
         "cross_processed": "Apply a deliberate cross-processed color treatment with controlled hue crossover between shadows and highlights, selective saturation, firm contrast, protected faces, and temporally stable color relationships. Do not add random frame-to-frame shifts, clipping, light leaks, chemical stains, grain, or print damage.",
         "sepia": "Render a coherent warm sepia monochrome treatment with clear luminance separation, protected faces and highlights, and readable material detail. Sepia changes color treatment only; do not infer an old era or add fading, scratches, vignette, paper texture, grain, or archival damage.",
         "saturated_slide_film": "Apply a pristine saturated slide-film color treatment with rich but controlled primaries, crisp color separation, clean neutral blacks, luminous local color, and protected highlights. Do not add underexposure, crushed shadows, grain, frame borders, projector artifacts, fading, or nostalgic subject matter.",
+        "classic_western_earth_sky": "Apply a classic western earth-and-sky color treatment with protected warm skin, rich ochre, sienna and umber material relationships, restrained sage and weathered green, dusty blue-to-cyan skies only where sky already exists, controlled red accents, dense neutral blacks, and smooth highlight roll-off. Preserve explicit local colors, location, weather, season and time of day; do not invent desert, dust, sunset, frontier scenery, teal shadows, sepia, fading, grain or vintage damage.",
+        "revisionist_western_earth": "Apply a subdued revisionist-western earth treatment with tobacco brown, umber, weathered ochre, dry olive, stone gray, muted blue and restrained brick-red relationships, protected natural skin, firm readable contrast and controlled saturation. Preserve explicit colors and supplied lighting; do not add a dirty yellow cast, underexposure, blown skies, bleach bypass, dust, smoke, desaturation, grain, scratches, fading or western subject matter.",
         "cold_steel_blue": "Apply a cold steel-blue science-fiction color treatment with controlled blue and cyan bias, clean neutral metals and grays, protected natural skin, readable shadow detail, and restrained warm accents from sources already present. Do not turn the scene into night, recolor every object blue, or invent technology, screens, emissions, haze, or light sources.",
         "sterile_white_cyan": "Apply a sterile white-cyan science-fiction palette with clean differentiated whites, cool neutral surfaces, restrained cyan separation, protected skin and local colors, and fully retained highlight detail. Do not force high-key exposure, clip whites, remove material texture, or invent laboratories, medical spaces, technology, screens, or luminous fixtures.",
         "neon_cyan_magenta": "Apply a vivid but controlled neon cyan-magenta color treatment using selective complementary separation, protected skin and authoritative colors, clean channel detail, and stable saturation across time. Treat it as grading only: do not invent neon tubes, signs, city lights, holograms, rain, reflections, colored light sources, cyberpunk objects, or emissive effects.",
