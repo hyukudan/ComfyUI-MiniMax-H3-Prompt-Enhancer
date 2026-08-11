@@ -229,7 +229,8 @@ def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
         "A woman crosses a station.", "t2va", 5.0, "",
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert "genre:action" in request
+    assert "anticipation, action, impact, and recovery" in request
+    assert "genre:action" not in request
     assert "Use exactly 1 " in request
 
 

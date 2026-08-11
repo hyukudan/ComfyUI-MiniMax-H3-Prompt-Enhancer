@@ -2878,7 +2878,8 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
     if profile_ids and any(dimensions.get(dimension) for dimension in PROFILE_DIMENSIONS):
         lines.extend([
             "SECONDARY CREATIVE TREATMENT — RESOLVED UNSPECIFIED FIELDS ONLY:",
-            "Selected profiles: " + ", ".join(profile_ids) + ".",
+            "The selected catalog entries are fully expanded below. Apply these concrete production directives; "
+            "do not rely on, infer, or emit an internal preset name.",
         ])
         headings = {
             "editing_and_pacing": "editing_and_pacing",
@@ -2923,7 +2924,6 @@ def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
     """Render a composed treatment as subordinate, non-narrative user guidance."""
     if not treatment.get("applied"):
         return ""
-    selection = ", ".join(treatment.get("profileIds", ()))
     headings = {
         "editing_and_pacing": "EDITING AND PACING",
         "camera_and_framing": "CAMERA AND FRAMING",
@@ -2936,7 +2936,8 @@ def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
     }
     lines = [
         "SECONDARY CREATIVE TREATMENT — DIRECTORIAL LENS ONLY:",
-        f"Selected profiles: {selection}.",
+        "The selected catalog entries are fully expanded below. Apply these concrete production directives; do not "
+        "rely on, infer, or emit an internal preset name.",
         "Apply this treatment only to choices the authoritative basic prompt, reference/media contracts, explicit "
         "shot plan, locks, and audio policies leave unspecified. It may enrich execution but may not alter story "
         "facts, identities, actions, dialogue, visible text, reference roles, timing, duration, ending, safety level, "

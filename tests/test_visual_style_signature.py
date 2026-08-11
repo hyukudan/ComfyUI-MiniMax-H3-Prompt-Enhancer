@@ -12,7 +12,7 @@ from creative_treatments import (
     resolve_visual_style,
 )
 from prompt_enhancer import enhance_prompt_with_completion
-from prompt_guides import normalize_visual_style_signature, validate_prompt
+from prompt_guides import build_user_request, normalize_visual_style_signature, validate_prompt
 
 
 ANIME_JSON = json.dumps({
@@ -278,6 +278,35 @@ def test_all_four_creative_axes_and_cinematography_are_delivered_as_one_contract
     assert style["cameraMotionInstruction"] in style["cinematographySignature"]
     assert delivered.count(style["resolvedSignature"]) == 1
     assert report["styleCoverageGaps"] == []
+
+
+def test_llm_receives_expanded_direction_without_private_preset_ids():
+    treatment = json.dumps({
+        "schemaVersion": 1,
+        "genre": "action",
+        "visualLanguage": "anime_general",
+        "worldAesthetic": "cyberpunk",
+        "tone": "tense",
+    })
+    request = build_user_request(
+        SOURCE, "t2va", 5.0, enhance_description=True,
+        creative_treatment_json=treatment,
+    )
+
+    for private_id in (
+        "genre:action",
+        "visual_language:anime_general",
+        "world_aesthetic:cyberpunk",
+        "tone:tense",
+    ):
+        assert private_id not in request
+    for concrete_instruction in (
+        "anticipation, action, impact, and recovery",
+        "non-photorealistic hand-authored 2D anime",
+        "high-tech/low-life material contrast",
+        "controlled pauses, and anticipation",
+    ):
+        assert concrete_instruction in request
 
 
 def test_every_cinematography_choice_compiles_into_the_delivered_contract():

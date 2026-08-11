@@ -121,10 +121,15 @@ def test_treatment_and_shot_plan_are_injected_without_overriding_audio_or_cuts()
         shot_plan_json=AUTO_SHOTS_JSON,
     )
     assert "SECONDARY CREATIVE TREATMENT" in request
-    assert "genre:action" in request
-    assert "visual_language:anime_shonen" in request
-    assert "world_aesthetic:cyberpunk" in request
-    assert "tone:epic" in request
+    assert "anticipation, action, impact, and recovery" in request
+    assert "non-photorealistic hand-authored 2D anime" in request
+    assert "dynamic pose strength, perspective emphasis, and kinetic timing" in request
+    assert "high-tech/low-life material contrast" in request
+    assert "clear escalation" in request
+    for private_id in (
+        "genre:action", "visual_language:anime_shonen", "world_aesthetic:cyberpunk", "tone:epic",
+    ):
+        assert private_id not in request
     assert "AUTHORITATIVE EXPLICIT SHOT PLAN" in request
     assert "Use exactly 2 shots" in request
     assert "Do not merge, split, reorder, omit, duplicate, or add" in request
