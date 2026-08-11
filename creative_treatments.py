@@ -2621,6 +2621,93 @@ _STYLE_FIELD_CONFLICT_PATTERNS = {
 }
 
 
+def _compact_profile_signature(axis: str, dimensions: Mapping[str, list[str]]) -> str:
+    """Compile a short executable signature from one resolved creative profile.
+
+    ``may_fill_unspecified`` is the catalogue's deliberately compact summary of a
+    profile.  For inherited profiles we retain the root medium and the selected
+    child's specialization, while all conflict and cinematography suppression has
+    already happened before this helper is called.  Negative invention guards are
+    intentionally never candidates for positive output text.
+    """
+    anchor_priorities = {
+        "genre": ("editing_and_pacing", "blocking_and_performance", "camera_and_framing"),
+        "visual_language": ("production_design", "lighting_and_color", "editing_and_pacing"),
+        "world_aesthetic": ("production_design", "lighting_and_color", "camera_and_framing"),
+        "tone": ("editing_and_pacing", "lighting_and_color", "blocking_and_performance"),
+    }
+    anchors = []
+    for dimension in anchor_priorities.get(axis, ("production_design", "editing_and_pacing")):
+        anchors = [
+            re.sub(
+                r"^Unless\b[^,]*,\s*", "",
+                re.sub(r"\s+", " ", str(line)).strip().rstrip(" ."),
+                flags=re.IGNORECASE,
+            )
+            for line in dimensions.get(dimension, ())
+            if str(line).strip()
+        ]
+        if anchors:
+            break
+    production = [
+        re.sub(
+            r"^Unless\b[^,]*,\s*", "",
+            re.sub(r"\s+", " ", str(line)).strip().rstrip(" ."),
+            flags=re.IGNORECASE,
+        )
+        for line in dimensions.get("production_design", ())
+        if str(line).strip()
+    ]
+    summaries = [
+        re.sub(r"\s+", " ", str(line)).strip().rstrip(" .")
+        for line in dimensions.get("may_fill_unspecified", ())
+        if str(line).strip()
+    ]
+    components = (anchors or production)[:1]
+    if summaries:
+        summary = summaries[-1]
+        if not re.match(r"^(?:Use|Keep|Maintain|Render|Present|Compose|Favor|Preserve|Translate)\b", summary):
+            summary = "Maintain " + summary[:1].lower() + summary[1:]
+        components.append(summary)
+    if not components:
+        fallback = []
+        for dimension in (
+            "production_design", "lighting_and_color", "editing_and_pacing",
+            "blocking_and_performance", "camera_and_framing",
+        ):
+            fallback.extend(
+                re.sub(r"\s+", " ", str(line)).strip().rstrip(" .")
+                for line in dimensions.get(dimension, ())
+                if str(line).strip()
+            )
+        if fallback:
+            components = [fallback[0], fallback[-1]] if len(fallback) > 1 else fallback
+    components = list(dict.fromkeys(component for component in components if component))
+    if not components:
+        return ""
+    return ". ".join(component[:1].upper() + component[1:] for component in components) + "."
+
+
+def _compact_cinematography_signature(style: Mapping[str, Any]) -> str:
+    """Render every explicit cinematography field once, fusing H3 motion controls."""
+    parts = []
+    motion_added = False
+    for item in style.get("cinematographyDirectives", ()):
+        field = str(item.get("field", ""))
+        if field in {"camera_amplitude", "camera_speed"}:
+            continue
+        if field == "camera_motion":
+            instruction = str(style.get("cameraMotionInstruction", "")).strip()
+            motion_added = True
+        else:
+            instruction = str(item.get("instruction", "")).strip()
+        if instruction:
+            parts.append(instruction)
+    if not motion_added and style.get("cameraMotionInstruction"):
+        parts.append(str(style["cameraMotionInstruction"]).strip())
+    return " ".join(dict.fromkeys(parts))
+
+
 def resolve_visual_style(treatment: Mapping[str, Any],
                          cinematography: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Resolve explicit cinematography and the subordinate treatment field by field."""
@@ -2650,7 +2737,57 @@ def resolve_visual_style(treatment: Mapping[str, Any],
             else:
                 kept.append(line)
         dimensions[dimension] = kept
-    return {
+    selected_profiles = (
+        ("genre", "genre", str(resolved_treatment.get("genre", "none"))),
+        ("visualLanguage", "visual_language", str(resolved_treatment.get("visualLanguage", "none"))),
+        ("worldAesthetic", "world_aesthetic", str(resolved_treatment.get("worldAesthetic", "none"))),
+        ("tone", "tone", str(resolved_treatment.get("tone", "none"))),
+    )
+    profile_line_indexes: dict[str, set[int]] = {}
+    axis_line_indexes: dict[str, dict[str, list[int]]] = {}
+    profile_signatures: dict[str, str] = {}
+    for external_axis, catalog_axis, selected_value in selected_profiles:
+        if not resolved_treatment.get("applied") or selected_value == "none":
+            continue
+        profile = _resolve_profile(catalog_axis, selected_value)
+        profile_dimensions = {dimension: [] for dimension in PROFILE_DIMENSIONS}
+        for dimension in PROFILE_DIMENSIONS:
+            if dimension == "must_not_invent":
+                continue
+            profile_lines = {str(line).casefold() for line in profile.get(dimension, ())}
+            indexes = [
+                index for index, line in enumerate(dimensions.get(dimension, ()))
+                if str(line).casefold() in profile_lines
+            ]
+            if indexes:
+                profile_line_indexes.setdefault(dimension, set()).update(indexes)
+                axis_line_indexes.setdefault(external_axis, {})[dimension] = indexes
+                profile_dimensions[dimension] = [dimensions[dimension][index] for index in indexes]
+        signature = _compact_profile_signature(catalog_axis, profile_dimensions)
+        own_profile = PROFILE_CATALOGS[catalog_axis][selected_value]
+        if own_profile.get("inherits"):
+            own_dimensions = {
+                dimension: [
+                    line for line in own_profile.get(dimension, ())
+                    if str(line).casefold() in {
+                        str(item).casefold() for item in profile_dimensions.get(dimension, ())
+                    }
+                ]
+                for dimension in PROFILE_DIMENSIONS
+                if dimension != "must_not_invent"
+            }
+            specialization = _compact_profile_signature(catalog_axis, own_dimensions)
+            if specialization and specialization not in signature:
+                signature = " ".join(part for part in (signature, specialization) if part)
+        if signature:
+            profile_signatures[external_axis] = signature
+    creative_signature = " ".join(profile_signatures.values())
+    if creative_signature:
+        creative_signature += (
+            " Preserve every supplied identity, count, wardrobe item, object, action, setting, illumination source, "
+            "and endpoint; obey explicit shot and cinematography controls."
+        )
+    resolved = {
         "schemaVersion": 1,
         "applied": bool(directives or resolved_treatment.get("applied")),
         "precedence": (
@@ -2664,11 +2801,26 @@ def resolve_visual_style(treatment: Mapping[str, Any],
             if any(item["field"] in {"camera_motion", "camera_amplitude", "camera_speed"} for item in directives)
             else ""
         ),
+        "visualLanguage": str(resolved_treatment.get("visualLanguage", "none")),
+        "profileLineIndexes": {
+            dimension: sorted(indexes) for dimension, indexes in profile_line_indexes.items()
+        },
+        "axisLineIndexes": axis_line_indexes,
+        "creativeSignatures": profile_signatures,
+        "visualLanguageLineIndexes": axis_line_indexes.get("visualLanguage", {}),
+        "visualSignature": profile_signatures.get("visualLanguage", ""),
+        "creativeSignature": creative_signature,
         "creativeProfileIds": list(resolved_treatment.get("profileIds", ())),
         "treatmentDimensions": dimensions,
         "suppressedTreatmentLines": suppressed_lines,
         "conflicts": conflicts,
     }
+    cinematography_signature = _compact_cinematography_signature(resolved)
+    resolved["cinematographySignature"] = cinematography_signature
+    resolved["resolvedSignature"] = " ".join(
+        part for part in (creative_signature, cinematography_signature) if part
+    )
+    return resolved
 
 
 def resolved_visual_style_instruction(style: Mapping[str, Any],
@@ -2693,6 +2845,18 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
             "State the global look once, carry it consistently through all shots, and describe only shot-specific camera or lighting deltas later. "
         ) + "Never emit preset IDs or control-panel labels in the finished prompt.",
     ]
+    resolved_signature = str(style.get("resolvedSignature", "")).strip()
+    if resolved_signature:
+        placement = (
+            "Copy the following sentence verbatim into every autonomous JSON prompt item"
+            if mode == "chained_multishot" else
+            "Copy the following sentence verbatim once inside the main visual timeline section"
+        )
+        lines.extend([
+            "CANONICAL RESOLVED PRESENTATION SIGNATURE — REQUIRED IN FINAL OUTPUT:",
+            placement + "; it is the compact executable rendering contract, not a preset label:",
+            resolved_signature,
+        ])
     directives = style.get("cinematographyDirectives", ())
     if directives:
         lines.extend([

@@ -263,8 +263,9 @@ start closed and expand downward; their open/closed state is saved in node prope
 - **Chained multishot** appears only in `chained_multishot` mode and contains segment count plus identity, voice, and
   setting continuity. Every segment uses the global Duration; incompatible per-row duration controls are disabled.
 - **Creative direction** contains Narrative genre, Visual language, World / aesthetic, and Tone. Its summary lists only
-  active choices and reads **No preferences** when neutral. Visual language has a live search above its long grouped
-  style list; search by label, catalog ID, or family, press `Esc` to clear it, or use `↓`/`Enter` to move to the list.
+  active choices and reads **No preferences** when neutral. Opening Visual language reveals a search field inside the
+  dropdown; it renders only matching styles while you type by label, catalog ID, or family. Press `Esc` to clear or
+  close it, and use `↓`/`Enter` to move to the filtered options.
 - **Cinematography** contains optional presentation controls for color palette, exposure/contrast, camera motion plus
   amplitude and speed, optics, depth of field, image texture, lens effects, and motion rendering. Its summary lists
   only active choices and reads **No preferences** when neutral.
@@ -274,8 +275,9 @@ start closed and expand downward; their open/closed state is saved in node prope
   ComfyUI user profile — up to 50, evicting the oldest — so they follow you across workflows without adding any
   serialized widget. **Apply** and **Delete** manage the selected look; **Copy look** places a compact JSON envelope
   on the clipboard and **Paste look** imports one, so looks can be shared in chat or committed next to a project.
-  A look whose value no longer exists in the loaded catalog is applied verbatim and flagged by the usual
-  "Unavailable in the loaded catalog" warning instead of being silently dropped.
+  A look whose creative-profile value no longer exists in the loaded catalog is applied verbatim and flagged by the
+  usual "Unavailable in the loaded catalog" warning instead of being silently dropped. Unknown future Look schema
+  versions are rejected instead of being partially applied.
 - The **🎲 Explore** button in the Creative direction header proposes a coherent random combination of genre, visual
   language, world aesthetic, and tone (and, with a 30% chance, a color palette). Shift-click also rolls the remaining
   cinematography fields. Conflicting axes are reconciled by the same conflict-resolution precedence that governs
@@ -627,6 +629,14 @@ clear repetition in exceptionally long descriptions. Quality gaps are exposed se
 `qualityValid`, `coverageGaps`, and `styleCoverageGaps`; the repair loop may address them without mislabeling a
 structurally valid prompt as invalid. The separate `treatment_warnings` output describes selected-configuration
 conflicts and legacy value mappings before any model runs.
+
+With description enhancement enabled, every active genre, visual language, world aesthetic, and tone is also compiled
+into one compact executable presentation signature. Explicit Cinematography is appended field by field, with H3 camera
+motion fused as motion type + amplitude + speed. Normalization inserts this resolved signature once in Base/Ref2VA and
+once per autonomous chained item, and validation requires the exact contract. The LLM still receives the fuller style
+bible and may develop compatible production detail, but it cannot silently reduce a selection such as anime to a weak
+generic adjective. With description enhancement disabled, creative profiles are not applied; explicit Cinematography
+remains authoritative because it is a direct control rather than inferred enrichment.
 
 If errors remain, each repair attempt receives the complete previous answer and the concrete validation errors.
 Source-fidelity, exact dialogue, missing planned dialogue, invented references, and required ending errors receive a

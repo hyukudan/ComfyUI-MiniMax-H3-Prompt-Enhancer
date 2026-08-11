@@ -593,6 +593,66 @@ function ensureFieldTitleStyles() {
             position: relative;
             width: 100%;
         }
+        .minimax-h3-searchable-select {
+            display: flex;
+            width: 100%;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .minimax-h3-searchable-select-trigger {
+            width: 100%;
+            height: 27px;
+            padding: 2px 7px;
+            border: 1px solid var(--border-color, #666);
+            border-radius: 4px;
+            background: var(--comfy-input-bg, #222);
+            color: var(--input-text, #ddd);
+            overflow: hidden;
+            font: inherit;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .minimax-h3-searchable-select-popover {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 5px;
+            border: 1px solid var(--border-color, #666);
+            border-radius: 5px;
+            background: var(--comfy-input-bg, #222);
+        }
+        .minimax-h3-searchable-select-popover[hidden] {
+            display: none;
+        }
+        .minimax-h3-searchable-select-options {
+            display: flex;
+            max-height: 230px;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .minimax-h3-searchable-select-group {
+            padding: 6px 6px 2px;
+            color: var(--descrip-text, #999);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .minimax-h3-searchable-select-option {
+            min-height: 27px;
+            padding: 4px 7px;
+            border: 0;
+            border-radius: 3px;
+            background: transparent;
+            color: var(--input-text, #ddd);
+            font: inherit;
+            text-align: left;
+        }
+        .minimax-h3-searchable-select-option:hover,
+        .minimax-h3-searchable-select-option:focus-visible,
+        .minimax-h3-searchable-select-option[aria-selected="true"] {
+            background: color-mix(in srgb, var(--p-primary-color, #7ca6ff) 22%, transparent);
+        }
         .minimax-h3-select-search-icon {
             position: absolute;
             top: 50%;
@@ -1326,6 +1386,7 @@ function normalizeLookName(value) {
 function sanitizeLookEnvelope(value, fallbackName = "") {
     const parsed = parseJsonObject(value);
     if (!parsed) return null;
+    if (parsed.schemaVersion !== undefined && parsed.schemaVersion !== LOOK_SCHEMA_VERSION) return null;
     const name = normalizeLookName(parsed.name) || normalizeLookName(fallbackName);
     if (!name) return null;
     if (parsed.creativeTreatment === undefined && parsed.cinematography === undefined) return null;
@@ -1588,7 +1649,15 @@ function normalizedSearchText(value) {
 }
 
 function createVisualLanguageSearch(node, select, label) {
-    const container = createPanelElement("div", "minimax-h3-select-search");
+    const container = createPanelElement("div", "minimax-h3-searchable-select");
+    const trigger = createPanelElement("button", "minimax-h3-searchable-select-trigger");
+    trigger.type = "button";
+    trigger.setAttribute("role", "combobox");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+    const popover = createPanelElement("div", "minimax-h3-searchable-select-popover");
+    popover.hidden = true;
+    const search = createPanelElement("div", "minimax-h3-select-search");
     const icon = createPanelElement("span", "minimax-h3-select-search-icon", "🔍");
     icon.setAttribute("aria-hidden", "true");
     const input = createPanelElement("input", "");
@@ -1597,7 +1666,11 @@ function createVisualLanguageSearch(node, select, label) {
     input.spellcheck = false;
     input.placeholder = "Search visual styles…";
     input.setAttribute("aria-label", `Search ${label}`);
-    input.setAttribute("aria-controls", select.id);
+    const list = createPanelElement("div", "minimax-h3-searchable-select-options");
+    list.id = `${select.id}-options`;
+    list.setAttribute("role", "listbox");
+    input.setAttribute("aria-controls", list.id);
+    trigger.setAttribute("aria-controls", list.id);
     const clear = createPanelElement("button", "minimax-h3-select-search-clear", "×");
     clear.type = "button";
     clear.disabled = true;
@@ -1605,7 +1678,7 @@ function createVisualLanguageSearch(node, select, label) {
     clear.setAttribute("aria-label", "Clear visual style search");
     const status = createPanelElement("p", "minimax-h3-select-search-status");
     status.setAttribute("aria-live", "polite");
-    container.append(icon, input, clear);
+    search.append(icon, input, clear);
 
     const labels = new Map(CREATIVE_CHOICES.visualLanguage);
     const groups = new Map(VISUAL_LANGUAGE_GROUPS.flatMap(([group, values]) => (
@@ -1620,15 +1693,46 @@ function createVisualLanguageSearch(node, select, label) {
         const terms = normalizedSearchText(input.value).trim().split(/\s+/).filter(Boolean);
         const matches = searchable.filter(({ text }) => terms.every((term) => text.includes(term)));
         const visibleValues = new Set(matches.map(({ value }) => value));
-        if (selectedValue !== "none" && labels.has(selectedValue)) visibleValues.add(selectedValue);
-        select.replaceChildren();
-        addVisualLanguageOptions(select, visibleValues);
-        if (!labels.has(selectedValue) && selectedValue) ensureUnavailableOption(select, selectedValue);
-        select.value = selectedValue;
+        trigger.textContent = `${labels.get(selectedValue) ?? `Unavailable — ${selectedValue}`}  ▾`;
+        list.replaceChildren();
+        const addChoice = (value) => {
+            const option = createPanelElement("button", "minimax-h3-searchable-select-option", labels.get(value));
+            option.type = "button";
+            option.dataset.value = value;
+            option.setAttribute("role", "option");
+            option.setAttribute("aria-selected", value === selectedValue ? "true" : "false");
+            option.addEventListener("click", () => {
+                select.value = value;
+                select.dispatchEvent(new Event("change", { bubbles: true }));
+                render(value);
+                close();
+                trigger.focus();
+            });
+            list.appendChild(option);
+        };
+        if (!terms.length || normalizedSearchText(labels.get("none")).includes(terms.join(" "))) addChoice("none");
+        for (const [groupLabel, values] of VISUAL_LANGUAGE_GROUPS) {
+            const visible = values.filter((value) => visibleValues.has(value));
+            if (!visible.length) continue;
+            list.appendChild(createPanelElement("div", "minimax-h3-searchable-select-group", groupLabel));
+            visible.forEach(addChoice);
+        }
         clear.disabled = !input.value;
-        const noMatches = terms.length > 0 && matches.length === 0;
+        const noMatches = terms.length > 0 && !list.querySelector("[role='option']");
         status.textContent = noMatches ? "No matching styles. Clear the search to browse all styles." : "";
         status.dataset.visible = noMatches ? "true" : "false";
+        scheduleCreativePanelLayout(node);
+    };
+    const open = () => {
+        popover.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        input.value = "";
+        render();
+        input.focus();
+    };
+    const close = () => {
+        popover.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
         scheduleCreativePanelLayout(node);
     };
     const clearSearch = () => {
@@ -1641,14 +1745,27 @@ function createVisualLanguageSearch(node, select, label) {
     input.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
             event.preventDefault();
-            clearSearch();
+            if (input.value) clearSearch();
+            else {
+                close();
+                trigger.focus();
+            }
         } else if (event.key === "ArrowDown" || event.key === "Enter") {
             event.preventDefault();
-            select.focus();
+            list.querySelector("[role='option']")?.focus();
         }
     });
     clear.addEventListener("click", clearSearch);
-    return { container, status, sync: render };
+    trigger.addEventListener("click", () => popover.hidden ? open() : close());
+    container.addEventListener("focusout", () => setTimeout(() => {
+        if (!container.contains(document.activeElement)) close();
+    }, 0));
+    popover.append(search, status, list);
+    container.append(trigger, popover);
+    select.hidden = true;
+    select.setAttribute("aria-hidden", "true");
+    render();
+    return { container, status, trigger, popover, sync: render };
 }
 
 function ensureUnavailableOption(select, value) {
@@ -2811,7 +2928,7 @@ function addCreativeDirectionPanel(node) {
             addVisualLanguageOptions(select);
             const filter = createVisualLanguageSearch(node, select, definition.label);
             creativeFilters[definition.key] = filter;
-            field.append(filter.container, filter.status);
+            field.append(filter.container);
         } else {
             addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
         }

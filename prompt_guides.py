@@ -2916,6 +2916,47 @@ def normalize_multishot_output(text: str, required_locks: tuple[str, ...] = ()) 
     return json.dumps({"prompts": prompts}, ensure_ascii=False, separators=(",", ":"))
 
 
+def normalize_visual_style_signature(text: str, mode: str, style: Mapping[str, Any]) -> str:
+    """Upsert the canonical visual-language signature into the delivered prompt.
+
+    A single-generation prompt carries one global signature in its visual timeline.
+    Chained items are independent generations, so each item receives the same
+    self-contained signature.  Exact-presence checks make the operation idempotent
+    without deleting stylistic prose authored by the model.
+    """
+    value = str(text)
+    signature = str(style.get("resolvedSignature") or style.get("visualSignature", "")).strip()
+    if not signature:
+        return value
+    if mode == "chained_multishot":
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        prompts = data.get("prompts") if isinstance(data, dict) else None
+        if not isinstance(prompts, list):
+            return value
+        normalized = [
+            item if not isinstance(item, str) or signature in item else f"{signature} {item}".strip()
+            for item in prompts
+        ]
+        if normalized == prompts:
+            return value
+        data["prompts"] = normalized
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
+    if signature in _section_body(value, section):
+        return value
+    header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
+    if not header:
+        return value
+    header_text = header.group(0)
+    newline = "\r\n" if "\r\n" in header_text else "\n"
+    separator = "" if header_text.endswith(("\n", "\r")) else newline
+    return value[:header.end()] + separator + signature + newline + value[header.end():]
+
+
 def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str,
                         shot_count: int = 0, required_locks: tuple[str, ...] = (),
                         voice_performance: str = "audible",
@@ -3370,6 +3411,10 @@ def _resolved_style_coverage_gaps(text: str, style: Mapping[str, Any]) -> list[s
     if not style.get("applied"):
         return []
     gaps = []
+    resolved_signature = str(style.get("resolvedSignature") or style.get("visualSignature", "")).strip()
+    if resolved_signature and resolved_signature not in str(text):
+        gaps.append("Canonical resolved presentation signature is missing or was changed")
+    profile_line_indexes = style.get("profileLineIndexes", style.get("visualLanguageLineIndexes", {}))
     motion_fields = {"camera_motion", "camera_amplitude", "camera_speed"}
     checked_motion = False
     for item in style.get("cinematographyDirectives", ()):
@@ -3385,7 +3430,14 @@ def _resolved_style_coverage_gaps(text: str, style: Mapping[str, Any]) -> list[s
     for dimension, lines in style.get("treatmentDimensions", {}).items():
         if dimension == "must_not_invent":
             continue
-        missing = [line for line in lines if not _style_signature_observed(text, line)]
+        covered_by_signature = {
+            int(index) for index in profile_line_indexes.get(dimension, ())
+            if isinstance(index, int) or (isinstance(index, str) and index.isdigit())
+        }
+        missing = [
+            line for index, line in enumerate(lines)
+            if index not in covered_by_signature and not _style_signature_observed(text, line)
+        ]
         if missing:
             gaps.append(
                 f"Resolved creative-treatment dimension {dimension} omitted {len(missing)} required directive(s)"

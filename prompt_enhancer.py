@@ -17,11 +17,11 @@ from urllib.request import Request, urlopen
 try:
     from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -391,10 +391,11 @@ def enhance_prompt_with_completion(
             value = normalize_multishot_output(candidate, (
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             ))
-            return normalize_multishot_audio_policy(
+            value = normalize_multishot_audio_policy(
                 value, ambience_foley_policy, background_score_policy, voice_performance,
                 basic_prompt + "\n" + effective_reference_context,
             )
+            return normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
         value = normalize_section_headers(candidate)
         value = normalize_dialogue_tags(value)
         value = normalize_first_shot_marker(value, resolved_mode)
@@ -403,10 +404,11 @@ def enhance_prompt_with_completion(
         value = normalize_reference_definitions(value, basic_prompt, effective_reference_context)
         value = normalize_unassigned_subjects(value, basic_prompt, effective_reference_context)
         value = normalize_source_dialogue(value, basic_prompt, resolved_mode, voice_performance)
-        return normalize_audio_policy(
+        value = normalize_audio_policy(
             value, ambience_foley_policy, background_score_policy, voice_performance,
             basic_prompt + "\n" + effective_reference_context,
         )
+        return normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
 
     enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(
