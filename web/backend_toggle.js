@@ -176,6 +176,9 @@ const CREATIVE_CHOICES = {
         ["anime_retro_dramatic", "Retro dramatic cel anime"],
         ["anime_retro_gag_family", "Retro family gag anime"],
         ["animation_2d", "General 2D animation"],
+        ["heroic_limited_cel_tv", "Heroic limited cel television"],
+        ["midcentury_graphic_cel_comedy", "Mid-century graphic cel comedy"],
+        ["classic_morning_adventure_cel", "Classic morning adventure cel"],
         ["painterly_2d", "Painterly 2D animation"],
         ["watercolor_2d", "Watercolor 2D animation"],
         ["gouache_2d", "Gouache 2D animation"],
@@ -260,9 +263,21 @@ const CREATIVE_CHOICES = {
         ["pulp_heightened", "Pulp heightened"],
         ["stoic", "Stoic"],
     ],
+    titleScreenStyle: [
+        ["none", "No title-screen treatment"],
+        ["minimal_cinematic", "Minimal cinematic title"],
+        ["bold_broadcast", "Bold broadcast title"],
+        ["classic_cel", "Classic cel title"],
+        ["illustrated_pulp", "Illustrated pulp title"],
+        ["elegant_editorial", "Elegant editorial title"],
+        ["neon_technology", "Neon technology title"],
+        ["pixel_art_title", "Pixel-art title"],
+        ["silent_intertitle", "Silent-era intertitle"],
+    ],
 };
 const VISUAL_LANGUAGE_GROUPS = [
     ["Anime", ["anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
+    ["Classic television cel", ["heroic_limited_cel_tv", "midcentury_graphic_cel_comedy", "classic_morning_adventure_cel"]],
     ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d", "japanese_print_animation"]],
     ["Graphic & pixel styles", ["american_comic_pastel", "graphic_novel", "graphic_noir", "pixel_art_16bit"]],
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
@@ -328,6 +343,11 @@ const CREATIVE_FIELD_DEFINITIONS = [
         key: "tone",
         label: "Tone",
         title: "Guides intensity, composition, performance, and mix. It does not change facts, dialogue, or content.",
+    },
+    {
+        key: "titleScreenStyle",
+        label: "Title screen",
+        title: "Styles only a title screen/card/intertitle explicitly requested in the Basic prompt. Quote the exact visible title text; this control never invents words or creates a title screen.",
     },
 ];
 
@@ -1169,6 +1189,7 @@ function defaultCreativeTreatment() {
         visualLanguage: "none",
         worldAesthetic: "none",
         tone: "none",
+        titleScreenStyle: "none",
     };
 }
 
@@ -1228,6 +1249,7 @@ function sanitizeCreativeTreatment(value) {
         visualLanguage: preservedCreativeValue(parsed.visualLanguage),
         worldAesthetic: preservedCreativeValue(parsed.worldAesthetic),
         tone: preservedCreativeValue(parsed.tone),
+        titleScreenStyle: preservedCreativeValue(parsed.titleScreenStyle),
     };
 }
 
@@ -1338,6 +1360,7 @@ function serializeCreativeTreatment(state) {
         visualLanguage: preservedCreativeValue(state?.visualLanguage),
         worldAesthetic: preservedCreativeValue(state?.worldAesthetic),
         tone: preservedCreativeValue(state?.tone),
+        titleScreenStyle: preservedCreativeValue(state?.titleScreenStyle),
     });
 }
 
@@ -2063,6 +2086,7 @@ function randomCatalogValue(choices, neutral) {
 function exploreLookEnvelope(node, { includeCinematography = false } = {}) {
     const creativeTreatment = sanitizeCreativeTreatment(node.__minimaxCreativeTreatmentState);
     for (const { key } of CREATIVE_FIELD_DEFINITIONS) {
+        if (key === "titleScreenStyle") continue;
         creativeTreatment[key] = randomCatalogValue(CREATIVE_CHOICES[key], "none");
     }
     const cinematography = sanitizeCinematography(node.__minimaxCinematographyState);

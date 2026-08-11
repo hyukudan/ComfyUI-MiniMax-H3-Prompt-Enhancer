@@ -13,8 +13,10 @@ from creative_treatments import (
     CINEMATOGRAPHY_CHOICES,
     CREATIVE_AXES,
     LEGACY_CAMERA_MOTIONS,
+    PROFILE_CATALOGS,
     PROFILE_DIMENSIONS,
     SHOT_TRANSITION_CHOICES,
+    TITLE_SCREEN_STYLE_PROFILES,
     camera_motion_sentence,
     compose_creative_treatment,
     cinematography_choices,
@@ -30,7 +32,10 @@ from creative_treatments import (
     shot_plan_instruction,
     shot_transition_choices,
     treatment_warnings,
-    _profile_lineage,
+    title_screen_requested,
+    title_screen_style_adherence_errors,
+    title_screen_style_choices,
+    title_screen_style_instruction,
 )
 
 
@@ -44,7 +49,8 @@ CANONICAL_CHOICES = {
         "japanese_print_animation", "anime_ultradetailed_cinematic",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel",
-        "animation_2d", "pixel_art_16bit",
+        "animation_2d", "heroic_limited_cel_tv", "midcentury_graphic_cel_comedy",
+        "classic_morning_adventure_cel", "pixel_art_16bit",
         "documentary_observational", "mockumentary_talking_head",
         "live_action_naturalistic", "live_action_cinematic",
         "live_action_classic_black_and_white",
@@ -288,31 +294,22 @@ def test_blank_and_explicit_all_none_are_the_same_neutral_treatment():
     assert creative_treatment_instruction(blank) == ""
 
 
-def test_shonen_and_shojo_inherit_the_general_anime_language_without_duplicates():
-    anime = compose_creative_treatment(visual_language="anime_general")
-    for child_name in ("anime_shonen", "anime_shojo"):
-        child = compose_creative_treatment(visual_language=child_name)
-        assert child["profileVersions"]["visual_language:anime_general"] == 2
-        assert child["profileVersions"][f"visual_language:{child_name}"] == 2
-        for dimension in PROFILE_DIMENSIONS:
-            assert set(anime["dimensions"][dimension]) <= set(child["dimensions"][dimension])
-            normalized = [value.casefold() for value in child["dimensions"][dimension]]
-            assert len(normalized) == len(set(normalized))
+def test_shonen_and_shojo_are_complete_independent_anime_languages():
+    for name in ("anime_shonen", "anime_shojo"):
+        treatment = compose_creative_treatment(visual_language=name)
+        assert treatment["profileVersions"] == {f"visual_language:{name}": 2}
+        assert all(treatment["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
+        assert "unmistakably non-photorealistic hand-authored 2D" in creative_treatment_instruction(treatment)
 
 
-def test_graphic_novel_is_unmistakably_illustrated_2d_and_graphic_noir_inherits_it():
-    animation = compose_creative_treatment(visual_language="animation_2d")
+def test_graphic_novel_and_graphic_noir_are_independent_illustrated_2d_languages():
     graphic = compose_creative_treatment(visual_language="graphic_novel")
     noir = compose_creative_treatment(visual_language="graphic_noir")
 
-    assert graphic["profileVersions"]["visual_language:animation_2d"] == 2
-    assert graphic["profileVersions"]["visual_language:graphic_novel"] == 2
-    assert noir["profileVersions"]["visual_language:animation_2d"] == 2
-    assert noir["profileVersions"]["visual_language:graphic_novel"] == 2
-    assert noir["profileVersions"]["visual_language:graphic_noir"] == 1
-    for dimension in PROFILE_DIMENSIONS:
-        assert set(animation["dimensions"][dimension]) <= set(graphic["dimensions"][dimension])
-        assert set(graphic["dimensions"][dimension]) <= set(noir["dimensions"][dimension])
+    assert graphic["profileVersions"] == {"visual_language:graphic_novel": 2}
+    assert noir["profileVersions"] == {"visual_language:graphic_noir": 1}
+    assert all(graphic["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
+    assert all(noir["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
 
     graphic_instruction = creative_treatment_instruction(graphic)
     noir_instruction = creative_treatment_instruction(noir)
@@ -325,15 +322,98 @@ def test_graphic_novel_is_unmistakably_illustrated_2d_and_graphic_noir_inherits_
     assert "Noir styling grants no voice-over" in noir_instruction
 
 
+def test_every_creative_profile_is_independent_and_has_no_lineage_metadata():
+    assert all("inherits" not in profile for catalog in PROFILE_CATALOGS.values() for profile in catalog.values())
+
+
+def test_title_screen_styles_are_independent_declarative_and_source_gated():
+    source = 'Opening title screen displays the exact visible text "NIGHT RUN".'
+    assert title_screen_requested(source)
+    locks = set()
+    for name in title_screen_style_choices():
+        if name == "none":
+            continue
+        treatment = parse_creative_treatment({
+            "schemaVersion": 1,
+            "titleScreenStyle": name,
+        })
+        profile = TITLE_SCREEN_STYLE_PROFILES[name]
+        assert treatment["titleScreenStyle"] == name
+        assert treatment["profileIds"] == []
+        assert profile["instruction"]
+        assert profile["deliveryLock"]
+        assert profile["mustNotInvent"]
+        assert name not in profile["deliveryLock"]
+        assert profile["deliveryLock"] not in locks
+        locks.add(profile["deliveryLock"])
+        instruction = title_screen_style_instruction(treatment, source)
+        assert profile["deliveryLock"] in instruction
+        assert "exact supplied title text" in instruction
+        assert title_screen_style_adherence_errors(profile["deliveryLock"], treatment, source) == []
+        assert title_screen_style_adherence_errors("A generic title card.", treatment, source)
+        assert title_screen_style_instruction(treatment, "A woman crosses a station.") == ""
+        assert title_screen_style_adherence_errors(
+            "A woman crosses a station.", treatment, "A woman crosses a station.",
+        ) == []
+
+
+def test_formerly_layered_profiles_are_self_contained_after_flattening():
+    visual_markers = {
+        "anime_ultradetailed_cinematic": "2D cinematic anime design",
+        "anime_shonen": "2D action-anime design",
+        "anime_shojo": "2D shōjo-anime design",
+        "anime_shojo_pastel": "Japanese shōjo animation vocabulary",
+        "pixel_art_16bit": "native non-photorealistic 16-bit-style pixel art",
+        "graphic_novel": "hand-illustrated 2D graphic-novel vocabulary",
+        "graphic_noir": "hand-illustrated 2D graphic-noir vocabulary",
+    }
+    for name, marker in visual_markers.items():
+        treatment = compose_creative_treatment(visual_language=name)
+        instruction = creative_treatment_instruction(treatment)
+        assert treatment["profileIds"] == [f"visual_language:{name}"]
+        assert set(treatment["profileVersions"]) == {f"visual_language:{name}"}
+        assert all(treatment["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
+        assert marker in instruction
+        assert "Translate supplied" not in resolve_visual_style(
+            treatment, parse_cinematography(""),
+        )["visualSignature"]
+        for dimension in PROFILE_DIMENSIONS:
+            normalized = [line.casefold() for line in treatment["dimensions"][dimension]]
+            assert len(normalized) == len(set(normalized))
+
+    for name in ("retrofuturism_atomic_age", "retrofuturism_cassette", "retrofuturism_y2k"):
+        treatment = compose_creative_treatment(world_aesthetic=name)
+        assert treatment["profileIds"] == [f"world_aesthetic:{name}"]
+        assert set(treatment["profileVersions"]) == {f"world_aesthetic:{name}"}
+        assert all(treatment["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
+
+
+def test_classic_television_cel_profiles_are_complete_and_distinct():
+    names = (
+        "heroic_limited_cel_tv",
+        "midcentury_graphic_cel_comedy",
+        "classic_morning_adventure_cel",
+    )
+    signatures = set()
+    for name in names:
+        treatment = compose_creative_treatment(visual_language=name)
+        assert treatment["profileIds"] == [f"visual_language:{name}"]
+        for dimension in PROFILE_DIMENSIONS:
+            assert treatment["dimensions"][dimension]
+        signature = resolve_visual_style(treatment, parse_cinematography(""))["visualSignature"]
+        assert signature
+        signatures.add(signature)
+    assert len(signatures) == len(names)
+
+
 def test_pastel_shojo_and_16bit_pixel_art_are_strong_2d_visual_languages():
-    shojo = compose_creative_treatment(visual_language="anime_shojo")
     pastel = compose_creative_treatment(visual_language="anime_shojo_pastel")
-    animation = compose_creative_treatment(visual_language="animation_2d")
     pixel = compose_creative_treatment(visual_language="pixel_art_16bit")
 
-    for dimension in PROFILE_DIMENSIONS:
-        assert set(shojo["dimensions"][dimension]) <= set(pastel["dimensions"][dimension])
-        assert set(animation["dimensions"][dimension]) <= set(pixel["dimensions"][dimension])
+    assert pastel["profileVersions"] == {"visual_language:anime_shojo_pastel": 2}
+    assert pixel["profileVersions"] == {"visual_language:pixel_art_16bit": 1}
+    assert all(pastel["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
+    assert all(pixel["dimensions"][dimension] for dimension in PROFILE_DIMENSIONS)
 
     pastel_instruction = creative_treatment_instruction(pastel)
     pixel_instruction = creative_treatment_instruction(pixel)
@@ -396,10 +476,7 @@ def test_japanese_print_animation_is_separate_from_retro_family_gag_anime():
 def test_ultradetailed_anime_adds_precision_without_inventing_scene_detail():
     treatment = compose_creative_treatment(visual_language="anime_ultradetailed_cinematic")
     instruction = creative_treatment_instruction(treatment)
-    assert treatment["profileVersions"] == {
-        "visual_language:anime_general": 2,
-        "visual_language:anime_ultradetailed_cinematic": 1,
-    }
+    assert treatment["profileVersions"] == {"visual_language:anime_ultradetailed_cinematic": 1}
     assert "feature-animation precision" in instruction
     assert "material specificity" in instruction
     assert "temporally locked" in instruction
@@ -1287,29 +1364,15 @@ def test_shot_rows_accept_optional_camera_and_transition_without_changing_legacy
 def test_invalid_shot_row_camera_and_transition_values_fail_safely(value, message):
     with pytest.raises(ValueError, match=message):
         parse_shot_plan(value, 8.0, mode="t2va")
-# Pairs that already exceed the similarity threshold. They are known debt pending an
-# inheritance refactor (the painterly family should share one base profile, and the 2D
-# animation languages should stop restating animation_2d wording verbatim); the entries
-# exist so a NEW near-duplicate profile cannot be added unnoticed.
+# Pairs that already exceed the similarity threshold. They are known catalog
+# differentiation debt; the entries exist so a NEW near-duplicate profile cannot be
+# added unnoticed.
 KNOWN_NEAR_DUPLICATE_PROFILES = {
     ("visual_language", "painterly_2d", "gouache_2d"),        # measured 0.483
     ("visual_language", "watercolor_2d", "gouache_2d"),       # measured 0.452
     ("visual_language", "painterly_2d", "watercolor_2d"),     # measured 0.427
     ("visual_language", "anime_general", "animation_2d"),     # measured 0.427
     ("visual_language", "animation_2d", "stylized_3d_animation"),  # measured 0.417
-    # Siblings under a shared ancestor, surfaced once the exclusion narrowed to direct
-    # ancestor/descendant pairs. They repeat their family's vocabulary rather than being
-    # copies of each other; known debt, tracked here so a genuinely new clone still fails.
-    ("world_aesthetic", "retrofuturism_atomic_age", "retrofuturism_y2k"),        # measured 0.725
-    ("world_aesthetic", "retrofuturism_atomic_age", "retrofuturism_cassette"),   # measured 0.700
-    ("world_aesthetic", "retrofuturism_cassette", "retrofuturism_y2k"),          # measured 0.694
-    ("visual_language", "anime_shonen", "anime_shojo"),                          # measured 0.637
-    ("visual_language", "anime_ultradetailed_cinematic", "anime_shojo"),         # measured 0.539
-    ("visual_language", "pixel_art_16bit", "graphic_novel"),                     # measured 0.526
-    ("visual_language", "anime_ultradetailed_cinematic", "anime_shonen"),        # measured 0.522
-    ("visual_language", "pixel_art_16bit", "graphic_noir"),                      # measured 0.458
-    ("visual_language", "anime_shonen", "anime_shojo_pastel"),                   # measured 0.457
-    ("visual_language", "anime_ultradetailed_cinematic", "anime_shojo_pastel"),  # measured 0.437
 }
 NEAR_DUPLICATE_THRESHOLD = 0.40
 
@@ -1317,24 +1380,17 @@ NEAR_DUPLICATE_THRESHOLD = 0.40
 def _profile_similarities():
     """Token-level Jaccard for every pair of profiles inside each catalog.
 
-    Only direct ancestor/descendant pairs are skipped: a child necessarily repeats its
-    parent's resolved text, so that overlap is designed rather than accidental. Siblings
-    are NOT skipped - two profiles that merely share an ancestor can still be clones of
-    each other, and excluding them made a profile copied from its sibling invisible here.
+    Every profile is independent, so every pair is measured directly.
     """
     similarities = {}
     for axis in CREATIVE_AXES:
         names = [name for name in creative_treatment_choices(axis) if name != "none"]
         tokens = {}
-        lineages = {}
         for name in names:
             dimensions = compose_creative_treatment(**{axis: name})["dimensions"]
             text = " ".join(" ".join(dimensions[dimension]) for dimension in PROFILE_DIMENSIONS)
             tokens[name] = set(re.findall(r"[a-z0-9']+", text.casefold()))
-            lineages[name] = set(_profile_lineage(axis, name))
         for first, second in itertools.combinations(names, 2):
-            if first in lineages[second] or second in lineages[first]:
-                continue
             union = tokens[first] | tokens[second]
             similarities[(axis, first, second)] = len(tokens[first] & tokens[second]) / len(union)
     return similarities
@@ -1358,10 +1414,7 @@ def test_allowlisted_near_duplicate_profiles_are_still_real_debt():
 
 
 def test_worst_case_creative_treatment_instruction_stays_inside_its_token_budget():
-    # Measured 2026-08: the longest combination is sports_competition + anime_shojo_pastel
-    # + analog_1980s + pulp_heightened, at 11491 characters once the mandatory output-integration
-    # block is included (11017 before it). The cap is that plus ~11%; exceeding it means unbounded
-    # prompt growth that degrades small local models.
+    # The cap prevents unbounded prompt growth that degrades small local models.
     longest = {}
     for axis in CREATIVE_AXES:
         longest[axis] = max(
@@ -1373,8 +1426,8 @@ def test_worst_case_creative_treatment_instruction_stays_inside_its_token_budget
     instruction = creative_treatment_instruction(compose_creative_treatment(**longest))
     assert longest == {
         "genre": "sports_competition",
-        "visual_language": "anime_shojo_pastel",
-        "world_aesthetic": "analog_1980s",
+        "visual_language": "live_action_latin_american_telenovela",
+        "world_aesthetic": "retrofuturism_y2k",
         "tone": "pulp_heightened",
     }
     assert len(instruction) < 12800

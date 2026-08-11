@@ -260,7 +260,8 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
         "anime_general", "anime_ultradetailed_cinematic", "anime_retro_dramatic", "anime_retro_gag_family",
         "japanese_print_animation",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
-        "american_comic_pastel", "animation_2d", "pixel_art_16bit",
+        "american_comic_pastel", "animation_2d", "heroic_limited_cel_tv",
+        "midcentury_graphic_cel_comedy", "classic_morning_adventure_cel", "pixel_art_16bit",
         "stylized_3d_animation", "game_3d_cinematic", "game_3d_nextgen", "low_poly_3d",
         "cel_shaded_3d", "documentary_observational", "live_action_cinematic",
         "live_action_classic_black_and_white",
@@ -278,6 +279,9 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
         "kinetic", "pulp_heightened", "stoic",
         "cyberpunk", "film_noir", "science_fiction", "high_fantasy", "retrofuturism",
         "epic", "intimate", "dark", "tense", "hopeful", "melancholic", "playful", "restrained",
+        "titleScreenStyle", "minimal_cinematic", "bold_broadcast", "classic_cel",
+        "illustrated_pulp", "elegant_editorial", "neon_technology", "pixel_art_title",
+        "silent_intertitle",
     ):
         assert f'"{token}"' in source
     assert "+ Add shot" in source
@@ -291,7 +295,7 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     assert ".slice(0, 8000)" in source
     assert "rebalanceExactDurations" in source
     family_labels = (
-        '"Anime"', '"Drawn & painted 2D"', '"Graphic & pixel styles"',
+        '"Anime"', '"Classic television cel"', '"Drawn & painted 2D"', '"Graphic & pixel styles"',
         '"3D animation"', '"Game cinematics"', '"Physical animation"',
         '"Live action"', '"Commercial & presentation"',
     )

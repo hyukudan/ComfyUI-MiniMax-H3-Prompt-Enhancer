@@ -2287,3 +2287,52 @@ def test_system_prompt_forbids_completing_an_inherited_transient_at_the_first_fr
     assert "When the request continues a previous take" in system_prompt_for_mode("t2va")
     assert "When the request continues a previous take" in system_prompt_for_mode("ref2va")
     assert len(SYSTEM_PROMPT) < 12000
+
+
+def test_title_screen_style_is_source_gated_and_validates_its_declarative_lock():
+    source = 'Opening title screen displays the exact visible text "NIGHT RUN".'
+    treatment = json.dumps({
+        "schemaVersion": 1,
+        "titleScreenStyle": "pixel_art_title",
+    })
+    request = build_user_request(
+        source, "t2va", 5.0, enhance_description=True,
+        creative_treatment_json=treatment,
+    )
+    lock = (
+        "The requested title screen is native pixel art on one fixed low-resolution integer grid, with hard "
+        "nearest-neighbor glyph clusters, a stable limited palette, no antialiasing, and a stepped grid-aligned reveal."
+    )
+    assert lock in request
+    assert "pixel_art_title" not in request
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" in request
+
+    unrelated = build_user_request(
+        "A woman crosses a station.", "t2va", 5.0, enhance_description=True,
+        creative_treatment_json=treatment,
+    )
+    assert lock not in unrelated
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" not in unrelated
+
+    output = f"""integrated_multimodal_description:
+{lock}
+[Shot 1] A full-frame title screen displays the exact visible text "NIGHT RUN" in hard grid-aligned glyphs.
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    present = validate_prompt(
+        output, "t2va", 5.0, source,
+        creative_treatment_json=treatment,
+        enhance_description=True,
+    )
+    assert not any("title screen is missing" in error for error in present["errors"])
+
+    missing = validate_prompt(
+        output.replace(lock + "\n", ""), "t2va", 5.0, source,
+        creative_treatment_json=treatment,
+        enhance_description=True,
+    )
+    assert any("title screen is missing" in error for error in missing["errors"])

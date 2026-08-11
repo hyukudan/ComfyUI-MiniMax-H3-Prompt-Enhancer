@@ -19,7 +19,8 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 18
+CREATIVE_PROFILE_CATALOG_VERSION = 21
+TITLE_SCREEN_STYLE_CATALOG_VERSION = 1
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 6
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -43,7 +44,7 @@ PROFILE_DIMENSIONS = (
 )
 
 
-def _profile(*, version=1, inherits=(), tags=(), editing_and_pacing=(), camera_and_framing=(),
+def _profile(*, version=1, tags=(), editing_and_pacing=(), camera_and_framing=(),
              lighting_and_color=(), production_design=(), blocking_and_performance=(),
              sound_treatment=(), may_fill_unspecified=(), must_not_invent=()) -> dict[str, Any]:
     """Keep every profile structurally identical and easy to version/review.
@@ -56,7 +57,6 @@ def _profile(*, version=1, inherits=(), tags=(), editing_and_pacing=(), camera_a
 
     return {
         "version": int(version),
-        "inherits": items(inherits),
         "tags": dict(tags),
         "editing_and_pacing": items(editing_and_pacing),
         "camera_and_framing": items(camera_and_framing),
@@ -67,6 +67,62 @@ def _profile(*, version=1, inherits=(), tags=(), editing_and_pacing=(), camera_a
         "may_fill_unspecified": items(may_fill_unspecified),
         "must_not_invent": items(must_not_invent),
     }
+
+
+def _title_screen_profile(*, instruction: str, delivery_lock: str,
+                          must_not_invent: str) -> dict[str, Any]:
+    """Define one independent title-screen treatment and its H3-safe lock."""
+    return {
+        "version": 1,
+        "instruction": str(instruction).strip(),
+        "deliveryLock": str(delivery_lock).strip(),
+        "mustNotInvent": str(must_not_invent).strip(),
+    }
+
+
+TITLE_SCREEN_STYLE_PROFILES = {
+    "none": {"version": 1, "instruction": "", "deliveryLock": "", "mustNotInvent": ""},
+    "minimal_cinematic": _title_screen_profile(
+        instruction="Use restrained cinematic title composition with disciplined negative space, a single clear hierarchy, precise spacing, high figure-to-ground contrast, and a subtle source-compatible reveal and exit.",
+        delivery_lock="The requested title screen uses a restrained cinematic composition with disciplined negative space, precise letter spacing, one clear hierarchy, high figure-to-ground contrast, and a subtle clean reveal and exit.",
+        must_not_invent="No subtitle, credit, logo, emblem, decorative object, additional wording, lens flare, particle, or light source may be added.",
+    ),
+    "bold_broadcast": _title_screen_profile(
+        instruction="Use bold geometric broadcast lettering, a strong modular grid, broadcast-safe color separation, immediate readability at a distance, and one quick clean entrance, hold, and exit.",
+        delivery_lock="The requested title screen uses bold geometric broadcast lettering on a strong modular grid with broadcast-safe color separation, immediate long-distance readability, and one quick clean entrance, hold, and exit.",
+        must_not_invent="No channel identity, station bug, lower third, ticker, sponsor, logo, subtitle, credit, or additional wording may be added.",
+    ),
+    "classic_cel": _title_screen_profile(
+        instruction="Use hand-drawn opaque title shapes, stable ink contours, a compact cel palette, a painted graphic background, and economical limited-animation movement that remains consistent with the selected visual language.",
+        delivery_lock="The requested title screen is hand-drawn cel artwork with opaque title shapes, stable ink contours, a compact cel palette, a painted graphic background, and economical limited-animation movement.",
+        must_not_invent="No character, mascot, prop, scenery event, sparkle, transformation, studio mark, subtitle, credit, or additional wording may be added.",
+    ),
+    "illustrated_pulp": _title_screen_profile(
+        instruction="Use forceful hand-illustrated lettering, controlled print texture, bold shadow masses, a compact dramatic palette, and a static or minimally moving composition without importing story objects or genre events.",
+        delivery_lock="The requested title screen uses forceful hand-illustrated lettering, controlled print texture, bold shadow masses, a compact dramatic palette, and a static or minimally moving graphic composition.",
+        must_not_invent="No weapon, character, creature, city, explosion, printed issue data, publisher mark, subtitle, credit, or additional wording may be added.",
+    ),
+    "elegant_editorial": _title_screen_profile(
+        instruction="Use refined high-contrast letterforms, measured tracking, balanced margins, quiet asymmetry or centered order, restrained color, and an unhurried fade or precise mask reveal.",
+        delivery_lock="The requested title screen uses refined high-contrast letterforms, measured tracking, balanced margins, restrained color, and an unhurried fade or precise mask reveal.",
+        must_not_invent="No publication identity, fashion branding, ornament, monogram, subtitle, credit, tagline, or additional wording may be added.",
+    ),
+    "neon_technology": _title_screen_profile(
+        instruction="Use crisp geometric letterforms, restrained emissive edge color, structured dark-to-mid value separation, clean modular alignment, and a stable scan or line-build reveal without presenting a fictional interface.",
+        delivery_lock="The requested title screen uses crisp geometric letterforms, restrained emissive edge color, structured dark-to-mid value separation, clean modular alignment, and a stable scan or line-build reveal.",
+        must_not_invent="No hologram, HUD, code, data, glitch, circuitry, logo, interface control, subtitle, credit, or additional wording may be added.",
+    ),
+    "pixel_art_title": _title_screen_profile(
+        instruction="Build every glyph and background mark on one fixed low-resolution integer pixel grid with hard nearest-neighbor clusters, a stable limited palette, no antialiasing, and a stepped grid-aligned reveal.",
+        delivery_lock="The requested title screen is native pixel art on one fixed low-resolution integer grid, with hard nearest-neighbor glyph clusters, a stable limited palette, no antialiasing, and a stepped grid-aligned reveal.",
+        must_not_invent="No HUD, menu, score, health bar, game logo, scanline, CRT curvature, glitch, subtitle, credit, or additional wording may be added.",
+    ),
+    "silent_intertitle": _title_screen_profile(
+        instruction="Use a composed black-and-ivory intertitle with centered highly readable period-neutral serif-like lettering, restrained border geometry, stable exposure, and a simple hold with a clean cut or fade.",
+        delivery_lock="The requested title screen is a composed black-and-ivory intertitle with centered highly readable serif-like lettering, restrained border geometry, stable exposure, and a simple hold with a clean cut or fade.",
+        must_not_invent="No film damage, flicker, scratches, projector artifact, historical date, studio mark, chapter number, subtitle, credit, or additional wording may be added.",
+    ),
+}
 
 
 GENRE_PROFILES = {
@@ -345,7 +401,6 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Edo-period settings, ukiyo-e subjects, kimono, samurai, geisha, kabuki, temples, Mount Fuji, waves, boats, cherry blossom, Japanese text, seals, borders, paper damage, fading, historical claims, traditional music, narration, or franchise imagery."),
     ),
     "anime_ultradetailed_cinematic": _profile(
-        inherits=("anime_general",),
         editing_and_pacing=(
             "Use feature-animation precision: preserve dense design information through every pose, reserve the richest redraws for authored focal beats, and use controlled holds or selective motion where constant full-detail movement would shimmer.",
         ),
@@ -356,7 +411,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Use sophisticated but stable anime color design with layered cel and painted value transitions, precise material-dependent highlights, protected local colors, controlled atmospheric depth, and high-detail shadow construction motivated only by existing illumination.",
         ),
         production_design=(
-            "Render supplied faces, hair, hands, fabric, surfaces, architecture, machinery, vegetation, and environmental wear with high line precision, material specificity, dense coherent texture, and richly painted background depth only where those elements already exist or are safe presentational detail.",
+            "Every depicted face, hairstyle, hand, garment, surface, building, machine, plant, and trace of environmental wear uses unmistakably non-photorealistic hand-authored 2D cinematic anime design with high line precision, material specificity, dense coherent texture, and richly painted background depth.",
             "Keep fine contours, facial construction, patterns, small props, material edges, reflections, shadow maps, and background geometry temporally locked; detail density must remain coherent rather than crawling, melting, or being redesigned frame by frame.",
         ),
         blocking_and_performance=(
@@ -368,11 +423,22 @@ VISUAL_LANGUAGE_PROFILES = {
     ),
     "anime_shonen": _profile(
         version=2,
-        inherits=("anime_general",),
-        editing_and_pacing=("Give requested physical actions a pronounced anticipation-action-impact-recovery rhythm while preserving the exact event count and cut plan.",),
-        camera_and_framing=("Use forceful perspective, low angles, broad trajectories, and strong silhouettes only to emphasize actions already present.",),
-        lighting_and_color=("Use bold value separation and brief lighting emphasis at real requested impacts or revelations, not as invented energy.",),
-        production_design=("Keep background geometry and scale readable enough to measure movement, distance, and impact.",),
+        editing_and_pacing=(
+            "Give requested physical actions a pronounced anticipation-action-impact-recovery rhythm while preserving the exact event count and cut plan.",
+            "Between those authored beats, use deliberate held key poses and economical in-between drawings so kinetic emphasis never changes the event order, duration, or settled endpoint.",
+        ),
+        camera_and_framing=(
+            "Use forceful perspective, low angles, broad trajectories, and strong silhouettes only to emphasize actions already present.",
+            "Build every viewpoint as stable authored 2D geometry with readable foreground, subject, contact point, travel path, and background planes; any parallax or camera move must preserve screen direction, scale, and line stability.",
+        ),
+        lighting_and_color=(
+            "Use bold cel-value separation and brief lighting emphasis at real requested impacts or revelations, not as invented energy.",
+            "Keep local colors, contour hierarchy, cel-shadow bands, facial construction, material cues, and background palette temporally stable without photographic grading, line boil, flicker, or frame-to-frame redesign.",
+        ),
+        production_design=(
+            "Every depicted person, garment, object, material, and setting uses unmistakably non-photorealistic hand-authored 2D action-anime design with clean cel fills, decisive contours, stable model-sheet construction, and background geometry readable enough to measure movement, distance, and impact.",
+            "Identity, age, anatomy, body type, wardrobe, count, object subtype, required colors, location, and illumination sources remain exact; action-anime styling changes presentation, never the subject or story facts.",
+        ),
         blocking_and_performance=("Use committed key poses, clear weight transfer, determined attention, and readable recovery without changing personality or age.",),
         sound_treatment=("When allowed, give requested movement and impacts crisp synchronized physical emphasis; never manufacture attack calls or vocal exertion words.",),
         may_fill_unspecified=("Dynamic pose strength, perspective emphasis, and kinetic timing around existing action.",),
@@ -380,11 +446,22 @@ VISUAL_LANGUAGE_PROFILES = {
     ),
     "anime_shojo": _profile(
         version=2,
-        inherits=("anime_general",),
-        editing_and_pacing=("Use elegant pauses and measured reaction timing around emotional information already present.",),
-        camera_and_framing=("Emphasize supplied gaze, hands, posture, and relational distance through graceful composition and gentle camera motion.",),
-        lighting_and_color=("Favor delicate tonal transitions, luminous separation, and selective softness while keeping required details clear.",),
-        production_design=("Use refined shape rhythm and decorative restraint; abstraction may support an existing emotion but may not replace the physical setting when continuity matters.",),
+        editing_and_pacing=(
+            "Use elegant pauses and measured reaction timing around emotional information already present.",
+            "Use authored held expressions, economical pose changes, and restrained secondary motion while preserving every supplied action, transition, duration, and final state.",
+        ),
+        camera_and_framing=(
+            "Emphasize supplied gaze, hands, posture, and relational distance through graceful composition and gentle camera motion.",
+            "Construct the view from stable drawn foreground, subject, and painted-background planes with coherent perspective and restrained parallax; keep required contact, geography, and identity readable throughout.",
+        ),
+        lighting_and_color=(
+            "Favor delicate cel-value transitions, luminous separation, and selective softness while keeping required details clear.",
+            "Keep local colors, fine contours, facial construction, eye highlights, hair shapes, cel-shadow bands, and painted background values temporally stable without photographic beauty grading, line boil, flicker, or palette drift.",
+        ),
+        production_design=(
+            "Every depicted person, garment, object, material, and setting uses unmistakably non-photorealistic hand-authored 2D shōjo-anime design with refined shape rhythm, elegant model-sheet construction, clean cel fills, painted backgrounds, and decorative restraint; abstraction may support an existing emotion but may not replace the physical setting when continuity matters.",
+            "Identity, ethnicity, age, anatomy, body type, wardrobe, count, object subtype, required colors, location, and illumination sources remain exact; visual refinement never substitutes a character, costume, setting, or relationship.",
+        ),
         blocking_and_performance=("Use nuanced eye, hand, hair, fabric, and breath motion to clarify an existing emotional beat.",),
         sound_treatment=("When permitted, favor intimate physical detail and spacious pauses; do not infer romantic or magical music.",),
         may_fill_unspecified=("Elegant composition, delicate motion accents, and expressive reaction holds.",),
@@ -392,7 +469,6 @@ VISUAL_LANGUAGE_PROFILES = {
     ),
     "anime_shojo_pastel": _profile(
         version=2,
-        inherits=("anime_shojo",),
         editing_and_pacing=(
             "Use the economical pose changes, carefully held expressions, graceful reaction timing, and clean limited-animation cadence of classic Japanese shōjo television animation while preserving every supplied action, cut, and timing requirement.",
         ),
@@ -406,7 +482,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Keep local colors, fine outlines, iris rings, multiple eye highlights, hair highlight bands, gradients, and shadow shapes temporally stable; avoid washed-out skin, clipped whites, color crawl, and photographic beauty-filter rendering.",
         ),
         production_design=(
-            "Translate supplied content into a coherent hand-authored Japanese shōjo animation vocabulary with tapered elegant faces, large luminous carefully constructed eyes, understated noses and mouths, fine lashes, clean cel fills, and hair organized into long flowing tapered locks with graphic highlight shapes.",
+            "Every depicted person, garment, object, material, and setting uses a coherent hand-authored Japanese shōjo animation vocabulary with tapered elegant faces, large luminous carefully constructed eyes, understated noses and mouths, fine lashes, clean cel fills, and hair organized into long flowing tapered locks with graphic highlight shapes.",
             "Preserve the supplied person's identity, ethnicity, age, body type, wardrobe, object design, and setting; shōjo refinement must not substitute an existing character, costume, magical-girl uniform, or franchise design.",
         ),
         blocking_and_performance=(
@@ -460,8 +536,79 @@ VISUAL_LANGUAGE_PROFILES = {
         may_fill_unspecified=("2D line and shape language, fill treatment, palette organization, background abstraction, layered parallax, key-pose timing, and secondary motion."),
         must_not_invent=("Live-action or photoreal rendering unless explicitly required; a mere flattened post-process filter, cartoon physics, squash-and-stretch gags, anthropomorphism, impossible motion, or stylized sound effects."),
     ),
+    "heroic_limited_cel_tv": _profile(
+        editing_and_pacing=(
+            "Present the supplied sequence as heroic limited-cel television animation with economical pose-to-pose timing, strong held key drawings, deliberate reusable motion cycles, and complete readable actions rather than simulated full animation.",
+            "Use selective cel changes and purposeful holds to preserve the supplied event order; repeat a cycle only for genuinely repeated motion already present in the source.",
+        ),
+        camera_and_framing=(
+            "Stage bold, readable silhouettes in clear medium-wide, medium, profile, three-quarter, or frontal compositions, with restrained cuts and decisive changes of pose.",
+            "Limit movement to production-feasible rostrum pans, tilts, trucks across painted planes, held reframing, or simple multiplane parallax; keep perspective, screen direction, and subject scale stable.",
+        ),
+        lighting_and_color=(
+            "Use opaque flat cel fills, one or two clean shadow groups, firm broadcast-safe value separation, and a controlled palette of strong local colors that preserves every authoritative color.",
+            "Keep contour weight, fill boundaries, shadow shapes, facial construction, and palette roles temporally stable without line boil, color crawl, photographic grading, volumetric glow, or frame-to-frame redesign.",
+        ),
+        production_design=(
+            "Every depicted person, garment, object, material, and environment uses one consistent hand-inked cel and static painted-background vocabulary while identity, age, anatomy, count, object subtype, location, and required design facts remain unchanged.",
+            "Use economical model-sheet construction, clean linework, repeatable shapes, restrained surface detail, and stable painted background planes designed for practical cel reuse.",
+        ),
+        blocking_and_performance=(
+            "Express supplied intent through grounded strong poses, clear eyelines, legible hand shapes, controlled head turns, and concise anticipation and recovery while keeping anatomy, contact, and personality consistent.",
+        ),
+        sound_treatment=("Heroic limited-cel styling grants no dialogue, announcer, theme music, heroic fanfare, stylized impact, or other audio; use only sound authorized by the existing audio policies and supplied visible causes.",),
+        may_fill_unspecified=("Strong model-sheet pose design, economical cel exposure, deliberate reusable cycles, static painted background treatment, rostrum-feasible camera movement, broadcast-safe palette organization, and temporally stable linework."),
+        must_not_invent=("Heroes, villains, fantasy, mythology, magic, powers, transformations, weapons, armor, battles, monsters, vehicles, missions, danger, rescues, dramatic declarations, an inferred historical setting, logos, titles, narration, theme music, fanfares, or stylized effects."),
+    ),
+    "midcentury_graphic_cel_comedy": _profile(
+        editing_and_pacing=(
+            "Present the supplied sequence as mid-century graphic limited-cel television comedy with concise setup-action-reaction timing only where those beats already exist, clean held poses, selective replacement drawings, and economical loops.",
+            "Use dry reaction holds and exact pauses to clarify supplied behavior without manufacturing a joke, punchline, escalation, or extra event.",
+        ),
+        camera_and_framing=(
+            "Favor uncluttered frontal, profile, three-quarter, medium, and medium-wide staging with flat graphic balance, generous negative space, immediately readable silhouettes, and stable eyelines.",
+            "Use locked layouts, simple lateral pans, short settled reframing, or controlled movement across painted planes; avoid cinematic lens display, deep perspective drift, and needless camera motion.",
+        ),
+        lighting_and_color=(
+            "Use clean flat color shapes, compact coordinated palette families, crisp contour-to-fill boundaries, minimal graphic shadow, and broadcast-safe luminance separation while preserving authoritative colors.",
+            "Keep outlines, fills, mouth and eye shapes, palette roles, and background texture temporally stable without photographic shading, soft-focus grading, line boil, color crawl, or modern compositing glow.",
+        ),
+        production_design=(
+            "Every depicted person, garment, object, material, and setting uses coherent flat graphic cel design with simplified repeatable geometry and stylized painted backgrounds while identity, age, anatomy, count, object subtype, location, and required details remain unchanged.",
+            "Use modular head, eye, and mouth construction only when compatible with the supplied subject and action; keep model-sheet proportions and shape language consistent across every drawing.",
+        ),
+        blocking_and_performance=(
+            "Use economical full-pose changes, clear gaze direction, concise hand shapes, selective head or mouth replacement, and restrained dry reactions only to express behavior already supplied; maintain complete contact and readable physical causality.",
+        ),
+        sound_treatment=("Graphic limited-comedy styling grants no joke audio, funny voice, audience laughter, boing, whistle, percussion sting, dialogue, narration, or music; use only sound authorized by existing policies and supplied visible causes.",),
+        may_fill_unspecified=("Flat graphic shape language, modular replacement-drawing construction, compact palette organization, economical loops, dry reaction timing, locked-layout staging, and stylized painted-background treatment."),
+        must_not_invent=("Jokes, punchlines, pratfalls, slapstick, humiliation, caricatured behavior, funny animals, extra characters, domestic settings, houses, workplaces, families, neighbors, props, signs, readable text, audience laughter, comic effects, dialogue, narration, or music."),
+    ),
+    "classic_morning_adventure_cel": _profile(
+        editing_and_pacing=(
+            "Render the described events in a bright classic broadcast morning-adventure cadence: energetic key-to-key action, brisk readable accents, sparse connective drawings, and repeatable cycles restricted to motion that truly recurs.",
+            "Carry each authorized action through preparation, peak silhouette, follow-through, and settled end state; the style cannot add conflicts, lessons, or montage material.",
+        ),
+        camera_and_framing=(
+            "Arrange group-readable layouts with distinct contour masses, unambiguous left-to-right orientation, open action lanes, and medium or medium-wide coverage that preserves participant geography.",
+            "Confine viewpoint changes to purposeful cuts, lateral background-plane travel, vertical reveals, short optical-free approaches, and simple multiplane displacement; drawn perspective remains locked.",
+        ),
+        lighting_and_color=(
+            "Apply bold perimeter contours, opaque color regions, sparse designed shadows, bright regulated broadcast hues, and immediate figure-to-scenery value contrast while retaining mandated colors.",
+            "Lock outline hierarchy, face construction, color boundaries, highlight placement, and shade maps across frames; exclude boiling marks, crawling chroma, photographic grading, bloom, and drawing drift.",
+        ),
+        production_design=(
+            "Every depicted person, garment, object, material, and place uses a unified model-sheet cel vocabulary over painted scenery while identity, age, anatomy, quantity, subtype, location, and specified design facts remain unchanged.",
+            "Build each depicted participant from repeatable landmark shapes, controlled detail tiers, and a distinct outer contour that stays identifiable within an ensemble.",
+        ),
+        blocking_and_performance=(
+            "Direct lively economical extremes, unmistakable gaze targets, decisive torso orientation, legible hands, planted contacts, and sparse follow-on motion solely around stated behavior and established personality.",
+        ),
+        sound_treatment=("This visual treatment confers no speech, announcer, moral, theme song, triumphant scoring, catchphrase, exaggerated hit, or promotional cue; audio remains limited to independently authorized sources and visible causes.",),
+        may_fill_unspecified=("Ensemble legibility, repeatable model landmarks, bold outer contours, bright regulated hues, painted scenery depth, lively key-to-key spacing, multiplane displacement, and cycles for genuinely recurring movement."),
+        must_not_invent=("Teams, companions, mascots, villains, henchmen, creatures, abilities, transformations, arms, gadgets, vehicles, missions, quests, rescues, fights, peril, headquarters, catchphrases, moral lessons, merchandise, branding, titles, speech, narration, theme songs, or exaggerated effects."),
+    ),
     "pixel_art_16bit": _profile(
-        inherits=("animation_2d",),
         editing_and_pacing=(
             "Present motion as authored 16-bit-era pixel animation with deliberate stepped poses, economical in-between frames, readable anticipation and recovery, and stable temporal cadence.",
         ),
@@ -473,7 +620,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Keep every pixel hard-edged and grid-aligned with nearest-neighbor visual scaling: no antialiasing, subpixel edges, smooth photographic gradients, soft focus, crawling dithering, or frame-to-frame palette drift.",
         ),
         production_design=(
-            "Unless authoritative content explicitly requires another rendering medium, translate supplied subjects, wardrobe, objects, and environments into unmistakable non-photorealistic 16-bit-style pixel art while preserving identity, count, shape cues, and required colors.",
+            "The entire sequence is unmistakable native non-photorealistic 16-bit-style pixel art: every depicted subject, garment, object, effect, and environment is constructed on one fixed low-resolution integer pixel grid while identity, count, shape cues, and required colors remain unchanged.",
             "Use one coherent sprite, tile, pixel-cluster, outline, and palette language across characters, props, effects, and backgrounds.",
         ),
         blocking_and_performance=(
@@ -1430,7 +1577,6 @@ VISUAL_LANGUAGE_PROFILES = {
     ),
     "graphic_novel": _profile(
         version=2,
-        inherits=("animation_2d",),
         editing_and_pacing=(
             "Present the sequence as a moving illustrated graphic novel with decisive visual beats, authored pose changes, and readable holds; preserve continuous motion rather than a slideshow or panel-by-panel edit.",
         ),
@@ -1443,7 +1589,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Keep line weight, solid fills, selective texture, local colors, and shadow boundaries stable from frame to frame; prevent crawling ink, flickering hatching, and unstable surface detail.",
         ),
         production_design=(
-            "Unless the authoritative prompt explicitly requires live action or photographic rendering, translate supplied people, wardrobe, objects, and settings into an unmistakably non-photorealistic hand-illustrated 2D graphic-novel vocabulary.",
+            "Every depicted person, garment, object, material, and setting uses one unmistakably non-photorealistic hand-illustrated 2D graphic-novel vocabulary.",
             "Maintain one coherent drawing, inking, print-texture, shape, and surface language across characters and environment while preserving identity and all supplied design facts.",
         ),
         blocking_and_performance=(
@@ -1454,22 +1600,25 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Photorealistic or live-action rendering unless explicitly required; panels, gutters, captions, narration, speech balloons, written sound effects, superheroes, or comic-book plot conventions."),
     ),
     "graphic_noir": _profile(
-        inherits=("graphic_novel",),
         editing_and_pacing=(
             "Use measured tension, stark reveals, and held graphic compositions only around information and events already present, without imposing a crime story.",
+            "Maintain continuous authored illustrated motion through complete pose changes and readable settled states rather than turning the sequence into static panels, a slideshow, or disconnected inserts.",
         ),
         camera_and_framing=(
             "Favor severe geometric framing, oblique depth, silhouettes, frames within frames, and large fields of black while retaining enough selective visibility to read required identity and action.",
+            "Use stable hand-drawn perspective, layered 2D depth planes, and controlled parallax or reframing while preserving screen direction, contact geometry, subject scale, and temporally stable ink edges.",
         ),
         lighting_and_color=(
             "Use extreme but controlled black-and-white value separation, dominant ink-black shadow masses, sharp rim or practical highlights, and optional selective accent color only where compatible with authoritative colors.",
             "Treat color as sparse graphic emphasis rather than live-action color grading; preserve required skin, wardrobe, object, and reference colors whenever they are authoritative.",
         ),
         production_design=(
-            "Express compatible supplied architecture, interiors, wardrobe, and props through a stark illustrated crime-noir graphic vocabulary without adding conventional noir objects or locations.",
+            "Every depicted person, garment, object, material, building, interior, and exterior uses one stark non-photorealistic hand-illustrated 2D graphic-noir vocabulary without adding conventional noir objects or locations.",
+            "Keep anatomy, identity, wardrobe, object subtype, architecture, local colors, drawing construction, inking, print texture, shadow maps, and selective highlights coherent and temporally locked across the entire sequence.",
         ),
         blocking_and_performance=(
             "Use contained gesture, watchful eyelines, strong profile or three-quarter silhouettes, and deliberate stillness where compatible with the requested performance.",
+            "Preserve complete physical actions, legible hands, planted weight, contact points, facial identity, and causal reactions even when parts of the frame fall into graphic shadow.",
         ),
         sound_treatment=("Noir styling grants no voice-over, jazz, rain, sirens, weapons, or ominous sound; use only audio authorized by the existing policies and visible events.",),
         may_fill_unspecified=("Ink-black negative space, selective visibility, hard graphic highlights, sparse accent color, severe geometry, and restrained illustrated performance.",),
@@ -1615,18 +1764,33 @@ WORLD_AESTHETIC_PROFILES = {
         must_not_invent=("A historical era, event, nationality, class, occupation, custom, readable text, weapon, vehicle, or political symbol."),
     ),
     "retrofuturism_atomic_age": _profile(
-        inherits=("retrofuturism",),
+        editing_and_pacing=("Keep the supplied event order and pacing while making every existing mechanism and control operation visually legible through complete physical beats and purposeful holds.",),
+        camera_and_framing=("Use bold circular and rectilinear geometry, clean scale relationships, and restrained product-like views of technology already present without manufacturing a reveal or changing the shot plan.",),
+        lighting_and_color=("Use stable period-informed color blocking, restrained chrome highlights, opaque molded-plastic colors, practical indicator accents, and clear glossy-versus-matte separation while preserving every authoritative local color and light source.",),
         production_design=("Use a coherent 1950s–1960s atomic/space-age vocabulary for existing authorized technology: rounded enclosures, restrained chrome, molded plastics, analog dials, and era-consistent graphic geometry.",),
+        blocking_and_performance=("Make interaction with existing dials, switches, handles, seats, panels, and spaces tactile, simple, mechanically plausible, and readable without changing the supplied behavior.",),
+        sound_treatment=("This visual treatment adds no machinery or sound source; when existing visible controls or mechanisms are already authorized to sound, keep their physical clicks, relays, motors, and ventilation synchronized and materially specific.",),
+        may_fill_unspecified=("Rounded enclosure geometry, restrained chrome, opaque molded plastic, analog control layout, stable period color blocking, mechanically readable interaction, and compatible non-legible graphic detail on existing technology."),
         must_not_invent=("Rockets, atomic power, propaganda, diners, ray guns, robots, flying cars, space travel, or Cold War plot content."),
     ),
     "retrofuturism_cassette": _profile(
-        inherits=("retrofuturism",),
+        editing_and_pacing=("Keep the supplied event order and pacing while showing each authorized physical-key, panel, media, or mechanical operation as a complete readable action rather than an abstract interface gesture.",),
+        camera_and_framing=("Use layered modular geometry, clear panel hierarchy, robust human-to-machine scale, and restrained views of existing controls without inventing inserts, screens, devices, or product reveals.",),
+        lighting_and_color=("Use stable charcoal, warm neutral, muted industrial, and restrained indicator-color relationships with clear matte plastic, painted metal, rubber, glass, and phosphor-like surface separation while preserving explicit colors and illumination.",),
         production_design=("Use a coherent 1970s–1980s cassette-futurist vocabulary for existing authorized technology: modular panels, physical keys, CRT-like display geometry, vents, labels as non-legible blocks, and robust housings.",),
+        blocking_and_performance=("Make interaction with existing keys, toggles, latches, knobs, slots, handles, and modular housings tactile, weight-bearing, mechanically sequenced, and consistent with the supplied action.",),
+        sound_treatment=("This visual treatment adds no device or audio layer; when existing visible mechanisms are already authorized to sound, use synchronized key travel, switch detents, latches, relays, motors, fans, and housing resonance without electronic nostalgia cues."),
+        may_fill_unspecified=("Modular panel hierarchy, robust housing geometry, physical-key and vent language, matte industrial material separation, restrained indicator accents, tactile mechanical operation, and non-legible label blocks on existing technology."),
         must_not_invent=("Computers, CRT screens, cassette decks, spaceships, robots, military hardware, corporate dystopia, or readable interface text."),
     ),
     "retrofuturism_y2k": _profile(
-        inherits=("retrofuturism",),
+        editing_and_pacing=("Keep the supplied event order and pacing while presenting every authorized control, opening, docking, folding, or interface action with clean physical continuity and a stable settled endpoint.",),
+        camera_and_framing=("Use compact rounded geometry, clean negative space, precise object-to-user scale, and restrained product-clear views of technology already present without inventing inserts, interfaces, devices, or showcase beats.",),
+        lighting_and_color=("Use stable translucent-polymer color, soft metallic neutrals, restrained pearlescent accents, clean edge highlights, and readable internal-versus-surface separation while preserving every explicit color, material, and light source."),
         production_design=("Use a coherent late-1990s–2000s Y2K vocabulary for existing authorized technology: translucent polymers, compact rounded forms, metallic accents, and era-consistent physical/digital controls.",),
+        blocking_and_performance=("Make interaction with existing compact controls, covers, buttons, hinges, ports, handles, and translucent housings precise, light, tactile, and mechanically credible without changing the supplied behavior."),
+        sound_treatment=("This visual treatment adds no gadget or sound source; when existing visible controls or mechanisms are already authorized to sound, use restrained synchronized button travel, latches, hinges, motors, and lightweight housing resonance without digital nostalgia effects."),
+        may_fill_unspecified=("Compact rounded geometry, translucent polymer layering, soft metallic accents, clean edge highlights, era-consistent control language, precise tactile operation, and non-legible interface grouping on existing technology."),
         must_not_invent=("Web graphics, logos, gadgets, internet culture, futuristic vehicles, holograms, robots, or readable interface text."),
     ),
     "analog_1980s": _profile(
@@ -2292,6 +2456,55 @@ def creative_treatment_choices(axis: str) -> tuple[str, ...]:
     return tuple(PROFILE_CATALOGS[key])
 
 
+def title_screen_style_choices() -> tuple[str, ...]:
+    """Return stable independent title-screen style choices."""
+    return tuple(TITLE_SCREEN_STYLE_PROFILES)
+
+
+_TITLE_SCREEN_REQUEST_RE = re.compile(
+    r"\b(?:title\s+(?:screen|card)|opening\s+title|end\s+title|intertitle|"
+    r"pantalla\s+de\s+t[ií]tulo|tarjeta\s+de\s+t[ií]tulo|t[ií]tulo\s+(?:inicial|final))\b",
+    re.IGNORECASE,
+)
+
+
+def title_screen_requested(source_prompt: str) -> bool:
+    """A style never authorizes a title screen; the source must request one."""
+    return bool(_TITLE_SCREEN_REQUEST_RE.search(str(source_prompt or "")))
+
+
+def title_screen_style_instruction(treatment: Mapping[str, Any], source_prompt: str) -> str:
+    """Render private LLM guidance only for a source-authorized title screen."""
+    name = str(treatment.get("titleScreenStyle", "none"))
+    if name == "none" or not treatment.get("applied") or not title_screen_requested(source_prompt):
+        return ""
+    profile = TITLE_SCREEN_STYLE_PROFILES[name]
+    return "\n".join((
+        "SOURCE-AUTHORIZED TITLE SCREEN — EXACT VISIBLE TEXT ONLY:",
+        "Apply this treatment only to the title screen/card/intertitle explicitly requested by the basic prompt. "
+        "It does not authorize a title, another cut, or any visible word. Preserve the exact supplied title text, "
+        "capitalization, punctuation, language, line order, and spelling; never rewrite, translate, complete, or add "
+        "a subtitle, credit, logo, tagline, label, or extra word.",
+        "Private rendering direction for the title shot: " + profile["instruction"],
+        "Forbidden additions: " + profile["mustNotInvent"],
+        "Integrate the following declarative delivery lock once inside the authorized title shot; emit no style ID, "
+        "preset label, control name, or instruction about transforming supplied content:",
+        profile["deliveryLock"],
+    ))
+
+
+def title_screen_style_adherence_errors(output_prompt: str, treatment: Mapping[str, Any],
+                                        source_prompt: str) -> list[str]:
+    """Require the declarative lock only for a source-authorized selected style."""
+    name = str(treatment.get("titleScreenStyle", "none"))
+    if name == "none" or not treatment.get("applied") or not title_screen_requested(source_prompt):
+        return []
+    lock = str(TITLE_SCREEN_STYLE_PROFILES[name]["deliveryLock"])
+    return [] if lock and lock in str(output_prompt) else [
+        f"The source-authorized title screen is missing the exact declarative {name!r} delivery lock"
+    ]
+
+
 def _dedupe(values) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()
@@ -2304,35 +2517,16 @@ def _dedupe(values) -> list[str]:
     return found
 
 
-def _resolve_profile(axis: str, name: str, stack: tuple[str, ...] = ()) -> dict[str, list[str]]:
+def _resolve_profile(axis: str, name: str) -> dict[str, list[str]]:
     catalog = PROFILE_CATALOGS[axis]
     if name not in catalog:
         allowed = ", ".join(catalog)
         raise ValueError(f"Unsupported {axis.replace('_', ' ')} profile {name!r}; choose one of: {allowed}")
-    key = f"{axis}:{name}"
-    if key in stack:
-        raise RuntimeError(f"Creative-treatment inheritance cycle detected at {key}")
     profile = catalog[name]
-    resolved = {dimension: [] for dimension in PROFILE_DIMENSIONS}
-    for parent in profile.get("inherits", ()):
-        inherited = _resolve_profile(axis, str(parent), (*stack, key))
-        for dimension in PROFILE_DIMENSIONS:
-            resolved[dimension].extend(inherited[dimension])
-    for dimension in PROFILE_DIMENSIONS:
-        resolved[dimension].extend(profile.get(dimension, ()))
-        resolved[dimension] = _dedupe(resolved[dimension])
-    return resolved
-
-
-def _profile_lineage(axis: str, name: str, stack: tuple[str, ...] = ()) -> list[str]:
-    key = f"{axis}:{name}"
-    if key in stack:
-        raise RuntimeError(f"Creative-treatment inheritance cycle detected at {key}")
-    lineage: list[str] = []
-    for parent in PROFILE_CATALOGS[axis][name].get("inherits", ()):
-        lineage.extend(_profile_lineage(axis, str(parent), (*stack, key)))
-    lineage.append(name)
-    return list(dict.fromkeys(lineage))
+    return {
+        dimension: _dedupe(profile.get(dimension, ()))
+        for dimension in PROFILE_DIMENSIONS
+    }
 
 
 def parse_creative_treatment(value: str | Mapping[str, Any] | None,
@@ -2357,7 +2551,7 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
     else:
         raise ValueError("creative_treatment_json must be blank, a JSON object string, or a mapping")
 
-    allowed_keys = {"schemaVersion", *CREATIVE_JSON_KEYS}
+    allowed_keys = {"schemaVersion", "titleScreenStyle", *CREATIVE_JSON_KEYS}
     unknown_keys = sorted(set(raw) - allowed_keys)
     if unknown_keys:
         raise ValueError(f"creative_treatment_json contains unsupported keys: {unknown_keys}")
@@ -2382,6 +2576,17 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
         if not isinstance(selected, str):
             raise ValueError(f"creative_treatment_json {external} must be a string")
         selections[internal] = selected.strip().lower()
+    title_screen_style = raw.get("titleScreenStyle", "none")
+    if title_screen_style in (None, ""):
+        title_screen_style = "none"
+    if not isinstance(title_screen_style, str):
+        raise ValueError("creative_treatment_json titleScreenStyle must be a string")
+    title_screen_style = title_screen_style.strip().lower()
+    if title_screen_style not in TITLE_SCREEN_STYLE_PROFILES:
+        raise ValueError(
+            f"Unsupported title screen style {title_screen_style!r}; choose one of: "
+            + ", ".join(TITLE_SCREEN_STYLE_PROFILES)
+        )
     dimensions = {dimension: [] for dimension in PROFILE_DIMENSIONS}
     profile_ids = []
     profile_versions = {}
@@ -2391,24 +2596,25 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
         if name != "none":
             profile_id = f"{axis}:{name}"
             profile_ids.append(profile_id)
-            for resolved_name in _profile_lineage(axis, name):
-                resolved_id = f"{axis}:{resolved_name}"
-                profile_versions[resolved_id] = int(PROFILE_CATALOGS[axis][resolved_name]["version"])
+            profile_versions[profile_id] = int(PROFILE_CATALOGS[axis][name]["version"])
         for dimension in PROFILE_DIMENSIONS:
             dimensions[dimension].extend(resolved[dimension])
     dimensions = {key: _dedupe(values) for key, values in dimensions.items()}
-    requested = bool(profile_ids)
+    requested = bool(profile_ids or title_screen_style != "none")
     canonical = {
         "schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION,
         "genre": selections["genre"],
         "visualLanguage": selections["visual_language"],
         "worldAesthetic": selections["world_aesthetic"],
         "tone": selections["tone"],
+        "titleScreenStyle": title_screen_style,
     }
     digest_payload = {
         "catalogVersion": CREATIVE_PROFILE_CATALOG_VERSION,
         "selection": canonical,
         "profileVersions": profile_versions,
+        "titleScreenStyleCatalogVersion": TITLE_SCREEN_STYLE_CATALOG_VERSION,
+        "titleScreenStyleVersion": int(TITLE_SCREEN_STYLE_PROFILES[title_screen_style]["version"]),
         "dimensions": dimensions,
     }
     return {
@@ -2418,6 +2624,9 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
         "applied": bool(enabled) and requested,
         "profileIds": profile_ids,
         "profileVersions": profile_versions,
+        "titleScreenStyleCatalogVersion": TITLE_SCREEN_STYLE_CATALOG_VERSION,
+        "titleScreenStyleVersion": int(TITLE_SCREEN_STYLE_PROFILES[title_screen_style]["version"]),
+        "titleScreenDeliveryLock": TITLE_SCREEN_STYLE_PROFILES[title_screen_style]["deliveryLock"],
         "dimensions": dimensions,
         "digest": _canonical_digest(digest_payload),
         "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -2438,17 +2647,9 @@ def compose_creative_treatment(genre: str = "none", visual_language: str = "none
     }, enabled=enabled)
 
 
-def _profile_tags(axis: str, name: str, stack: tuple[str, ...] = ()) -> dict[str, str]:
-    """Resolve the antagonism tags of one profile; a child overrides its parents."""
-    key = f"{axis}:{name}"
-    if key in stack:
-        raise RuntimeError(f"Creative-treatment inheritance cycle detected at {key}")
-    profile = PROFILE_CATALOGS[axis][name]
-    tags: dict[str, str] = {}
-    for parent in profile.get("inherits", ()):
-        tags.update(_profile_tags(axis, str(parent), (*stack, key)))
-    tags.update(profile.get("tags", {}))
-    return tags
+def _profile_tags(axis: str, name: str) -> dict[str, str]:
+    """Return the independent antagonism tags declared by one profile."""
+    return dict(PROFILE_CATALOGS[axis][name].get("tags", {}))
 
 
 def _precedence_rank(axis: str) -> int:
@@ -2575,15 +2776,15 @@ _STYLE_FIELD_CONFLICT_PATTERNS = {
         re.IGNORECASE,
     ),
     "exposure_contrast": re.compile(
-        r"\b(?:exposure|contrast|highlight|shadow|black level|white level|low[- ]key|high[- ]key|dynamic range)\w*\b",
+        r"\b(?:exposure|tonal contrast|image contrast|high contrast|soft contrast|highlight|shadow|black level|white level|low[- ]key|high[- ]key|dynamic range)\w*\b",
         re.IGNORECASE,
     ),
     "shot_scale": re.compile(
-        r"\b(?:close[- ]up|medium(?: close[- ]up| shot)?|wide(?: shot)?|establishing shot|two[- ]shot|shot scale)\b",
+        r"\b(?:close[- ]up|medium close[- ]up|medium shot|medium-wide|wide shot|extreme wide|establishing shot|two[- ]shot|shot scale)\b",
         re.IGNORECASE,
     ),
     "camera_angle": re.compile(
-        r"\b(?:camera angle|low[- ]angle|high[- ]angle|eye[- ]level|overhead|top[- ]down|dutch|canted)\b",
+        r"\b(?:camera angle|low[- ]angle|high[- ]angle|eye[- ]level|overhead (?:view|angle|shot|camera)|top[- ]down|dutch|canted)\b",
         re.IGNORECASE,
     ),
     "camera_viewpoint": re.compile(
@@ -2593,16 +2794,16 @@ _STYLE_FIELD_CONFLICT_PATTERNS = {
     "camera_motion": re.compile(
         r"\b(?:handheld|locked[- ]off|static camera|fixed (?:camera|viewpoint)|rigid (?:camera|viewpoint)|tracking|"
         r"dolly|truck|pan(?:ning)?|tilt(?:ing)?|orbit|crane|push[- ]in|pull[- ]back|zoom|whip[- ]pan|"
-        r"camera shake|shake|drift(?:ing)?|camera movement)\b",
+        r"camera shake|shake|camera drift(?:ing)?|camera movement)\b",
         re.IGNORECASE,
     ),
     "camera_amplitude": re.compile(r"\b(?:camera-motion amplitude|small amplitude|large amplitude)\b", re.IGNORECASE),
     "camera_speed": re.compile(r"\b(?:camera-motion speed|slow speed|fast speed)\b", re.IGNORECASE),
     "optics": re.compile(
-        r"\b(?:lens|optics|focal length|perspective compression|anamorphic|barrel distortion)\b",
+        r"\b(?:lens (?:choice|character|perspective|compression|distortion|focal length)|optics|focal length|perspective compression|anamorphic|barrel distortion)\b",
         re.IGNORECASE,
     ),
-    "focus_behavior": re.compile(
+    "depth_of_field": re.compile(
         r"\b(?:focus|depth of field|rack[- ]focus|bokeh|deep[- ]focus|shallow[- ]focus)\b",
         re.IGNORECASE,
     ),
@@ -2625,10 +2826,8 @@ def _compact_profile_signature(axis: str, dimensions: Mapping[str, list[str]]) -
     """Compile a short executable signature from one resolved creative profile.
 
     ``may_fill_unspecified`` is the catalogue's deliberately compact summary of a
-    profile.  For inherited profiles we retain the root medium and the selected
-    child's specialization, while all conflict and cinematography suppression has
-    already happened before this helper is called.  Negative invention guards are
-    intentionally never candidates for positive output text.
+    independent profile after conflict and cinematography suppression. Negative
+    invention guards are intentionally never candidates for positive output text.
     """
     anchor_priorities = {
         "genre": ("editing_and_pacing", "blocking_and_performance", "camera_and_framing"),
@@ -2708,6 +2907,44 @@ def _compact_cinematography_signature(style: Mapping[str, Any]) -> str:
     return " ".join(dict.fromkeys(parts))
 
 
+def _pixel_art_cinematography_instruction(item: Mapping[str, Any]) -> str:
+    """Translate photographic controls into grid-native pixel-art execution."""
+    field = str(item.get("field", ""))
+    original = str(item.get("instruction", "")).strip()
+    adaptations = {
+        "color_palette": (
+            "Apply the selected color relationship only inside one stable indexed palette of approximately 16–64 "
+            "colors, remapping discrete role-based ramps without adding smooth gradients or changing required colors."
+        ),
+        "exposure_contrast": (
+            "Express the selected exposure and contrast through discrete pixel-value ramps and cluster density while "
+            "keeping the indexed palette, hard edges, required detail, and frame-to-frame values stable."
+        ),
+        "optics": (
+            "Express the selected optical perspective as drawn grid-aligned geometry and scale relationships only; "
+            "the image remains native pixel art with no photographic softness, bokeh, lens artifact, or subpixel edge."
+        ),
+        "depth_of_field": (
+            "Express the selected depth hierarchy through discrete cluster detail, palette separation, and edge "
+            "density; keep every plane hard-edged and grid-aligned with no optical blur, bokeh, or soft focus."
+        ),
+        "image_texture": (
+            "Translate the selected capture texture into sparse, stable, grid-aligned pixel-cluster variation only; "
+            "the fixed low-resolution grid and nearest-neighbor hard edges remain dominant, with no continuous grain, "
+            "scanline, analog smear, compression crawl, or photographic surface."
+        ),
+        "lens_effects": (
+            "Translate the selected highlight treatment into restrained hard-edged palette clusters around existing "
+            "highlights; use no diffusion blur, bloom field, soft halo, chromatic fringe, or photographic filter."
+        ),
+        "motion_rendering": (
+            "Translate the selected motion rendering into deliberate grid-aligned pixel smear poses or stepped sprite "
+            "exposures proportional to existing movement; use no continuous motion blur or subpixel interpolation."
+        ),
+    }
+    return adaptations.get(field, original)
+
+
 def resolve_visual_style(treatment: Mapping[str, Any],
                          cinematography: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Resolve explicit cinematography and the subordinate treatment field by field."""
@@ -2715,12 +2952,26 @@ def resolve_visual_style(treatment: Mapping[str, Any],
     resolved_treatment, conflicts = resolve_treatment_conflicts(treatment, selected_cinematography)
     directives = [dict(item) for item in selected_cinematography.get("directives", ())]
     explicit_fields = [str(item["field"]) for item in directives]
+    creative_applied = bool(
+        resolved_treatment.get("applied") and resolved_treatment.get("profileIds")
+    )
+    pixel_art_active = bool(
+        creative_applied and resolved_treatment.get("visualLanguage") == "pixel_art_16bit"
+    )
+    if pixel_art_active:
+        directives = [
+            {**item, "instruction": _pixel_art_cinematography_instruction(item)}
+            for item in directives
+        ]
     dimensions = {
-        dimension: list(values)
+        dimension: list(values) if creative_applied else []
         for dimension, values in resolved_treatment.get("dimensions", {}).items()
     }
     suppressed_lines = []
     for dimension, values in dimensions.items():
+        if dimension == "must_not_invent" or pixel_art_active:
+            dimensions[dimension] = list(values)
+            continue
         kept = []
         for line in values:
             winning_fields = [
@@ -2747,7 +2998,7 @@ def resolve_visual_style(treatment: Mapping[str, Any],
     axis_line_indexes: dict[str, dict[str, list[int]]] = {}
     profile_signatures: dict[str, str] = {}
     for external_axis, catalog_axis, selected_value in selected_profiles:
-        if not resolved_treatment.get("applied") or selected_value == "none":
+        if not creative_applied or selected_value == "none":
             continue
         profile = _resolve_profile(catalog_axis, selected_value)
         profile_dimensions = {dimension: [] for dimension in PROFILE_DIMENSIONS}
@@ -2764,21 +3015,6 @@ def resolve_visual_style(treatment: Mapping[str, Any],
                 axis_line_indexes.setdefault(external_axis, {})[dimension] = indexes
                 profile_dimensions[dimension] = [dimensions[dimension][index] for index in indexes]
         signature = _compact_profile_signature(catalog_axis, profile_dimensions)
-        own_profile = PROFILE_CATALOGS[catalog_axis][selected_value]
-        if own_profile.get("inherits"):
-            own_dimensions = {
-                dimension: [
-                    line for line in own_profile.get(dimension, ())
-                    if str(line).casefold() in {
-                        str(item).casefold() for item in profile_dimensions.get(dimension, ())
-                    }
-                ]
-                for dimension in PROFILE_DIMENSIONS
-                if dimension != "must_not_invent"
-            }
-            specialization = _compact_profile_signature(catalog_axis, own_dimensions)
-            if specialization and specialization not in signature:
-                signature = " ".join(part for part in (signature, specialization) if part)
         if signature:
             profile_signatures[external_axis] = signature
     creative_signature = " ".join(profile_signatures.values())
@@ -2787,20 +3023,26 @@ def resolve_visual_style(treatment: Mapping[str, Any],
             " Preserve every supplied identity, count, wardrobe item, object, action, setting, illumination source, "
             "and endpoint; obey explicit shot and cinematography controls."
         )
+    camera_motion_instruction = (
+        camera_motion_sentence(selected_cinematography)
+        if any(item["field"] in {"camera_motion", "camera_amplitude", "camera_speed"} for item in directives)
+        else ""
+    )
+    if pixel_art_active and camera_motion_instruction:
+        camera_motion_instruction += (
+            " Render that move as integer-pixel displacement with stable tile layers and grid-aligned parallax, "
+            "without subpixel interpolation or shimmer."
+        )
     resolved = {
         "schemaVersion": 1,
-        "applied": bool(directives or resolved_treatment.get("applied")),
+        "applied": bool(directives or creative_applied),
         "precedence": (
             "source_reference_and_shot_facts > explicit_shot_row > explicit_cinematography "
             "> creative_treatment > neutral_default"
         ),
         "explicitFields": explicit_fields,
         "cinematographyDirectives": directives,
-        "cameraMotionInstruction": (
-            camera_motion_sentence(selected_cinematography)
-            if any(item["field"] in {"camera_motion", "camera_amplitude", "camera_speed"} for item in directives)
-            else ""
-        ),
+        "cameraMotionInstruction": camera_motion_instruction,
         "visualLanguage": str(resolved_treatment.get("visualLanguage", "none")),
         "profileLineIndexes": {
             dimension: sorted(indexes) for dimension, indexes in profile_line_indexes.items()
@@ -2810,9 +3052,16 @@ def resolve_visual_style(treatment: Mapping[str, Any],
         "visualLanguageLineIndexes": axis_line_indexes.get("visualLanguage", {}),
         "visualSignature": profile_signatures.get("visualLanguage", ""),
         "creativeSignature": creative_signature,
-        "creativeProfileIds": list(resolved_treatment.get("profileIds", ())),
+        "creativeProfileIds": list(resolved_treatment.get("profileIds", ())) if creative_applied else [],
         "treatmentDimensions": dimensions,
         "suppressedTreatmentLines": suppressed_lines,
+        "mediumAdaptedCinematographyFields": (
+            [item["field"] for item in directives if item["field"] in {
+                "color_palette", "exposure_contrast", "optics", "depth_of_field",
+                "image_texture", "lens_effects", "motion_rendering", "camera_motion",
+            }]
+            if pixel_art_active else []
+        ),
         "conflicts": conflicts,
     }
     cinematography_signature = _compact_cinematography_signature(resolved)

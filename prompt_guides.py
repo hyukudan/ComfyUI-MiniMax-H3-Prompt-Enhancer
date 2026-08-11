@@ -22,6 +22,8 @@ try:
         resolve_visual_style,
         resolve_treatment_conflicts,
         shot_plan_instruction,
+        title_screen_style_adherence_errors,
+        title_screen_style_instruction,
         treatment_warnings,
     )
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
@@ -34,6 +36,8 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         resolve_visual_style,
         resolve_treatment_conflicts,
         shot_plan_instruction,
+        title_screen_style_adherence_errors,
+        title_screen_style_instruction,
         treatment_warnings,
     )
     from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
@@ -1616,6 +1620,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             f"background_score_policy={background_score_policy}; "
             f"voice_performance={voice_performance}."
         )
+    title_style_contract = title_screen_style_instruction(creative_treatment, basic_prompt)
+    if title_style_contract:
+        parts.append(title_style_contract)
     explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
     if explicit_plan_contract:
         parts.append(explicit_plan_contract)
@@ -3307,6 +3314,25 @@ def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[st
                 "The retro family gag-anime profile must not be rendered as Japanese print art; remove "
                 f"{list(dict.fromkeys(forbidden_print))!r} and use crisp television cel character design instead."
             )
+    if "visual_language:pixel_art_16bit" in selected:
+        incompatible = []
+        for pattern in (
+            r"(?<!non-)(?<!non )\bphotorealistic\b",
+            r"\blive[- ]action\b",
+            r"\bsmooth(?:ly)?\s+(?:photographic\s+)?gradients?\b",
+            r"\bsoft\s+(?:focus|bokeh|edges?)\b",
+            r"\bsubpixel\s+(?:movement|motion|edges?|interpolation)\b",
+            r"\banti[- ]?alias(?:ed|ing)?\b",
+            r"\bcontinuous\s+(?:photographic\s+)?motion blur\b",
+            r"\bphotographic\s+material(?:s| response)?\b",
+        ):
+            incompatible.extend(match.group(0) for match in _positive_pattern_matches(output_prompt, pattern))
+        if incompatible:
+            errors.append(
+                "The pixel-art profile was contradicted by photographic or subpixel rendering language "
+                f"({list(dict.fromkeys(incompatible))!r}). Keep one fixed low-resolution integer grid, hard "
+                "nearest-neighbor clusters, discrete palette ramps, and stepped grid-aligned motion."
+            )
     return errors
 
 
@@ -3596,6 +3622,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["errors"].extend(_creative_literal_adherence_errors(
             prompt, selected_creative_treatment,
         ))
+        report["errors"].extend(title_screen_style_adherence_errors(
+            prompt, selected_creative_treatment, source_prompt,
+        ))
         report["errors"].extend(_explicit_source_fact_errors(source_prompt, prompt))
         report["warnings"].extend(profile["warnings"])
         try:
@@ -3666,6 +3695,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         source_prompt, text, selected_cinematography,
     ))
     errors.extend(_creative_literal_adherence_errors(text, selected_creative_treatment))
+    errors.extend(title_screen_style_adherence_errors(
+        text, selected_creative_treatment, source_prompt,
+    ))
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)

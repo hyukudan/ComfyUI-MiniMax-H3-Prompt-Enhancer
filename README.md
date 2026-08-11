@@ -262,7 +262,8 @@ start closed and expand downward; their open/closed state is saved in node prope
   endpoint/model/key or GGUF/runtime/offload controls. Its summary reports the active backend and model.
 - **Chained multishot** appears only in `chained_multishot` mode and contains segment count plus identity, voice, and
   setting continuity. Every segment uses the global Duration; incompatible per-row duration controls are disabled.
-- **Creative direction** contains Narrative genre, Visual language, World / aesthetic, and Tone. Its summary lists only
+- **Creative direction** contains Narrative genre, Visual language, World / aesthetic, Tone, and a conditional Title
+  screen treatment. Its summary lists only
   active choices and reads **No preferences** when neutral. Opening Visual language reveals a search field inside the
   dropdown; it renders only matching styles while you type by label, catalog ID, or family. Press `Esc` to clear or
   close it, and use `↓`/`Enter` to move to the filtered options.
@@ -337,7 +338,7 @@ Shared controls:
 | `delivery_target` | `local` | `api_v2` makes the official 7000-character text-block limit a repairable hard error; `local` keeps it as a compatibility warning |
 | `multishot_shot_count` | `0` | Exact autonomous prompt count for `chained_multishot`; zero infers it |
 | `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
-| `creative_treatment_json` | blank | Canonical storage for the four optional creative-direction selectors; blank is completely neutral |
+| `creative_treatment_json` | blank | Canonical storage for four global creative selectors plus the conditional title-screen selector; blank is completely neutral |
 | `shot_plan_json` | blank | Canonical storage for ordered explicit shots or autonomous chained segments; blank preserves automatic planning |
 | `cinematography_json` | blank | Canonical storage for optional non-narrative image-presentation and camera controls; blank is completely neutral |
 | `acoustic_space` | `none` | Diegetic sound space for the sound the audio policies already permit; it never adds a source |
@@ -679,15 +680,35 @@ and the intended ending authoritative.
 
 ## Creative direction and explicit shot plans
 
-The creative-direction panel keeps the basic prompt focused on **what happens**. Four independent optional axes tell
-the enhancer **how to direct and present it**:
+The creative-direction panel keeps the basic prompt focused on **what happens**. Four independent optional global
+axes tell the enhancer **how to direct and present it**. A fifth conditional selector styles only a title screen that
+the Basic prompt explicitly requests:
 
 | Axis | Available profiles |
 |---|---|
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery`, `crime`, `western`, `sports_competition` |
-| Visual language | `none`, `anime_general`, `anime_ultradetailed_cinematic`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `pixel_art_16bit`, `documentary_observational`, `mockumentary_talking_head`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_classic_black_and_white`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_television`, `live_action_latin_american_telenovela`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_classic_western`, `live_action_revisionist_western`, `live_action_1950s_studio_color`, `live_action_midcentury_technicolor_epic`, `giallo`, `tokusatsu_sentai`, `kaiju_suitmation`, `surveillance_found_footage`, `home_camcorder_1990s`, `1970s_new_hollywood`, `silent_era_1920s`, `storybook_symmetrical`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `supermarionation`, `rotoscope_animation`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `japanese_print_animation`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
+| Visual language | `none`, `anime_general`, `anime_ultradetailed_cinematic`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `heroic_limited_cel_tv`, `midcentury_graphic_cel_comedy`, `classic_morning_adventure_cel`, `pixel_art_16bit`, `documentary_observational`, `mockumentary_talking_head`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_classic_black_and_white`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_television`, `live_action_latin_american_telenovela`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_classic_western`, `live_action_revisionist_western`, `live_action_1950s_studio_color`, `live_action_midcentury_technicolor_epic`, `giallo`, `tokusatsu_sentai`, `kaiju_suitmation`, `surveillance_found_footage`, `home_camcorder_1990s`, `1970s_new_hollywood`, `silent_era_1920s`, `storybook_symmetrical`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `supermarionation`, `rotoscope_animation`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `japanese_print_animation`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
 | World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k`, `analog_1980s`, `urban_industrial`, `dieselpunk`, `nordic_noir`, `liminal_institutional` |
 | Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic` |
+| Title screen | `none`, `minimal_cinematic`, `bold_broadcast`, `classic_cel`, `illustrated_pulp`, `elegant_editorial`, `neon_technology`, `pixel_art_title`, `silent_intertitle` |
+
+Title-screen treatment is deliberately conditional. Selecting a style never creates a title card or authorizes new
+visible text. The Basic prompt must explicitly request a title screen/card/intertitle and should quote its exact text,
+for example: `Opening title screen displays the exact visible text "NIGHT RUN".` The enhancer preserves spelling,
+capitalization, punctuation, language and line order exactly; it cannot add a subtitle, credit, logo, tagline or extra
+word. The title treatment applies only to that authorized shot and does not change the visual language of the rest of
+the video.
+
+| Title-screen style | Visual treatment | Never adds |
+|---|---|---|
+| `minimal_cinematic` | restrained composition, disciplined negative space, precise spacing and a subtle clean reveal | subtitles, credits, logos, ornaments or new light sources |
+| `bold_broadcast` | bold geometric lettering, modular grid, broadcast-safe separation and quick entrance/hold/exit | channel identity, bugs, tickers, sponsors or lower thirds |
+| `classic_cel` | hand-drawn opaque title shapes, stable ink, compact cel palette and painted graphic background | characters, mascots, transformations or studio marks |
+| `illustrated_pulp` | forceful illustrated lettering, controlled print texture, shadow masses and compact dramatic color | weapons, creatures, issue data or publisher marks |
+| `elegant_editorial` | refined high-contrast letterforms, measured tracking, balanced margins and restrained motion | publication identities, monograms, branding or taglines |
+| `neon_technology` | crisp geometric letters, restrained emissive edges, modular alignment and stable line-build reveal | HUDs, holograms, code, data, glitches or circuitry |
+| `pixel_art_title` | fixed low-resolution integer grid, hard glyph clusters, limited palette and stepped reveal | game UI, scores, health bars, CRT artifacts or glitches |
+| `silent_intertitle` | black-and-ivory composition, readable serif-like lettering, restrained border and simple hold | film damage, dates, studio marks or chapter numbers |
 
 Profile selection guide:
 
@@ -708,16 +729,19 @@ Profile selection guide:
 | Visual language | Directs | Does not imply |
 |---|---|---|
 | `anime_general` | unmistakable hand-authored 2D anime with stable linework, facial construction, cel-value groups, painted backgrounds, layered parallax, key poses and holds | live action unless explicit, an anime filter, powers, auras, transformations, speed lines, chibi symbols, or anime sound effects |
-| `anime_ultradetailed_cinematic` | inherits general anime, then adds feature-animation line precision, sophisticated cel-and-painted values, material-specific highlights, richly painted multi-plane depth and temporally locked micro-detail | extra ornaments, text, props, buildings, machinery, crowds, weather, particles, VFX, light sources, damage, photorealism, or identity-changing detail |
+| `anime_ultradetailed_cinematic` | standalone high-precision cinematic anime with sophisticated cel-and-painted values, material-specific highlights, richly painted multi-plane depth and temporally locked micro-detail | extra ornaments, text, props, buildings, machinery, crowds, weather, particles, VFX, light sources, damage, photorealism, or identity-changing detail |
 | `anime_retro_dramatic` | serious late-1970s–1980s Japanese cel animation with mature angular drawing, variable heavy ink, classic shadow bands, restrained period color, hand-painted depth, held intensity and deliberate limited animation | muscles, martial arts, fights, attacks, scars, armor, weapons, wastelands, violence, powers, aura, speed lines, shouting, tragedy, narration, vintage damage, or franchise designs |
 | `anime_retro_gag_family` | unmistakable late-1970s–1980s Japanese family gag-manga television design with circular or softly squared heads, rounded cheeks, slightly head-forward compact proportions, large oval eyes and small pupils, tiny facial marks, crisp ink, opaque cel fills and economical limited animation | woodblock/ukiyo-e rendering, paper texture, Edo styling, pastel softness, contemporary kawaii gloss, infant anatomy, jokes, slapstick, childification, chibi morphing, mascots, magical gadgets, comic audio, or franchise designs |
-| `anime_shonen` | inherits general anime, then strengthens kinetic perspective and action rhythm | rivals, combat, attacks, techniques, power-ups, energy effects, screaming, or tournament stakes |
-| `anime_shojo` | inherits general anime, then emphasizes elegant composition, gaze, hands and emotional pauses | romance, flowers, sparkles, blush, tears, kisses, magic, or sentimental dialogue |
+| `anime_shonen` | standalone hand-authored 2D action-anime design with kinetic perspective, committed poses and anticipation–action–impact–recovery rhythm around existing actions | rivals, combat, attacks, techniques, power-ups, energy effects, screaming, or tournament stakes |
+| `anime_shojo` | standalone hand-authored 2D shōjo-anime design with elegant composition, refined model sheets, gaze, hands and measured emotional pauses | romance, flowers, sparkles, blush, tears, kisses, magic, or sentimental dialogue |
 | `anime_shojo_pastel` | classic luminous Japanese shōjo animation: fine variable line, carefully constructed bright eyes, tapered faces, flowing lock shapes, light cel shading, painted backgrounds and pale color relationships balanced by saturated anchors | Western superhero anatomy, heavy contour, crosshatching, halftones, hard noir shadow, American comic framing, romance, magic, franchise costumes, or sentimental music |
 | `american_comic_pastel` | polished moving American comic illustration with bold editorial composition, controlled contour, graphic shadows, clean digital fills and luminous pastel families | superheroes, heroic anatomy, costumes, powers, fights, panels, balloons, written effects, franchise designs, narration, or heroic score |
 | `animation_2d` | a complete non-photorealistic authored 2D rendering contract with stable line/shape/fill language, graphic silhouettes, layered camera motion and pose-to-pose clarity | live action unless explicit, a flattened filter, cartoon physics, gag squash-and-stretch, anthropomorphism, impossible motion, or stylized effects |
+| `heroic_limited_cel_tv` | standalone heroic limited-cel television craft with strong held poses, economical exposure and cycles, static painted backgrounds, rostrum-feasible movement, firm linework, stable models and controlled broadcast color | heroes, villains, fantasy, powers, weapons, battles, monsters, missions, danger, dialogue, narration, fanfares, theme music, or stylized effects |
+| `midcentury_graphic_cel_comedy` | standalone mid-century graphic limited-cel comedy craft with clean flat shapes, readable silhouettes, modular replacement drawings where appropriate, economical loops, stylized painted backgrounds and dry reaction timing | jokes, punchlines, slapstick, caricatured behavior, extra characters, domestic or workplace settings, funny voices, laughter, comic effects, dialogue, narration, or music |
+| `classic_morning_adventure_cel` | standalone bright classic broadcast morning-adventure cel craft with ensemble-readable model-sheet design, bold contours, controlled color, painted backgrounds and energetic economical pose-to-pose action | teams, villains, monsters, powers, weapons, gadgets, missions, fights, morals, merchandising, catchphrases, dialogue, narration, theme songs, or stylized effects |
 | `japanese_print_animation` | moving Japanese woodblock-print-inspired graphic illustration with carved-looking contours, registered flat color planes, restrained print texture, asymmetrical negative space, tiered depth and stable parallax | historical Japan, Edo settings, kimono, samurai, geisha, temples, Fuji, waves, Japanese text, seals, paper damage, traditional music, narration, or altered identity/era |
-| `pixel_art_16bit` | inherits 2D animation, then enforces a fixed low-resolution grid, hard nearest-neighbor pixels, a limited 16–64 color palette, stable dithering, stepped poses and integer-aligned parallax | photorealism, CRT artifacts, glitches, HUDs, menus, game text or mechanics, enemies, pickups, chiptune, or arcade effects |
+| `pixel_art_16bit` | standalone native pixel-art contract with a fixed low-resolution integer grid, hard nearest-neighbor clusters, a limited 16–64 color palette, stable dithering, stepped sprite poses and integer-aligned parallax | photorealism, CRT artifacts, glitches, HUDs, menus, game text or mechanics, enemies, pickups, chiptune, or arcade effects |
 | `documentary_observational` | real-time continuity, unobtrusive human-operated framing, ordinary environmental specificity, available light, natural behavior and continuous direct-sound perspective | interviews, claims, captions, dates, narration, archives, reenactment, surveillance aesthetics, news coverage, or shaky-cam spectacle |
 | `mockumentary_talking_head` | single-camera mockumentary coverage with a present complicit crew: hunting handheld operation, snap zooms onto an existing reaction, quick refocus, whip pans to whoever cuts in, stolen sightlines through blinds and glass, flat institutional light, unstyled interiors and dry overlapping delivery, with talking-head framing only when the source supplies an interview | interviews, talking-head segments, confessional asides, glances or looks to camera, an interviewer, off-screen questions, crew in frame, lower thirds, name captions, subtitles, narration, jokes, punchlines, comic escalation, awkward silences, an office, colleagues, or laughter |
 | `live_action_naturalistic` | coherent real-world optics and materials, practical exposure, stable anatomy, physical weight/contact, restrained performance and plausible direct sound | beauty filters, glamour retouching, fantasy physics, deformation, synthetic lens effects, melodrama, commercial posing, or documentary claims |
@@ -753,8 +777,8 @@ Profile selection guide:
 | `painterly_2d` | a complete standalone hand-painted 2D animation treatment with coherent brushwork, painted depth planes, pigment-like color, stable value masses and no photographic material response | live action unless explicit, a mere painterly filter, photographic surfaces, splashes, drips, tears, morphing, medium changes, calligraphy, or symbolic transitions |
 | `watercolor_2d` | luminous translucent washes, visible paper tooth, stable granulation, soft and dry-brush edges, airy depth and a limited harmonious pigment palette | live action unless explicit, a watercolor filter, uncontrolled splashes, drips, spreading stains, paper tears, animated painting, morphing, calligraphy, or medium changes |
 | `gouache_2d` | opaque matte painted shapes, bold value grouping, compact palette families, editorial composition, dry-brush accents and stable paper texture | live action unless explicit, a gouache filter, glossy oil impasto, splashes, drips, tears, animated painting, morphing, lettering, or medium changes |
-| `graphic_novel` | inherits 2D animation, then enforces a visibly hand-illustrated moving graphic novel with stable expressive ink, print texture, shadow masses, layered parallax and restrained color | live-action or photoreal rendering unless explicitly requested; panels, captions, balloons, written sound effects, superheroes, or comic plot conventions |
-| `graphic_noir` | inherits graphic novel, then emphasizes dominant ink-black negative space, severe geometry, selective visibility, hard highlights and optional sparse accent color | crime, detectives, guns, violence, rain, cigarettes, blinds, jazz, sirens, voice-over, betrayal, or pessimistic plot facts |
+| `graphic_novel` | standalone visibly hand-illustrated moving graphic-novel language with stable expressive ink, print texture, shadow masses, layered parallax and restrained color | live-action or photoreal rendering unless explicitly requested; panels, captions, balloons, written sound effects, superheroes, or comic plot conventions |
+| `graphic_noir` | standalone hand-illustrated 2D graphic-noir language with dominant ink-black negative space, severe geometry, selective visibility, hard highlights and optional sparse accent color | crime, detectives, guns, violence, rain, cigarettes, blinds, jazz, sirens, voice-over, betrayal, or pessimistic plot facts |
 | `clean_commercial` | premium but plausible exposure, precise hierarchy and handling, stable product geometry, accurate supplied packaging/colors, controlled highlights and reflections | invented brands, claims, prices, text, features, demonstrations, spokesperson behavior, voice-over, sonic logos, calls to action, or advertising music |
 
 | World aesthetic | Directs | Does not imply |
@@ -805,7 +829,7 @@ the same as before this feature. A selected treatment only develops unspecified 
 
 Profiles are complementary rather than exclusive. For example, `action + anime_shonen + cyberpunk + epic` combines
 readable action trajectories and impact beats, shōnen key poses and anticipation, layered cyberpunk materials and
-motivated practical light, and an epic sense of scale. Repeated advice inherited or shared by several profiles is
+motivated practical light, and an epic sense of scale. Repeated advice shared by several selected profiles is
 emitted once.
 
 Cross-axis selections are not mutually exclusive and the UI does not block strong combinations. For example,
@@ -813,16 +837,15 @@ Cross-axis selections are not mutually exclusive and the UI does not block stron
 geography, practical-feature coverage, period-compatible material/capture treatment, and movement intensity. Select
 every layer that carries useful intent; avoid adding a profile only when it contributes no desired direction.
 
-Some important inheritance and composition details:
+Some important composition details:
 
 - `anime_general` establishes coherent 2D design, readable silhouettes, selective cel shading, layered backgrounds,
   key poses and holds. It does not imply a story genre.
-- `anime_shonen` inherits the general anime language, then emphasizes anticipation → action → impact → recovery,
-  strong poses and clear movement arcs. It does not add rivals, fights, attacks, powers, transformations, auras or
-  shouting.
-- `anime_shojo` also inherits the general anime language, then emphasizes looks, hands, small gestures, emotional
-  pauses, elegant composition and delicate camera movement. It does not presume romance or add flowers, blushes,
-  tears, kisses or magical transformations.
+- `anime_shonen` is an independent action-anime contract with its own medium, model, motion, color, camera, performance,
+  sound and invention rules. It does not add rivals, fights, attacks, powers, transformations, auras or shouting.
+- `anime_shojo` is an independent shōjo-anime contract with its own medium, elegant composition, gaze, hands, small
+  gestures and measured emotional pauses. It does not presume romance or add flowers, blushes, tears, kisses or
+  magical transformations.
 - `cyberpunk` emphasizes compatible production design, layered depth, practical light, reflective or weathered
   materials and technological ambience already justified by the scene. It does not add implants, holograms, weapons,
   corporations, vehicles or functional technology.
@@ -830,7 +853,7 @@ Some important inheritance and composition details:
 The visible labels are presentation text; the lowercase tokens in the tables are the stable serialized values. The
 UI label **Adventure / epic** serializes as genre `adventure`; tone `epic` remains a separate choice.
 
-Every profile follows the same six directing domains: editing and pacing, camera and framing, lighting and color,
+Every profile is independent: no profile inherits or concatenates another profile's text. Every profile follows the same six directing domains: editing and pacing, camera and framing, lighting and color,
 production design, blocking and performance, and sound treatment. Its `must_not_invent` rules are merged with the
 global fidelity contract. Treatments never override explicit source facts, reference identities, wardrobe, dialogue,
 visible text, duration, frame count, continuity locks, audio policies, explicit cuts, or the requested number and order
@@ -970,7 +993,8 @@ records the canonical selection, resolved directives, schema/catalog versions, a
 
 ### Creative-treatment JSON
 
-The four visible selectors edit one stable, serialized field. This keeps workflows compatible as the panel evolves:
+The four global selectors and conditional title-screen selector edit one stable serialized field. This keeps workflows
+compatible as the panel evolves:
 
 ```json
 {
@@ -978,7 +1002,8 @@ The four visible selectors edit one stable, serialized field. This keeps workflo
   "genre": "action",
   "visualLanguage": "anime_shonen",
   "worldAesthetic": "cyberpunk",
-  "tone": "epic"
+  "tone": "epic",
+  "titleScreenStyle": "minimal_cinematic"
 }
 ```
 
@@ -993,11 +1018,12 @@ value types raise a configuration error before any LLM call instead of being sil
 direction. The field is limited to 16,384 characters. Keys are case-sensitive and use the camelCase spellings shown
 above; omitted axes, `null`, and empty-string axis values resolve to `none`, while profile tokens are trimmed and
 lowercased. The visual panel sanitizes imported state to its canonical schema; direct backend/queued API input remains
-strict. Blank storage and an explicit schema-v1 object with all four axes set to `none` produce the same neutral
+strict. `titleScreenStyle` is optional and defaults to `none`, so older schema-v1 workflows remain valid. Blank storage and an explicit schema-v1 object with all five selectors set to `none` produce the same neutral
 request and deterministic digest.
 
-The manifest records more than the four selections: `requested`, `applied`, `profileIds`, inherited
-`profileVersions`, the merged directing `dimensions`, a canonical SHA-256 `digest`, and `notAppliedReason`. With
+The manifest records more than the selections: `requested`, `applied`, `profileIds`, selected `profileVersions`,
+`titleScreenStyleCatalogVersion`, `titleScreenStyleRequested`, `titleScreenStyleApplied`, the merged directing
+`dimensions`, a canonical SHA-256 `digest`, and `notAppliedReason`. With
 `enhance_description=false`, a selected treatment stays recorded as requested but has `applied=false` and
 `notAppliedReason="description_enhancement_disabled"`; explicit shot plans remain active.
 
@@ -1969,9 +1995,9 @@ node --check web/backend_toggle.js
 git diff --check
 ```
 
-The current suite contains 217 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
+The current suite contains 514 automated tests. They cover all H3 modes, timing, exact-frame profiles, aspect ratios,
 media manifests and limits, chained multishot output, alignment, single-shot simultaneity and gradual progression, shot
-budgets, all four creative-profile catalogs, cinematography controls and H3 camera grammar, anime inheritance and deduplication, strict JSON and shot-plan limits,
+budgets, all four independent creative-profile catalogs, cinematography controls and H3 camera grammar, profile independence and deduplication, strict JSON and shot-plan limits,
 exact cut normalization, no-op compatibility, legacy positional/widget layouts, manifest digests, autonomous shot
 selection and cross-shot audio/dialogue isolation, exact-once dialogue/language preservation, untagged vocal-cue
 rejection, explicit age-category retention, internal voiceover, reference alias/variant merging, best-candidate repair

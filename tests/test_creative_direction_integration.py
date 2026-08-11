@@ -100,7 +100,7 @@ non_diegetic_music: N/A"""
     assert legacy[1] == explicit[1]
     manifest = explicit[2]
     assert manifest["creativeTreatmentSchemaVersion"] == 1
-    assert manifest["creativeProfileCatalogVersion"] == 18
+    assert manifest["creativeProfileCatalogVersion"] == 21
     assert manifest["cinematographySchemaVersion"] == 1
     assert manifest["cinematographyCatalogVersion"] == 6
     assert manifest["shotPlanSchemaVersion"] == 1
@@ -122,7 +122,7 @@ def test_treatment_and_shot_plan_are_injected_without_overriding_audio_or_cuts()
     )
     assert "SECONDARY CREATIVE TREATMENT" in request
     assert "anticipation, action, impact, and recovery" in request
-    assert "non-photorealistic hand-authored 2D anime" in request
+    assert "non-photorealistic hand-authored 2D action-anime" in request
     assert "dynamic pose strength, perspective emphasis, and kinetic timing" in request
     assert "high-tech/low-life material contrast" in request
     assert "clear escalation" in request

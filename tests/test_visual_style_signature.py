@@ -367,3 +367,126 @@ def test_every_cinematography_choice_compiles_into_the_delivered_contract():
 
             delivered = normalize_visual_style_signature(BASE_OUTPUT, "t2va", style)
             assert delivered.count(style["resolvedSignature"]) == 1
+
+
+def test_pixel_medium_invariants_survive_every_cinematography_choice():
+    external_keys = {internal: external for external, internal in CINEMATOGRAPHY_JSON_KEYS.items()}
+    for field, choices in CINEMATOGRAPHY_CHOICES.items():
+        for value in choices:
+            if value == "none" or field in {"camera_amplitude", "camera_speed"}:
+                continue
+            cinema = {"schemaVersion": 1, external_keys[field]: value}
+            if field == "camera_motion" and value != "static":
+                cinema.update({"cameraAmplitude": "small", "cameraSpeed": "slow"})
+            style = resolve_visual_style(
+                compose_creative_treatment(visual_language="pixel_art_16bit"),
+                parse_cinematography(cinema),
+            )
+            signature = style["resolvedSignature"]
+            assert "native non-photorealistic 16-bit-style pixel art" in signature
+            assert "hard pixel clusters" in signature
+            assert style["suppressedTreatmentLines"] == []
+
+
+def test_pixel_photographic_controls_are_adapted_to_the_integer_grid():
+    cinema = parse_cinematography({
+        "schemaVersion": 1,
+        "cameraMotion": "tracking",
+        "cameraAmplitude": "small",
+        "cameraSpeed": "slow",
+        "depthOfField": "shallow",
+        "imageTexture": "film_35mm",
+        "lensEffects": "subtle_diffusion",
+        "motionRendering": "natural_blur",
+    })
+    style = resolve_visual_style(
+        compose_creative_treatment(visual_language="pixel_art_16bit"), cinema,
+    )
+    signature = style["resolvedSignature"]
+
+    assert "integer-pixel displacement" in signature
+    assert "no optical blur, bokeh, or soft focus" in signature
+    assert "grid-aligned pixel-cluster variation" in signature
+    assert "hard-edged palette clusters" in signature
+    assert "grid-aligned pixel smear poses" in signature
+    assert "Use shallow depth of field" not in signature
+    assert "physically plausible natural motion blur" not in signature
+
+
+def test_explicit_cinematography_never_suppresses_must_not_invent_lines():
+    cinema = parse_cinematography({
+        "schemaVersion": 1,
+        "colorPalette": "vibrant",
+        "cameraMotion": "tracking",
+        "cameraAmplitude": "small",
+        "cameraSpeed": "slow",
+        "lensEffects": "subtle_diffusion",
+    })
+    for axis, catalog in (
+        ("genre", GENRE_PROFILES),
+        ("visual_language", VISUAL_LANGUAGE_PROFILES),
+        ("world_aesthetic", WORLD_AESTHETIC_PROFILES),
+        ("tone", TONE_PROFILES),
+    ):
+        for name in catalog:
+            if name == "none":
+                continue
+            style = resolve_visual_style(
+                compose_creative_treatment(**{axis: name}), cinema,
+            )
+            assert not any(
+                item["dimension"] == "must_not_invent"
+                for item in style["suppressedTreatmentLines"]
+            )
+
+
+def test_conservative_mode_does_not_reactivate_creative_profiles_when_cinema_is_selected():
+    treatment = json.dumps({
+        "schemaVersion": 1,
+        "genre": "action",
+        "visualLanguage": "anime_general",
+        "worldAesthetic": "cyberpunk",
+        "tone": "tense",
+    })
+    cinema = json.dumps({"schemaVersion": 1, "colorPalette": "vibrant"})
+    request = build_user_request(
+        SOURCE, "t2va", 5.0, enhance_description=False,
+        creative_treatment_json=treatment,
+        cinematography_json=cinema,
+    )
+
+    assert "EXPLICIT CINEMATOGRAPHY" in request
+    assert "SECONDARY CREATIVE TREATMENT" not in request
+    assert "non-photorealistic hand-authored 2D anime" not in request
+    assert "anticipation, action, impact, and recovery" not in request
+
+
+def test_pixel_validator_rejects_photographic_subpixel_language_even_with_canonical_signature():
+    treatment = json.dumps({
+        "schemaVersion": 1,
+        "genre": "none",
+        "visualLanguage": "pixel_art_16bit",
+        "worldAesthetic": "none",
+        "tone": "none",
+    })
+    style = resolve_visual_style(
+        compose_creative_treatment(visual_language="pixel_art_16bit"),
+        parse_cinematography(""),
+    )
+    contradictory = """integrated_multimodal_description:
+[Shot 1] Photorealistic live-action materials use smooth gradients, soft bokeh, and subpixel movement.
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    normalized = normalize_visual_style_signature(contradictory, "t2va", style)
+    report = validate_prompt(
+        normalized, "t2va", 5.0, SOURCE,
+        creative_treatment_json=treatment,
+        enhance_description=True,
+    )
+
+    assert not report["valid"]
+    assert any("pixel-art profile was contradicted" in error for error in report["errors"])

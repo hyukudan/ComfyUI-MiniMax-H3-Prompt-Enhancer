@@ -15,11 +15,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
+    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
     from .prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
+    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
     from prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
@@ -332,6 +332,12 @@ def enhance_prompt_with_completion(
         shot_plan_json, effective_duration, 0, resolved_mode,
     )
     treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
+    if (creative_treatment.get("titleScreenStyle") != "none"
+            and not title_screen_requested(basic_prompt)):
+        treatment_notes.append(
+            "Title screen style is saved but not applied because the Basic prompt does not explicitly request a "
+            "title screen, title card, opening/end title, or intertitle."
+        )
     creative_treatment, treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
     resolved_visual_style = resolve_visual_style(creative_treatment, cinematography)
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
@@ -514,6 +520,13 @@ def enhance_prompt_with_completion(
         "promptContractVersion": 3,
         "creativeTreatmentSchemaVersion": creative_treatment["schemaVersion"],
         "creativeProfileCatalogVersion": creative_treatment["catalogVersion"],
+        "titleScreenStyleCatalogVersion": creative_treatment["titleScreenStyleCatalogVersion"],
+        "titleScreenStyleRequested": creative_treatment["titleScreenStyle"],
+        "titleScreenStyleApplied": bool(
+            creative_treatment.get("applied")
+            and creative_treatment.get("titleScreenStyle") != "none"
+            and title_screen_requested(basic_prompt)
+        ),
         "cinematographySchemaVersion": cinematography["schemaVersion"],
         "cinematographyCatalogVersion": cinematography["catalogVersion"],
         "shotPlanSchemaVersion": explicit_shot_plan["schemaVersion"],
