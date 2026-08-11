@@ -293,6 +293,7 @@ def enhance_prompt_with_gguf_server(
     instrumental_style: str = "none",
     acoustic_space: str = "none",
     dialogue_coverage: str = "off",
+    delivery_target: str = "local",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
     global _CACHED_SERVER
@@ -396,6 +397,7 @@ def enhance_prompt_with_gguf_server(
                 instrumental_style,
                 acoustic_space,
                 dialogue_coverage,
+                delivery_target,
             )
         finally:
             if not bool(keep_server_loaded):

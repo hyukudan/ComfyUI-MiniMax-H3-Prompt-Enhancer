@@ -73,7 +73,7 @@ def test_neutral_controls_preserve_the_current_user_request_byte_for_byte():
     )
     assert legacy_call == explicit_neutral
     assert hashlib.sha256(legacy_call.encode("utf-8")).hexdigest() == (
-        "95d614244d5cf911b8cead44fe58d71351446ed55a4e559d4b6276d839fc8635"
+        "3c36260915b903bd3447ed651cafc1cb2cd9cd33de96b8682d03b47d1b112dd0"
     )
 
 

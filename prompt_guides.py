@@ -15,11 +15,11 @@ from typing import Any
 
 try:
     from .creative_treatments import (
-        cinematography_instruction,
-        creative_treatment_instruction,
         parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
+        resolved_visual_style_instruction,
+        resolve_visual_style,
         resolve_treatment_conflicts,
         shot_plan_instruction,
         treatment_warnings,
@@ -27,11 +27,11 @@ try:
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from creative_treatments import (
-        cinematography_instruction,
-        creative_treatment_instruction,
         parse_cinematography,
         parse_creative_treatment,
         parse_shot_plan,
+        resolved_visual_style_instruction,
+        resolve_visual_style,
         resolve_treatment_conflicts,
         shot_plan_instruction,
         treatment_warnings,
@@ -56,12 +56,14 @@ TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multis
 AMBIENCE_FOLEY_POLICIES = ("auto", "ensure_audible", "off")
 BACKGROUND_SCORE_POLICIES = ("follow_prompt", "add_instrumental", "off")
 VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
-# Budget advisories only. The official MiniMax API v2 accepts at most 7000 characters
-# per text block, and the public guide recommends 350-500 words of description for
-# generation tasks. Local open-weights inference has neither limit, so exceeding these
-# is always a warning and never an error.
+ENHANCEMENT_PROFILES = ("conservative_grounded", "enhanced_production")
+DELIVERY_TARGETS = ("local", "api_v2")
+# The official MiniMax API v2 accepts at most 7000 characters per text block.
+# Ref2VA's 350-500-word generation range is a soft baseline that expands with
+# dialogue, references, and shot complexity; Base mode has no matching minimum.
 _API_V2_TEXT_BLOCK_CHARACTER_LIMIT = 7000
-_DESCRIPTION_WORD_WARNING_LIMIT = 600
+_API_V2_TEXT_BLOCK_SOFT_PRESSURE = 6300
+_BASE_DESCRIPTION_WORD_WARNING_LIMIT = 600
 DIALOGUE_COVERAGE_CHOICES = ("off", "on")
 DIALOGUE_COVERAGE_CONTRACT = (
     "Keep each speaking character's mouth and eyes unobstructed and in focus for the full duration of their line, "
@@ -236,6 +238,14 @@ _ROLE_REFERENCE_RE = re.compile(
     r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,9}?)\s+"
     r"(?:in|en|from|de|que\s+(?:es|aparece\s+en|corresponde\s+a))\s+"
     r"(image|imagen|picture|foto)\s*(\d+)\b",
+    re.IGNORECASE,
+)
+_COORDINATED_ROLE_REFERENCE_RE = re.compile(
+    r"\b(?:the|a|an|el|la|los|las|un|una)\s+"
+    r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4}?)\s+(?:and|y)\s+"
+    r"(?:the|a|an|el|la|los|las|un|una)\s+"
+    r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4}?)\s+"
+    r"(?:in|en|from|de)\s+(image|imagen|picture|foto)\s*(\d+)\b",
     re.IGNORECASE,
 )
 _QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
@@ -422,10 +432,40 @@ def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
     """Return whether the source authorizes new spoken words and their requested language."""
     source = str(source_prompt or "")
 
+    def clause(match: re.Match[str]) -> str:
+        start = max(source.rfind(mark, 0, match.start()) for mark in ".!?;") + 1
+        ends = [source.find(mark, match.end()) for mark in ".!?;" if source.find(mark, match.end()) >= 0]
+        end = min(ends) if ends else len(source)
+        return source[start:end]
+
     def negated(match: re.Match[str]) -> bool:
         prefix = source[max(0, match.start() - 40):match.start()]
         matched = match.group(0)
+        local_clause = clause(match)
+        target_match = re.search(
+            r"dialogue|dialog|lines?|spoken\s+words?|speech|script|voice[ -]?over|narration|"
+            r"di[aá]logo|l[ií]neas?|frases?|palabras|discurso|gui[oó]n|voz\s+en\s+off|narraci[oó]n",
+            matched, re.IGNORECASE,
+        )
+        requested_text = target_match.group(0).casefold() if target_match else "dialogue"
+        requested = "dialogue"
+        if re.search(r"voice[ -]?over|voz\s+en\s+off", requested_text):
+            requested = "voiceover"
+        elif re.search(r"narration|narraci[oó]n", requested_text):
+            requested = "narration"
+        elif re.search(r"speech|spoken\s+words?|discurso|palabras", requested_text):
+            requested = "speech"
+        prohibitions = [item.group(0).casefold() for item in _DIALOGUE_PROHIBITION_RE.finditer(local_clause)]
+        same_target_prohibited = any(
+            requested == "speech"
+            or (requested == "dialogue" and re.search(r"dialogue|dialog|di[aá]logo|spoken\s+words?|palabras", item))
+            or (requested == "voiceover" and re.search(r"voice[ -]?over|voz\s+en\s+off|spoken\s+words?|palabras", item))
+            or (requested == "narration" and re.search(r"narration|narraci[oó]n|spoken\s+words?|palabras", item))
+            for item in prohibitions
+        )
         return bool(
+            same_target_prohibited
+            or
             re.search(
                 r"(?:\b(?:do\s+not|don't|never|avoid|omit|without|no\s+need\s+to|"
                 r"no|nunca|evita|omite|sin|no\s+hace\s+falta)\s*)$",
@@ -603,9 +643,9 @@ When verbal content belongs only to a copied soundtrack or BGM, attribute its <d
 inventing a speaker ID. A concrete person, narrator, or independent vocal source uses a stable (Sx); an Audio
 reference bound to that speaker reuses the same ID. Timbre-, rhythm-, or delivery-only references never import words.
 Use [unclear] for an explicitly unintelligible transcribed span rather than guessing it.
-For generation tasks, make detailed_description explicit and normally 350-500 English words. Establish style in one
-or two sentences before Shot 1, then describe composition, appearance, environment, lighting, actions, state changes,
-camera, sound, and where each reference takes effect in playback order.
+For generation tasks, make detailed_description explicit and allocate detail according to information load. Establish
+style in one or two sentences before Shot 1, then describe composition, appearance, environment, lighting, actions,
+state changes, camera, sound, and where each reference takes effect in playback order.
 """
 
 
@@ -630,17 +670,36 @@ six-section formats: those contracts describe a single generation, while this ou
 """
 
 
-def system_prompt_for_mode(mode: str) -> str:
+def enhancement_profile(enhance_description: bool) -> str:
+    return "enhanced_production" if bool(enhance_description) else "conservative_grounded"
+
+
+def system_prompt_for_mode(mode: str, enhance_description: bool | None = None) -> str:
     """Return only the output-contract rules relevant to the resolved H3 mode."""
     if mode == "chained_multishot":
-        return MULTISHOT_SYSTEM_PROMPT
-    base_marker = "\nBase-mode output has exactly these three sections in order:"
-    ref_marker = "\nRef2VA output has exactly these six sections in order:"
-    common, mode_rules = SYSTEM_PROMPT.split(base_marker, 1)
-    base_rules, ref_rules = mode_rules.split(ref_marker, 1)
-    if mode == "ref2va":
-        return common + ref_marker + ref_rules
-    return common + base_marker + base_rules
+        prompt = MULTISHOT_SYSTEM_PROMPT
+    else:
+        base_marker = "\nBase-mode output has exactly these three sections in order:"
+        ref_marker = "\nRef2VA output has exactly these six sections in order:"
+        common, mode_rules = SYSTEM_PROMPT.split(base_marker, 1)
+        base_rules, ref_rules = mode_rules.split(ref_marker, 1)
+        prompt = common + ref_marker + ref_rules if mode == "ref2va" else common + base_marker + base_rules
+    if enhance_description is None:
+        return prompt
+    if enhance_description:
+        return prompt + (
+            "\n\nENHANCEMENT PROFILE — ENHANCED_PRODUCTION: Preserve locked narrative facts while resolving missing "
+            "non-narrative production decisions. Choose concrete composition, blocking, screen direction, camera, "
+            "focus, source-consistent lighting, material response, micro-performance, and physically caused sound "
+            "when they make the requested action more legible. Do not add a new subject, goal, plot beat, branded "
+            "object, reference role, salient event, dialogue, or endpoint."
+        )
+    return prompt + (
+        "\n\nENHANCEMENT PROFILE — CONSERVATIVE_GROUNDED: Do not preserve source terseness when the selected H3 "
+        "mode requires an opening state, spatial relation, causal transition, final state, or frame/reference anchor. "
+        "Add only that minimum executable structure, neutral continuity, and directly caused sound; do not add "
+        "decorative styling, set dressing, new props, events, or sound sources."
+    )
 
 
 def resolve_mode(mode: str, reference_context: str = "", basic_prompt: str = "",
@@ -674,7 +733,22 @@ def resolve_mode(mode: str, reference_context: str = "", basic_prompt: str = "",
                         for role in roles)):
             return "fl2va"
         return "ref2va"
-    has_reference = _REFERENCE_RE.search(reference_context or "") or _ASSET_REFERENCE_RE.search(basic_prompt or "")
+    plain_context = str(reference_context or "")
+    plain_assets = [_asset_label(kind, number) for kind, number in _ASSET_REFERENCE_RE.findall(plain_context)]
+    picture_assets = [item for item in plain_assets if item.startswith("<Picture")]
+    first_role = bool(re.search(r"\b(?:first|initial|primer)\s+(?:frame|fotograma)\b", plain_context, re.IGNORECASE))
+    last_role = bool(re.search(r"\b(?:last|final|último|ultimo)\s+(?:frame|fotograma)\b", plain_context, re.IGNORECASE))
+    if len(set(picture_assets)) == 1 and first_role and not last_role:
+        return "i2va"
+    if len(set(picture_assets)) == 1 and last_role and not first_role:
+        return "l2va"
+    if len(set(picture_assets)) == 2 and first_role and last_role:
+        return "fl2va"
+    has_reference = (
+        _REFERENCE_RE.search(reference_context or "")
+        or _ASSET_REFERENCE_RE.search(reference_context or "")
+        or _ASSET_REFERENCE_RE.search(basic_prompt or "")
+    )
     return "ref2va" if has_reference else "t2va"
 
 
@@ -696,11 +770,14 @@ def _definition_labels(text: str) -> list[str]:
 def _official_reference_model(source_prompt: str, reference_context: str = "") -> dict[str, Any]:
     """Build high-confidence Ref2VA semantics without equating asset and Subject ordinals."""
     source = source_prompt or ""
-    combined_context = source + "\n" + (reference_context or "")
-    explicit_definitions = _definition_labels(reference_context)
+    canonical_reference_context = _ASSET_REFERENCE_RE.sub(
+        lambda match: _asset_label(*match.groups()), reference_context or "",
+    )
+    combined_context = source + "\n" + canonical_reference_context
+    explicit_definitions = _definition_labels(canonical_reference_context)
     assets = list(dict.fromkeys(
         [_asset_label(kind, number) for kind, number in _ASSET_REFERENCE_RE.findall(source)]
-        + _REFERENCE_RE.findall(reference_context or "")
+        + _REFERENCE_RE.findall(canonical_reference_context)
         + _REFERENCE_RE.findall(source)
     ))
     assets = [label for label in assets if not label.casefold().startswith("<subject")]
@@ -717,6 +794,9 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         }
 
     picture_roles = []
+    for first_role, second_role, kind, number in _COORDINATED_ROLE_REFERENCE_RE.findall(source):
+        asset = _asset_label(kind, number)
+        picture_roles.extend(((first_role.strip(), asset), (second_role.strip(), asset)))
     for match in _ROLE_REFERENCE_RE.finditer(source):
         role, kind, number = match.groups()
         role = role.strip()
@@ -744,6 +824,12 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         if analysis.strip() and re.search(r"\b(?:identity|subject|character|person|object|prop|style)\b", role_text, re.IGNORECASE):
             role_text = f"{role_text} {analysis.strip()}"
         picture_roles.append((role_text, asset))
+    for asset, role in re.findall(
+        r"(<Picture\s+\d+>)\s+(?:supplies|provides|gives|aporta|proporciona|suministra)\s+"
+        r"(?:the\s+|la\s+|el\s+)?([^.;\r\n]+)",
+        canonical_reference_context, flags=re.IGNORECASE,
+    ):
+        picture_roles.append((role.strip(), asset))
 
     picture_assets = [label for label in assets if label.lower().startswith("<picture")]
     video_assets = [label for label in assets if label.lower().startswith("<video")]
@@ -753,7 +839,7 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         if re.search(r"\b(?:style|look|aesthetic|palette|lighting|estilo)\b", lowered):
             return "style"
         if re.search(
-            r"\b(?:person|persona|people|man|men|woman|women|boy|girl|hombre|hombres|mujer|"
+            r"\b(?:identity|identidad|person|persona|people|man|men|woman|women|boy|girl|hombre|hombres|mujer|"
             r"actor|actress|presenter|driver|identity|face|body|character|version|versi[oó]n)\b",
             lowered,
         ):
@@ -769,12 +855,24 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         words = [item.casefold() for item in re.findall(r"[\wÀ-ÿ'-]+", role)]
         return (sum(item not in generic_role_words for item in words), len(words))
 
-    # Repeated aliases for the same human/style/object in one asset are one reusable Subject.  Keep the most
-    # specific source phrase (for example "version ejercito nazi" rather than the generic "hombres").
-    grouped_roles: dict[tuple[str, str], str] = {}
-    group_order: list[tuple[str, str]] = []
+    # Distinct people or objects can come from the same asset. Deduplicate only demonstrable aliases whose
+    # normalized role text is the same; grouping only by asset/family silently dropped coordinated entities.
+    grouped_roles: dict[tuple[str, str, str], str] = {}
+    group_order: list[tuple[str, str, str]] = []
     for role, asset in picture_roles:
-        key = (asset.casefold(), role_family(role))
+        role_words = re.findall(r"[\wÀ-ÿ'-]+", role.casefold())
+        alias_key = " ".join(
+            word for word in role_words
+            if word not in {"the", "a", "an", "el", "la", "los", "las", "un", "una", "same", "mismo", "misma"}
+        )
+        # Generic singular/plural labels in prose commonly refer back to the same person. Collapse
+        # those demonstrable aliases, but retain coordinated concrete roles such as woman + man.
+        if role_family(role) == "identity" and (
+            all(word in generic_role_words for word in role_words)
+            or re.search(r"\b(?:version|versi[oó]n)\b", role, re.IGNORECASE)
+        ):
+            alias_key = "__generic_identity__"
+        key = (asset.casefold(), role_family(role), alias_key)
         if key not in grouped_roles:
             grouped_roles[key] = role
             group_order.append(key)
@@ -878,8 +976,13 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             used_assets.add(asset)
 
     for asset in audio_assets:
+        number = re.search(r"\d+", asset).group()
+        token = rf"(?:audio\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number}|{re.escape(asset)})"
         exact_copy = bool(re.search(
-            r"\b(?:copy|copied|reuse|reused|reutiliza|copiar|paired)\b", combined_context, re.IGNORECASE,
+            rf"(?:\b(?:copy|copied|reuse|reused|reutiliza|copiar|paired)\b.{{0,60}}{token}|"
+            rf"{token}.{{0,60}}\b(?:copy|copied|reuse|reused|reutiliza|copiar|paired)\b)",
+            combined_context,
+            re.IGNORECASE,
         ))
         independent[asset] = {
             "description": (
@@ -988,8 +1091,80 @@ def normalize_ref_task_prefix(text: str) -> str:
     return value[:match.start()] + match.group(1) + f"[{prefix}]" + value[match.end():]
 
 
+def _reference_task_types(model: Mapping[str, Any], source_prompt: str,
+                          reference_context: str) -> list[str]:
+    context = (source_prompt or "") + "\n" + (reference_context or "")
+    kinds = {item["kind"] for item in model["definitions"]}
+    task_types: list[str] = []
+    if "video" in kinds and re.search(
+        r"\b(?:continue|continuation|continuar|extend|resume)\b", context, re.IGNORECASE,
+    ):
+        task_types.append("video continuation")
+    elif "video" in kinds and re.search(
+        r"\b(?:edit|editing|replace|modify|editar|reemplazar)\b", context, re.IGNORECASE,
+    ):
+        task_types.append("video editing")
+    if any(
+        item["kind"] == "picture" and re.search(r"frame|composition", item["line"], re.IGNORECASE)
+        for item in model["definitions"]
+    ):
+        task_types.append("keyframe completion")
+    if model["subjects"] or (
+        not any(item.startswith("video ") for item in task_types)
+        and any(item["kind"] in {"picture", "video"} for item in model["definitions"])
+    ):
+        task_types.append("reference generation")
+    audio_items = [item for item in model["definitions"] if item["kind"] == "audio"]
+    if audio_items:
+        task_types.append("audio reuse" if any(
+            item["marker"] in {"fully_copy", "partially_copy"} for item in audio_items
+        ) else "audio reference")
+    return list(dict.fromkeys(task_types or ["reference generation"]))
+
+
+def _default_retention_line(item: Mapping[str, Any]) -> str:
+    label = item["label"]
+    marker = item["marker"]
+    asset = item["asset"]
+    if item["kind"] == "subject":
+        return (
+            f"{label}: {marker} - carry the {item.get('kind', 'subject')} identity/design derived from {asset} "
+            "into every shot where this Subject appears, while explicit source changes still win."
+        )
+    if item["kind"] == "audio":
+        action = "copy the synchronized signal" if marker in {"fully_copy", "partially_copy"} else "use only its stated audio attributes"
+        return f"{label}: {marker} - {action} at the source-specified moments; do not import unrelated words or sounds."
+    return (
+        f"{label}: {marker} - apply its stated {item['kind']} role at the specified timeline positions and preserve "
+        "the concrete source relationship described above."
+    )
+
+
+def _reference_summary_tail(model: Mapping[str, Any], task_types: list[str]) -> str:
+    clauses = []
+    if "video editing" in task_types:
+        video = next((item["label"] for item in model["definitions"] if item["kind"] == "video"), "<Video 1>")
+        clauses.append(f"The target video is an edited version of {video}.")
+    elif "video continuation" in task_types:
+        video = next((item["label"] for item in model["definitions"] if item["kind"] == "video"), "<Video 1>")
+        clauses.append(f"The target video continues {video} while preserving its incoming temporal state.")
+    subject_relations = [
+        f"{item['label']} derives its reusable {subject['contribution']} from {subject['asset']}"
+        for item in model["definitions"] if item["kind"] == "subject"
+        for subject in model["subjects"] if subject["label"] == item["label"]
+    ]
+    if subject_relations:
+        clauses.append("; ".join(subject_relations) + ".")
+    independent = [
+        item["label"] for item in model["definitions"] if item["kind"] != "subject"
+    ]
+    if independent:
+        clauses.append("Independent reference roles are supplied by " + ", ".join(independent) + ".")
+    return " ".join(clauses) or "The target applies the defined references only in their stated roles."
+
+
 def normalize_reference_definitions(text: str, source_prompt: str, reference_context: str = "") -> str:
-    """Apply official Ref2VA definitions without overwriting explicit user mappings."""
+    """Complete inferred Ref2VA mappings without discarding valid generated analysis."""
     text = normalize_ref_task_prefix(text)
     model = _official_reference_model(source_prompt, reference_context)
     if model["explicit"] or not model["definitions"]:
@@ -997,33 +1172,57 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
     value = str(text)
     if not _section_body(value, "subject_definitions"):
         return str(text)
-    definitions = "\n".join(item["line"] for item in model["definitions"])
-    retention = "\n".join(
-        f"{item['label']}: {item['marker']} - preserve/apply the role stated above."
-        for item in model["definitions"]
-    )
-    value = _replace_section_body(value, "subject_definitions", definitions)
-    value = _replace_section_body(value, "retention_analysis", retention)
+    existing_definitions: dict[str, str] = {}
+    for line in _section_body(value, "subject_definitions").splitlines():
+        match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", line, re.IGNORECASE)
+        if match and match.group(1).casefold() not in existing_definitions:
+            existing_definitions[match.group(1).casefold()] = line.strip()
+    merged_definitions = []
+    for item in model["definitions"]:
+        line = existing_definitions.get(item["label"].casefold(), item["line"])
+        if item["kind"] == "subject" and item["asset"].casefold() not in line.casefold():
+            line = line.rstrip(". ") + f"; its source provenance is {item['asset']}."
+        merged_definitions.append(line)
+    value = _replace_section_body(value, "subject_definitions", "\n".join(merged_definitions))
 
-    kinds = {item["kind"] for item in model["definitions"]}
-    task_types = []
-    if "video" in kinds and re.search(r"\b(?:continue|continuation|continuar|extend|resume)\b", source_prompt, re.IGNORECASE):
-        task_types.append("video continuation")
-    elif "video" in kinds and re.search(r"\b(?:edit|editing|replace|modify|editar|reemplazar)\b", source_prompt, re.IGNORECASE):
-        task_types.append("video editing")
-    if any(item["kind"] == "picture" for item in model["definitions"]):
-        task_types.append("keyframe completion")
-    if any(item["kind"] in {"subject", "picture", "video"} for item in model["definitions"]):
-        task_types.append("reference generation")
-    audio_items = [item for item in model["definitions"] if item["kind"] == "audio"]
-    if audio_items:
-        task_types.append("audio reuse" if any(
-            item["marker"] in {"fully_copy", "partially_copy"} for item in audio_items
-        ) else "audio reference")
-    task_type = " + ".join(dict.fromkeys(task_types or ["reference generation"]))
-    # The canonical task prefix is the whole summary. A free-form tail often
-    # repeats stale task names (or unsupported markers) from the raw LLM output.
-    value = _replace_section_body(value, "summary", f"[{task_type}]")
+    existing_retention: dict[str, str] = {}
+    for line in _section_body(value, "retention_analysis").splitlines():
+        match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", line, re.IGNORECASE)
+        if match and match.group(1).casefold() not in existing_retention:
+            existing_retention[match.group(1).casefold()] = line.strip()
+    merged_retention = []
+    for item in model["definitions"]:
+        line = existing_retention.get(item["label"].casefold(), "")
+        marker_match = re.search(r"(:\s*)([a-z_]+)\b", line, re.IGNORECASE)
+        if line and marker_match:
+            line = line[:marker_match.start(2)] + item["marker"] + line[marker_match.end(2):]
+        else:
+            line = _default_retention_line(item)
+        merged_retention.append(line)
+    value = _replace_section_body(value, "retention_analysis", "\n".join(merged_retention))
+
+    task_types = _reference_task_types(model, source_prompt, reference_context)
+    summary = _section_body(value, "summary").strip()
+    summary_tail = re.sub(r"^\[[^\]\r\n]+\]\s*", "", summary).strip()
+    summary_tail = re.sub(
+        r"^(?:(?:\+|/)\s*)?\[(?:reference generation|keyframe completion|video editing|"
+        r"video continuation|audio reuse|audio reference)\]\s*",
+        "",
+        summary_tail,
+        flags=re.IGNORECASE,
+    ).strip()
+    stale_task_tail = (
+        r"(?:reference generation|keyframe completion|video editing|video continuation|audio reuse|audio reference)"
+        r"(?:\s*(?:\+|/)\s*(?:reference generation|keyframe completion|video editing|video continuation|"
+        r"audio reuse|audio reference))*[.!]?"
+    )
+    if summary_tail.casefold() in {"placeholder", "n/a"} or re.fullmatch(
+        stale_task_tail, summary_tail, re.IGNORECASE,
+    ):
+        summary_tail = ""
+    if not summary_tail:
+        summary_tail = _reference_summary_tail(model, task_types)
+    value = _replace_section_body(value, "summary", f"[{' + '.join(task_types)}] {summary_tail}")
     return value
 
 
@@ -1106,14 +1305,17 @@ def _requires_single_continuous_progression(source_prompt: str) -> bool:
     return bool(_CONTINUOUS_PROGRESSION_RE.search(source) and not _EXPLICIT_CUT_RE.search(source))
 
 
-def _implicit_shot_limit(source_prompt: str) -> int | None:
-    """Limit LLM-authored cuts when the source itself supplied no editorial structure."""
+def _implicit_shot_limit(source_prompt: str, mode: str = "t2va",
+                         enhance_description: bool | None = None) -> int | None:
+    """Keep strict continuity modes narrow without imposing a universal two-shot cap."""
     source = source_prompt or ""
     if _EXPLICIT_CUT_RE.search(source):
         return None
-    if _requires_single_continuous_progression(source):
+    if (mode == "fl2va" and enhance_description is not None) or _requires_single_continuous_progression(source):
         return 1
-    return 2
+    if enhance_description is False or enhance_description is None:
+        return 2
+    return None
 
 
 def _required_explicit_shot_count(source_prompt: str) -> int | None:
@@ -1154,11 +1356,16 @@ def _source_dialogue_shot_indices(source_prompt: str) -> list[int]:
 
 def _source_requests_music(source_prompt: str) -> bool:
     source = source_prompt or ""
-    if re.search(r"\b(?:no|without|sin)\s+(?:background\s+|non[- ]diegetic\s+)?m[uú]sic", source, re.IGNORECASE):
+    if re.search(
+        r"\b(?:no|without|avoid|omit|never|do\s+not\s+(?:add|use|include)|don't\s+(?:add|use|include)|"
+        r"sin|evita|omite|nunca|no\s+(?:a[nñ]adas?|uses?|incluyas?))\b"
+        r"[^.!?;]{0,48}\b(?:background\s+|non[- ]diegetic\s+)?(?:m[uú]sic|score|soundtrack|banda\s+sonora)\b",
+        source, re.IGNORECASE,
+    ):
         return False
     return bool(re.search(
-        r"\b(?:music|m[uú]sica|song|canci[oó]n|score|soundtrack|jazz|orchestra|orchestral|"
-        r"piano|guitar|cello|violin|trumpet|drums?|synth)\b",
+        r"\b(?:background\s+music|non[- ]diegetic\s+music|audience[- ]only\s+music|m[uú]sica\s+de\s+fondo|"
+        r"music|m[uú]sica|song|canci[oó]n|score|soundtrack|banda\s+sonora|underscore)\b",
         source,
         flags=re.IGNORECASE,
     ))
@@ -1318,6 +1525,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    active_enhancement_profile = enhancement_profile(enhance_description)
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(basic_prompt)
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = profile["effectiveDurationSeconds"]
@@ -1344,6 +1552,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     alignment = alignment_instruction(resolved, effective_duration)
     parts = [
         f"TASK MODE: {resolved.upper()}",
+        f"ENHANCEMENT PROFILE: {active_enhancement_profile}",
         f"TARGET DURATION: {effective_duration:.3f} seconds",
         f"TARGET FRAME COUNT: {int(frame_count)}" if int(frame_count or 0) else "TARGET FRAME COUNT: automatic",
         f"TARGET ASPECT RATIO: {aspect_ratio}",
@@ -1397,24 +1606,25 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "narration, voiceover, or intelligible vocal sound."
         )
     creative_treatment, _treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
-    treatment_contract = creative_treatment_instruction(creative_treatment)
-    if treatment_contract:
+    resolved_style = resolve_visual_style(creative_treatment, cinematography)
+    style_contract = resolved_visual_style_instruction(resolved_style, cinematography, resolved)
+    if style_contract:
         parts.append(
-            treatment_contract
-            + "\nSELECTED AUDIO CONTROLS (authoritative over every treatment sound suggestion): "
+            style_contract
+            + "\nSELECTED AUDIO CONTROLS (authoritative over every style-bible sound suggestion): "
             f"ambience_foley_policy={ambience_foley_policy}; "
             f"background_score_policy={background_score_policy}; "
             f"voice_performance={voice_performance}."
         )
-    cinematography_contract = cinematography_instruction(cinematography)
-    if cinematography_contract:
-        parts.append(cinematography_contract)
     explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
     if explicit_plan_contract:
         parts.append(explicit_plan_contract)
     if reference_context.strip():
         parts.append("REFERENCE CONTEXT (authoritative labels and roles):\n" + reference_context.strip())
-    positional_contract = _official_reference_contract(basic_prompt, reference_context)
+    positional_contract = _official_reference_contract(
+        basic_prompt,
+        "\n".join(part for part in (str(reference_context).strip(), connected_context) if part),
+    )
     if positional_contract:
         parts.append(positional_contract)
 
@@ -1611,12 +1821,15 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         )
     if bool(enhance_description):
         parts.append(
-            "ACTIVE DIRECTORIAL ENHANCEMENT (develop the request, without changing it):\n"
-            "- Turn terse wording into a concrete, vivid audiovisual sequence across the full target duration.\n"
-            "- Improve composition, blocking, facial performance, lighting, materials, atmosphere, camera behavior, "
-            "action continuity, and pacing only within explicit source, shot-plan, reference, Cinematography, and audio "
-            "constraints. Develop physical sound only as permitted by the ambience/foley policy; musical treatment is "
-            "governed exclusively by the background-score policy.\n"
+            "ACTIVE DIRECTORIAL ENHANCEMENT — ENHANCED_PRODUCTION (develop the request, without changing it):\n"
+            "- Preserve every locked fact, identity, reference role, spoken line, visible text, endpoint, and explicit "
+            "control. You are explicitly allowed to choose missing non-narrative production details that make the "
+            "requested action legible: composition, blocking, screen direction, shot scale, lens and focus, "
+            "source-consistent lighting and grade, material behavior, micro-performance, and physically caused sound.\n"
+            "- Ordinary background detail may establish space, scale, atmosphere, or continuity only when it remains "
+            "subordinate and does not become a new subject, prop, event, light source, or sound cue. Develop physical "
+            "sound only as permitted by the ambience/foley policy; musical treatment is governed exclusively by the "
+            "background-score policy.\n"
             "- At the beginning of every shot, establish a useful shot scale and the current frame positions, "
             "orientation, eyelines, and relevant prop states. Across cuts preserve screen direction, handed contact, "
             "object possession, pose continuity, and states such as open/closed or intact/changed unless the requested "
@@ -1626,6 +1839,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "visible results register before the final frame unless the source explicitly requests interruption.\n"
             "- Prefer observable geometry, materials, position, movement, and cause-and-effect over generic cinematic "
             "adjectives or unrelated background activity.\n"
+            "- Spend descriptive detail in this order: source-supported subject and prop identity; readable spatial "
+            "layout; the opening state; action mechanics and contact; visible material response; reaction and final "
+            "state; then camera, focus, lighting, and atmosphere that make those facts easier to read. Describe scale, "
+            "surface, rigidity, weight, reflection, deformation, particles, or weather only when already implied by "
+            "the source or when they clarify an existing object's behavior.\n"
+            "- Give important actions a causal envelope: preparation, onset, contact or turning point, immediate "
+            "response, and settling consequence, fitted to the available duration. Synchronize permitted diegetic "
+            "sound to the visible cause and resulting space without adding a new source or event.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
             "- Treat repeated action/trigger/transformation cycles as a state ladder. For every cycle, preserve the "
@@ -1652,12 +1873,40 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             )
             + "Do not increase gore, damage, or explicitness beyond the source."
         )
+        if resolved == "ref2va":
+            parts.append(
+                "REF2VA ADAPTIVE DESCRIPTION BUDGET: For ordinary generation, 350-500 English words in "
+                "detailed_description is a soft target, never a ceiling. Exceed 500 when complete dialogue, more than "
+                "two information-bearing shots, multiple independent reference roles, repeated transformations, or "
+                "complex source timing genuinely require it. Video editing scales with source complexity and has no "
+                "word target. Stop adding detail when coverage is complete; stay within 7000 characters only when the "
+                "delivery target is MiniMax API v2. "
+                "Spend the available budget on exact reference application, composition, "
+                "source-supported appearance, spatial continuity, action mechanics, observable state changes, "
+                "audio-visual synchronization, and the final state in playback order. Do not count "
+                "subject_definitions, summary, retention_analysis, soundscape, or music toward this target. Never "
+                "pad with synonyms, repeated definitions, decorative lore, extra subjects, actions, sounds, shots, "
+                "or camera moves."
+            )
+        else:
+            parts.append(
+                "BASE DESCRIPTION DEPTH — USEFUL DENSITY, NO WORD-COUNT TARGET: Make "
+                "integrated_multimodal_description detailed enough to stage every requested beat and its visible "
+                "result, but do not force it to 350-500 words and do not aim to fill the 7000-character API ceiling. "
+                "A simple single action may remain compact; use more detail only when duration, interaction, dialogue, "
+                "continuity, or transformation creates more information to resolve. Remove any sentence that does not "
+                "clarify an authoritative fact, spatial relationship, causal beat, material response, performance, "
+                "camera decision, or permitted sound."
+            )
     else:
         parts.append(
-            "CONSERVATIVE FORMAT ADAPTATION:\n"
-            "Convert the request into the required MiniMax H3 structure with only the detail needed for coherent "
-            "generation. Do not creatively expand its staging, story, shot design, or sound. Preserve the user's "
-            "level of specificity."
+            "CONSERVATIVE FORMAT ADAPTATION — CONSERVATIVE_GROUNDED:\n"
+            "Do not preserve terseness when H3 needs missing executable structure. Add only the smallest "
+            "non-narrative information required by the selected mode: opening composition and spatial relations; "
+            "initial body, object, and frame-anchor state; each requested action in order; visible causal transition "
+            "and result; neutral camera continuity; and requested or directly caused sound. Do not choose decorative "
+            "styling, set dressing, new props, new events, new light sources, or new sound sources. Keep creative "
+            "treatment disabled, but apply explicit cinematography, shot-plan, reference, and audio controls literally."
         )
     dialogue_contracts = _source_dialogue_contracts(basic_prompt)
     if dialogue_contracts and voice_performance == "audible":
@@ -1682,8 +1931,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             if dialogue_authoring else
             " After the final tagged line, describe only silent facial acting, gaze, gesture, and physical action. "
             "When a short line is followed by a long visual continuation, explicitly state that the speaker closes "
-            "their lips or leaves the frame, then name at least two concrete non-verbal sounds that continuously "
-            "occupy the remainder of the timeline. No character speaks additional words."
+            "their lips or leaves the frame, then continue only requested ambience or non-verbal sound directly "
+            "caused by existing visible actions. Do not invent extra sound sources merely to fill time. No character "
+            "speaks additional words."
         )
         parts.append(
             "VOICE POLICY — AUDIBLE (official): Assign stable speaker IDs and copy each block exactly once into the "
@@ -1768,11 +2018,18 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                 "rack focus, or blocking change inside the same take rather than cutting at each reveal beat."
             )
         )
-    elif _implicit_shot_limit(basic_prompt) == 2:
+    elif _implicit_shot_limit(basic_prompt, resolved, enhance_description) == 2:
         parts.append(
             "SHOT BUDGET: The source supplied no explicit cut or montage structure. Prefer one continuous shot and use "
             "at most two shots only if one motivated cut materially improves viewpoint or information. Never divide the "
             "duration into evenly spaced shots merely to fill time; actions and reveals are beats inside a shot."
+        )
+    elif not explicit_shot_plan["provided"] and bool(enhance_description):
+        parts.append(
+            "ADAPTIVE SHOT BUDGET: Infer the smallest sufficient shot plan from duration and information load. There "
+            "is no automatic two-shot ceiling: use an additional cut only when it contributes a distinct viewpoint, "
+            "time, location, scale, reference application, or state transition that a motivated continuous move "
+            "cannot show clearly. FL2VA and explicit continuous-progressions remain single-take constraints."
         )
     if alignment:
         label = "REQUIRED FIRST-LINE TEMPLATE (replace N with the actual final shot number):" if resolved in {"fl2va", "l2va"} else "REQUIRED FIRST LINE:"
@@ -1945,8 +2202,21 @@ def _dialogue_lexical_key(quote: str) -> str:
 def _source_dialogue_contracts(source_prompt: str) -> list[tuple[str, str, bool]]:
     contracts = []
     for match in _QUOTED_RE.finditer(source_prompt or ""):
-        cue_window = (source_prompt or "")[max(0, match.start() - 180):match.start()]
-        if _SPEECH_CUE_RE.search(cue_window):
+        prefix = (source_prompt or "")[:match.start()]
+        boundary = max(prefix.rfind(mark) for mark in ".!?;\n")
+        cue_window = prefix[boundary + 1:]
+        visible_text = re.search(
+            r"\b(?:sign|title\s+card|caption|subtitle|shirt|screen|label|poster|placard|book|page|"
+            r"letrero|cartel|t[ií]tulo|camiseta|pantalla|etiqueta)\b[^\r\n.!?;]{0,48}"
+            r"\b(?:reads?|says?|shows?|displays?|dice|reza|muestra|pone)\s*$",
+            cue_window, flags=re.IGNORECASE,
+        )
+        repeated_previous = bool(
+            contracts
+            and re.search(r"\b(?:again|otra\s+vez|de\s+nuevo)\b", cue_window, re.IGNORECASE)
+            and _dialogue_lexical_key(contracts[-1][1]) == _dialogue_lexical_key(match.group(1))
+        )
+        if (_SPEECH_CUE_RE.search(cue_window) or repeated_previous) and not visible_text:
             contracts.append((
                 _source_dialogue_language(source_prompt, match),
                 match.group(1),
@@ -2511,6 +2781,42 @@ def normalize_audio_policy(text: str, ambience_foley_policy: str = "auto",
     return value
 
 
+def normalize_multishot_audio_policy(text: str, ambience_foley_policy: str = "auto",
+                                     background_score_policy: str = "follow_prompt",
+                                     voice_performance: str = "audible",
+                                     source_context: str = "") -> str:
+    """Apply the same audio gates to every autonomous chained prompt item."""
+    try:
+        data = json.loads(str(text))
+    except json.JSONDecodeError:
+        return str(text)
+    prompts = data.get("prompts") if isinstance(data, dict) else None
+    if not isinstance(prompts, list):
+        return str(text)
+    force_no_music = background_score_policy == "off" or (
+        background_score_policy == "follow_prompt" and not _source_requests_music(source_context)
+    )
+    normalized = []
+    for raw in prompts:
+        item = str(raw).strip()
+        if force_no_music and not re.search(r"\bno non[- ]diegetic music\b", item, re.IGNORECASE):
+            item += " No non-diegetic music is audible."
+        elif background_score_policy == "add_instrumental" and not re.search(
+            r"\b(?:instrumental|score|soundtrack|music)\b", item, re.IGNORECASE,
+        ):
+            item += " The requested audience-only instrumental score continues with no vocals or lyrics."
+        if ambience_foley_policy == "off" and not re.search(
+            r"\bno ambience, foley, or non-verbal human sound\b", item, re.IGNORECASE,
+        ):
+            item += " No ambience, foley, or non-verbal human sound is audible."
+        if voice_performance != "audible" and not re.search(
+            r"\bno intelligible speech\b", item, re.IGNORECASE,
+        ):
+            item += " No intelligible speech, vocalization, whispering, or voice is audible."
+        normalized.append(re.sub(r"\s+", " ", item).strip())
+    return json.dumps({"prompts": normalized}, ensure_ascii=False, separators=(",", ":"))
+
+
 def normalize_shot_timestamps(text: str) -> str:
     """Add the guide-required comma when the model supplied a complete timestamp but omitted punctuation."""
     value = re.sub(
@@ -2613,7 +2919,9 @@ def normalize_multishot_output(text: str, required_locks: tuple[str, ...] = ()) 
 def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str,
                         shot_count: int = 0, required_locks: tuple[str, ...] = (),
                         voice_performance: str = "audible",
-                        authored_dialogue_ledger: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
+                        authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                        ambience_foley_policy: str = "auto",
+                        background_score_policy: str = "follow_prompt") -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     try:
@@ -2637,6 +2945,25 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
         for lock in (str(value).strip() for value in required_locks if str(value).strip()):
             if lock not in item:
                 errors.append(f"Multishot item {index} is missing an exact required continuity lock: {lock!r}")
+        positive = re.sub(r"\bno\b[^.!?]{0,80}\b(?:music|score|soundtrack|ambience|foley|speech|voice)\b", "", item,
+                          flags=re.IGNORECASE)
+        force_no_music = background_score_policy == "off" or (
+            background_score_policy == "follow_prompt" and not _source_requests_music(source_prompt)
+        )
+        if force_no_music and re.search(r"\b(?:non[- ]diegetic music|score|soundtrack)\b", positive, re.IGNORECASE):
+            errors.append(f"Multishot item {index} violates the no-score policy")
+        if background_score_policy == "add_instrumental" and not re.search(
+            r"\b(?:instrumental|score|soundtrack|music)\b", item, re.IGNORECASE,
+        ):
+            errors.append(f"Multishot item {index} omitted the requested instrumental score")
+        if ambience_foley_policy == "off" and re.search(
+            r"\b(?:ambience|foley|footsteps?|impact|room tone|traffic|wind|rain)\b", positive, re.IGNORECASE,
+        ):
+            errors.append(f"Multishot item {index} violates the ambience/foley off policy")
+        if voice_performance != "audible" and re.search(
+            r"<d>|\b(?:says?|speaks?|whispers?|shouts?|voiceover|narration)\b", positive, re.IGNORECASE,
+        ):
+            errors.append(f"Multishot item {index} contains intelligible voice although voice is suppressed")
     source_facts = [token.casefold() for token in re.findall(r"\b[\wÀ-ÿ'-]{5,}\b", source_prompt or "")]
     if len(prompts) > 1 and source_facts:
         common = [token for token in dict.fromkeys(source_facts) if all(token in item.casefold() for item in prompts)]
@@ -2969,6 +3296,168 @@ def _continuation_transient_warnings(source_prompt: str, timeline: str) -> list[
     ]
 
 
+def _repeated_sentence_warning(section_name: str, text: str) -> str:
+    sentences = [
+        re.sub(r"\W+", " ", item).strip().casefold()
+        for item in re.split(r"(?<=[.!?])\s+", text or "")
+        if len(re.findall(r"\b[\w'-]+\b", item)) >= 6
+    ]
+    repeated = [sentence for sentence, count in Counter(sentences).items() if sentence and count >= 3]
+    if not repeated:
+        return ""
+    return (
+        f"{section_name} repeats the same descriptive sentence three or more times; remove repetition before "
+        "compressing unique staging, causal, reference, dialogue, or style detail"
+    )
+
+
+def _adaptive_description_budget(source_prompt: str, reference_context: str,
+                                 shot_count: int, profile_name: str) -> dict[str, Any]:
+    combined = (source_prompt or "") + "\n" + (reference_context or "")
+    editing = bool(re.search(r"\b(?:video editing|edit|editing|editar|reemplazar)\b", combined, re.IGNORECASE))
+    dialogue_words = sum(
+        len(re.findall(r"\b[\wÀ-ÿ'-]+\b", spoken))
+        for _language, spoken, _internal in _source_dialogue_contracts(source_prompt)
+    )
+    reference_count = len(set(_REFERENCE_RE.findall(combined)))
+    transformation_count = len(re.findall(
+        r"\b(?:transform(?:s|ed|ation)?|changes? into|becomes?|cycle|stage|phase|trigger)\b",
+        source_prompt or "", re.IGNORECASE,
+    ))
+    if editing:
+        return {
+            "kind": "source_coverage",
+            "softMinWords": None,
+            "softMaxWords": None,
+            "reason": "video editing scales with source timeline complexity rather than a word range",
+        }
+    expansion = (
+        max(0, int(shot_count) - 2) * 75
+        + max(0, reference_count - 2) * 50
+        + max(0, dialogue_words - 60)
+        + min(150, transformation_count * 35)
+    )
+    return {
+        "kind": "adaptive_generation",
+        "softMinWords": 350 if profile_name == "enhanced_production" else None,
+        "softMaxWords": 500 + expansion,
+        "baselineWords": [350, 500],
+        "extraWords": expansion,
+        "dialogueWords": dialogue_words,
+        "referenceCount": reference_count,
+        "shotCount": int(shot_count),
+    }
+
+
+_STYLE_SIGNATURE_STOPWORDS = {
+    "about", "already", "applicable", "camera", "concrete", "describe", "existing", "frame", "inside",
+    "keep", "make", "only", "present", "preserve", "render", "resulting", "scene", "selected", "shot",
+    "stable", "style", "subject", "through", "treatment", "using", "visible", "with", "without",
+}
+
+
+def _style_signature_observed(text: str, instruction: str) -> bool:
+    tokens = [
+        token.casefold() for token in re.findall(r"\b[a-zA-Z][a-zA-Z-]{4,}\b", instruction)
+        if token.casefold() not in _STYLE_SIGNATURE_STOPWORDS
+    ]
+    distinctive = list(dict.fromkeys(tokens))[:8]
+    observed = (text or "").casefold()
+    return bool(distinctive) and sum(token in observed for token in distinctive) >= min(2, len(distinctive))
+
+
+def _resolved_style_coverage_gaps(text: str, style: Mapping[str, Any]) -> list[str]:
+    if not style.get("applied"):
+        return []
+    gaps = []
+    motion_fields = {"camera_motion", "camera_amplitude", "camera_speed"}
+    checked_motion = False
+    for item in style.get("cinematographyDirectives", ()):
+        if item["field"] in motion_fields:
+            if not checked_motion:
+                checked_motion = True
+                instruction = style.get("cameraMotionInstruction", "")
+                if instruction and not _style_signature_observed(text, instruction):
+                    gaps.append("Explicit camera motion, amplitude, or speed is not observably realized in the output")
+            continue
+        if not _style_signature_observed(text, item["instruction"]):
+            gaps.append(f"Explicit visual-style field {item['field']} is not observably realized in the output")
+    for dimension, lines in style.get("treatmentDimensions", {}).items():
+        if dimension == "must_not_invent":
+            continue
+        missing = [line for line in lines if not _style_signature_observed(text, line)]
+        if missing:
+            gaps.append(
+                f"Resolved creative-treatment dimension {dimension} omitted {len(missing)} required directive(s)"
+            )
+    return gaps
+
+
+def _description_coverage_gaps(timeline: str, mode: str, source_prompt: str,
+                               profile_name: str, shot_count: int) -> list[str]:
+    if profile_name != "enhanced_production" or not timeline.strip():
+        return []
+    words = len(re.findall(r"\b[\wÀ-ÿ'-]+\b", timeline))
+    minimum = 80 + max(0, int(shot_count) - 1) * 35
+    if mode == "ref2va":
+        minimum = max(minimum, 240)
+    elif mode in {"i2va", "fl2va", "l2va"}:
+        minimum = max(minimum, 100)
+    gaps = []
+    if words < minimum:
+        gaps.append(
+            f"Enhanced-production coverage is too sparse ({words} words; about {minimum} are needed for this "
+            "mode/shot load without padding)"
+        )
+    signals = {
+        "spatial opening/blocking": r"\b(?:foreground|background|left|right|center|beside|behind|across|position|composition|eyeline|screen direction)\b",
+        "camera, framing, or focus": r"\b(?:camera|shot|frame|lens|focus|close-up|medium shot|wide shot|pan|dolly|track|static)\b",
+        "causal response and settled result": r"\b(?:then|after|until|caus|respond|reaction|result|settle|finally|comes? to rest|ends? with|leav(?:e|es|ing))\w*\b",
+    }
+    for label, pattern in signals.items():
+        if not re.search(pattern, timeline, re.IGNORECASE):
+            gaps.append(f"Enhanced-production timeline is missing observable {label}")
+    if mode == "fl2va" and not re.search(
+        r"\b(?:intermediate|gradual|progress|narrow|converge|transition)\w*\b", timeline, re.IGNORECASE,
+    ):
+        gaps.append("FL2VA enhanced-production timeline does not describe observable intermediate convergence")
+    if mode == "l2va" and not re.search(
+        r"\b(?:converge|settle|arrive|resolve|final frame|last-frame)\w*\b", timeline, re.IGNORECASE,
+    ):
+        gaps.append("L2VA enhanced-production timeline does not visibly land on the final-frame state")
+    return gaps
+
+
+def _shot_plan_semantic_errors(items: list[str], plan: Mapping[str, Any]) -> list[str]:
+    if not plan.get("provided"):
+        return []
+    errors = []
+    stop = {
+        "the", "and", "with", "from", "into", "then", "shot", "scene", "camera", "while",
+        "first", "second", "third", "fourth", "beat", "plano", "escena", "primer", "segundo",
+    }
+    for index, planned in enumerate(plan.get("shots", ()), start=1):
+        if index > len(items):
+            break
+        observed = items[index - 1].casefold()
+        tokens = list(dict.fromkeys(
+            token.casefold() for token in re.findall(r"\b[\wÀ-ÿ'-]{4,}\b", planned.get("description", ""))
+            if token.casefold() not in stop
+        ))
+        needed = min(2, len(tokens))
+        if needed and sum(token in observed for token in tokens) < needed:
+            errors.append(f"Shot-plan item {index} dropped its authoritative description")
+        motion = str(planned.get("cameraMotion", "none")).replace("_", " ")
+        if motion != "none" and not any(part in observed for part in motion.split() if len(part) >= 4):
+            errors.append(f"Shot-plan item {index} dropped cameraMotion={planned['cameraMotion']!r}")
+        transition = str(planned.get("transitionIn", "cut")).replace("_", " ")
+        if index > 1 and transition != "cut" and not any(
+            part in observed for part in transition.split() if len(part) >= 4
+        ):
+            errors.append(f"Shot-plan item {index} dropped transitionIn={planned['transitionIn']!r}")
+    return errors
+
+
 def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     source_prompt: str = "", reference_context: str = "",
                     ambience_foley_policy: str = "auto",
@@ -2984,14 +3473,30 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
                     creative_treatment_json: str = "",
                     shot_plan_json: str = "",
-                    cinematography_json: str = "") -> dict[str, Any]:
+                    cinematography_json: str = "",
+                    enhance_description: bool | None = None,
+                    delivery_target: str = "local",
+                    instrumental_description: str = "",
+                    instrumental_style: str = "none",
+                    acoustic_space: str = "none",
+                    dialogue_coverage: str = "off") -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
+    profile_name = (
+        enhancement_profile(enhance_description)
+        if enhance_description is not None else "legacy_unprofiled"
+    )
     reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
     configuration_errors: list[str] = []
+    if delivery_target not in DELIVERY_TARGETS:
+        configuration_errors.append(
+            f"Unsupported delivery target {delivery_target!r}; choose one of: {', '.join(DELIVERY_TARGETS)}"
+        )
     try:
-        selected_creative_treatment = parse_creative_treatment(creative_treatment_json)
+        selected_creative_treatment = parse_creative_treatment(
+            creative_treatment_json, enabled=enhance_description is not False,
+        )
     except ValueError as exc:
         configuration_errors.append(str(exc))
         selected_creative_treatment = parse_creative_treatment("")
@@ -3000,6 +3505,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     except ValueError as exc:
         configuration_errors.append(str(exc))
         selected_cinematography = parse_cinematography("")
+    selected_creative_treatment, _style_conflicts = resolve_treatment_conflicts(
+        selected_creative_treatment, selected_cinematography,
+    )
+    resolved_visual_style = resolve_visual_style(selected_creative_treatment, selected_cinematography)
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     try:
         explicit_shot_plan = parse_shot_plan(
@@ -3022,6 +3531,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report = _validate_multishot(
             prompt, profile["effectiveDurationSeconds"], source_prompt, expected_count, locks,
             voice_performance, authored_dialogue_ledger,
+            ambience_foley_policy, background_score_policy,
         )
         parsed = parse_media_manifest(media_manifest)
         report["errors"].extend(configuration_errors)
@@ -3034,8 +3544,47 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["errors"].extend(_creative_literal_adherence_errors(
             prompt, selected_creative_treatment,
         ))
+        report["errors"].extend(_explicit_source_fact_errors(source_prompt, prompt))
         report["warnings"].extend(profile["warnings"])
+        try:
+            prompt_items = json.loads(str(prompt)).get("prompts", [])
+        except (json.JSONDecodeError, AttributeError):
+            prompt_items = []
+        prompt_items = [item for item in prompt_items if isinstance(item, str)]
+        report["errors"].extend(_shot_plan_semantic_errors(prompt_items, explicit_shot_plan))
+        api_compatible = all(len(item) <= _API_V2_TEXT_BLOCK_CHARACTER_LIMIT for item in prompt_items)
+        for index, item in enumerate(prompt_items, 1):
+            if len(item) > _API_V2_TEXT_BLOCK_CHARACTER_LIMIT:
+                message = (
+                    f"Multishot item {index} has {len(item)} characters; MiniMax API v2 accepts at most "
+                    f"{_API_V2_TEXT_BLOCK_CHARACTER_LIMIT} per text block"
+                )
+                (report["errors"] if delivery_target == "api_v2" else report["warnings"]).append(message)
+            elif delivery_target == "api_v2" and len(item) > _API_V2_TEXT_BLOCK_SOFT_PRESSURE:
+                report["warnings"].append(
+                    f"Multishot item {index} is approaching the API v2 text limit; preserve unique facts and remove "
+                    "only repetition if compression becomes necessary"
+                )
+        coverage_gaps = [
+            f"Multishot item {index}: {gap}"
+            for index, item in enumerate(prompt_items, 1)
+            for gap in _description_coverage_gaps(
+                item, "chained_multishot", source_prompt, profile_name, 1,
+            )
+        ]
+        style_coverage_gaps = [
+            f"Multishot item {index}: {gap}"
+            for index, item in enumerate(prompt_items, 1)
+            for gap in _resolved_style_coverage_gaps(item, resolved_visual_style)
+        ]
         report["valid"] = not report["errors"]
+        report["qualityValid"] = report["valid"] and not coverage_gaps and not style_coverage_gaps
+        report["coverageGaps"] = coverage_gaps
+        report["styleCoverageGaps"] = style_coverage_gaps
+        report["enhancementProfile"] = profile_name
+        report["deliveryTarget"] = delivery_target
+        report["apiCompatible"] = api_compatible
+        report["resolvedVisualStyle"] = resolved_visual_style
         report["aspectRatio"] = aspect_ratio
         report["generationProfile"] = profile
         report["mediaManifest"] = parsed
@@ -3068,19 +3617,31 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)
+    api_compatible = len(text) <= _API_V2_TEXT_BLOCK_CHARACTER_LIMIT
     if len(text) > _API_V2_TEXT_BLOCK_CHARACTER_LIMIT:
-        warnings.append(
+        budget_message = (
             f"The final prompt is {len(text)} characters; the official MiniMax API v2 accepts at most "
-            f"{_API_V2_TEXT_BLOCK_CHARACTER_LIMIT} characters per text block and would truncate or reject it. "
-            "Local open-weights inference is unaffected"
+            f"{_API_V2_TEXT_BLOCK_CHARACTER_LIMIT} characters per text block"
         )
-    # Ref2VA already reports its own 350-500 word target below; this covers the other modes.
-    description_words = len(re.findall(r"\b[\w'-]+\b", timeline))
-    if resolved != "ref2va" and description_words > _DESCRIPTION_WORD_WARNING_LIMIT:
+        if delivery_target == "api_v2":
+            errors.append(
+                budget_message
+                + "; compress repetition while preserving unique facts, dialogue, anchors, and references"
+            )
+        else:
+            warnings.append(budget_message + "; Local open-weights inference is unaffected")
+    elif delivery_target == "api_v2" and len(text) > _API_V2_TEXT_BLOCK_SOFT_PRESSURE:
         warnings.append(
-            f"{timeline_section} has {description_words} words; 350-500 is recommended for generation tasks "
-            "and very long bodies reduce instruction adherence"
+            "The final prompt is approaching the API v2 text limit; preserve unique staging, dialogue, reference, "
+            "and style detail and remove only repetition if compression becomes necessary"
         )
+    # Ref2VA reports its documented 350-500 word target below. Base mode has no
+    # equivalent target, so only flag unusually long bodies that commonly lose adherence.
+    description_words = len(re.findall(r"\b[\w'-]+\b", timeline))
+    if resolved != "ref2va" and description_words > _BASE_DESCRIPTION_WORD_WARNING_LIMIT:
+        repetition_warning = _repeated_sentence_warning(timeline_section, timeline)
+        if repetition_warning:
+            warnings.append(repetition_warning)
     # A warning, not an error: the same phrasing is legitimate for a transient that completes late
     # in the shot, and the timing is not recoverable from the text.
     warnings.extend(_continuation_transient_warnings(source_prompt, timeline))
@@ -3125,6 +3686,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             f"Explicit shot_plan_json requires exactly {explicit_shot_plan['shotCount']} shots; "
             f"observed {len(shots)}"
         )
+    if explicit_shot_plan["provided"]:
+        shot_bodies = []
+        for index, shot in enumerate(shots):
+            end = shots[index + 1].start() if index + 1 < len(shots) else len(timeline)
+            shot_bodies.append(timeline[shot.end():end])
+        errors.extend(_shot_plan_semantic_errors(shot_bodies, explicit_shot_plan))
     if (not explicit_shot_plan["provided"]
             and _requires_single_simultaneous_shot(source_prompt, duration_seconds) and len(shots) != 1):
         errors.append("The short simultaneous source requires exactly one continuous shot")
@@ -3137,7 +3704,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             f"The source contains mandatory cut commands and requires exactly {required_explicit_shots} shots; "
             f"observed {len(shots)}"
         )
-    implicit_limit = None if explicit_shot_plan["provided"] else _implicit_shot_limit(source_prompt)
+    implicit_limit = (
+        None if explicit_shot_plan["provided"]
+        else _implicit_shot_limit(source_prompt, resolved, enhance_description)
+    )
     if implicit_limit is not None and len(shots) > implicit_limit:
         errors.append(
             f"The source supplied no explicit edit structure; use at most {implicit_limit} shot(s), observed {len(shots)}"
@@ -3242,7 +3812,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append(
                 "Visible dialogue must keep a stable (Sx) ID and an explicit vocal action in the same sentence as <d>"
             )
-    if contracts and not dialogue_authoring and dialogue_match_objects and float(duration_seconds) >= 8.0:
+    if (ambience_foley_policy == "ensure_audible" and contracts and not dialogue_authoring
+            and dialogue_match_objects and float(duration_seconds) >= 8.0):
         post_dialogue = timeline[dialogue_match_objects[-1].end():]
         if len(re.findall(r"\b[\wÀ-ÿ'-]+\b", post_dialogue)) >= 35:
             sound_cues = set(re.findall(
@@ -3252,10 +3823,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                 post_dialogue + " " + _section_body(text, "overall_soundscape"),
                 flags=re.IGNORECASE,
             ))
-            if len(sound_cues) < 2:
+            if not sound_cues:
                 errors.append(
-                    "A long visual continuation after short dialogue must name at least two concrete non-verbal "
-                    "sounds in the remaining timeline"
+                    "Required ambience/foley mode needs one continuous requested or physically caused non-verbal "
+                    "sound after the final short dialogue line"
                 )
     untagged_speech = _untagged_speech_actions(timeline) if (contracts or dialogue_authoring) else []
     if untagged_speech:
@@ -3459,6 +4030,19 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         errors.append("non_diegetic_music must be N/A when the source did not request music")
     elif background_score_policy == "add_instrumental" and music.casefold() == "n/a":
         errors.append("An instrumental non-diegetic score is required by the selected audio policy")
+    if background_score_policy == "add_instrumental" and music.casefold() != "n/a":
+        positive_music = re.sub(
+            r"\b(?:no|without|exclude)\b[^.!?;]{0,80}\b(?:vocals?|lyrics?|singing|choir|speech)\b",
+            "", music, flags=re.IGNORECASE,
+        )
+        if re.search(r"\b(?:singer|soprano|alto|tenor|baritone|choir|vocals?|lyrics?|singing)\b",
+                     positive_music, re.IGNORECASE):
+            errors.append("Instrumental score contains vocals, singing, choir, or lyrics")
+        requested_music = " ".join(part for part in (
+            str(instrumental_description).strip(), INSTRUMENTAL_STYLE_CONTRACTS.get(instrumental_style, ""),
+        ) if part)
+        if requested_music and not _style_signature_observed(music, requested_music):
+            errors.append("Instrumental score dropped the requested description or resolved instrumental style")
 
     soundscape = _section_body(text, "overall_soundscape").strip()
     if ambience_foley_policy == "off" and soundscape.casefold() not in {
@@ -3473,6 +4057,20 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     )
     if soundscape.casefold() == "n/a" and ambience_foley_policy == "auto" and not explicit_total_silence:
         warnings.append("overall_soundscape should be N/A only when the source explicitly requests complete silence")
+    if acoustic_space not in ACOUSTIC_SPACE_CHOICES:
+        errors.append(f"Unsupported acoustic_space {acoustic_space!r}")
+    elif acoustic_space != "none" and soundscape.casefold() != "n/a":
+        contract = ACOUSTIC_SPACE_CONTRACTS.get(acoustic_space, "")
+        if contract and not _style_signature_observed(soundscape, contract):
+            errors.append(f"overall_soundscape dropped the resolved acoustic space {acoustic_space!r}")
+    if dialogue_coverage not in DIALOGUE_COVERAGE_CHOICES:
+        errors.append(f"Unsupported dialogue_coverage {dialogue_coverage!r}")
+    elif dialogue_coverage == "on" and voice_performance == "audible" and source_contracts:
+        if not all(re.search(pattern, timeline, re.IGNORECASE) for pattern in (
+            r"\b(?:mouth|lips)\b", r"\beyes?\b", r"\b(?:focus|in focus)\b",
+            r"\b(?:medium close-up|close-up|tight close)\b",
+        )):
+            errors.append("Dialogue coverage requires visible mouth, eyes, focus, and close framing for every line")
 
     def sentence_count(value: str) -> int:
         return len([part for part in re.split(r"(?<=[.!?])\s+", value.strip()) if part.strip()])
@@ -3494,6 +4092,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     ):
         errors.append("Voice-suppressed mode forbids intelligible vocal sound in overall_soundscape")
 
+    description_budget: dict[str, Any] = {
+        "kind": "base_useful_density",
+        "softMinWords": None,
+        "softMaxWords": None,
+        "actualWords": description_words,
+    }
     if resolved == "ref2va":
         reference_model = _official_reference_model(source_prompt, reference_context)
         detail_match = re.search(
@@ -3617,6 +4221,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             flags=re.IGNORECASE,
         ):
             errors.append("summary must use one canonical bracketed task prefix, not multiple bracket groups")
+        elif not summary[official_prefix.end():].strip():
+            warnings.append("Ref2VA summary should briefly state the target/reference relationships after its task prefix")
 
         reveal = reference_model["reveal"]
         if reveal:
@@ -3637,13 +4243,40 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                 )
                 if visible_before:
                     errors.append(f"{label} becomes visible before the user-specified reveal cue {cue!r}")
-        if detail_words and not 350 <= detail_words <= 500:
-            warnings.append(f"Ref2VA detailed_description has {detail_words} words; 350-500 is recommended")
+        description_budget = _adaptive_description_budget(
+            source_prompt, reference_context, len(shots), profile_name,
+        )
+        description_budget["actualWords"] = detail_words
+    coverage_gaps = _description_coverage_gaps(
+        timeline, resolved, source_prompt, profile_name, len(shots),
+    )
+    soft_minimum = description_budget.get("softMinWords")
+    if (
+        resolved == "ref2va"
+        and soft_minimum is not None
+        and description_budget.get("actualWords", 0) < soft_minimum
+        and not any("too sparse" in gap for gap in coverage_gaps)
+    ):
+        coverage_gaps.append(
+            f"Ref2VA enhanced-production detail is below its adaptive soft baseline "
+            f"({description_budget.get('actualWords', 0)} words versus {soft_minimum}); add missing reference, "
+            "spatial, causal, camera, or audio-visual coverage without padding"
+        )
+    style_coverage_gaps = _resolved_style_coverage_gaps(text, resolved_visual_style)
+    valid = not errors
     return {
-        "valid": not errors,
+        "valid": valid,
+        "qualityValid": valid and not coverage_gaps and not style_coverage_gaps,
         "mode": resolved,
         "errors": errors,
         "warnings": warnings,
+        "coverageGaps": coverage_gaps,
+        "styleCoverageGaps": style_coverage_gaps,
+        "enhancementProfile": profile_name,
+        "deliveryTarget": delivery_target,
+        "apiCompatible": api_compatible,
+        "descriptionBudget": description_budget,
+        "resolvedVisualStyle": resolved_visual_style,
         "sections": list(observed),
         "shotCount": len(shots),
         "aspectRatio": aspect_ratio,

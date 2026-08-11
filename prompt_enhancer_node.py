@@ -136,7 +136,7 @@ class MiniMaxH3PromptGuideBuilder:
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
         return (
-            system_prompt_for_mode(resolved),
+            system_prompt_for_mode(resolved, bool(enhance_description)),
             build_user_request(
                 basic_prompt, resolved, duration_seconds, reference_context, enhance_description,
                 ambience_foley_policy, background_score_policy, voice_performance,
@@ -214,6 +214,7 @@ class MiniMaxH3PromptEnhancer:
             # Appended last on purpose: ComfyUI stores widget values positionally, so a new control
             # anywhere else would shift every saved workflow's widgets_values by one slot.
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
+            "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
         }}
 
     @classmethod
@@ -242,7 +243,7 @@ class MiniMaxH3PromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False):
+                always_re_enhance=False, delivery_target="local"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         if bool(use_remote_model):
             remote_args = (
@@ -258,11 +259,12 @@ class MiniMaxH3PromptEnhancer:
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
-                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off")):
+                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
+                    delivery_target != "local")):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                 creative_treatment_json, shot_plan_json, cinematography_json,
-                                instrumental_style, acoustic_space, dialogue_coverage)
+                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -279,11 +281,12 @@ class MiniMaxH3PromptEnhancer:
             if any((aspect_ratio != "auto", media_manifest, multishot_shot_count, frame_count,
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
-                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off")):
+                    instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
+                    delivery_target != "local")):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                creative_treatment_json, shot_plan_json, cinematography_json,
-                               instrumental_style, acoustic_space, dialogue_coverage)
+                               instrumental_style, acoustic_space, dialogue_coverage, delivery_target)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -351,6 +354,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             # Appended last on purpose: ComfyUI stores widget values positionally, so a new control
             # anywhere else would shift every saved workflow's widgets_values by one slot.
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
+            "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
         }}
 
     @classmethod
@@ -370,7 +374,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False):
+                always_re_enhance=False, delivery_target="local"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
@@ -386,7 +390,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
-            acoustic_space, dialogue_coverage,
+            acoustic_space, dialogue_coverage, delivery_target,
         )
         return (
             prompt,
@@ -575,6 +579,12 @@ class MiniMaxH3PromptValidator:
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False}),
+            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Validate enhanced-production coverage; disable for conservative-grounded coverage."}),
+            "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 treats the 7000-character text-block limit as a hard error; local mode reports compatibility only."}),
+            "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
+            "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none"}),
+            "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none"}),
+            "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -582,13 +592,18 @@ class MiniMaxH3PromptValidator:
                  voice_performance="audible", aspect_ratio="auto", media_manifest="",
                  multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
                  multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
-                 creative_treatment_json="", shot_plan_json="", cinematography_json=""):
+                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
+                 enhance_description=True, delivery_target="local", instrumental_description="",
+                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             (), creative_treatment_json, shot_plan_json, cinematography_json,
+            enhance_description=bool(enhance_description), delivery_target=delivery_target,
+            instrumental_description=instrumental_description, instrumental_style=instrumental_style,
+            acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {

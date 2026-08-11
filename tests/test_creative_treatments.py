@@ -26,6 +26,7 @@ from creative_treatments import (
     parse_cinematography,
     parse_shot_plan,
     resolve_treatment_conflicts,
+    resolve_visual_style,
     shot_plan_instruction,
     shot_transition_choices,
     treatment_warnings,
@@ -512,8 +513,8 @@ def test_genre_craft_visual_languages_carry_distinct_complete_contracts():
             "black leather gloves",
         ),
         "mockumentary_talking_head": (
-            "single-camera mockumentary coverage",
-            "snap zoom onto a reaction",
+            "single-camera mockumentary observation",
+            "use a snap zoom",
             "lower thirds",
         ),
         "supermarionation": (
@@ -557,7 +558,8 @@ def test_genre_craft_visual_languages_carry_distinct_complete_contracts():
 def test_mockumentary_camera_is_complicit_where_observational_documentary_is_invisible():
     mockumentary = compose_creative_treatment(visual_language="mockumentary_talking_head")["dimensions"]
     observational = compose_creative_treatment(visual_language="documentary_observational")["dimensions"]
-    assert "complicit with it" in " ".join(mockumentary["editing_and_pacing"])
+    assert "crew-aware situation" in " ".join(mockumentary["editing_and_pacing"])
+    assert "without inventing a crew" in " ".join(mockumentary["editing_and_pacing"])
     assert "unobtrusive" in " ".join(observational["camera_and_framing"])
     # The interview grammar is available only as a response to the source, never as a
     # licence to add one.
@@ -1209,6 +1211,40 @@ def test_compatible_selections_produce_no_conflicts_and_no_dropped_lines():
     assert conflicts == []
     assert resolved["dimensions"] == treatment["dimensions"]
     assert treatment_warnings(treatment, cinematography) == []
+
+
+def test_resolved_visual_style_suppresses_only_lines_claiming_the_explicit_field():
+    treatment = {
+        "applied": True,
+        "profileIds": ["test:style"],
+        "dimensions": {
+            **{dimension: [] for dimension in PROFILE_DIMENSIONS},
+            "lighting_and_color": [
+                "Use a cyan-magenta palette with saturated color separation.",
+                "Shape the existing practical light into long readable falloff across faces.",
+            ],
+            "camera_and_framing": [
+                "Use locked-off static camera movement.",
+                "Keep layered foreground and background blocking readable.",
+            ],
+        },
+    }
+    cinematography = parse_cinematography({
+        "schemaVersion": 1,
+        "colorPalette": "natural",
+        "cameraMotion": "tracking",
+    })
+    style = resolve_visual_style(treatment, cinematography)
+    assert style["treatmentDimensions"]["lighting_and_color"] == [
+        "Shape the existing practical light into long readable falloff across faces.",
+    ]
+    assert style["treatmentDimensions"]["camera_and_framing"] == [
+        "Keep layered foreground and background blocking readable.",
+    ]
+    assert {item["text"] for item in style["suppressedTreatmentLines"]} == {
+        "Use a cyan-magenta palette with saturated color separation.",
+        "Use locked-off static camera movement.",
+    }
 
 
 def test_shot_rows_accept_optional_camera_and_transition_without_changing_legacy_rows():

@@ -509,11 +509,11 @@ VISUAL_LANGUAGE_PROFILES = {
     "mockumentary_talking_head": _profile(
         tags={"camera_energy": "handheld"},
         editing_and_pacing=(
-            "Present the material as single-camera mockumentary coverage: a documentary crew is in the room and complicit with it, so the camera chases what already happens instead of anticipating or staging it.",
+            "Present the material with single-camera mockumentary observation: when the source supplies a crew-aware situation, the camera may chase what already happens instead of anticipating or staging it; otherwise use restrained observational operation without inventing a crew.",
             "Let a supplied beat run until something in the source undercuts it, then follow that; add no punchline, escalation, extra reaction, or edited comic rhythm.",
         ),
         camera_and_framing=(
-            "Operate handheld from a standing crew position with small live corrections and a hunting instinct: a snap zoom onto a reaction, a quick refocus once it lands, a whip pan to whoever cuts in.",
+            "Operate handheld with small live corrections; use a snap zoom, quick refocus, or whip pan only toward an existing source-supplied reaction or speaker.",
             "Steal shots through blinds, doorways, window mullions, and glass partitions, accepting soft foreground obstruction and imperfect headroom as the price of catching the moment.",
             "When the source supplies an interview, frame it as a seated or standing talking-head with the subject addressing a point just off lens, or straight to lens if the source says so, and use it as a cutaway only where a cut is already authorized.",
         ),
@@ -525,7 +525,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Photograph the supplied interior exactly as it is used, keeping real clutter on surfaces, notices where they already hang, and the sightlines through partitions that the camera exploits.",
         ),
         blocking_and_performance=(
-            "Keep behavior dry, overlapping, and unresolved: people talk across each other, trail off, and carry on with what they were doing through the beat.",
+            "Keep source-supplied behavior dry and unresolved; overlapping speech or trailing-off delivery applies only when the source already contains multiple audible speakers.",
             "Let a performer acknowledge the camera with a glance, a held look, or a turn toward the lens only when the source explicitly supplies that acknowledgement.",
         ),
         sound_treatment=(
@@ -1000,10 +1000,10 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
         camera_and_framing=(
             "Place the camera low at miniature street level and look up, so anything the source presents as large towers over the frame and meets open sky.",
-            "Compose in stacked layers with miniature facades, power lines, and vehicles crossing the foreground to sell scale, keeping the lens on a stable stage-bound head rather than a handheld or aerial viewpoint.",
+            "Compose in stacked miniature layers using only source-supplied architecture, infrastructure, vehicles, or foreground objects to sell scale, keeping the lens on a stable stage-bound head rather than a handheld or aerial viewpoint.",
         ),
         lighting_and_color=(
-            "Light the miniature stage with hard directional keys plus searchlight beams and vehicle lamps working at street scale, and keep photographed color honest so a supplied creature reads as painted latex over a performer rather than rendered skin.",
+            "Light the miniature stage with hard directional keys; searchlights or vehicle lamps appear only when already supplied, and photographed color stays honest so any supplied creature reads as painted latex over a performer rather than rendered skin.",
         ),
         production_design=(
             "Build the environment as detailed constructed miniatures: scaled facades, glazing, rooftop clutter, cabling, and roadway furniture with real edges, joins, and paint wear photographed as physical objects.",
@@ -1303,11 +1303,11 @@ VISUAL_LANGUAGE_PROFILES = {
             "Present the sequence as 1960s marionette-show craft: characters performed as visibly artificial puppets, staged and cut with the measured completeness of live-action drama rather than cartoon timing.",
         ),
         camera_and_framing=(
-            "Move the camera through miniature space exactly as a live-action drama would, dollying along a built corridor, craning down to a console, or holding clean over-shoulder geometry, so the space is photographed as a location rather than as a tabletop.",
+            "Move the camera through source-supplied miniature space exactly as a live-action drama would, using a compatible dolly, crane, or held geometry without inventing a corridor, console, or set feature.",
             "Favor full-figure and chest-up framings with the puppets on their marks, holding on a tilted head where live action would hold on an eye.",
         ),
         lighting_and_color=(
-            "Light the miniature sets with the practical fixtures built into them — glowing console panels, ceiling strips, instrument lamps — supported by hard studio keys, and let the smooth molded faces take a clean specular highlight.",
+            "Use only practical fixtures the supplied set actually contains, supported by hard studio keys, and let smooth molded faces take a clean specular highlight without inventing console panels, ceiling strips, or instrument lamps.",
         ),
         production_design=(
             "Construct every set, interior, and piece of equipment as a meticulously detailed miniature with working practical lights, real switchgear, decals, panel lines, and honest fabricated edges photographed as physical objects.",
@@ -2567,6 +2567,180 @@ def resolve_treatment_conflicts(treatment: Mapping[str, Any],
         "droppedLines": [item["droppedText"] for item in conflicts],
     }
     return resolved, conflicts
+
+
+_STYLE_FIELD_CONFLICT_PATTERNS = {
+    "color_palette": re.compile(
+        r"\b(?:palette|colou?r|chromatic|monochrom|black[- ]and[- ]white|grayscale|greyscale|sepia|saturat|hue|cyan|magenta|teal|orange)\w*\b",
+        re.IGNORECASE,
+    ),
+    "exposure_contrast": re.compile(
+        r"\b(?:exposure|contrast|highlight|shadow|black level|white level|low[- ]key|high[- ]key|dynamic range)\w*\b",
+        re.IGNORECASE,
+    ),
+    "shot_scale": re.compile(
+        r"\b(?:close[- ]up|medium(?: close[- ]up| shot)?|wide(?: shot)?|establishing shot|two[- ]shot|shot scale)\b",
+        re.IGNORECASE,
+    ),
+    "camera_angle": re.compile(
+        r"\b(?:camera angle|low[- ]angle|high[- ]angle|eye[- ]level|overhead|top[- ]down|dutch|canted)\b",
+        re.IGNORECASE,
+    ),
+    "camera_viewpoint": re.compile(
+        r"\b(?:viewpoint|point of view|first[- ]person|over[- ]the[- ]shoulder|subjective camera)\b",
+        re.IGNORECASE,
+    ),
+    "camera_motion": re.compile(
+        r"\b(?:handheld|locked[- ]off|static camera|fixed (?:camera|viewpoint)|rigid (?:camera|viewpoint)|tracking|"
+        r"dolly|truck|pan(?:ning)?|tilt(?:ing)?|orbit|crane|push[- ]in|pull[- ]back|zoom|whip[- ]pan|"
+        r"camera shake|shake|drift(?:ing)?|camera movement)\b",
+        re.IGNORECASE,
+    ),
+    "camera_amplitude": re.compile(r"\b(?:camera-motion amplitude|small amplitude|large amplitude)\b", re.IGNORECASE),
+    "camera_speed": re.compile(r"\b(?:camera-motion speed|slow speed|fast speed)\b", re.IGNORECASE),
+    "optics": re.compile(
+        r"\b(?:lens|optics|focal length|perspective compression|anamorphic|barrel distortion)\b",
+        re.IGNORECASE,
+    ),
+    "focus_behavior": re.compile(
+        r"\b(?:focus|depth of field|rack[- ]focus|bokeh|deep[- ]focus|shallow[- ]focus)\b",
+        re.IGNORECASE,
+    ),
+    "image_texture": re.compile(
+        r"\b(?:image texture|film grain|video noise|scanline|halation|gate weave|compression artifact)\w*\b",
+        re.IGNORECASE,
+    ),
+    "lens_effects": re.compile(
+        r"\b(?:lens effect|lens flare|bloom|chromatic aberration|vignett|diffusion filter)\w*\b",
+        re.IGNORECASE,
+    ),
+    "motion_rendering": re.compile(
+        r"\b(?:motion rendering|motion blur|shutter|strob|frame sampling)\w*\b",
+        re.IGNORECASE,
+    ),
+}
+
+
+def resolve_visual_style(treatment: Mapping[str, Any],
+                         cinematography: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Resolve explicit cinematography and the subordinate treatment field by field."""
+    selected_cinematography = dict(cinematography or {})
+    resolved_treatment, conflicts = resolve_treatment_conflicts(treatment, selected_cinematography)
+    directives = [dict(item) for item in selected_cinematography.get("directives", ())]
+    explicit_fields = [str(item["field"]) for item in directives]
+    dimensions = {
+        dimension: list(values)
+        for dimension, values in resolved_treatment.get("dimensions", {}).items()
+    }
+    suppressed_lines = []
+    for dimension, values in dimensions.items():
+        kept = []
+        for line in values:
+            winning_fields = [
+                field for field in explicit_fields
+                if field in _STYLE_FIELD_CONFLICT_PATTERNS
+                and _STYLE_FIELD_CONFLICT_PATTERNS[field].search(line)
+            ]
+            if winning_fields:
+                suppressed_lines.append({
+                    "dimension": dimension,
+                    "winningFields": winning_fields,
+                    "text": line,
+                })
+            else:
+                kept.append(line)
+        dimensions[dimension] = kept
+    return {
+        "schemaVersion": 1,
+        "applied": bool(directives or resolved_treatment.get("applied")),
+        "precedence": (
+            "source_reference_and_shot_facts > explicit_shot_row > explicit_cinematography "
+            "> creative_treatment > neutral_default"
+        ),
+        "explicitFields": explicit_fields,
+        "cinematographyDirectives": directives,
+        "cameraMotionInstruction": (
+            camera_motion_sentence(selected_cinematography)
+            if any(item["field"] in {"camera_motion", "camera_amplitude", "camera_speed"} for item in directives)
+            else ""
+        ),
+        "creativeProfileIds": list(resolved_treatment.get("profileIds", ())),
+        "treatmentDimensions": dimensions,
+        "suppressedTreatmentLines": suppressed_lines,
+        "conflicts": conflicts,
+    }
+
+
+def resolved_visual_style_instruction(style: Mapping[str, Any],
+                                      cinematography: Mapping[str, Any] | None = None,
+                                      mode: str = "") -> str:
+    """Render one compact, precedence-resolved visual style bible for the writer."""
+    if not style.get("applied"):
+        return ""
+    selected_cinematography = dict(cinematography or {})
+    lines = [
+        "RESOLVED VISUAL STYLE BIBLE — APPLY AS ONE COHERENT LOOK:",
+        f"Field precedence already applied: {style.get('precedence', '')}.",
+        "Treat this as presentation authority, never narrative authority. It may not create a cut, subject, object, "
+        "action, light source, weather change, VFX event, sound source, dialogue, or story beat. Preserve source and "
+        "reference identity, geometry, wardrobe, product, object, and endpoint facts.",
+        "A profile never creates a cut or conventional genre event. Explicit controls override any conflicting "
+        "camera, optical, exposure, or color advice field by field; compatible treatment lines remain active.",
+        "OUTPUT INTEGRATION — MANDATORY: Translate every remaining field into observable wording in the applicable "
+        "shot. " + (
+            "Repeat one compact, self-contained visual-style signature in every autonomous prompt item. "
+            if mode == "chained_multishot" else
+            "State the global look once, carry it consistently through all shots, and describe only shot-specific camera or lighting deltas later. "
+        ) + "Never emit preset IDs or control-panel labels in the finished prompt.",
+    ]
+    directives = style.get("cinematographyDirectives", ())
+    if directives:
+        lines.extend([
+            "EXPLICIT CINEMATOGRAPHY — AUTHORITATIVE PRESENTATION CONTROL:",
+            "Use H3 camera grammar as motion type + amplitude + speed. Explicit cinematography overrides the "
+            "corresponding creative-treatment field and must remain temporally stable unless an explicit shot row "
+            "provides a more specific value.",
+        ])
+        for item in directives:
+            if item["field"] in {"camera_amplitude", "camera_speed"}:
+                continue
+            instruction = (
+                camera_motion_sentence(selected_cinematography)
+                if item["field"] == "camera_motion" else item["instruction"]
+            )
+            lines.append(f"- {item['field']}: {instruction}")
+    profile_ids = style.get("creativeProfileIds", ())
+    dimensions = style.get("treatmentDimensions", {})
+    if profile_ids and any(dimensions.get(dimension) for dimension in PROFILE_DIMENSIONS):
+        lines.extend([
+            "SECONDARY CREATIVE TREATMENT — RESOLVED UNSPECIFIED FIELDS ONLY:",
+            "Selected profiles: " + ", ".join(profile_ids) + ".",
+        ])
+        headings = {
+            "editing_and_pacing": "editing_and_pacing",
+            "camera_and_framing": "camera_and_framing",
+            "lighting_and_color": "lighting_and_color",
+            "production_design": "production_design_and_materials",
+            "blocking_and_performance": "blocking_and_performance",
+            "sound_treatment": "permitted_sound_treatment",
+            "may_fill_unspecified": "safe_unspecified_fill",
+            "must_not_invent": "forbidden_inventions",
+        }
+        for dimension in PROFILE_DIMENSIONS:
+            values = dimensions.get(dimension, ())
+            if values:
+                lines.append(headings[dimension] + ":")
+                lines.extend(f"- {item}" for item in values)
+    suppressed = style.get("suppressedTreatmentLines", ())
+    if suppressed:
+        lines.append(
+            "Resolved overrides: omitted only " + str(len(suppressed))
+            + " creative-treatment line(s) that claimed explicit field(s): "
+            + ", ".join(dict.fromkeys(
+                field for item in suppressed for field in item["winningFields"]
+            )) + "."
+        )
+    return "\n".join(lines)
 
 
 def treatment_warnings(treatment: Mapping[str, Any],

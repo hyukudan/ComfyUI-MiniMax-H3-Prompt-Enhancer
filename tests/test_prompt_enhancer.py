@@ -89,7 +89,8 @@ def test_enhancer_auto_discovers_model_and_never_puts_api_key_in_manifest(monkey
     assert validation["valid"]
     assert manifest["model"] == "local-qwen"
     assert "super-secret" not in json.dumps(manifest)
-    assert len(calls) == 2
+    assert len(calls) == 3
+    assert manifest["repairAttemptsUsed"] == 1
 
 
 def test_auto_model_skips_embeddings_and_prefers_compact_instruct_model(monkeypatch):
@@ -166,6 +167,23 @@ N/A"""
     assert result == first
     assert len(validation["errors"]) == 1
     assert "older woman" in validation["errors"][0]
+    assert manifest["repairAttemptsUsed"] == 1
+
+
+def test_api_v2_delivery_target_repairs_an_oversized_candidate():
+    oversized = VALID_PROMPT.replace(
+        "a knight crosses a wet alley.",
+        "a knight crosses a wet alley. " + ("Unique visible masonry detail remains stable. " * 190),
+    )
+    completions = iter((oversized, VALID_PROMPT))
+    result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley. No music.", "t2va", 5.0, "",
+        lambda _messages: next(completions), 1, {"provider": "test"},
+        delivery_target="api_v2",
+    )
+    assert result == VALID_PROMPT
+    assert validation["valid"] and validation["apiCompatible"]
+    assert manifest["deliveryTarget"] == "api_v2"
     assert manifest["repairAttemptsUsed"] == 1
 
 
@@ -280,7 +298,7 @@ Water trickles nearby.
 
 non_diegetic_music:
 N/A"""
-    completions = iter(("invalid ledger", ledger, final_prompt))
+    completions = iter(("invalid ledger", ledger, final_prompt, final_prompt))
     result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
         "Generate short Spanish dialogue for a presenter. No music.",
         "t2va", 5.0, "", lambda _messages: next(completions), 1, {"provider": "test"},
@@ -288,7 +306,7 @@ N/A"""
     assert validation["valid"], validation
     assert "<d>[Spanish] Bienvenidos al jardín.</d>" in result
     assert manifest["dialoguePlanningRepairAttemptsUsed"] == 1
-    assert manifest["repairAttemptsUsed"] == 0
+    assert manifest["repairAttemptsUsed"] == 1
 
 
 def test_dialogue_ledger_cannot_relabel_a_source_quote_as_new_authored_text():

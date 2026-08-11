@@ -31,6 +31,12 @@ JSON_FIELDS = NEW_FIELDS[:3]
 NEW_FIELD_DEFAULTS = ["", "", "", "none", "none", "off"]
 # Appended after NEW_FIELDS on the two LLM-backed nodes only; the guide builder never calls an LLM.
 CACHING_FIELDS = ["always_re_enhance"]
+DELIVERY_FIELDS = ["delivery_target"]
+DELIVERY_TARGET_CALLABLES = {
+    prompt_enhancer.enhance_prompt_with_completion,
+    prompt_enhancer.enhance_prompt,
+    gguf_server.enhance_prompt_with_gguf_server,
+}
 VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 CREATIVE = '{"schemaVersion":1,"genre":"action","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 SHOTS = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"One shot."}]}'
@@ -44,7 +50,8 @@ def _input_names(node_class):
 
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [*NEW_FIELDS, *caching]
+    delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
+    return [*NEW_FIELDS, *caching, *delivery]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -75,8 +82,10 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
         optional = node_class.INPUT_TYPES()["optional"]
         appended = _appended_fields(node_class)
         assert list(optional)[-len(appended):] == appended
-        for name in appended[len(NEW_FIELDS):]:
-            assert optional[name][1]["default"] is False
+        if "always_re_enhance" in appended:
+            assert optional["always_re_enhance"][1]["default"] is False
+        if "delivery_target" in appended:
+            assert optional["delivery_target"][1]["default"] == "local"
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -133,9 +142,13 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             if parameter.name != "self"
         ]
         if caching:
-            assert [parameter.name for parameter in parameters[-len(caching):]] == caching
-            assert [parameter.default for parameter in parameters[-len(caching):]] == [False] * len(caching)
-            parameters = parameters[:-len(caching)]
+            assert [parameter.name for parameter in parameters[-2:]] == [*caching, "delivery_target"]
+            assert [parameter.default for parameter in parameters[-2:]] == [False, "local"]
+            parameters = parameters[:-2]
+        if callable_ in DELIVERY_TARGET_CALLABLES:
+            assert parameters[-1].name == "delivery_target"
+            assert parameters[-1].default == "local"
+            parameters = parameters[:-1]
         assert [parameter.name for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELDS
         assert [parameter.default for parameter in parameters[-len(NEW_FIELDS):]] == NEW_FIELD_DEFAULTS
 
@@ -182,7 +195,7 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-4:] == ("", "none", "none", "off")
+    assert captured["args"][-5:] == ("", "none", "none", "off", "local")
 
 
 def test_main_and_specialized_nodes_forward_appended_fields_without_positional_shift(monkeypatch):
@@ -207,8 +220,8 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
         0.2, 4096, 300, 180, 0, True, True, False,
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert remote_calls[0][-6:] == (CREATIVE, SHOTS, "", "none", "none", "off")
-    assert gguf_calls[0][-6:] == (CREATIVE, SHOTS, "", "none", "none", "off")
+    assert remote_calls[0][-7:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local")
+    assert gguf_calls[0][-7:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():

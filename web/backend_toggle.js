@@ -98,6 +98,7 @@ const DISPLAY_LABELS = {
     allow_remote_endpoint: "Allow non-local endpoint",
     keep_server_loaded: "Keep local model loaded",
     show_advanced_controls: "Advanced settings",
+    delivery_target: "Prompt delivery target",
 };
 const DISPLAY_PLACEHOLDERS = {
     basic_prompt: "Describe the video you want: subject, action, setting, camera, dialogue and sound…",
@@ -552,6 +553,9 @@ function ensureFieldTitleStyles() {
             flex-direction: column;
             gap: 3px;
         }
+        .minimax-h3-treatment-field.minimax-h3-wide {
+            grid-column: 1 / -1;
+        }
         .minimax-h3-treatment-field > span,
         .minimax-h3-timing-label {
             overflow: hidden;
@@ -563,6 +567,7 @@ function ensureFieldTitleStyles() {
         }
         .minimax-h3-creative-panel select,
         .minimax-h3-creative-panel textarea,
+        .minimax-h3-creative-panel input[type="search"],
         .minimax-h3-creative-panel input[type="number"] {
             width: 100%;
             border: 1px solid var(--border-color, #666);
@@ -574,6 +579,7 @@ function ensureFieldTitleStyles() {
         }
         .minimax-h3-creative-panel select:focus-visible,
         .minimax-h3-creative-panel textarea:focus-visible,
+        .minimax-h3-creative-panel input[type="search"]:focus-visible,
         .minimax-h3-creative-panel input[type="number"]:focus-visible,
         .minimax-h3-creative-panel button:focus-visible {
             border-color: var(--p-primary-color, #7ca6ff);
@@ -582,6 +588,60 @@ function ensureFieldTitleStyles() {
         .minimax-h3-creative-panel select {
             height: 27px;
             padding: 2px 5px;
+        }
+        .minimax-h3-select-search {
+            position: relative;
+            width: 100%;
+        }
+        .minimax-h3-select-search-icon {
+            position: absolute;
+            top: 50%;
+            left: 7px;
+            z-index: 1;
+            transform: translateY(-50%);
+            color: var(--descrip-text, #aaa);
+            font-size: 12px;
+            line-height: 1;
+            pointer-events: none;
+        }
+        .minimax-h3-select-search input[type="search"] {
+            width: 100%;
+            height: 27px;
+            padding: 2px 27px 2px 25px;
+        }
+        .minimax-h3-select-search input[type="search"]::-webkit-search-cancel-button {
+            display: none;
+        }
+        .minimax-h3-select-search-clear {
+            position: absolute;
+            top: 50%;
+            right: 3px;
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            transform: translateY(-50%);
+            border: 0;
+            border-radius: 3px;
+            background: transparent;
+            color: var(--descrip-text, #aaa);
+            cursor: pointer;
+            font: inherit;
+        }
+        .minimax-h3-select-search-clear:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--comfy-input-bg, #292929) 65%, #fff 12%);
+            color: var(--input-text, #ddd);
+        }
+        .minimax-h3-select-search-clear:disabled {
+            visibility: hidden;
+        }
+        .minimax-h3-select-search-status {
+            display: none;
+            margin: 0;
+            color: var(--descrip-text, #aaa);
+            font-size: 10.5px;
+        }
+        .minimax-h3-select-search-status[data-visible="true"] {
+            display: block;
         }
         .minimax-h3-shot-toolbar {
             display: grid;
@@ -1506,15 +1566,89 @@ function addSelectOptions(select, choices) {
     }
 }
 
-function addVisualLanguageOptions(select) {
+function addVisualLanguageOptions(select, visibleValues = null) {
     const labels = new Map(CREATIVE_CHOICES.visualLanguage);
     addSelectOptions(select, [["none", labels.get("none")]]);
     for (const [groupLabel, values] of VISUAL_LANGUAGE_GROUPS) {
+        const visible = visibleValues ? values.filter((value) => visibleValues.has(value)) : values;
+        if (!visible.length) continue;
         const group = document.createElement("optgroup");
         group.label = groupLabel;
-        addSelectOptions(group, values.map((value) => [value, labels.get(value)]));
+        addSelectOptions(group, visible.map((value) => [value, labels.get(value)]));
         select.appendChild(group);
     }
+}
+
+function normalizedSearchText(value) {
+    return String(value ?? "")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[_-]+/g, " ")
+        .toLocaleLowerCase();
+}
+
+function createVisualLanguageSearch(node, select, label) {
+    const container = createPanelElement("div", "minimax-h3-select-search");
+    const icon = createPanelElement("span", "minimax-h3-select-search-icon", "🔍");
+    icon.setAttribute("aria-hidden", "true");
+    const input = createPanelElement("input", "");
+    input.type = "search";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = "Search visual styles…";
+    input.setAttribute("aria-label", `Search ${label}`);
+    input.setAttribute("aria-controls", select.id);
+    const clear = createPanelElement("button", "minimax-h3-select-search-clear", "×");
+    clear.type = "button";
+    clear.disabled = true;
+    clear.title = "Clear style search";
+    clear.setAttribute("aria-label", "Clear visual style search");
+    const status = createPanelElement("p", "minimax-h3-select-search-status");
+    status.setAttribute("aria-live", "polite");
+    container.append(icon, input, clear);
+
+    const labels = new Map(CREATIVE_CHOICES.visualLanguage);
+    const groups = new Map(VISUAL_LANGUAGE_GROUPS.flatMap(([group, values]) => (
+        values.map((value) => [value, group])
+    )));
+    const searchable = CREATIVE_CHOICES.visualLanguage.slice(1).map(([value, choiceLabel]) => ({
+        value,
+        text: normalizedSearchText(`${choiceLabel} ${value} ${groups.get(value) ?? ""}`),
+    }));
+
+    const render = (selectedValue = select.value || "none") => {
+        const terms = normalizedSearchText(input.value).trim().split(/\s+/).filter(Boolean);
+        const matches = searchable.filter(({ text }) => terms.every((term) => text.includes(term)));
+        const visibleValues = new Set(matches.map(({ value }) => value));
+        if (selectedValue !== "none" && labels.has(selectedValue)) visibleValues.add(selectedValue);
+        select.replaceChildren();
+        addVisualLanguageOptions(select, visibleValues);
+        if (!labels.has(selectedValue) && selectedValue) ensureUnavailableOption(select, selectedValue);
+        select.value = selectedValue;
+        clear.disabled = !input.value;
+        const noMatches = terms.length > 0 && matches.length === 0;
+        status.textContent = noMatches ? "No matching styles. Clear the search to browse all styles." : "";
+        status.dataset.visible = noMatches ? "true" : "false";
+        scheduleCreativePanelLayout(node);
+    };
+    const clearSearch = () => {
+        if (!input.value) return;
+        input.value = "";
+        render();
+        input.focus();
+    };
+    input.addEventListener("input", () => render());
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            clearSearch();
+        } else if (event.key === "ArrowDown" || event.key === "Enter") {
+            event.preventDefault();
+            select.focus();
+        }
+    });
+    clear.addEventListener("click", clearSearch);
+    return { container, status, sync: render };
 }
 
 function ensureUnavailableOption(select, value) {
@@ -2126,7 +2260,9 @@ function hydrateCreativeDirectionPanel(node) {
     writeJsonStorage(node, cinematographyWidget, serializeCinematography(cinematography));
     for (const definition of CREATIVE_FIELD_DEFINITIONS) {
         ensureUnavailableOption(panel.creativeSelects[definition.key], creative[definition.key]);
-        panel.creativeSelects[definition.key].value = creative[definition.key];
+        const filter = panel.creativeFilters?.[definition.key];
+        if (filter) filter.sync(creative[definition.key]);
+        else panel.creativeSelects[definition.key].value = creative[definition.key];
     }
     updateCreativeTreatmentSummary(node);
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
@@ -2309,6 +2445,7 @@ function createAdvancedSettingsDetails(node) {
         ["timeout_seconds", "Request timeout"],
         ["request_timeout", "Request timeout"],
         ["repair_attempts", "Repair attempts"],
+        ["delivery_target", "Prompt delivery target"],
         ["disable_thinking", "Disable model thinking", { wide: true }],
         ["frame_count", "Exact frames (0 = use duration)"],
         ["media_manifest", "Media metadata JSON", { wide: true, multiline: true }],
@@ -2657,15 +2794,27 @@ function addCreativeDirectionPanel(node) {
     );
     const treatmentGrid = createPanelElement("div", "minimax-h3-treatment-grid");
     const creativeSelects = {};
+    const creativeFilters = {};
     for (const definition of CREATIVE_FIELD_DEFINITIONS) {
-        const field = createPanelElement("label", "minimax-h3-treatment-field");
+        const field = createPanelElement(
+            definition.key === "visualLanguage" ? "div" : "label",
+            "minimax-h3-treatment-field",
+        );
         field.title = definition.title;
         field.appendChild(createPanelElement("span", "", definition.label));
         const select = createPanelElement("select", "");
         select.setAttribute("aria-label", definition.label);
         select.title = definition.title;
-        if (definition.key === "visualLanguage") addVisualLanguageOptions(select);
-        else addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
+        if (definition.key === "visualLanguage") {
+            field.classList.add("minimax-h3-wide");
+            select.id = `minimax-h3-visual-language-${Math.random().toString(36).slice(2)}`;
+            addVisualLanguageOptions(select);
+            const filter = createVisualLanguageSearch(node, select, definition.label);
+            creativeFilters[definition.key] = filter;
+            field.append(filter.container, filter.status);
+        } else {
+            addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
+        }
         select.addEventListener("change", () => {
             node.__minimaxCreativeTreatmentState[definition.key] = allowedCreativeValue(definition.key, select.value);
             commitCreativeTreatment(node);
@@ -2775,6 +2924,7 @@ function addCreativeDirectionPanel(node) {
         treatmentBody,
         treatmentStatus,
         creativeSelects,
+        creativeFilters,
         cinematographyDetails,
         cinematographySummary,
         cinematographySelects,
@@ -3050,6 +3200,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "open_exterior", "urban_exterior", "underwater_muffled",
     ], "none");
     sanitizeEnumWidget(node, "dialogue_coverage", ["off", "on"], "off");
+    sanitizeEnumWidget(node, "delivery_target", ["local", "api_v2"], "local");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeBooleanWidget(node, "use_remote_model", true);

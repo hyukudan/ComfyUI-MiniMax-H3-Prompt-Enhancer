@@ -15,13 +15,13 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
-    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, treatment_warnings
-    from .media_manifest import generation_profile, manifest_context
-    from .prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
+    from .media_manifest import generation_profile, manifest_context, parse_media_manifest
+    from .prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
-    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, treatment_warnings
-    from media_manifest import generation_profile, manifest_context
-    from prompt_guides import _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, treatment_warnings
+    from media_manifest import generation_profile, manifest_context, parse_media_manifest
+    from prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -312,11 +312,15 @@ def enhance_prompt_with_completion(
     instrumental_style: str = "none",
     acoustic_space: str = "none",
     dialogue_coverage: str = "off",
+    delivery_target: str = "local",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
+    parsed_manifest_preflight = parse_media_manifest(media_manifest)
+    if parsed_manifest_preflight.get("errors"):
+        raise ValueError("Invalid media_manifest: " + "; ".join(parsed_manifest_preflight["errors"]))
     resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
     generation = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = generation["effectiveDurationSeconds"]
@@ -329,6 +333,7 @@ def enhance_prompt_with_completion(
     )
     treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
     creative_treatment, treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
+    resolved_visual_style = resolve_visual_style(creative_treatment, cinematography)
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
@@ -364,15 +369,32 @@ def enhance_prompt_with_completion(
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
-    messages = [
-        {"role": "system", "content": system_prompt_for_mode(resolved_mode)},
+    base_messages = [
+        {"role": "system", "content": system_prompt_for_mode(resolved_mode, bool(enhance_description))},
         {"role": "user", "content": user_request},
     ]
+    messages = list(base_messages)
+    context_size = int(manifest.get("contextSize") or 0)
+    max_output_tokens = int(manifest.get("maxTokens") or 0)
+    if context_size and max_output_tokens:
+        estimated_input_tokens = (sum(len(item["content"]) for item in base_messages) + 2) // 3
+        required_context = estimated_input_tokens + max_output_tokens * (2 if int(repair_attempts) else 1)
+        if required_context > context_size:
+            raise ValueError(
+                f"context_size={context_size} is too small for approximately {estimated_input_tokens} input tokens "
+                f"plus max_tokens={max_output_tokens}"
+                + (" and one bounded repair response" if int(repair_attempts) else "")
+                + f"; use at least {required_context} or reduce prompt/output budgets"
+            )
     def normalize_candidate(candidate: str) -> str:
         if resolved_mode == "chained_multishot":
-            return normalize_multishot_output(candidate, (
+            value = normalize_multishot_output(candidate, (
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             ))
+            return normalize_multishot_audio_policy(
+                value, ambience_foley_policy, background_score_policy, voice_performance,
+                basic_prompt + "\n" + effective_reference_context,
+            )
         value = normalize_section_headers(candidate)
         value = normalize_dialogue_tags(value)
         value = normalize_first_shot_marker(value, resolved_mode)
@@ -393,11 +415,21 @@ def enhance_prompt_with_completion(
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
         creative_treatment_json, shot_plan_json, cinematography_json,
+        enhance_description=bool(enhance_description), delivery_target=delivery_target,
+        instrumental_description=instrumental_description, instrumental_style=instrumental_style,
+        acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
     )
     best_enhanced = enhanced
     best_validation = validation
 
-    def candidate_score(report: dict) -> tuple[int, int]:
+    def repair_issues(report: dict) -> list[str]:
+        return [
+            *report.get("errors", ()),
+            *report.get("coverageGaps", ()),
+            *report.get("styleCoverageGaps", ()),
+        ]
+
+    def candidate_score(report: dict) -> tuple[int, int, int]:
         errors = report.get("errors", ())
         critical_markers = (
             "Explicit ", "Quoted source", "Required spoken dialogue", "invented reference labels",
@@ -408,10 +440,11 @@ def enhance_prompt_with_completion(
             10 if any(marker.casefold() in str(error).casefold() for marker in critical_markers) else 1
             for error in errors
         )
-        return (weighted_errors, len(report.get("warnings", ())))
+        quality_gaps = len(report.get("coverageGaps", ())) + len(report.get("styleCoverageGaps", ()))
+        return (weighted_errors, quality_gaps, len(report.get("warnings", ())))
 
     attempts = 0
-    while validation["errors"] and attempts < int(repair_attempts):
+    while repair_issues(validation) and attempts < int(repair_attempts):
         attempts += 1
         dialogue_authoring_repair = ""
         if dialogue_ledger:
@@ -434,15 +467,17 @@ def enhance_prompt_with_completion(
                 "description of speech. If speech occurs in multiple timeline beats, write a distinct concise line "
                 "at each relevant beat. This requirement overrides the default rule against unrequested dialogue."
             )
-        messages.extend([
+        issues = repair_issues(validation)
+        messages = [*base_messages,
             {"role": "assistant", "content": enhanced},
             {"role": "user", "content": (
-                "Repair the prompt. Return the complete corrected prompt only. Preserve all source facts and exact "
-                "quoted content. Follow the selected mode's exact output contract. Fix these validation errors:\n- "
-                + "\n- ".join(validation["errors"])
+                "Repair the prompt. Return the complete corrected prompt only. Preserve all source facts, exact "
+                "quoted content, reference roles, and resolved style fields. Follow the selected mode's exact output "
+                "contract and active enhancement profile. Fix these structural, fidelity, or coverage issues:\n- "
+                + "\n- ".join(issues)
                 + dialogue_authoring_repair
             )},
-        ])
+        ]
         enhanced = normalize_candidate(completion(messages))
         validation = validate_prompt(
             enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
@@ -450,6 +485,9 @@ def enhance_prompt_with_completion(
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
             creative_treatment_json, shot_plan_json, cinematography_json,
+            enhance_description=bool(enhance_description), delivery_target=delivery_target,
+            instrumental_description=instrumental_description, instrumental_style=instrumental_style,
+            acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -457,7 +495,7 @@ def enhance_prompt_with_completion(
     enhanced = best_enhanced
     validation = best_validation
     shots_package = build_shots_package(
-        enhanced, resolved_mode, explicit_shot_plan, bool(validation.get("valid")),
+        enhanced, resolved_mode, explicit_shot_plan, bool(validation.get("qualityValid")),
     )
     result_manifest = {
         **manifest,
@@ -465,6 +503,10 @@ def enhance_prompt_with_completion(
         "durationSeconds": float(duration_seconds),
         "repairAttemptsUsed": attempts,
         "descriptionEnhanced": bool(enhance_description),
+        "enhancementProfile": validation.get("enhancementProfile"),
+        "qualityValid": bool(validation.get("qualityValid")),
+        "deliveryTarget": delivery_target,
+        "apiCompatible": bool(validation.get("apiCompatible")),
         "referenceSemanticsVersion": 2,
         "audioPolicyVersion": 1,
         "promptContractVersion": 3,
@@ -483,6 +525,7 @@ def enhance_prompt_with_completion(
         "multishotPromptCount": validation.get("promptCount", 0),
         "creativeTreatment": creative_treatment,
         "cinematography": cinematography,
+        "resolvedVisualStyle": resolved_visual_style,
         "treatmentConflicts": treatment_conflicts,
         "treatmentWarnings": treatment_notes,
         "shotPlan": explicit_shot_plan,
@@ -501,6 +544,12 @@ def enhance_prompt_with_completion(
         "instrumentalStyleApplied": (
             instrumental_style if background_score_policy == "add_instrumental" else "none"
         ),
+        "resolvedInstrumentalStyleContract": (
+            INSTRUMENTAL_STYLE_CONTRACTS.get(instrumental_style, "")
+            if background_score_policy == "add_instrumental" else ""
+        ),
+        "acousticSpace": acoustic_space,
+        "dialogueCoverage": dialogue_coverage,
         "voicePerformance": voice_performance,
         "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
         "dialogueLedgerLineCount": len(dialogue_ledger),
@@ -537,7 +586,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    cinematography_json: str = "",
                    instrumental_style: str = "none",
                    acoustic_space: str = "none",
-                   dialogue_coverage: str = "off") -> tuple[str, dict, dict]:
+                   dialogue_coverage: str = "off",
+                   delivery_target: str = "local") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -585,4 +635,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         instrumental_style,
         acoustic_space,
         dialogue_coverage,
+        delivery_target,
     )

@@ -27,7 +27,8 @@ N/A
 non_diegetic_music:
 N/A"""
     fixed = normalize_reference_definitions(generated, "Continue video 1 and copy audio 2.")
-    assert "[video continuation + reference generation + audio reuse]" in fixed
+    assert "[video continuation + audio reuse]" in fixed
+    assert "reference generation" not in fixed.split("summary:", 1)[1].split("retention_analysis:", 1)[0]
     assert "[continuation]" not in fixed
 
 
@@ -218,7 +219,10 @@ def test_multishot_pipeline_uses_json_contract_and_manifest_v3():
         "Make two scenes", "chained_multishot", 10.1, "", completion, 0, {"provider": "test"},
         multishot_shot_count=2,
     )
-    assert json.loads(prompt)["prompts"] == ["one fluent prompt", "two fluent prompts"]
+    assert json.loads(prompt)["prompts"] == [
+        "one fluent prompt No non-diegetic music is audible.",
+        "two fluent prompts No non-diegetic music is audible.",
+    ]
     assert report["valid"]
     assert manifest["promptContractVersion"] == 3
 

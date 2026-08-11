@@ -351,6 +351,37 @@ N/A"""
     assert tuple(report["sections"]) == REFERENCE_SECTIONS
 
 
+def test_ref2va_can_exceed_500_words_without_a_false_range_warning():
+    detail = " ".join([
+        "The camera observes <Subject 1> beside <Picture 1> as the existing armor settles into its final position."
+    ] * 70)
+    prompt = f"""subject_definitions:
+<Subject 1> is the armored pilot in <Picture 1>.
+
+summary:
+[reference generation] The target video follows <Subject 1>.
+
+retention_analysis:
+<Subject 1>: fully_preserved - retain the pilot identity and armor from <Picture 1>.
+
+detailed_description:
+The target uses a live-action cinematic style with low-key lighting.
+[Shot 1] {detail}
+
+overall_soundscape:
+Low room tone and synchronized armor movement continue throughout.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        prompt, "ref2va", 5.0, reference_context="<Subject 1> comes from <Picture 1>",
+        enhance_description=True,
+    )
+    assert report["valid"], report
+    assert report["descriptionBudget"]["actualWords"] > 500
+    assert not any("350-500" in warning for warning in report["warnings"])
+
+
 def test_invalid_cut_time_and_unbalanced_dialogue_are_reported():
     prompt = """integrated_multimodal_description: [Shot 1] A room. [Shot 2] At 00:06.000, a speaker (S1) says <d>[English] Hello.
 overall_soundscape: Room tone.
@@ -616,7 +647,7 @@ N/A"""
     assert "Then <Subject 3> emerges" in detail
 
 
-def test_long_post_dialogue_timeline_requires_concrete_nonverbal_audio_occupancy():
+def test_long_post_dialogue_timeline_does_not_force_new_nonverbal_sources_in_auto_mode():
     source = 'La mujer dice "tranquilo, no estás solo" y después aparecen lentamente tres portales.'
     visual_tail = " ".join(["Three figures gradually emerge while the camera pans deeper into the chamber."] * 8)
     prompt = f"""integrated_multimodal_description:
@@ -628,14 +659,15 @@ Laboratory ambience continues.
 non_diegetic_music:
 N/A"""
     report = validate_prompt(prompt, "t2va", 15.0, source)
-    assert any("at least two concrete non-verbal sounds" in item for item in report["errors"])
+    assert report["valid"], report
+    assert not any("non-verbal sound" in item for item in report["errors"])
 
     occupied = prompt.replace(
         "She closes her lips.",
         "She closes her lips. A machinery hum and electrical crackles occupy the entire remaining timeline.",
     )
     report = validate_prompt(occupied, "t2va", 15.0, source)
-    assert not any("at least two concrete non-verbal sounds" in item for item in report["errors"])
+    assert report["valid"], report
 
 
 def test_unrelated_in_phrase_is_not_misread_as_language():
@@ -651,9 +683,30 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     conservative = build_user_request(source, "t2va", 5.0, enhance_description=False)
     assert "ACTIVE DIRECTORIAL ENHANCEMENT" in enhanced
     assert "meaningful change of viewpoint" in enhanced
+    assert "Give important actions a causal envelope" in enhanced
+    assert "BASE DESCRIPTION DEPTH — USEFUL DENSITY, NO WORD-COUNT TARGET" in enhanced
+    assert "do not force it to 350-500 words" in enhanced
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
+    assert "DESCRIPTION DEPTH" not in conservative
     assert '<d>[Original language] Do not move.</d>' in enhanced
     assert '<d>[Original language] Do not move.</d>' in conservative
+
+
+def test_ref2va_enhancement_targets_detailed_description_without_padding():
+    request = build_user_request(
+        "The mechanic in image 1 opens the workshop door.",
+        "ref2va",
+        6.0,
+        "Picture 1 supplies the mechanic's identity.",
+        enhance_description=True,
+    )
+    assert "REF2VA ADAPTIVE DESCRIPTION BUDGET" in request
+    assert "350-500 English words" in request
+    assert "soft target, never a ceiling" in request
+    assert "Video editing scales with source complexity and has no word target" in request
+    assert "Do not count subject_definitions" in request
+    assert "Never pad with synonyms" in request
+    assert "BASE DESCRIPTION DEPTH" not in request
 
 
 def test_chained_description_enhancement_toggle_controls_segment_depth():
@@ -1325,7 +1378,9 @@ N/A"""
     fixed = normalize_reference_definitions(
         raw, "The person in image 1 reveals the product in image 2.",
     )
-    assert "summary:\n[reference generation]\n" in fixed
+    assert "summary:\n[reference generation] A presenter reveals an object.\n" in fixed
+    assert "<Subject 1> A vague person; its source provenance is <Picture 1>." in fixed
+    assert "<Subject 1>: fully_preserved - vague." in fixed
     assert "<Picture 1> A generated opening moment." not in fixed
     assert "fully_preserved: The action." not in fixed
     assert "attribute_transfer: N/A" not in fixed
@@ -1579,7 +1634,8 @@ N/A"""
         "The man in image 1 waits.",
         "Connected reference <Picture 2> has no declared role.",
     )
-    assert "summary:\n[reference generation]\n" in fixed
+    assert "summary:\n[reference generation] " in fixed
+    assert "video continuation + reference generation" not in fixed
     assert "<Subject 2>" not in fixed.split("summary:", 1)[0]
 
     bracketed = raw.replace(
@@ -1591,7 +1647,8 @@ N/A"""
         "The man in image 1 waits.",
         "Connected reference <Picture 2> has no declared role.",
     )
-    assert "summary:\n[reference generation]\n" in fixed_bracketed
+    assert "summary:\n[reference generation] " in fixed_bracketed
+    assert "[video continuation]" not in fixed_bracketed
 
 
 def test_explicit_child_attributes_and_forced_exit_are_critical_source_facts():
@@ -1979,16 +2036,14 @@ def test_oversized_prompt_only_warns_about_the_official_api_text_block_limit():
     assert not any("350-500 is recommended" in warning for warning in report["warnings"])
 
 
-def test_overlong_description_body_warns_about_the_recommended_word_range():
+def test_overlong_base_description_warns_without_claiming_a_ref2va_word_target():
     body = "A mechanic walks through a workshop. " + (
         "The mechanic moves past a row of tools and the light stays even across the room. " * 45
     )
     report = validate_prompt(_budget_prompt(body), "t2va", 5.0, _BUDGET_SOURCE)
     assert report["valid"], report
-    assert any(
-        "integrated_multimodal_description has" in warning and "350-500 is recommended" in warning
-        for warning in report["warnings"]
-    )
+    assert any("repeats the same descriptive sentence" in warning for warning in report["warnings"])
+    assert not any("350-500" in warning for warning in report["warnings"])
     assert not any("MiniMax API v2" in warning for warning in report["warnings"])
 
 
@@ -2002,6 +2057,111 @@ def test_prompts_inside_both_budgets_raise_no_length_warning():
         "MiniMax API v2" in warning or "350-500 is recommended" in warning
         for warning in report["warnings"]
     )
+
+
+def test_api_v2_delivery_target_makes_the_7000_character_cap_hard():
+    body = "A mechanic crosses the workshop. " + ("Distinct calibrated machinery remains visible. " * 180)
+    prompt = _budget_prompt(body)
+    local = validate_prompt(prompt, "t2va", 5.0, _BUDGET_SOURCE, delivery_target="local")
+    api = validate_prompt(prompt, "t2va", 5.0, _BUDGET_SOURCE, delivery_target="api_v2")
+    assert local["valid"] and not local["apiCompatible"]
+    assert not api["valid"] and not api["apiCompatible"]
+    assert any("7000 characters" in error for error in api["errors"])
+
+
+def test_enhanced_profile_has_no_universal_two_shot_cap_but_conservative_does():
+    prompt = """integrated_multimodal_description:
+[Shot 1] A mechanic waits beside a car.
+[Shot 2] At 00:02.000, the camera cuts to the mechanic opening the door.
+[Shot 3] At 00:04.000, the camera cuts to the mechanic seated inside as the door settles closed.
+
+overall_soundscape:
+Workshop room tone and the existing door movement remain audible.
+
+non_diegetic_music:
+N/A"""
+    enhanced = validate_prompt(
+        prompt, "t2va", 6.0, "A mechanic enters a car.", enhance_description=True,
+    )
+    conservative = validate_prompt(
+        prompt, "t2va", 6.0, "A mechanic enters a car.", enhance_description=False,
+    )
+    assert enhanced["valid"], enhanced
+    assert enhanced["enhancementProfile"] == "enhanced_production"
+    assert any("at most 2 shot" in error for error in conservative["errors"])
+    assert conservative["enhancementProfile"] == "conservative_grounded"
+
+
+def test_reference_normalization_is_idempotent_and_keeps_specific_analysis():
+    raw = """subject_definitions:
+<Subject 1> is the grease-stained workshop mechanic whose identity comes from <Picture 1>.
+
+summary:
+[reference generation] The target keeps <Subject 1> beside the same workshop door.
+
+retention_analysis:
+<Subject 1>: fully_preserved - preserve the mechanic's face, overalls, and grease marks in every shot.
+
+detailed_description:
+[Shot 1] <Subject 1> opens the workshop door.
+
+overall_soundscape:
+Workshop room tone and the door hinge.
+
+non_diegetic_music:
+N/A"""
+    source = "The mechanic in image 1 opens the workshop door."
+    once = normalize_reference_definitions(raw, source)
+    twice = normalize_reference_definitions(once, source)
+    assert twice == once
+    assert "grease-stained workshop mechanic" in once
+    assert "face, overalls, and grease marks" in once
+    assert "The target keeps <Subject 1> beside the same workshop door." in once
+
+
+@pytest.mark.parametrize("source", [
+    "Write a cinematic scene with no dialogue.",
+    "Create a silent scene without spoken words.",
+    "Make up the visual action, but no dialogue.",
+    "Crea una escena sin diálogo.",
+    "Haz una escena pero no añadas diálogo.",
+    "Genera vídeo sin narración.",
+])
+def test_dialogue_prohibitions_never_authorize_new_spoken_words(source):
+    assert _dialogue_authoring_request(source) == (False, "Original language")
+
+
+def test_positive_dialogue_request_after_a_separate_prohibition_is_honored():
+    source = "Keep the opening silent with no dialogue. Then write one Spanish dialogue line for the woman."
+    assert _dialogue_authoring_request(source) == (True, "Spanish")
+
+
+def test_visible_text_after_spoken_dialogue_is_not_reclassified_as_speech():
+    source = 'A woman says "Hello." Behind her, a sign reads "EXIT".'
+    assert _source_dialogue_contracts(source) == [("Original language", "Hello.", False)]
+    assert _source_dialogue_contracts('A woman speaks to camera. Her shirt displays "OPENAI".') == []
+
+
+@pytest.mark.parametrize("source, expected_roles", [
+    ("The woman and the man in image 1 walk together.", ("woman", "man")),
+    ("The older woman and the young boy in image 1 wait.", ("older woman", "young boy")),
+    ("The red car and the blue motorcycle in image 1 move.", ("red car", "blue motorcycle")),
+])
+def test_distinct_entities_from_one_picture_remain_distinct_subjects(source, expected_roles):
+    model = _official_reference_model(source)
+    assert tuple(item["role"] for item in model["subjects"]) == expected_roles
+
+
+@pytest.mark.parametrize("context", [
+    "Picture 1 supplies the identity.",
+    "Image 1 provides identity.",
+    "Imagen 1 proporciona la identidad.",
+])
+def test_plain_reference_context_from_ui_activates_ref2va_and_identity(context):
+    assert resolve_mode("auto", context, "A person waves.") == "ref2va"
+    model = _official_reference_model("A person waves.", context)
+    assert model["assets"] == ["<Picture 1>"]
+    assert model["subjects"] and model["subjects"][0]["contribution"] == "identity"
 
 
 def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budgets():

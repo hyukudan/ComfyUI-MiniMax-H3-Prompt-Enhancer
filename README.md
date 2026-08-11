@@ -263,7 +263,8 @@ start closed and expand downward; their open/closed state is saved in node prope
 - **Chained multishot** appears only in `chained_multishot` mode and contains segment count plus identity, voice, and
   setting continuity. Every segment uses the global Duration; incompatible per-row duration controls are disabled.
 - **Creative direction** contains Narrative genre, Visual language, World / aesthetic, and Tone. Its summary lists only
-  active choices and reads **No preferences** when neutral.
+  active choices and reads **No preferences** when neutral. Visual language has a live search above its long grouped
+  style list; search by label, catalog ID, or family, press `Esc` to clear it, or use `↓`/`Enter` to move to the list.
 - **Cinematography** contains optional presentation controls for color palette, exposure/contrast, camera motion plus
   amplitude and speed, optics, depth of field, image texture, lens effects, and motion rendering. Its summary lists
   only active choices and reads **No preferences** when neutral.
@@ -331,6 +332,7 @@ Shared controls:
 | `frame_count` | `0` | Advanced exact H3 frame count on the `17 × n + 5` grid; zero means “derive generation length from duration” |
 | `media_manifest` | blank | Advanced authoritative JSON inventory of supplied files, roles, durations, subject mappings, analyses, and transcripts |
 | `show_advanced_controls` | disabled | Reveals media metadata JSON and exact-frame controls without changing their saved values |
+| `delivery_target` | `local` | `api_v2` makes the official 7000-character text-block limit a repairable hard error; `local` keeps it as a compatibility warning |
 | `multishot_shot_count` | `0` | Exact autonomous prompt count for `chained_multishot`; zero infers it |
 | `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
 | `creative_treatment_json` | blank | Canonical storage for the four optional creative-direction selectors; blank is completely neutral |
@@ -616,13 +618,15 @@ Validation also warns when a continuation prompt (one that extends a preceding t
 in-progress transient instantly — e.g. doors that "finish their swing" at the first frame instead of staying
 mid-motion — since that phrasing makes the model snap the state at the join rather than continue it.
 
-Validation also emits non-blocking budget advisories: a warning when the final prompt exceeds the official
-MiniMax API v2 limit of 7000 characters per text block (local open-weights inference is unaffected) and a
-warning when the description body exceeds 600 words against the officially recommended 350–500. Both are
-warnings, never errors, so they never make `valid=false` and never trigger a repair attempt. They describe the
-*generated* prompt, so they surface in `validation_report.warnings`; the separate `treatment_warnings` output
-describes the *selected configuration* (creative-direction conflicts and legacy value mappings) and is available
-before any model runs. Neither channel feeds the other.
+Validation reports the official MiniMax API v2 limit of 7000 characters per text block. With
+`delivery_target=local`, exceeding it is a compatibility warning because local open-weights inference is unaffected;
+with `delivery_target=api_v2`, it is a hard error that triggers bounded repair. Ref2VA generation uses the official
+350–500-word range as an adaptive quality baseline for `detailed_description`, while dialogue load, reference count,
+transformations, and editing complexity can justify more detail. Base modes do not inherit that range and only flag
+clear repetition in exceptionally long descriptions. Quality gaps are exposed separately through
+`qualityValid`, `coverageGaps`, and `styleCoverageGaps`; the repair loop may address them without mislabeling a
+structurally valid prompt as invalid. The separate `treatment_warnings` output describes selected-configuration
+conflicts and legacy value mappings before any model runs.
 
 If errors remain, each repair attempt receives the complete previous answer and the concrete validation errors.
 Source-fidelity, exact dialogue, missing planned dialogue, invented references, and required ending errors receive a
