@@ -3223,6 +3223,11 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     const reference = node.widgets?.find((widget) => widget.name === "reference_context");
     widgetTextElement(reference)?.setAttribute("aria-label", "Optional reference notes");
     const manifest = node.widgets?.find((widget) => widget.name === "media_manifest");
+    if (["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(
+        String(manifest?.value ?? "").trim().toLowerCase(),
+    )) {
+        assignMigratedValue(manifest, "");
+    }
     widgetTextElement(manifest)?.setAttribute("aria-label", "Advanced media metadata JSON");
 }
 

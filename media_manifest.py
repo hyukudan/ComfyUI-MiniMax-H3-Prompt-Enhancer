@@ -14,9 +14,17 @@ MEDIA_TYPES = {"picture", "image", "video", "audio"}
 
 def parse_media_manifest(value: str | dict | list | None) -> dict[str, Any]:
     """Parse the optional JSON manifest without guessing facts from prose."""
-    if value is None or value == "":
+    if value is None or (isinstance(value, str) and not value.strip()):
         return {"items": [], "mode": "", "warnings": [], "errors": []}
     if isinstance(value, str):
+        # Builds before the structured manifest existed can deserialize the adjacent aspect-ratio
+        # widget into this slot. Those enum values can never be manifest JSON, so repair only this
+        # unambiguous migration case while continuing to reject every other malformed string.
+        if value.strip().lower() in ASPECT_RATIOS:
+            return {
+                "items": [], "mode": "", "errors": [],
+                "warnings": [f"Ignored migrated aspect-ratio value {value.strip()!r} in media_manifest"],
+            }
         try:
             data = json.loads(value)
         except json.JSONDecodeError as exc:

@@ -318,6 +318,7 @@ def test_frontend_mirrors_the_new_camera_axes_and_legacy_motion_migration():
     assert '["none", "static", "pov"]' not in source
     assert source.count('["none", "static"].includes') == 4
     assert 'sanitizeEnumWidget(node, "dialogue_coverage", ["off", "on"], "off");' in source
+    assert 'assignMigratedValue(manifest, "");' in source
     assert '"underwater_muffled",' in source
 
 

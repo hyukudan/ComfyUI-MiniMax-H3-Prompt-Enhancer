@@ -85,6 +85,16 @@ def test_manifest_rejects_audio_only_and_limits():
     assert any("2-15s" in error for error in parsed["errors"])
 
 
+def test_manifest_repairs_only_unambiguous_legacy_aspect_ratio_values():
+    for legacy_value in ("auto", "16:9", "9:16"):
+        parsed = parse_media_manifest(legacy_value)
+        assert parsed["errors"] == []
+        assert parsed["items"] == []
+        assert any("migrated aspect-ratio" in warning for warning in parsed["warnings"])
+    assert parse_media_manifest("not json")["errors"]
+    assert parse_media_manifest("   ")["errors"] == []
+
+
 def test_frame_grid_and_effective_duration_profile():
     good = generation_profile(5, "16:9", 243)
     assert good["valid"]
