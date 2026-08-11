@@ -309,6 +309,41 @@ def test_llm_receives_expanded_direction_without_private_preset_ids():
         assert concrete_instruction in request
 
 
+def test_every_creative_catalog_entry_is_expanded_before_the_llm_request():
+    catalogs = {
+        "genre": ("genre", GENRE_PROFILES),
+        "visualLanguage": ("visual_language", VISUAL_LANGUAGE_PROFILES),
+        "worldAesthetic": ("world_aesthetic", WORLD_AESTHETIC_PROFILES),
+        "tone": ("tone", TONE_PROFILES),
+    }
+    for external_axis, (internal_axis, catalog) in catalogs.items():
+        for profile_name in catalog:
+            if profile_name == "none":
+                continue
+            treatment = {
+                "schemaVersion": 1,
+                "genre": "none",
+                "visualLanguage": "none",
+                "worldAesthetic": "none",
+                "tone": "none",
+                external_axis: profile_name,
+            }
+            treatment_json = json.dumps(treatment)
+            style = resolve_visual_style(
+                compose_creative_treatment(**{internal_axis: profile_name}),
+                parse_cinematography(""),
+            )
+            signature = style["creativeSignatures"][external_axis]
+            request = build_user_request(
+                SOURCE, "t2va", 5.0, enhance_description=True,
+                creative_treatment_json=treatment_json,
+            )
+
+            assert signature
+            assert signature in request
+            assert f"{internal_axis}:{profile_name}" not in request
+
+
 def test_every_cinematography_choice_compiles_into_the_delivered_contract():
     external_keys = {internal: external for external, internal in CINEMATOGRAPHY_JSON_KEYS.items()}
     for field, choices in CINEMATOGRAPHY_CHOICES.items():
