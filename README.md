@@ -51,7 +51,7 @@ MiniMax H3 responds best when actions, timing, camera, dialogue, language, and s
 | Reuse another LLM node | Separate system/user instructions from Prompt Guide Builder |
 | Check authored text | Model-free structural validation and repair feedback |
 | Control generated audio | Independent ambience/foley, score, and voice-performance policies |
-| Apply a reusable creative treatment | Independent genre, visual-language, world-aesthetic, and tone profiles |
+| Apply a production format and creative treatment | Source-grounded content formats plus independent genre, visual-language, world-aesthetic, and tone profiles |
 | Set presentation without rewriting the story | Optional color, exposure, camera, optics, depth, texture, lens-effect, and motion-rendering controls |
 | Author exact cuts or chained segments | A visual shot-plan editor with automatic or exact timing |
 | Feed duration downstream | `duration_seconds` output on both enhancer nodes |
@@ -280,7 +280,8 @@ start closed and expand downward; their open/closed state is saved in node prope
   usual "Unavailable in the loaded catalog" warning instead of being silently dropped. Unknown future Look schema
   versions are rejected instead of being partially applied.
 - The **🎲 Explore** button in the Creative direction header proposes a coherent random combination of genre, visual
-  language, world aesthetic, and tone (and, with a 30% chance, a color palette). Shift-click also rolls the remaining
+  language, world aesthetic, and tone (and, with a 30% chance, a color palette). It leaves Content format and Title
+  screen unchanged. Shift-click also rolls the remaining
   cinematography fields. Conflicting axes are reconciled by the same conflict-resolution precedence that governs
   hand-picked combinations, so exploration never produces contradictory instructions.
 - **Shot plan** becomes **Segment plan** in chained mode. Its summary shows row count and Auto or Exact timing.
@@ -338,7 +339,7 @@ Shared controls:
 | `delivery_target` | `local` | `api_v2` makes the official 7000-character text-block limit a repairable hard error; `local` keeps it as a compatibility warning |
 | `multishot_shot_count` | `0` | Exact autonomous prompt count for `chained_multishot`; zero infers it |
 | `multishot_*_lock` | blank | Optional identity, voice and setting clauses inserted verbatim into every autonomous prompt |
-| `creative_treatment_json` | blank | Canonical storage for four global creative selectors plus the conditional title-screen selector; blank is completely neutral |
+| `creative_treatment_json` | blank | Canonical storage for content/production format, four global creative selectors, and the conditional title-screen selector; blank is completely neutral |
 | `shot_plan_json` | blank | Canonical storage for ordered explicit shots or autonomous chained segments; blank preserves automatic planning |
 | `cinematography_json` | blank | Canonical storage for optional non-narrative image-presentation and camera controls; blank is completely neutral |
 | `acoustic_space` | `none` | Diegetic sound space for the sound the audio policies already permit; it never adds a source |
@@ -631,7 +632,7 @@ clear repetition in exceptionally long descriptions. Quality gaps are exposed se
 structurally valid prompt as invalid. The separate `treatment_warnings` output describes selected-configuration
 conflicts and legacy value mappings before any model runs.
 
-With description enhancement enabled, every active genre, visual language, world aesthetic, and tone is also compiled
+With description enhancement enabled, every active content format, genre, visual language, world aesthetic, and tone is also compiled
 into one compact executable presentation signature. Explicit Cinematography is appended field by field, with H3 camera
 motion fused as motion type + amplitude + speed. Normalization inserts this resolved signature once in Base/Ref2VA and
 once per autonomous chained item, and validation requires the exact contract. The LLM still receives the fuller style
@@ -680,17 +681,55 @@ and the intended ending authoritative.
 
 ## Creative direction and explicit shot plans
 
-The creative-direction panel keeps the basic prompt focused on **what happens**. Four independent optional global
-axes tell the enhancer **how to direct and present it**. A fifth conditional selector styles only a title screen that
-the Basic prompt explicitly requests:
+The creative-direction panel keeps the basic prompt focused on **what happens**. **Content / production format**
+organizes the supplied information and purpose of the short; four independent creative axes control its presentation.
+A final conditional selector styles only a title screen that the Basic prompt explicitly requests:
 
 | Axis | Available profiles |
 |---|---|
+| Content / production format | `none`, `narrative_animation_short`, `brand_promo`, `co_op_game_intro`, `handdrawn_live_fusion`, `minimalist_product_ad`, `lyric_music_video`, `progressive_metaphor_explainer`, `mechanism_explainer`, `general_educational_explainer`, `product_demo_tutorial`, `cinematic_teaser`, `interview_mini_profile`, `performance_music_video`, `seamless_loop` |
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery`, `crime`, `western`, `sports_competition` |
 | Visual language | `none`, `anime_general`, `anime_ultradetailed_cinematic`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `heroic_limited_cel_tv`, `midcentury_graphic_cel_comedy`, `classic_morning_adventure_cel`, `pixel_art_16bit`, `documentary_observational`, `mockumentary_talking_head`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_classic_black_and_white`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_television`, `live_action_latin_american_telenovela`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_classic_western`, `live_action_revisionist_western`, `live_action_1950s_studio_color`, `live_action_midcentury_technicolor_epic`, `giallo`, `tokusatsu_sentai`, `kaiju_suitmation`, `surveillance_found_footage`, `home_camcorder_1990s`, `1970s_new_hollywood`, `silent_era_1920s`, `storybook_symmetrical`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `supermarionation`, `rotoscope_animation`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `japanese_print_animation`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
 | World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k`, `analog_1980s`, `urban_industrial`, `dieselpunk`, `nordic_noir`, `liminal_institutional` |
 | Tone | `none`, `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic` |
 | Title screen | `none`, `minimal_cinematic`, `bold_broadcast`, `classic_cel`, `illustrated_pulp`, `elegant_editorial`, `neon_technology`, `pixel_art_title`, `silent_intertitle` |
+
+### Content / production format
+
+This selector is not another visual style. It controls the information architecture, handoffs, evidence policy,
+performance purpose, and permitted audio relationship of the piece. The same format can be combined with live action,
+anime, pixel art, watercolor, 3D, stop motion, any world aesthetic, and compatible cinematography. For example,
+`minimalist_product_ad + cel_shaded_3d` is a compact product-led structure rendered as cel-shaded 3D; the format alone
+never forces a white studio, premium lighting, a palette, a logo, or copy.
+
+Every recipe is expanded before the LLM runs into concrete editing, camera, lighting/color, production-design,
+blocking/performance, sound, safe-fill, and `must_not_invent` directives plus a canonical delivery lock. The LLM never
+has to infer the meaning of a label and is forbidden to emit internal IDs. Base/Ref2VA prompts carry the lock once.
+Chained output uses first/middle/final role locks for global arcs such as narrative shorts, brand promos, teasers,
+lyric/performance videos, and seamless loops, so autonomous items do not restart the whole format.
+
+| Format | Organizes | Never authorizes |
+|---|---|---|
+| `narrative_animation_short` | supplied opening → causal action/response → supplied consequence | goals, conflict, twists, endings, cuts, dialogue, music, or 3D |
+| `brand_promo` | supplied hook → mechanism/evidence → payoff → authorized close | claims, metrics, proof, logo, CTA, announcer, or jingle |
+| `co_op_game_intro` | two supplied player slots → individual states → joint confirmation | players, equipment, UI copy, missions, gameplay, or branding |
+| `handdrawn_live_fusion` | causal contact and continuity between photographed and drawn layers | hands, entities, transformations, glow, locations, or a global drawn look |
+| `minimalist_product_ad` | exact physical product → supported detail/action → stable close | features, variants, claims, hands, demonstrations, copy, CTA, or ad music |
+| `lyric_music_video` | master-audio windows, exact lyrics, authorized typography | lyrics, translations, performers, BPM, cuts, choreography, or a forced look |
+| `progressive_metaphor_explainer` | one supplied concept progressively revealed as a requested metaphor | facts, causal links, examples, labels, narration, cuts, audio, or paper medium |
+| `mechanism_explainer` | initial state → supplied cause/part → state change → outcome | missing steps, causality, arrows, labels, hosts, SFX, or papercraft |
+| `general_educational_explainer` | supplied propositions mapped cumulatively to a takeaway | research, facts, citations, examples, diagrams, narrator, or labels |
+| `product_demo_tutorial` | concrete pre-state → exact supplied steps → verification | functions, steps, tools, safety advice, claims, captions, narration, or CTA |
+| `cinematic_teaser` | authorized hook → progressive disclosure → authorized hold | plot, stakes, spoilers, title, tagline, cuts, risers, booms, or score |
+| `interview_mini_profile` | exact attributed soundbite and authorized contextual coverage | quotes, biography, occupation, interviewer, B-roll, lower third, or music |
+| `performance_music_video` | continuous master and authorized performance coverage | performers, instruments, roles, choreography, lyrics, crowd, stage, or remixing |
+| `seamless_loop` | final-to-opening pose, scene, camera, light, motion, and audio continuity | reset actions, duplicates, cuts, fades, flashes, occluders, or seam SFX |
+
+Format beats are information beats, never implicit cuts. Source/reference facts, exact text/dialogue, media roles, audio
+gates, explicit shot rows/timing, and cinematography always win. Source-gated formats fail closed when critical
+authority is missing: an interview needs an exact soundbite and audible voice, and a music-video format cannot override
+`Background score = off`. The manifest records the selected format, requested/applied state, reason, profile/catalog
+versions, digest, dimensions, and signature independently from `resolvedVisualStyle`.
 
 Title-screen treatment is deliberately conditional. Selecting a style never creates a title card or authorizes new
 visible text. The Basic prompt must explicitly request a title screen/card/intertitle and should quote its exact text,
@@ -993,12 +1032,13 @@ records the canonical selection, resolved directives, schema/catalog versions, a
 
 ### Creative-treatment JSON
 
-The four global selectors and conditional title-screen selector edit one stable serialized field. This keeps workflows
+The content-format selector, four global creative axes, and conditional title-screen selector edit one stable serialized field. This keeps workflows
 compatible as the panel evolves:
 
 ```json
 {
   "schemaVersion": 1,
+  "contentFormat": "narrative_animation_short",
   "genre": "action",
   "visualLanguage": "anime_shonen",
   "worldAesthetic": "cyberpunk",
@@ -1018,7 +1058,8 @@ value types raise a configuration error before any LLM call instead of being sil
 direction. The field is limited to 16,384 characters. Keys are case-sensitive and use the camelCase spellings shown
 above; omitted axes, `null`, and empty-string axis values resolve to `none`, while profile tokens are trimmed and
 lowercased. The visual panel sanitizes imported state to its canonical schema; direct backend/queued API input remains
-strict. `titleScreenStyle` is optional and defaults to `none`, so older schema-v1 workflows remain valid. Blank storage and an explicit schema-v1 object with all five selectors set to `none` produce the same neutral
+strict. `contentFormat` and `titleScreenStyle` are optional and default to `none`, so older schema-v1 workflows remain
+valid. Blank storage and an explicit schema-v1 object with every selector set to `none` produce the same neutral
 request and deterministic digest.
 
 The manifest records more than the selections: `requested`, `applied`, `profileIds`, selected `profileVersions`,
@@ -1417,11 +1458,21 @@ Available styles:
 | `funk_disco` | syncopated interlocking groove, concise harmony and controlled bright accents | four-on-the-floor, slap bass, wah, strings, brass, camp or vocals |
 | `horror_tension` | event-supported dissonance, register, pulse, silence and timbral friction | danger, jump scares, screams, heartbeat, chanting, reversed voices or impacts |
 | `horror_intense` | unstable harmony, abrasive controlled timbre, extreme-register contrast, ruptured pulse and bounded peaks | gore, monsters, danger, screams, whispers, chanting, jump scares or impacts |
+| `science_fiction_electronic` | signal-like motifs, synthetic depth, precise pulse and speculative harmonic space | spaceships, aliens, technology, neon or visible emitters |
+| `chiptune_16bit` | economical chip voices, quantized cells, register separation and loop-aware form | a game world, pixel visuals, nostalgia, orchestral layers or arcade effects |
+| `western_frontier` | dry acoustic foreground, broad negative space, modal intervals and patient frontier pulse | cowboys, horses, guns, deserts, saloons or a specific country |
+| `golden_age_studio` | lush mid-century studio voicing, melody-forward balance and prepared cadences | a period setting, romance, Technicolor imagery or a full orchestra on screen |
+| `retro_1980s_television` | economical analogue layers, broadcast-safe dynamics and dialogue space | VHS noise, sitcom plots, period props, vocals or forced nostalgia |
+| `latin_melodrama` | expressive tonal suspensions, revelation-shaped dynamics and dialogue-safe release | a telenovela plot, nationality, romance, betrayal or spoken stings |
+| `commercial_minimal` | sparse polished micro-motifs, product-safe copy space and a stable finish | a brand, product, slogan, claim, logo or CTA |
 
 The selected style is authoritative for arrangement, while explicit tempo, timing, dynamics and compatible requested
 instruments remain authoritative source facts. Every style remains strictly instrumental: no singing, lyrics, speech,
-chants, choir or vocal samples. Semantic adherence is LLM-driven; the Validator checks the normal music policy and
-output structure but does not score whether the final prose sounds sufficiently jazz, orchestral or electronic.
+chants, choir or vocal samples. Director sends a complete versioned production bible rather than asking the LLM to
+interpret the selector label. Internal IDs remain manifest-only. A canonical style sentence is normalized into the
+final music field and checked exactly; the manifest distinguishes `instrumentalStyleInjected` from
+`instrumentalStyleObserved` and records catalog/profile versions and a SHA-256 digest. This proves delivery of the
+contract, not the musical quality of H3's rendered waveform.
 Cinematography has one additional bounded literal guard covering fourteen grading-only palettes (the sci-fi trio
 plus sepia, teal–orange, bleach bypass, cross-processed, two-color process, both western looks, the
 telenovela broadcast look, soft pastel, day for night, and infrared aerochrome): repair triggers if generated

@@ -15,13 +15,15 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 try:
+    from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, normalize_audio_policy, normalize_dialogue_tags, normalize_first_shot_marker, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -340,6 +342,11 @@ def enhance_prompt_with_completion(
         )
     creative_treatment, treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
     resolved_visual_style = resolve_visual_style(creative_treatment, cinematography)
+    resolved_content_format = resolve_content_format(
+        creative_treatment.get("contentFormat", "none"), enabled=bool(enhance_description),
+        source_prompt=basic_prompt, voice_performance=voice_performance,
+        background_score_policy=background_score_policy, mode=resolved_mode,
+    )
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
@@ -401,7 +408,11 @@ def enhance_prompt_with_completion(
                 value, ambience_foley_policy, background_score_policy, voice_performance,
                 basic_prompt + "\n" + effective_reference_context,
             )
-            return normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+            value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+            value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
+            return normalize_instrumental_style_signature(
+                value, resolved_mode, background_score_policy, instrumental_style,
+            )
         value = normalize_section_headers(candidate)
         value = normalize_dialogue_tags(value)
         value = normalize_first_shot_marker(value, resolved_mode)
@@ -414,7 +425,11 @@ def enhance_prompt_with_completion(
             value, ambience_foley_policy, background_score_policy, voice_performance,
             basic_prompt + "\n" + effective_reference_context,
         )
-        return normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+        value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+        value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
+        return normalize_instrumental_style_signature(
+            value, resolved_mode, background_score_policy, instrumental_style,
+        )
 
     enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(
@@ -435,6 +450,7 @@ def enhance_prompt_with_completion(
             *report.get("errors", ()),
             *report.get("coverageGaps", ()),
             *report.get("styleCoverageGaps", ()),
+            *report.get("contentFormatCoverageGaps", ()),
         ]
 
     def candidate_score(report: dict) -> tuple[int, int, int]:
@@ -520,6 +536,7 @@ def enhance_prompt_with_completion(
         "promptContractVersion": 3,
         "creativeTreatmentSchemaVersion": creative_treatment["schemaVersion"],
         "creativeProfileCatalogVersion": creative_treatment["catalogVersion"],
+        "contentFormatCatalogVersion": CONTENT_FORMAT_CATALOG_VERSION,
         "titleScreenStyleCatalogVersion": creative_treatment["titleScreenStyleCatalogVersion"],
         "titleScreenStyleRequested": creative_treatment["titleScreenStyle"],
         "titleScreenStyleApplied": bool(
@@ -539,6 +556,7 @@ def enhance_prompt_with_completion(
         "aspectRatio": aspect_ratio,
         "multishotPromptCount": validation.get("promptCount", 0),
         "creativeTreatment": creative_treatment,
+        "contentFormat": resolved_content_format,
         "cinematography": cinematography,
         "resolvedVisualStyle": resolved_visual_style,
         "treatmentConflicts": treatment_conflicts,
@@ -562,6 +580,23 @@ def enhance_prompt_with_completion(
         "resolvedInstrumentalStyleContract": (
             INSTRUMENTAL_STYLE_CONTRACTS.get(instrumental_style, "")
             if background_score_policy == "add_instrumental" else ""
+        ),
+        "instrumentalStyleCatalogVersion": INSTRUMENTAL_STYLE_CATALOG_VERSION,
+        "instrumentalStyleProfileVersion": 1 if instrumental_style != "none" else 0,
+        "instrumentalStyleDigest": (
+            instrumental_style_digest(instrumental_style) if instrumental_style != "none" else ""
+        ),
+        "instrumentalStyleSignature": (
+            instrumental_style_signature(instrumental_style)
+            if background_score_policy == "add_instrumental" else ""
+        ),
+        "instrumentalStyleInjected": bool(
+            background_score_policy == "add_instrumental" and instrumental_style != "none"
+        ),
+        "instrumentalStyleObserved": bool(
+            background_score_policy == "add_instrumental"
+            and instrumental_style != "none"
+            and instrumental_style_signature(instrumental_style) in enhanced
         ),
         "acousticSpace": acoustic_space,
         "dialogueCoverage": dialogue_coverage,

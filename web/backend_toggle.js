@@ -58,6 +58,13 @@ const INSTRUMENTAL_STYLE_CHOICES = [
     ["funk_disco", "Funk / disco"],
     ["horror_tension", "Horror tension · restrained"],
     ["horror_intense", "Horror · intense"],
+    ["science_fiction_electronic", "Science-fiction electronic"],
+    ["chiptune_16bit", "16-bit chiptune"],
+    ["western_frontier", "Western frontier"],
+    ["golden_age_studio", "Golden-age studio orchestra"],
+    ["retro_1980s_television", "1980s television score"],
+    ["latin_melodrama", "Latin melodrama"],
+    ["commercial_minimal", "Minimal commercial cue"],
 ];
 const MIN_NODE_WIDTH = 560;
 const MIN_NODE_HEIGHT = 320;
@@ -152,6 +159,23 @@ const MAX_LOOK_PRESETS = 50;
 const MAX_LOOK_NAME_LENGTH = 64;
 const MAX_LOOK_PAYLOAD_LENGTH = 20000;
 const CREATIVE_CHOICES = {
+    contentFormat: [
+        ["none", "No production format"],
+        ["narrative_animation_short", "Narrative animation short"],
+        ["brand_promo", "Brand / launch promo"],
+        ["co_op_game_intro", "Co-op game intro"],
+        ["handdrawn_live_fusion", "Live action + drawn interaction"],
+        ["minimalist_product_ad", "Compact physical-product ad"],
+        ["lyric_music_video", "Lyric / subtitle music video"],
+        ["progressive_metaphor_explainer", "Progressive metaphor explainer"],
+        ["mechanism_explainer", "Mechanism explainer"],
+        ["general_educational_explainer", "General educational explainer"],
+        ["product_demo_tutorial", "Product demo / tutorial"],
+        ["cinematic_teaser", "Cinematic teaser"],
+        ["interview_mini_profile", "Interview mini-profile"],
+        ["performance_music_video", "Performance music video"],
+        ["seamless_loop", "Seamless loop"],
+    ],
     genre: [
         ["none", "No preference"],
         ["action", "Action"],
@@ -324,6 +348,11 @@ const SHOT_TRANSITION_CHOICES = [
     ["cut", "Cut"], ["match_cut", "Match cut"], ["whip_pan", "Whip pan"], ["hold", "Hold"],
 ];
 const CREATIVE_FIELD_DEFINITIONS = [
+    {
+        key: "contentFormat",
+        label: "Content / production format",
+        title: "Organizes supplied information and beats without choosing a visual style or inventing facts, copy, shots, dialogue, or audio.",
+    },
     {
         key: "genre",
         label: "Narrative genre",
@@ -1185,6 +1214,7 @@ function sanitizeBooleanWidget(node, name, fallback) {
 function defaultCreativeTreatment() {
     return {
         schemaVersion: CREATIVE_SCHEMA_VERSION,
+        contentFormat: "none",
         genre: "none",
         visualLanguage: "none",
         worldAesthetic: "none",
@@ -1245,6 +1275,7 @@ function sanitizeCreativeTreatment(value) {
     if (!parsed || parsed.schemaVersion !== CREATIVE_SCHEMA_VERSION) return defaultCreativeTreatment();
     return {
         schemaVersion: CREATIVE_SCHEMA_VERSION,
+        contentFormat: preservedCreativeValue(parsed.contentFormat),
         genre: preservedCreativeValue(parsed.genre),
         visualLanguage: preservedCreativeValue(parsed.visualLanguage),
         worldAesthetic: preservedCreativeValue(parsed.worldAesthetic),
@@ -1356,6 +1387,7 @@ function sanitizeShotPlan(value) {
 function serializeCreativeTreatment(state) {
     return JSON.stringify({
         schemaVersion: CREATIVE_SCHEMA_VERSION,
+        contentFormat: preservedCreativeValue(state?.contentFormat),
         genre: preservedCreativeValue(state?.genre),
         visualLanguage: preservedCreativeValue(state?.visualLanguage),
         worldAesthetic: preservedCreativeValue(state?.worldAesthetic),
@@ -2086,7 +2118,7 @@ function randomCatalogValue(choices, neutral) {
 function exploreLookEnvelope(node, { includeCinematography = false } = {}) {
     const creativeTreatment = sanitizeCreativeTreatment(node.__minimaxCreativeTreatmentState);
     for (const { key } of CREATIVE_FIELD_DEFINITIONS) {
-        if (key === "titleScreenStyle") continue;
+        if (["contentFormat", "titleScreenStyle"].includes(key)) continue;
         creativeTreatment[key] = randomCatalogValue(CREATIVE_CHOICES[key], "none");
     }
     const cinematography = sanitizeCinematography(node.__minimaxCinematographyState);
@@ -2914,7 +2946,7 @@ function addCreativeDirectionPanel(node) {
     const exploreButton = createPanelElement("button", "minimax-h3-explore-button", "🎲 Explore");
     exploreButton.type = "button";
     exploreButton.setAttribute("aria-label", "Explore: random creative direction");
-    exploreButton.title = "Rolls a random genre, visual language, world and tone (plus a color palette). Shift-click also rolls the full cinematography set.";
+    exploreButton.title = "Rolls a random genre, visual language, world and tone (plus a color palette). Content format and title screen stay unchanged. Shift-click also rolls the full cinematography set.";
     const treatmentSummaryLabel = createPanelElement(
         "span",
         "minimax-h3-summary-label",

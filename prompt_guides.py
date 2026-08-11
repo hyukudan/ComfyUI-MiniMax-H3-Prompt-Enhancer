@@ -10,10 +10,12 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 import json
+import hashlib
 import re
 from typing import Any
 
 try:
+    from .content_formats import content_format_instruction, content_format_signatures, resolve_content_format
     from .creative_treatments import (
         parse_cinematography,
         parse_creative_treatment,
@@ -28,6 +30,7 @@ try:
     )
     from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from content_formats import content_format_instruction, content_format_signatures, resolve_content_format
     from creative_treatments import (
         parse_cinematography,
         parse_creative_treatment,
@@ -128,6 +131,39 @@ INSTRUMENTAL_STYLE_CHOICES = (
     "funk_disco",
     "horror_tension",
     "horror_intense",
+    "science_fiction_electronic",
+    "chiptune_16bit",
+    "western_frontier",
+    "golden_age_studio",
+    "retro_1980s_television",
+    "latin_melodrama",
+    "commercial_minimal",
+)
+INSTRUMENTAL_STYLE_CATALOG_VERSION = 2
+INSTRUMENTAL_PRODUCTION_BIBLE = (
+    "INSTRUMENTATION: Preserve every explicitly requested instrument. Assign melody, counterline, harmony, pulse, "
+    "bass, and accent roles through the selected musical language; fill a missing role only when necessary and do "
+    "not replace a compatible user choice.\n"
+    "TEMPO AND METER: Preserve explicit BPM, meter, groove, timing, and entry or exit points. When absent, describe "
+    "a concrete pulse or absence of pulse without inventing a scene event.\n"
+    "RHYTHM: Tie accents and changes only to events already present; never create impacts, cuts, threats, or climaxes "
+    "to justify the score.\n"
+    "HARMONY AND TONALITY: State concrete tonal, modal, chromatic, or atonal behavior; do not substitute an abstract "
+    "mood or narrative claim.\n"
+    "TEXTURE: Define register, density, foreground and supporting layers; keep the arrangement readable instead of "
+    "stacking every characteristic instrument.\n"
+    "DYNAMICS: Define entry level, development, bounded peak or release, and final level inside the clip; avoid "
+    "wall-to-wall maximum intensity.\n"
+    "STRUCTURE AND ENDING: Write one continuous cue across the video, with no restart at shot boundaries, and finish "
+    "inside the clip unless continuation is explicitly requested.\n"
+    "MIX: Keep audience-only music below audible dialogue and reactions, thin or duck voice-band content during "
+    "speech, yield transient space to important foley and effects, and retain unclipped headroom.\n"
+    "VOICE AND FOLEY RELATION: Instrumental only: no lyrics, singing, speech, chants, choir, or vocal samples. Music "
+    "must not replace, duplicate, or invent ambience, foley, reactions, or dialogue.\n"
+    "CONTINUITY: Preserve motif, tempo or pulse, tonal center, instrumental roles, timbral palette, and mix perspective "
+    "across shots; chained items restate the audible signature without claiming waveform-identical continuity.\n"
+    "PROHIBITIONS: Do not invent performers, audible sources, locations, story events, copyrighted melodies, genre "
+    "cliches, or synchronization points absent from the request."
 )
 INSTRUMENTAL_STYLE_CONTRACTS = {
     "cinematic_orchestral": (
@@ -220,7 +256,49 @@ INSTRUMENTAL_STYLE_CONTRACTS = {
         "important physical sound intelligible; do not invent gore, monsters, danger, screams, whispers, chanting, jump scares, "
         "heartbeat, reversed voices, or impacts."
     ),
+    "science_fiction_electronic": (
+        "Use precise synthetic pulses, evolving spectral layers, controlled sub-bass, spacious register, clear automation, and temporally stable timbres. Do not add alarms, lasers, spaceship hums, braams, threat, or vocal textures."
+    ),
+    "chiptune_16bit": (
+        "Use a limited chip-style voice set, stepped envelopes, compact pulse-and-noise percussion, loop-legible tonal writing, and clear channel separation. Do not add modern supersaws, cinematic orchestra, fake cartridge noise, arcade SFX, or vocals."
+    ),
+    "western_frontier": (
+        "Use sparse plucked strings, restrained acoustic winds or low strings, open intervals, dry spacious rhythm, and measured phrase endings. Do not assume whistles, gunshots, galloping rhythm, saloon piano, heroic duels, or vocals."
+    ),
+    "golden_age_studio": (
+        "Use mid-century studio-orchestral voicing, lyrical thematic phrasing, functional harmony, broad controlled dynamics, and period-compatible recording depth. Do not add modern trailer percussion, synth bass, choir, or exaggerated parody."
+    ),
+    "retro_1980s_television": (
+        "Use a compact broadcast-scale ensemble, warm analogue keyboards, restrained electronic drums, a short memorable motif, and a controlled period-compatible mix. Do not force synthwave arpeggios, neon imagery, arena-scale climax, or vocals."
+    ),
+    "latin_melodrama": (
+        "Use lyrical strings, piano, or a compatible small ensemble, clear harmonic turns, held suspensions, and one bounded revelation cadence. Do not infer nationality, castanets, mariachi, an exaggerated sting, parody, or vocals."
+    ),
+    "commercial_minimal": (
+        "Use a very small instrumental palette, immediate motif, stable pulse, clean frequency separation, and a concise branded-length ending. Do not invent a sonic logo, product claim, celebratory climax, vocals, or advertising copy."
+    ),
 }
+
+
+def instrumental_style_signature(style: str) -> str:
+    """One exact audible lock; IDs and catalog metadata never enter the H3 prompt."""
+    contract = INSTRUMENTAL_STYLE_CONTRACTS.get(str(style), "").strip()
+    if not contract:
+        return ""
+    first = re.split(r"(?<=\.)\s+(?=Do not\b)", contract, maxsplit=1)[0].strip()
+    return first
+
+
+def instrumental_style_digest(style: str) -> str:
+    payload = json.dumps({
+        "catalogVersion": INSTRUMENTAL_STYLE_CATALOG_VERSION,
+        "profileVersion": 1,
+        "style": str(style),
+        "productionBible": INSTRUMENTAL_PRODUCTION_BIBLE,
+        "contract": INSTRUMENTAL_STYLE_CONTRACTS.get(str(style), ""),
+        "signature": instrumental_style_signature(style),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 REF2VA_TASK_TYPES = (
     "keyframe completion", "reference generation", "video editing", "video continuation",
     "audio reuse", "audio reference",
@@ -1536,6 +1614,12 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     creative_treatment = parse_creative_treatment(
         creative_treatment_json, enabled=bool(enhance_description),
     )
+    content_format = resolve_content_format(
+        creative_treatment.get("contentFormat", "none"),
+        enabled=bool(enhance_description), source_prompt=basic_prompt,
+        voice_performance=voice_performance, background_score_policy=background_score_policy,
+        mode=resolved,
+    )
     cinematography = parse_cinematography(cinematography_json)
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved,
@@ -1620,6 +1704,15 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             f"background_score_policy={background_score_policy}; "
             f"voice_performance={voice_performance}."
         )
+    format_contract = content_format_instruction(content_format)
+    if format_contract:
+        parts.append(
+            format_contract
+            + "\nSELECTED AUDIO CONTROLS (authoritative over format sound suggestions): "
+            f"ambience_foley_policy={ambience_foley_policy}; "
+            f"background_score_policy={background_score_policy}; "
+            f"voice_performance={voice_performance}."
+        )
     title_style_contract = title_screen_style_instruction(creative_treatment, basic_prompt)
     if title_style_contract:
         parts.append(title_style_contract)
@@ -1693,8 +1786,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "compatible; re-orchestrate only what is necessary to make the selection coherent. Express the result as "
             "concrete audible musical parameters, not as a genre label. The score remains audience-only and strictly "
             "instrumental, with no singing, lyrics, speech, chants, choir, or vocal samples.\n"
-            f"Selected style: {instrumental_style}.\n"
-            + INSTRUMENTAL_STYLE_CONTRACTS[instrumental_style]
+            + INSTRUMENTAL_PRODUCTION_BIBLE + "\n"
+            + "MUSICAL-LANGUAGE OVERLAY:\n" + INSTRUMENTAL_STYLE_CONTRACTS[instrumental_style]
+            + "\nCANONICAL AUDIBLE DELIVERY LOCK — include this exact sentence in non_diegetic_music or every "
+            "scored autonomous item:\n" + instrumental_style_signature(instrumental_style)
             + "\nOUTPUT INTEGRATION — MANDATORY: In structured single-generation output, write the resolved "
             "instrumentation, tempo, rhythm, harmony, texture, structure, and dynamics as concrete audible prose in "
             "non_diegetic_music. Do not output only the genre name, style ID, preset label, or a statement that the "
@@ -2964,12 +3059,104 @@ def normalize_visual_style_signature(text: str, mode: str, style: Mapping[str, A
     return value[:header.end()] + separator + signature + newline + value[header.end():]
 
 
+def normalize_content_format_signature(text: str, mode: str, content_format: Mapping[str, Any]) -> str:
+    """Insert the source-gated format delivery lock without exposing its internal ID."""
+    value = str(text)
+    signature = str(content_format.get("signature", "")).strip()
+    if not signature:
+        return value
+    if mode == "chained_multishot":
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        prompts = data.get("prompts") if isinstance(data, dict) else None
+        if not isinstance(prompts, list):
+            return value
+        signatures = content_format_signatures(content_format, len(prompts))
+        normalized = [
+            item if not isinstance(item, str) or role_signature in item
+            else f"{role_signature} {item}".strip()
+            for item, role_signature in zip(prompts, signatures)
+        ]
+        if normalized == prompts:
+            return value
+        data["prompts"] = normalized
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
+    if signature in _section_body(value, section):
+        return value
+    header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
+    if not header:
+        return value
+    newline = "\r\n" if "\r\n" in header.group(0) else "\n"
+    separator = "" if header.group(0).endswith(("\n", "\r")) else newline
+    return value[:header.end()] + separator + signature + newline + value[header.end():]
+
+
+def content_format_coverage_gaps(text: str, mode: str,
+                                 content_format: Mapping[str, Any]) -> list[str]:
+    """Require the canonical lock; deeper prose stays repairable by the LLM."""
+    signature = str(content_format.get("signature", "")).strip()
+    if not content_format.get("applied") or not signature:
+        return []
+    if mode == "chained_multishot":
+        try:
+            prompts = json.loads(str(text)).get("prompts", [])
+        except (json.JSONDecodeError, AttributeError):
+            return ["Content-format signature could not be checked in chained output"]
+        signatures = content_format_signatures(content_format, len(prompts))
+        return [
+            f"Chained item {index} is missing the canonical content-format signature"
+            for index, (item, role_signature) in enumerate(zip(prompts, signatures), start=1)
+            if role_signature not in str(item)
+        ]
+    return [] if signature in str(text) else [
+        "Canonical content-format signature is missing or was changed"
+    ]
+
+
+def normalize_instrumental_style_signature(text: str, mode: str, policy: str, style: str) -> str:
+    """Make selected musical language observable instead of trusting a genre label."""
+    value = str(text)
+    if policy != "add_instrumental" or style == "none":
+        return value
+    signature = instrumental_style_signature(style)
+    if not signature:
+        return value
+    if mode == "chained_multishot":
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        prompts = data.get("prompts") if isinstance(data, dict) else None
+        if not isinstance(prompts, list):
+            return value
+        normalized = [
+            item if not isinstance(item, str) or signature in item else f"{item} {signature}".strip()
+            for item in prompts
+        ]
+        if normalized == prompts:
+            return value
+        data["prompts"] = normalized
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    if signature in _section_body(value, "non_diegetic_music"):
+        return value
+    header = re.search(r"(?m)^non_diegetic_music:[ \t]*(?:\r?\n)?", value)
+    if not header:
+        return value
+    newline = "\r\n" if "\r\n" in header.group(0) else "\n"
+    separator = "" if header.group(0).endswith(("\n", "\r")) else newline
+    return value[:header.end()] + separator + signature + " " + value[header.end():]
+
+
 def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str,
                         shot_count: int = 0, required_locks: tuple[str, ...] = (),
                         voice_performance: str = "audible",
                         authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
                         ambience_foley_policy: str = "auto",
-                        background_score_policy: str = "follow_prompt") -> dict[str, Any]:
+                        background_score_policy: str = "follow_prompt",
+                        instrumental_style: str = "none") -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     try:
@@ -3004,6 +3191,10 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
             r"\b(?:instrumental|score|soundtrack|music)\b", item, re.IGNORECASE,
         ):
             errors.append(f"Multishot item {index} omitted the requested instrumental score")
+        signature = instrumental_style_signature(instrumental_style)
+        if (background_score_policy == "add_instrumental" and instrumental_style != "none"
+                and signature not in item):
+            errors.append(f"Multishot item {index} omitted the canonical instrumental-style signature")
         if ambience_foley_policy == "off" and re.search(
             r"\b(?:ambience|foley|footsteps?|impact|room tone|traffic|wind|rain)\b", positive, re.IGNORECASE,
         ):
@@ -3587,6 +3778,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         selected_creative_treatment, selected_cinematography,
     )
     resolved_visual_style = resolve_visual_style(selected_creative_treatment, selected_cinematography)
+    resolved_content_format = resolve_content_format(
+        selected_creative_treatment.get("contentFormat", "none"),
+        enabled=enhance_description is not False, source_prompt=source_prompt,
+        voice_performance=voice_performance, background_score_policy=background_score_policy,
+        mode=resolved,
+    )
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     try:
         explicit_shot_plan = parse_shot_plan(
@@ -3609,7 +3806,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report = _validate_multishot(
             prompt, profile["effectiveDurationSeconds"], source_prompt, expected_count, locks,
             voice_performance, authored_dialogue_ledger,
-            ambience_foley_policy, background_score_policy,
+            ambience_foley_policy, background_score_policy, instrumental_style,
         )
         parsed = parse_media_manifest(media_manifest)
         report["errors"].extend(configuration_errors)
@@ -3658,14 +3855,22 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             for index, item in enumerate(prompt_items, 1)
             for gap in _resolved_style_coverage_gaps(item, resolved_visual_style)
         ]
+        content_format_gaps = content_format_coverage_gaps(
+            prompt, "chained_multishot", resolved_content_format,
+        )
         report["valid"] = not report["errors"]
-        report["qualityValid"] = report["valid"] and not coverage_gaps and not style_coverage_gaps
+        report["qualityValid"] = (
+            report["valid"] and not coverage_gaps and not style_coverage_gaps
+            and not content_format_gaps
+        )
         report["coverageGaps"] = coverage_gaps
         report["styleCoverageGaps"] = style_coverage_gaps
+        report["contentFormatCoverageGaps"] = content_format_gaps
         report["enhancementProfile"] = profile_name
         report["deliveryTarget"] = delivery_target
         report["apiCompatible"] = api_compatible
         report["resolvedVisualStyle"] = resolved_visual_style
+        report["contentFormat"] = resolved_content_format
         report["aspectRatio"] = aspect_ratio
         report["generationProfile"] = profile
         report["mediaManifest"] = parsed
@@ -4122,11 +4327,12 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         if re.search(r"\b(?:singer|soprano|alto|tenor|baritone|choir|vocals?|lyrics?|singing)\b",
                      positive_music, re.IGNORECASE):
             errors.append("Instrumental score contains vocals, singing, choir, or lyrics")
-        requested_music = " ".join(part for part in (
-            str(instrumental_description).strip(), INSTRUMENTAL_STYLE_CONTRACTS.get(instrumental_style, ""),
-        ) if part)
-        if requested_music and not _style_signature_observed(music, requested_music):
-            errors.append("Instrumental score dropped the requested description or resolved instrumental style")
+        requested_description = str(instrumental_description).strip()
+        if requested_description and not _style_signature_observed(music, requested_description):
+            errors.append("Instrumental score dropped the requested instrumental description")
+        signature = instrumental_style_signature(instrumental_style)
+        if instrumental_style != "none" and signature not in music:
+            errors.append("Instrumental score omitted the canonical instrumental-style signature")
 
     soundscape = _section_body(text, "overall_soundscape").strip()
     if ambience_foley_policy == "off" and soundscape.casefold() not in {
@@ -4347,20 +4553,23 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             "spatial, causal, camera, or audio-visual coverage without padding"
         )
     style_coverage_gaps = _resolved_style_coverage_gaps(text, resolved_visual_style)
+    content_format_gaps = content_format_coverage_gaps(text, resolved, resolved_content_format)
     valid = not errors
     return {
         "valid": valid,
-        "qualityValid": valid and not coverage_gaps and not style_coverage_gaps,
+        "qualityValid": valid and not coverage_gaps and not style_coverage_gaps and not content_format_gaps,
         "mode": resolved,
         "errors": errors,
         "warnings": warnings,
         "coverageGaps": coverage_gaps,
         "styleCoverageGaps": style_coverage_gaps,
+        "contentFormatCoverageGaps": content_format_gaps,
         "enhancementProfile": profile_name,
         "deliveryTarget": delivery_target,
         "apiCompatible": api_compatible,
         "descriptionBudget": description_budget,
         "resolvedVisualStyle": resolved_visual_style,
+        "contentFormat": resolved_content_format,
         "sections": list(observed),
         "shotCount": len(shots),
         "aspectRatio": aspect_ratio,

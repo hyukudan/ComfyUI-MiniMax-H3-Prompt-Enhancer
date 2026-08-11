@@ -13,6 +13,7 @@ from prompt_guides import (
     SYSTEM_PROMPT,
     alignment_instruction,
     build_user_request,
+    instrumental_style_signature,
     normalize_audio_policy,
     normalize_dialogue_tags,
     normalize_source_dialogue,
@@ -803,7 +804,9 @@ def test_instrumental_style_adapts_user_direction_only_when_score_is_enabled():
         instrumental_style="jazz",
     )
     assert "INSTRUMENTAL MUSIC GENRE / STYLE" in active
-    assert "Selected style: jazz" in active
+    assert "Selected style: jazz" not in active
+    assert "HARMONY AND TONALITY:" in active
+    assert instrumental_style_signature("jazz") in active
     assert "jazz-informed harmony" in active
     assert "Cello, 72 BPM" in active
     assert "adapt its arrangement to the selected instrumental style" in active
@@ -823,7 +826,9 @@ def test_every_instrumental_style_has_a_concrete_non_vocal_contract():
             background_score_policy="add_instrumental",
             instrumental_style=style,
         )
-        assert f"Selected style: {style}" in request
+        assert f"Selected style: {style}" not in request
+        assert "VOICE AND FOLEY RELATION:" in request
+        assert instrumental_style_signature(style) in request
         assert "strictly instrumental" in request
 
 

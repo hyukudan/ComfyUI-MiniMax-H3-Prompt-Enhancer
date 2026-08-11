@@ -2551,7 +2551,7 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
     else:
         raise ValueError("creative_treatment_json must be blank, a JSON object string, or a mapping")
 
-    allowed_keys = {"schemaVersion", "titleScreenStyle", *CREATIVE_JSON_KEYS}
+    allowed_keys = {"schemaVersion", "contentFormat", "titleScreenStyle", *CREATIVE_JSON_KEYS}
     unknown_keys = sorted(set(raw) - allowed_keys)
     if unknown_keys:
         raise ValueError(f"creative_treatment_json contains unsupported keys: {unknown_keys}")
@@ -2587,6 +2587,22 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
             f"Unsupported title screen style {title_screen_style!r}; choose one of: "
             + ", ".join(TITLE_SCREEN_STYLE_PROFILES)
         )
+    content_format = raw.get("contentFormat", "none")
+    if content_format in (None, ""):
+        content_format = "none"
+    if not isinstance(content_format, str):
+        raise ValueError("creative_treatment_json contentFormat must be a string")
+    content_format = content_format.strip().lower()
+    try:
+        from .content_formats import content_format_choices
+    except ImportError:  # pragma: no cover - direct-module test/import fallback
+        from content_formats import content_format_choices
+    allowed_content_formats = content_format_choices()
+    if content_format not in allowed_content_formats:
+        raise ValueError(
+            f"Unsupported content format {content_format!r}; choose one of: "
+            + ", ".join(allowed_content_formats)
+        )
     dimensions = {dimension: [] for dimension in PROFILE_DIMENSIONS}
     profile_ids = []
     profile_versions = {}
@@ -2603,6 +2619,7 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
     requested = bool(profile_ids or title_screen_style != "none")
     canonical = {
         "schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION,
+        "contentFormat": content_format,
         "genre": selections["genre"],
         "visualLanguage": selections["visual_language"],
         "worldAesthetic": selections["world_aesthetic"],
@@ -2636,10 +2653,11 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
 
 def compose_creative_treatment(genre: str = "none", visual_language: str = "none",
                                world_aesthetic: str = "none", tone: str = "none",
-                               *, enabled: bool = True) -> dict[str, Any]:
+                               *, content_format: str = "none", enabled: bool = True) -> dict[str, Any]:
     """Convenience API for tests/tools; production nodes persist one canonical JSON field."""
     return parse_creative_treatment({
         "schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION,
+        "contentFormat": content_format,
         "genre": genre,
         "visualLanguage": visual_language,
         "worldAesthetic": world_aesthetic,
