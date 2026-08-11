@@ -161,7 +161,8 @@ const MAX_LOOK_PAYLOAD_LENGTH = 20000;
 const CREATIVE_CHOICES = {
     contentFormat: [
         ["none", "No production format"],
-        ["narrative_animation_short", "Narrative animation short"],
+        ["narrative_animation_short", "Narrative short"],
+        ["opening_title_sequence", "Series / anime / TV opening sequence"],
         ["brand_promo", "Brand / launch promo"],
         ["co_op_game_intro", "Co-op game intro"],
         ["handdrawn_live_fusion", "Live action + drawn interaction"],
@@ -171,9 +172,11 @@ const CREATIVE_CHOICES = {
         ["mechanism_explainer", "Mechanism explainer"],
         ["general_educational_explainer", "General educational explainer"],
         ["product_demo_tutorial", "Product demo / tutorial"],
+        ["procedural_how_to", "Procedure / how-to"],
         ["cinematic_teaser", "Cinematic teaser"],
         ["interview_mini_profile", "Interview mini-profile"],
         ["performance_music_video", "Performance music video"],
+        ["music_driven_visual_sequence", "Music-driven visual sequence"],
         ["seamless_loop", "Seamless loop"],
     ],
     genre: [

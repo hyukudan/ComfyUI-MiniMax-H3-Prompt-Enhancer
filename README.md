@@ -233,11 +233,25 @@ response, permitted sound, and a concrete ending in playback order. It preserves
 object possession, and open/closed or intact/changed states across cuts. It prefers specific geometry, material,
 position, motion, and cause-and-effect over generic cinematic adjectives.
 
-`max_tokens=4096` is normally ample. If the result is complete but shallow, supply more concrete facts, use only the
-profiles that add useful direction, select a stronger instruct model explicitly, and inspect warnings. Increasing the
-token ceiling alone does not force depth, and a Ref2VA result below the recommended 350 words is a warning rather than
-an automatic repair trigger. Increase both output and context capacity only for genuinely truncated output,
-dialogue-dense Ref2VA, or large chained packages; repairs also need context for the previous complete candidate.
+Established emotional beats receive the same observable treatment. The node does not leave *sad*, *afraid* or
+*trying to stay composed* as abstract acting labels: it asks for the smallest readable sequence of an initial state,
+one or two plausible changes in gaze, eyelids, brows, mouth, jaw, breath, posture or hands, and a held or settled
+state. Asymmetry, overlapping reactions, an incomplete gesture or a social mask are used only when the source already
+supports restraint, ambivalence, concealment or hesitation; the feature never invents an emotion, motive,
+relationship, intensity or story beat, and suppressing a reaction does not authorize its sound (trying not to cry
+does not automatically add sobbing). Wide framing uses posture, gaze, weight and hand tension instead of pretending
+that facial micro-detail is visible. It never adds a close-up, cut or camera move merely to expose the acting, and it
+avoids millimetre/centimetre pseudo-precision, exhaustive muscle lists and arbitrary half-finished actions. Exact
+dialogue, timing, reference anchors, shot plans, cinematography and final states remain authoritative.
+
+`max_tokens=4096` is a conservative starting ceiling, not a target prompt length and not an H3 model limit. Raise it
+when the source, references, acting, audio, or shot structure need more complete observable direction; the LLM should
+use as much of that allowance as is useful without padding or repetition. A higher ceiling alone cannot create missing
+facts or stronger reasoning, so also choose a capable instruct model and inspect coverage warnings. The context must
+hold the full instruction package, the complete candidate, and—when repair is enabled—the previous candidate plus the
+replacement. For API v2 delivery, the validator separately enforces MiniMax's 7,000-character text-block limit; local
+delivery may retain a longer detailed prompt. Large chained packages are usually better served by a larger context and
+output allowance or by smaller autonomous batches than by compressing away continuity facts.
 
 ### Practical recipes
 
@@ -687,7 +701,7 @@ A final conditional selector styles only a title screen that the Basic prompt ex
 
 | Axis | Available profiles |
 |---|---|
-| Content / production format | `none`, `narrative_animation_short`, `brand_promo`, `co_op_game_intro`, `handdrawn_live_fusion`, `minimalist_product_ad`, `lyric_music_video`, `progressive_metaphor_explainer`, `mechanism_explainer`, `general_educational_explainer`, `product_demo_tutorial`, `cinematic_teaser`, `interview_mini_profile`, `performance_music_video`, `seamless_loop` |
+| Content / production format | `none`, `narrative_animation_short`, `opening_title_sequence`, `brand_promo`, `co_op_game_intro`, `handdrawn_live_fusion`, `minimalist_product_ad`, `lyric_music_video`, `progressive_metaphor_explainer`, `mechanism_explainer`, `general_educational_explainer`, `product_demo_tutorial`, `procedural_how_to`, `cinematic_teaser`, `interview_mini_profile`, `performance_music_video`, `music_driven_visual_sequence`, `seamless_loop` |
 | Narrative genre | `none`, `action`, `horror`, `thriller`, `romance`, `comedy`, `drama`, `adventure`, `mystery`, `crime`, `western`, `sports_competition` |
 | Visual language | `none`, `anime_general`, `anime_ultradetailed_cinematic`, `anime_retro_dramatic`, `anime_retro_gag_family`, `anime_shonen`, `anime_shojo`, `anime_shojo_pastel`, `american_comic_pastel`, `animation_2d`, `heroic_limited_cel_tv`, `midcentury_graphic_cel_comedy`, `classic_morning_adventure_cel`, `pixel_art_16bit`, `documentary_observational`, `mockumentary_talking_head`, `live_action_naturalistic`, `live_action_cinematic`, `live_action_classic_black_and_white`, `live_action_gritty`, `live_action_expressionist`, `live_action_visceral_horror`, `live_action_1980s_television`, `live_action_latin_american_telenovela`, `live_action_1980s_action`, `live_action_classic_chinese_martial_arts`, `live_action_classic_western`, `live_action_revisionist_western`, `live_action_1950s_studio_color`, `live_action_midcentury_technicolor_epic`, `giallo`, `tokusatsu_sentai`, `kaiju_suitmation`, `surveillance_found_footage`, `home_camcorder_1990s`, `1970s_new_hollywood`, `silent_era_1920s`, `storybook_symmetrical`, `stylized_3d_animation`, `game_3d_cinematic`, `game_3d_nextgen`, `low_poly_3d`, `cel_shaded_3d`, `stop_motion_handcrafted`, `supermarionation`, `rotoscope_animation`, `painterly_2d`, `watercolor_2d`, `gouache_2d`, `japanese_print_animation`, `graphic_novel`, `graphic_noir`, `clean_commercial` |
 | World aesthetic | `none`, `cyberpunk`, `film_noir`, `science_fiction`, `high_fantasy`, `retrofuturism`, `near_future_functional`, `gothic`, `solarpunk`, `steampunk`, `post_apocalyptic`, `historical_period`, `retrofuturism_atomic_age`, `retrofuturism_cassette`, `retrofuturism_y2k`, `analog_1980s`, `urban_industrial`, `dieselpunk`, `nordic_noir`, `liminal_institutional` |
@@ -710,9 +724,10 @@ lyric/performance videos, and seamless loops, so autonomous items do not restart
 
 | Format | Organizes | Never authorizes |
 |---|---|---|
-| `narrative_animation_short` | supplied opening → causal action/response → supplied consequence | goals, conflict, twists, endings, cuts, dialogue, music, or 3D |
+| `narrative_animation_short` (Narrative short) | supplied opening → causal action/response → supplied consequence | goals, conflict, twists, endings, cuts, dialogue, music, or a rendering medium |
+| `opening_title_sequence` | supplied opening anchor → distinct supplied identity/world/motif beats → exact authorized title or supplied endpoint | title, credits, logos, characters, lore, opening song, montage filler, or IP elements |
 | `brand_promo` | supplied hook → mechanism/evidence → payoff → authorized close | claims, metrics, proof, logo, CTA, announcer, or jingle |
-| `co_op_game_intro` | two supplied player slots → individual states → joint confirmation | players, equipment, UI copy, missions, gameplay, or branding |
+| `co_op_game_intro` | all supplied player slots → individually assigned states → joint confirmation | players, equipment, UI copy, missions, gameplay, or branding |
 | `handdrawn_live_fusion` | causal contact and continuity between photographed and drawn layers | hands, entities, transformations, glow, locations, or a global drawn look |
 | `minimalist_product_ad` | exact physical product → supported detail/action → stable close | features, variants, claims, hands, demonstrations, copy, CTA, or ad music |
 | `lyric_music_video` | master-audio windows, exact lyrics, authorized typography | lyrics, translations, performers, BPM, cuts, choreography, or a forced look |
@@ -720,23 +735,75 @@ lyric/performance videos, and seamless loops, so autonomous items do not restart
 | `mechanism_explainer` | initial state → supplied cause/part → state change → outcome | missing steps, causality, arrows, labels, hosts, SFX, or papercraft |
 | `general_educational_explainer` | supplied propositions mapped cumulatively to a takeaway | research, facts, citations, examples, diagrams, narrator, or labels |
 | `product_demo_tutorial` | concrete pre-state → exact supplied steps → verification | functions, steps, tools, safety advice, claims, captions, narration, or CTA |
+| `procedural_how_to` | exact supplied start/materials → every supplied operation in order → supplied verification | steps, tools, quantities, settings, safety advice, presenter, captions, narration, or music |
 | `cinematic_teaser` | authorized hook → progressive disclosure → authorized hold | plot, stakes, spoilers, title, tagline, cuts, risers, booms, or score |
 | `interview_mini_profile` | exact attributed soundbite and authorized contextual coverage | quotes, biography, occupation, interviewer, B-roll, lower third, or music |
 | `performance_music_video` | continuous master and authorized performance coverage | performers, instruments, roles, choreography, lyrics, crowd, stage, or remixing |
+| `music_driven_visual_sequence` | supplied visuals paced against one authorized continuous musical window | music, performers, instruments, lyrics, choreography, drops, cuts, flashes, or new story events |
 | `seamless_loop` | final-to-opening pose, scene, camera, light, motion, and audio continuity | reset actions, duplicates, cuts, fades, flashes, occluders, or seam SFX |
 
 Format beats are information beats, never implicit cuts. Source/reference facts, exact text/dialogue, media roles, audio
 gates, explicit shot rows/timing, and cinematography always win. Source-gated formats fail closed when critical
-authority is missing: an interview needs an exact soundbite and audible voice, and a music-video format cannot override
-`Background score = off`. The manifest records the selected format, requested/applied state, reason, profile/catalog
+authority is missing: an interview needs an exact soundbite and audible voice; a lyric video needs authorized music and
+exact supplied lyrics; a performance video additionally needs a supplied performance; a procedure needs actual ordered
+steps; and a music-driven sequence needs supplied/reference audio or `Background score = add instrumental`. Supplying
+music does not itself authorize a singer, band, instruments, dancing, a stage, lyrics, edits, or beat flashes. The
+manifest records the selected format, requested/applied state, reason, warnings, profile/catalog
 versions, digest, dimensions, and signature independently from `resolvedVisualStyle`.
 
-Title-screen treatment is deliberately conditional. Selecting a style never creates a title card or authorizes new
-visible text. The Basic prompt must explicitly request a title screen/card/intertitle and should quote its exact text,
-for example: `Opening title screen displays the exact visible text "NIGHT RUN".` The enhancer preserves spelling,
+`opening_title_sequence` is the production grammar for a series, anime, programme, or recurring title opening. It
+inherits the resolved genre, visual language, world aesthetic, tone, references, and Cinematography instead of forcing
+an anime, live-action, 3D, color, or camera look. At roughly 5 seconds it limits itself to one anchor, at most one
+distinct supplied beat, and the close; around 10 seconds it can use one or two supplied identity/world/motif beats;
+longer clips can use at most three or four. These are density limits, not automatic cuts. A bare request such as
+`Make an anime opening` is deliberately rejected as under-specified. If visible title or credit text is not supplied
+exactly, the format remains a text-free visual opening and emits a warning rather than inventing wording.
+
+`procedural_how_to` is narrower and more literal than `product_demo_tutorial`: it requires an ordered procedure in the
+Basic prompt and preserves every supplied material, operation, state change, and result. Use the product tutorial when
+the purpose is demonstrating a supplied product workflow; use the procedural format for a general craft, physical, UI,
+or task sequence. `music_driven_visual_sequence` is likewise distinct from both lyric and performance videos: it uses
+authorized music as the timing spine for already supplied visuals, but it does not add typography or infer that anyone
+sings, plays, or dances.
+
+Practical source examples:
+
+```text
+# Opening with locally authorized title text
+Anime series opening. In one continuous shot, the red-haired pilot crosses a storm-damaged hangar,
+stops beside the clean, intact blue aircraft, and looks toward the lightning outside. The exact title
+"SKY PATH" appears, then the shot settles on the pilot and aircraft together. No dialogue and no music.
+
+# General ordered procedure
+On the wooden workbench, first place the red cord across the blue cord. Then pass the red end under the
+blue cord, pull both ends evenly until the crossing is snug, and finally hold the finished knot still.
+
+# Supplied visuals driven by authorized instrumental music, not a visible performance
+In one continuous shot, three translucent glass rings orbit the same silver sphere. The smallest ring
+tilts, the middle ring follows, and all three settle into one aligned configuration at the end. No people,
+performers, visible instruments, lyrics, or visible text.
+```
+
+For the last example, select `music_driven_visual_sequence`, enable `Background score = add instrumental`, and select
+or describe the required instrumental language. The complete music-style bible—not merely its label—is sent to the
+LLM. The format times the supplied ring motion to that authorized music but does not turn it into an orchestra scene.
+If `Background score = off` and no source/reference audio exists, the format fails closed with
+`missing_authorized_music`.
+
+Title-screen treatment is deliberately conditional and local. Selecting a style never creates a title card or authorizes
+new visible text. The Basic prompt must explicitly bind a quoted exact title to a title screen/card/intertitle or opening,
+for example: `Opening title screen displays the exact visible text "NIGHT RUN".` An opening may equivalently say
+`The exact title "NIGHT RUN" appears after the supplied character beat.` The enhancer preserves spelling,
 capitalization, punctuation, language and line order exactly; it cannot add a subtitle, credit, logo, tagline or extra
 word. The title treatment applies only to that authorized shot and does not change the visual language of the rest of
-the video.
+the video. Explicit Cinematography remains authoritative for palette, exposure, camera, optics, texture, and motion;
+the selected title treatment adapts within it. A selected title style is recorded but not applied when no locally bound
+exact title text exists.
+
+The normalizer inserts the selected title style's declarative rendering lock beside the first exact authorized title
+occurrence. If the LLM repeats the same quoted title merely to say that it remains on screen, later prose is changed to
+`the same exact title` rather than emitting the visible string again. This preserves one exact spelling while allowing
+the title to remain visible across a hold. It never creates a missing title or repairs arbitrary unquoted copy.
 
 | Title-screen style | Visual treatment | Never adds |
 |---|---|---|
@@ -747,7 +814,24 @@ the video.
 | `elegant_editorial` | refined high-contrast letterforms, measured tracking, balanced margins and restrained motion | publication identities, monograms, branding or taglines |
 | `neon_technology` | crisp geometric letters, restrained emissive edges, modular alignment and stable line-build reveal | HUDs, holograms, code, data, glitches or circuitry |
 | `pixel_art_title` | fixed low-resolution integer grid, hard glyph clusters, limited palette and stepped reveal | game UI, scores, health bars, CRT artifacts or glitches |
-| `silent_intertitle` | black-and-ivory composition, readable serif-like lettering, restrained border and simple hold | film damage, dates, studio marks or chapter numbers |
+| `silent_intertitle` | high-contrast period-compatible composition, readable serif-like lettering, restrained border and simple hold | a forced black/ivory palette, film damage, dates, studio marks or chapter numbers |
+
+### Source ownership and final prompt normalization
+
+Description enhancement expands presentation, not ownership. Concrete compound attributes such as `red-haired pilot`
+and `storm-damaged hangar` receive explicit ownership locks before the LLM call: the hair state belongs only to the
+pilot and the damage state belongs only to the hangar. Explicit `intact` or `undamaged` objects receive an additional
+lossless state lock. The validator catches supported damage/weathering transfers, omitted intact states, exact-title
+duplication, and invented visible quoted text; unresolved violations enter the bounded repair loop. These checks improve
+common high-impact cases but are not a general semantic proof, so state critical object conditions explicitly in the
+Basic prompt.
+
+After the LLM responds, deterministic normalizers retain one global creative/cinematography signature in a normal H3
+generation, one autonomous signature per chained item, one source-authorized title-style lock, and one content-format
+delivery lock. Exact repeated global signatures are removed without deleting differently worded shot-specific staging.
+The documented H3 section budgets are also enforced: `overall_soundscape` is compacted to 1–4 sentences and
+`non_diegetic_music` to 1–3 sentences, joining excess clauses with semicolons instead of dropping instrumentation,
+tempo, rhythm, dynamics, spatial perspective, or ending information. Validation then runs on the normalized prompt.
 
 Profile selection guide:
 
@@ -2005,11 +2089,11 @@ Update to the latest node version and inspect `validation_report`. Spoken quoted
 
 ### The result is valid but the description is shallow
 
-Do not increase `max_tokens` first. A complete short answer usually reflects model capability, sparse source facts, or
-too many competing style instructions rather than output truncation. Select a stronger chat/instruct model explicitly,
-add concrete subject/position/action/contact/final-state facts, provide reliable reference analysis, add shot rows where
-boundaries matter, and use only the Creative/Cinematography choices that contribute useful direction. Ref2VA below the
-recommended 350-word depth produces a warning; warnings do not trigger the repair loop.
+Treat `max_tokens` as a ceiling, not a desired length. If the answer is complete but shallow, first check whether the
+model ignored supplied information: select a stronger chat/instruct model, add concrete subject/position/action/contact/
+final-state facts, provide reliable reference analysis, add shot rows where boundaries matter, and keep the Creative/
+Cinematography choices that contribute useful direction. Then raise the ceiling whenever the requested useful detail
+does not fit. Ref2VA below the recommended 350-word depth produces a warning rather than automatically inventing filler.
 
 If the output instead ends abruptly, omits required final sections, or contains malformed JSON, increase
 `max_tokens` and ensure `context_size` can hold the complete system/user instructions plus the answer. Large chained

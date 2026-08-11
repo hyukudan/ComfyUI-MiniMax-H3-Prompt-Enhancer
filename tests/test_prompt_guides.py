@@ -15,6 +15,7 @@ from prompt_guides import (
     build_user_request,
     instrumental_style_signature,
     normalize_audio_policy,
+    normalize_audio_section_sentence_limits,
     normalize_dialogue_tags,
     normalize_source_dialogue,
     normalize_first_shot_marker,
@@ -693,6 +694,49 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     assert '<d>[Original language] Do not move.</d>' in conservative
 
 
+@pytest.mark.parametrize("mode", ["t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"])
+def test_enhancement_translates_only_source_authorized_emotion_into_observable_acting(mode):
+    kwargs = {"multishot_shot_count": 1} if mode == "chained_multishot" else {}
+    source = 'She tries not to cry while saying "I am fine."'
+    enhanced = build_user_request(source, mode, 5.0, enhance_description=True, **kwargs)
+    conservative = build_user_request(source, mode, 5.0, enhance_description=False, **kwargs)
+    heading = "EMOTIONAL PERFORMANCE TRANSLATION — SOURCE-GATED"
+    assert enhanced.count(heading) == 1
+    assert heading not in conservative
+    assert "smallest sufficient sequence of observable acting" in enhanced
+    assert "partial, asymmetric, overlapping, or conflicting reactions" in enhanced
+    assert "only when the source explicitly implies hesitation" in enhanced
+    assert "Never add a cut, push-in, close-up, camera move, or lighting change" in enhanced
+    assert "Avoid millimeter or centimeter measurements" in enhanced
+    assert "preserve every word and its assigned timing" in enhanced
+    assert '<d>[Original language] I am fine.</d>' in enhanced
+
+
+def test_emotional_performance_contract_does_not_authorize_incomplete_ordinary_actions():
+    request = build_user_request(
+        "She shakes her head and then opens the door.", "t2va", 5.0, enhance_description=True,
+    )
+    assert "Otherwise complete every requested action and preserve its resulting state" in request
+    assert "do not manufacture contradiction merely to make acting look complex" in request
+
+
+def test_dialogue_normalization_canonicalizes_temporal_speaking_cues_without_new_words():
+    source = 'A woman says "I am fine."'
+    generated = """integrated_multimodal_description:
+[Shot 1] Before speaking, she holds her breath. She (S1) says <d>[English] I am fine.</d>. Several seconds after speaking, her jaw relaxes.
+
+overall_soundscape:
+The tagged line and one breath are audible.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_source_dialogue(generated, source, "t2va")
+    assert "before the tagged line" in fixed.casefold()
+    assert "after the tagged line" in fixed.casefold()
+    assert "before speaking" not in fixed.casefold()
+    assert "after speaking" not in fixed.casefold()
+
+
 def test_ref2va_enhancement_targets_detailed_description_without_padding():
     request = build_user_request(
         "The mechanic in image 1 opens the workshop door.",
@@ -1035,6 +1079,34 @@ Noir jazz."""
     assert "Numeric event times" in joined
     assert "Invented or duplicated dialogue" in joined
     assert "must be N/A" in joined
+
+
+def test_validator_rejects_clock_form_inline_event_time_in_shot_body():
+    source = "A woman tries to remain composed while holding eye contact."
+    prompt = """integrated_multimodal_description:
+[Shot 1] A woman holds eye contact. At 00:00.500, she takes a controlled breath and remains still.
+
+overall_soundscape:
+Quiet room tone and one controlled breath.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    assert any("Numeric event times" in item for item in report["errors"])
+
+
+def test_base_validator_rejects_invented_visible_quoted_text():
+    source = "A supplied pilot walks through the hangar and reaches the door."
+    prompt = """integrated_multimodal_description:
+[Shot 1] The supplied pilot crosses the hangar. A glowing title reads "SKY HEROES" before the pilot reaches the door.
+
+overall_soundscape:
+Footsteps in the hangar.
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(prompt, "t2va", 5.0, source)
+    assert any("Visible quoted text was invented" in item for item in report["errors"])
 
 
 def test_dialogue_in_soundscape_does_not_satisfy_spoken_contract():
@@ -1680,6 +1752,61 @@ def test_forced_offscreen_outcome_contract_requires_visible_trajectory_before_cu
     assert "until it fully exits the frame" in request
 
 
+def test_compound_source_attributes_get_exact_ownership_locks():
+    request = build_user_request(
+        "A red-haired pilot crosses a storm-damaged hangar and stops beside a blue aircraft.",
+        "t2va",
+        6.0,
+    )
+    assert "'red-haired' modifies only 'pilot'" in request
+    assert "'storm-damaged' modifies only 'hangar'" in request
+    assert "Do not transfer that condition" in request
+
+    transferred = (
+        "A red-haired pilot crosses the storm-damaged hangar. The blue aircraft shows signs of minor damage."
+    )
+    errors = _explicit_source_fact_errors(
+        "A red-haired pilot crosses a storm-damaged hangar and stops beside a blue aircraft.",
+        transferred,
+    )
+    assert any("damage state was transferred" in error for error in errors)
+    clean = "A red-haired pilot crosses the storm-damaged hangar and stops beside the intact blue aircraft."
+    assert not any(
+        "damage state was transferred" in error
+        for error in _explicit_source_fact_errors(
+            "A red-haired pilot crosses a storm-damaged hangar and stops beside a blue aircraft.", clean,
+        )
+    )
+
+    intact_request = build_user_request(
+        "The pilot stops beside a clean, intact blue aircraft inside a storm-damaged hangar.",
+        "t2va", 5.0,
+    )
+    assert "Preserve the explicit intact state of 'aircraft'" in intact_request
+    intact_errors = _explicit_source_fact_errors(
+        "The pilot stops beside a clean, intact blue aircraft inside a storm-damaged hangar.",
+        "The pilot stops beside a weathered blue aircraft inside the storm-damaged hangar.",
+    )
+    assert any("intact state" in error for error in intact_errors)
+
+
+def test_audio_sentence_limits_compact_excess_without_dropping_content():
+    prompt = """integrated_multimodal_description:
+[Shot 1] Three rings align.
+
+overall_soundscape:
+First. Second. Third. Fourth. Fifth.
+
+non_diegetic_music:
+One. Two. Three. Four. Five."""
+    normalized = normalize_audio_section_sentence_limits(prompt, "t2va")
+    report = validate_prompt(normalized, "t2va", 5, "Three rings align with music.")
+    assert not any("should contain 1-4" in warning for warning in report["warnings"])
+    assert not any("should contain 1-3" in warning for warning in report["warnings"])
+    assert "Fourth; Fifth." in normalized
+    assert "Three; Four; Five." in normalized
+
+
 def test_unresolved_offscreen_voice_is_rejected():
     prompt = """integrated_multimodal_description:
 [Shot 1] An unseen voice (S1) says in an off-screen voiceover <d>[Original language] Hola</d>.
@@ -2170,9 +2297,10 @@ def test_plain_reference_context_from_ui_activates_ref2va_and_identity(context):
 
 
 def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budgets():
-    # Measured 2026-08: SYSTEM_PROMPT 10523 chars, worst-case user request 27392 chars with every
+    # Measured 2026-08: SYSTEM_PROMPT 10523 chars, worst-case user request 31689 chars with every
     # control at its most verbose setting, including the shot-scale/angle/viewpoint axes, the
-    # acoustic space and the dialogue-coverage clause. Caps are the measurement plus ~10-15%;
+    # acoustic space, dialogue-coverage and source-gated emotional-performance clauses. Caps are
+    # the measurement plus ~10-15%;
     # exceeding one means prompt growth that silently degrades small local GGUF models and must be
     # reviewed deliberately.
     assert len(SYSTEM_PROMPT) < 12000
@@ -2211,7 +2339,7 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
         (("English", "I am leaving now."),), creative, shot_plan, cinematography, "chinese_martial_arts",
         "large_reverberant_interior", "on",
     )
-    assert len(request) < 29000
+    assert len(request) < 35000
 
 
 _CONTINUATION_SOURCE = (

@@ -16,14 +16,14 @@ from urllib.request import Request, urlopen
 
 try:
     from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
-    from .creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
+    from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_text_authorized, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
-    from creative_treatments import build_shots_package, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, treatment_warnings
+    from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_text_authorized, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -334,11 +334,19 @@ def enhance_prompt_with_completion(
         shot_plan_json, effective_duration, 0, resolved_mode,
     )
     treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
+    opening_format_selected = creative_treatment.get("contentFormat") == "opening_title_sequence"
     if (creative_treatment.get("titleScreenStyle") != "none"
-            and not title_screen_requested(basic_prompt)):
+            and not title_screen_requested(basic_prompt)
+            and not opening_format_selected):
         treatment_notes.append(
             "Title screen style is saved but not applied because the Basic prompt does not explicitly request a "
             "title screen, title card, opening/end title, or intertitle."
+        )
+    elif (creative_treatment.get("titleScreenStyle") != "none"
+          and not title_screen_text_authorized(basic_prompt)):
+        treatment_notes.append(
+            "Title screen style is saved but not applied because no exact quoted visible title text is locally "
+            "bound to the requested title screen."
         )
     creative_treatment, treatment_conflicts = resolve_treatment_conflicts(creative_treatment, cinematography)
     resolved_visual_style = resolve_visual_style(creative_treatment, cinematography)
@@ -346,7 +354,15 @@ def enhance_prompt_with_completion(
         creative_treatment.get("contentFormat", "none"), enabled=bool(enhance_description),
         source_prompt=basic_prompt, voice_performance=voice_performance,
         background_score_policy=background_score_policy, mode=resolved_mode,
+        duration_seconds=effective_duration,
     )
+    treatment_notes.extend(str(item) for item in resolved_content_format.get("warnings", ()) if str(item))
+    if resolved_content_format.get("requested") and not resolved_content_format.get("applied"):
+        treatment_notes.append(
+            "Content / production format was saved but not applied: "
+            + str(resolved_content_format.get("notAppliedReason") or "requirements_not_met")
+            + "."
+        )
     dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
@@ -410,9 +426,11 @@ def enhance_prompt_with_completion(
             )
             value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
             value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
-            return normalize_instrumental_style_signature(
+            value = normalize_instrumental_style_signature(
                 value, resolved_mode, background_score_policy, instrumental_style,
             )
+            value = normalize_title_screen_style_signature(value, creative_treatment, basic_prompt)
+            return normalize_audio_section_sentence_limits(value, resolved_mode)
         value = normalize_section_headers(candidate)
         value = normalize_dialogue_tags(value)
         value = normalize_first_shot_marker(value, resolved_mode)
@@ -427,9 +445,11 @@ def enhance_prompt_with_completion(
         )
         value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
         value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
-        return normalize_instrumental_style_signature(
+        value = normalize_instrumental_style_signature(
             value, resolved_mode, background_score_policy, instrumental_style,
         )
+        value = normalize_title_screen_style_signature(value, creative_treatment, basic_prompt)
+        return normalize_audio_section_sentence_limits(value, resolved_mode)
 
     enhanced = normalize_candidate(completion(messages))
     validation = validate_prompt(
@@ -446,11 +466,20 @@ def enhance_prompt_with_completion(
     best_validation = validation
 
     def repair_issues(report: dict) -> list[str]:
+        official_shape_warnings = [
+            warning for warning in report.get("warnings", ())
+            if str(warning) in {
+                "overall_soundscape should contain 1-4 English sentences in one paragraph",
+                "non_diegetic_music should contain 1-3 English sentences",
+            }
+            or "repeats the same descriptive sentence three or more times" in str(warning)
+        ]
         return [
             *report.get("errors", ()),
             *report.get("coverageGaps", ()),
             *report.get("styleCoverageGaps", ()),
             *report.get("contentFormatCoverageGaps", ()),
+            *official_shape_warnings,
         ]
 
     def candidate_score(report: dict) -> tuple[int, int, int]:
@@ -543,6 +572,7 @@ def enhance_prompt_with_completion(
             creative_treatment.get("applied")
             and creative_treatment.get("titleScreenStyle") != "none"
             and title_screen_requested(basic_prompt)
+            and title_screen_text_authorized(basic_prompt)
         ),
         "cinematographySchemaVersion": cinematography["schemaVersion"],
         "cinematographyCatalogVersion": cinematography["catalogVersion"],

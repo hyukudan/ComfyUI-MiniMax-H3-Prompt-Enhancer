@@ -27,12 +27,14 @@ from creative_treatments import (
     parse_creative_treatment,
     parse_cinematography,
     parse_shot_plan,
+    normalize_title_screen_style_signature,
     resolve_treatment_conflicts,
     resolve_visual_style,
     shot_plan_instruction,
     shot_transition_choices,
     treatment_warnings,
     title_screen_requested,
+    title_screen_text_authorized,
     title_screen_style_adherence_errors,
     title_screen_style_choices,
     title_screen_style_instruction,
@@ -329,6 +331,7 @@ def test_every_creative_profile_is_independent_and_has_no_lineage_metadata():
 def test_title_screen_styles_are_independent_declarative_and_source_gated():
     source = 'Opening title screen displays the exact visible text "NIGHT RUN".'
     assert title_screen_requested(source)
+    assert title_screen_text_authorized(source)
     locks = set()
     for name in title_screen_style_choices():
         if name == "none":
@@ -349,12 +352,45 @@ def test_title_screen_styles_are_independent_declarative_and_source_gated():
         instruction = title_screen_style_instruction(treatment, source)
         assert profile["deliveryLock"] in instruction
         assert "exact supplied title text" in instruction
+        assert "Explicit Cinematography remains authoritative" in instruction
         assert title_screen_style_adherence_errors(profile["deliveryLock"], treatment, source) == []
         assert title_screen_style_adherence_errors("A generic title card.", treatment, source)
         assert title_screen_style_instruction(treatment, "A woman crosses a station.") == ""
         assert title_screen_style_adherence_errors(
             "A woman crosses a station.", treatment, "A woman crosses a station.",
         ) == []
+        no_text = "Create an opening title screen for the supplied characters."
+        assert title_screen_requested(no_text)
+        assert not title_screen_text_authorized(no_text)
+        assert title_screen_style_instruction(treatment, no_text) == ""
+
+
+def test_exact_title_wording_is_locally_authorized_inside_an_opening_request():
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    opening = (
+        'Anime opening: the supplied pilot crosses the hangar. '
+        'The exact title "SKY PATH" appears before the supplied final tableau.'
+    )
+    assert title_screen_requested(opening)
+    assert title_screen_text_authorized(opening)
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" in title_screen_style_instruction(treatment, opening)
+    assert not title_screen_text_authorized('The character says "SKY PATH" while walking.')
+
+    output = 'integrated_multimodal_description:\n[Shot 1] The exact title "SKY PATH" appears.\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A'
+    normalized = normalize_title_screen_style_signature(output, treatment, opening)
+    lock = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
+    assert normalized.count(lock) == 1
+    assert normalize_title_screen_style_signature(normalized, treatment, opening) == normalized
+
+    repeated = output.replace(
+        "appears.", 'appears. The requested title "SKY PATH" remains visible.',
+    )
+    normalized_repeated = normalize_title_screen_style_signature(repeated, treatment, opening)
+    assert normalized_repeated.count('"SKY PATH"') == 1
+    assert "the same exact title remains visible" in normalized_repeated
 
 
 def test_formerly_layered_profiles_are_self_contained_after_flattening():

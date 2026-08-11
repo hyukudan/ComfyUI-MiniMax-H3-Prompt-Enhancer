@@ -31,8 +31,26 @@ EXPECTED_FORMATS = {
     "cinematic_teaser",
     "interview_mini_profile",
     "performance_music_video",
+    "opening_title_sequence",
+    "procedural_how_to",
+    "music_driven_visual_sequence",
     "seamless_loop",
 }
+
+
+def source_for(name):
+    return {
+        "interview_mini_profile": 'The supplied speaker says "This is the exact supplied soundbite."',
+        "opening_title_sequence": (
+            'Anime opening: three supplied heroes cross the supplied mountain while the exact title "SKY PATH" '
+            "appears before the supplied final tableau."
+        ),
+        "procedural_how_to": "First fold the supplied cloth, then tie the supplied cord, and finally hold the knot.",
+        "music_driven_visual_sequence": "The supplied shapes move against the authorized continuous music track.",
+        "lyric_music_video": 'The authorized music track carries the exact lyric "Run into the light."',
+        "performance_music_video": "The supplied quartet performs the authorized continuous music track.",
+        "progressive_metaphor_explainer": "Use the supplied bridge as a visual metaphor for the supplied relationship.",
+    }.get(name, "A supplied subject performs the supplied action and reaches the supplied ending.")
 
 
 def resolved(name, **overrides):
@@ -62,11 +80,7 @@ def test_catalog_is_complete_and_every_format_has_a_deep_unique_bible():
 def test_each_format_expands_full_instructions_not_its_label(name):
     item = resolved(
         name,
-        source_prompt=(
-            'The supplied speaker says "This is the exact supplied soundbite."'
-            if name == "interview_mini_profile"
-            else "A supplied subject performs the supplied action and reaches the supplied ending."
-        ),
+        source_prompt=source_for(name),
     )
     instruction = content_format_instruction(item)
     assert item["applied"] is True
@@ -139,7 +153,80 @@ def test_source_gates_fail_closed_for_interview_and_music_policy():
     assert interview["notAppliedReason"] == "missing_attributed_soundbite"
     music = resolved("lyric_music_video", background_score_policy="off")
     assert music["applied"] is False
-    assert music["notAppliedReason"] == "audio_policy_conflict"
+    assert music["notAppliedReason"] == "missing_authorized_music"
+    supplied_master = resolved(
+        "lyric_music_video", background_score_policy="off",
+        source_prompt='The supplied audio track contains the exact lyric "Hold on."',
+    )
+    assert supplied_master["applied"] is True
+
+
+def test_new_format_gates_are_source_grounded_and_opening_without_title_stays_text_free():
+    empty_opening = resolved("opening_title_sequence", source_prompt="Make an anime opening.")
+    assert empty_opening["notAppliedReason"] == "missing_opening_anchor"
+    visual_opening = resolved(
+        "opening_title_sequence",
+        source_prompt="Anime opening: the supplied red-haired pilot walks through the supplied hangar.",
+        duration_seconds=5.0,
+    )
+    assert visual_opening["applied"] is True
+    assert visual_opening["warnings"]
+    assert "at most one distinct supplied beat" in " ".join(
+        visual_opening["dimensions"]["editing_and_pacing"]
+    )
+    assert resolved("procedural_how_to", source_prompt="Show how to tie a knot.")["notAppliedReason"] == "missing_supplied_steps"
+    assert resolved("procedural_how_to", source_prompt=source_for("procedural_how_to"))["applied"] is True
+    assert resolved(
+        "music_driven_visual_sequence", source_prompt="Three supplied shapes rotate in sequence.",
+    )["notAppliedReason"] == "missing_authorized_music"
+    assert resolved(
+        "music_driven_visual_sequence", source_prompt=source_for("music_driven_visual_sequence"),
+    )["applied"] is True
+
+
+def test_opening_duration_guidance_scales_density_without_authorizing_cuts():
+    short = resolved("opening_title_sequence", source_prompt=source_for("opening_title_sequence"), duration_seconds=5)
+    medium = resolved("opening_title_sequence", source_prompt=source_for("opening_title_sequence"), duration_seconds=10)
+    long = resolved("opening_title_sequence", source_prompt=source_for("opening_title_sequence"), duration_seconds=15)
+    assert "at most one distinct supplied beat" in " ".join(short["dimensions"]["editing_and_pacing"])
+    assert "one or two distinct supplied" in " ".join(medium["dimensions"]["editing_and_pacing"])
+    assert "at most three or four distinct supplied beats" in " ".join(long["dimensions"]["editing_and_pacing"])
+    for item in (short, medium, long):
+        assert "beats never authorize cuts" in " ".join(item["dimensions"]["editing_and_pacing"]).lower()
+
+
+def test_opening_request_combines_full_format_and_visual_bibles_without_emitting_ids():
+    request = build_user_request(
+        source_for("opening_title_sequence"),
+        "t2va",
+        10.0,
+        creative_treatment_json=json.dumps({
+            "schemaVersion": 1,
+            "contentFormat": "opening_title_sequence",
+            "genre": "adventure",
+            "visualLanguage": "anime_shonen",
+            "worldAesthetic": "high_fantasy",
+            "tone": "epic",
+            "titleScreenStyle": "classic_cel",
+        }),
+    )
+    assert CONTENT_FORMAT_PROFILES["opening_title_sequence"]["signature"] in request
+    assert "non-photorealistic hand-authored 2D action-anime" in request
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" in request
+    assert "Explicit Cinematography remains authoritative" in request
+    assert "Preserve grammatical ownership and attachment exactly" in request
+    assert "one or two distinct supplied" in request
+    for identifier in ("opening_title_sequence", "anime_shonen", "high_fantasy", "classic_cel"):
+        assert identifier not in request
+
+
+def test_every_format_has_distinct_first_middle_final_chained_roles():
+    for name in EXPECTED_FORMATS:
+        item = resolved(name, source_prompt=source_for(name), mode="chained_multishot")
+        signatures = content_format_signatures(item, 3)
+        assert len(signatures) == 3
+        assert len(set(signatures)) == 3
+        assert item["signature"] not in signatures
 
 
 def test_disabled_enhancement_records_selection_without_applying_it():

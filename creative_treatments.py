@@ -118,8 +118,8 @@ TITLE_SCREEN_STYLE_PROFILES = {
         must_not_invent="No HUD, menu, score, health bar, game logo, scanline, CRT curvature, glitch, subtitle, credit, or additional wording may be added.",
     ),
     "silent_intertitle": _title_screen_profile(
-        instruction="Use a composed black-and-ivory intertitle with centered highly readable period-neutral serif-like lettering, restrained border geometry, stable exposure, and a simple hold with a clean cut or fade.",
-        delivery_lock="The requested title screen is a composed black-and-ivory intertitle with centered highly readable serif-like lettering, restrained border geometry, stable exposure, and a simple hold with a clean cut or fade.",
+        instruction="Use a composed high-contrast intertitle with centered highly readable period-neutral serif-like lettering, restrained border geometry, stable exposure, and a simple hold with a clean cut or fade, adapting its colors to explicit cinematography.",
+        delivery_lock="The requested title screen is a composed high-contrast intertitle with centered highly readable serif-like lettering, restrained border geometry, explicit-cinematography-compatible color, stable exposure, and a simple hold with a clean cut or fade.",
         must_not_invent="No film damage, flicker, scratches, projector artifact, historical date, studio mark, chapter number, subtitle, credit, or additional wording may be added.",
     ),
 }
@@ -2463,7 +2463,9 @@ def title_screen_style_choices() -> tuple[str, ...]:
 
 _TITLE_SCREEN_REQUEST_RE = re.compile(
     r"\b(?:title\s+(?:screen|card)|opening\s+title|end\s+title|intertitle|"
-    r"pantalla\s+de\s+t[ií]tulo|tarjeta\s+de\s+t[ií]tulo|t[ií]tulo\s+(?:inicial|final))\b",
+    r"(?:exact\s+)?title(?:\s+text)?(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"pantalla\s+de\s+t[ií]tulo|tarjeta\s+de\s+t[ií]tulo|t[ií]tulo\s+(?:inicial|final)|"
+    r"t[ií]tulo(?:\s+exacto)?(?=\s*[:\-]?\s*[\"\u201c]))\b",
     re.IGNORECASE,
 )
 
@@ -2473,10 +2475,65 @@ def title_screen_requested(source_prompt: str) -> bool:
     return bool(_TITLE_SCREEN_REQUEST_RE.search(str(source_prompt or "")))
 
 
+def title_screen_text_authorized(source_prompt: str) -> bool:
+    """True only when quoted visible text is locally bound to a requested title/card."""
+    return bool(_authorized_title_quotes(source_prompt))
+
+
+def _authorized_title_quotes(source_prompt: str) -> list[str]:
+    """Return exact visible strings locally attached to an explicit title request."""
+    source = str(source_prompt or "")
+    quotes: list[str] = []
+    for match in re.finditer(r'["“][^"”]+["”]', source):
+        window = source[max(0, match.start() - 180):min(len(source), match.end() + 100)]
+        if _TITLE_SCREEN_REQUEST_RE.search(window):
+            quotes.append(match.group(0)[1:-1])
+    return list(dict.fromkeys(quotes))
+
+
+def normalize_title_screen_style_signature(prompt: str, treatment: Mapping[str, Any],
+                                           source_prompt: str) -> str:
+    """Place the declarative title-style lock beside the first authorized title occurrence.
+
+    This is deterministic contract normalization, not title authoring: it runs only when
+    the source locally binds exact quoted text to a title request and the generated prompt
+    already contains that exact text.
+    """
+    name = str(treatment.get("titleScreenStyle", "none"))
+    if (name == "none" or not treatment.get("applied")
+            or not title_screen_requested(source_prompt)
+            or not title_screen_text_authorized(source_prompt)):
+        return str(prompt)
+    value = str(prompt)
+    lock = str(TITLE_SCREEN_STYLE_PROFILES[name]["deliveryLock"])
+    if lock and lock not in value:
+        for quote in _authorized_title_quotes(source_prompt):
+            match = re.search(r'["“]' + re.escape(quote) + r'["”]', value)
+            if not match:
+                continue
+            sentence_end = re.search(r"[.!?](?=\s|$)", value[match.end():])
+            insert_at = match.end() + sentence_end.end() if sentence_end else match.end()
+            value = value[:insert_at] + " " + lock + value[insert_at:]
+            break
+    for quote in _authorized_title_quotes(source_prompt):
+        allowed = len(re.findall(r'["“]' + re.escape(quote) + r'["”]', str(source_prompt)))
+        mention_re = re.compile(
+            r"(?:the\s+)?(?:(?:requested|exact)\s+)?(?:title|text)\s+"
+            r'["“]' + re.escape(quote) + r'["”]',
+            re.IGNORECASE,
+        )
+        mentions = list(mention_re.finditer(value))
+        for duplicate in reversed(mentions[max(1, allowed):]):
+            value = value[:duplicate.start()] + "the same exact title" + value[duplicate.end():]
+    return value
+
+
 def title_screen_style_instruction(treatment: Mapping[str, Any], source_prompt: str) -> str:
     """Render private LLM guidance only for a source-authorized title screen."""
     name = str(treatment.get("titleScreenStyle", "none"))
-    if name == "none" or not treatment.get("applied") or not title_screen_requested(source_prompt):
+    if (name == "none" or not treatment.get("applied")
+            or not title_screen_requested(source_prompt)
+            or not title_screen_text_authorized(source_prompt)):
         return ""
     profile = TITLE_SCREEN_STYLE_PROFILES[name]
     return "\n".join((
@@ -2485,6 +2542,8 @@ def title_screen_style_instruction(treatment: Mapping[str, Any], source_prompt: 
         "It does not authorize a title, another cut, or any visible word. Preserve the exact supplied title text, "
         "capitalization, punctuation, language, line order, and spelling; never rewrite, translate, complete, or add "
         "a subtitle, credit, logo, tagline, label, or extra word.",
+        "Explicit Cinematography remains authoritative for palette, exposure, camera, optics, texture, and motion. "
+        "Adapt the local title treatment inside those choices rather than replacing or contradicting them.",
         "Private rendering direction for the title shot: " + profile["instruction"],
         "Forbidden additions: " + profile["mustNotInvent"],
         "Integrate the following declarative delivery lock once inside the authorized title shot; emit no style ID, "
@@ -2497,7 +2556,9 @@ def title_screen_style_adherence_errors(output_prompt: str, treatment: Mapping[s
                                         source_prompt: str) -> list[str]:
     """Require the declarative lock only for a source-authorized selected style."""
     name = str(treatment.get("titleScreenStyle", "none"))
-    if name == "none" or not treatment.get("applied") or not title_screen_requested(source_prompt):
+    if (name == "none" or not treatment.get("applied")
+            or not title_screen_requested(source_prompt)
+            or not title_screen_text_authorized(source_prompt)):
         return []
     lock = str(TITLE_SCREEN_STYLE_PROFILES[name]["deliveryLock"])
     return [] if lock and lock in str(output_prompt) else [

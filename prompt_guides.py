@@ -756,6 +756,17 @@ def enhancement_profile(enhance_description: bool) -> str:
     return "enhanced_production" if bool(enhance_description) else "conservative_grounded"
 
 
+EMOTIONAL_PERFORMANCE_CONTRACT = """EMOTIONAL PERFORMANCE TRANSLATION — SOURCE-GATED:
+- Apply this only when the authoritative source, dialogue, shot plan, reference role, or selected treatment already establishes an emotion, reaction, hesitation, suppression, or mixed inner state. This does not authorize a new emotion, motive, relationship, story beat, or intensity.
+- Do not leave an established emotional beat as an abstract label alone. Translate it into the smallest sufficient sequence of observable acting: an initial facial or body state, one or two physically plausible changes in gaze, eyelids, brows, mouth, jaw, breath, posture, or hands, and a readable held or settled state. Preserve the source's emotional meaning and intensity.
+- Use partial, asymmetric, overlapping, or conflicting reactions only when the source supports restraint, ambivalence, concealment, mixed emotion, or an attempted social mask. State which reactions coexist; do not manufacture contradiction merely to make acting look complex.
+- Interrupt or suppress a gesture only when the source explicitly implies hesitation, resistance, concealment, an aborted action, or a struggle not to react. Suppression does not authorize the suppressed action or its sound; for example, trying not to cry does not by itself authorize sobbing. Otherwise complete every requested action and preserve its resulting state.
+- Fit performance to the available duration and authorized framing. Micro-expression detail belongs only where the face is readable; in wider framing, express the same established beat through gaze direction, breath, posture, weight shift, or hand tension. Never add a cut, push-in, close-up, camera move, or lighting change merely to expose it when the shot plan, reference anchor, or cinematography does not permit that choice.
+- Use timing only when it clarifies a meaningful transition and fits inside the containing shot, expressed as an approximate duration or ordered phase rather than a false absolute timestamp. Avoid millimeter or centimeter measurements, pseudo-biometric precision, exhaustive muscle lists, and stacked simultaneous instructions. Prefer relational descriptions such as one mouth corner, a briefly held breath, a blink delayed until after the line, or a source-supported gesture that begins and then stops.
+- Around dialogue, preserve every word and its assigned timing. Acting may precede, overlap, or follow the line only where causally compatible, and must not obstruct required mouth or eye visibility or imply extra speech. Put any vocal action in the same sentence as its <d> block; outside that sentence prepare or react through breath, gaze, posture, or hands without standalone speaking, talking, or saying cues.
+- Adapt the observable cue to the selected visual language without overriding its performance grammar, identity lock, reference state, action order, or final-frame anchor. Source facts, quoted dialogue, and reference anchors outrank the explicit shot plan and timing, which outrank explicit cinematography, selected treatment, and this execution-only translation."""
+
+
 def system_prompt_for_mode(mode: str, enhance_description: bool | None = None) -> str:
     """Return only the output-contract rules relevant to the resolved H3 mode."""
     if mode == "chained_multishot":
@@ -1521,6 +1532,60 @@ def _explicit_source_fact_errors(source_prompt: str, output: str) -> list[str]:
         if re.search(rf"\b{aid}\b", source, re.IGNORECASE) and not re.search(rf"\b{aid}\b", text, re.IGNORECASE):
             errors.append(f"Explicit mobility aid must remain {aid!r}")
 
+    intact_owners = re.findall(
+        r"\b(?:intact|undamaged)\s+(?:(?:black|blue|brown|green|gr[ae]y|red|silver|white|yellow)\s+)?"
+        r"([\wÀ-ÿ'-]+)\b",
+        source,
+        re.IGNORECASE,
+    )
+    for owner in intact_owners:
+        if not re.search(
+            rf"(?:\b(?:intact|undamaged)\b.{{0,35}}\b{re.escape(owner)}\b|"
+            rf"\b{re.escape(owner)}\b.{{0,50}}\b(?:intact|undamaged)\b)",
+            text,
+            re.IGNORECASE,
+        ):
+            errors.append(f"Explicit intact state must remain attached to {owner!r}")
+
+    damage_owners = {
+        owner.casefold()
+        for _modifier, owner in re.findall(
+            r"\b([\wÀ-ÿ]+-damaged)\s+([\wÀ-ÿ'-]+)\b", source, re.IGNORECASE,
+        )
+    }
+    if damage_owners:
+        transfer_patterns = (
+            r"\b([\wÀ-ÿ'-]+)\b,\s*which\b[^.!?\r\n]{0,80}\b(?:shows?|bears?|has)\s+"
+            r"(?:visible\s+|clear\s+)?(?:signs?\s+of\s+)?(?:minor\s+|storm\s+)?(?:damage|weathering|wear)\b",
+            r"\b([\wÀ-ÿ'-]+)\b(?:,\s*which)?\s+(?:shows?|bears?|has)\s+"
+            r"(?:visible\s+|clear\s+)?(?:signs?\s+of\s+)?(?:minor\s+|storm\s+)?(?:damage|weathering|wear)\b",
+            r"\b([\wÀ-ÿ'-]+)\b\s+is\s+(?:visibly\s+|slightly\s+|also\s+|similarly\s+)?"
+            r"(?:damaged|weathered)\b",
+            r"\b(?:damage|weathering)\s+(?:on|to|of)\s+(?:the\s+)?([\wÀ-ÿ'-]+)\b",
+        )
+        unauthorized_targets = set()
+        for pattern in transfer_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                target = match.group(1)
+                if target.casefold() in {"also", "still", "similarly", "which", "it", "this", "that"}:
+                    continue
+                clause_start = max(
+                    text.rfind(".", 0, match.start()), text.rfind("!", 0, match.start()),
+                    text.rfind("?", 0, match.start()), text.rfind("\n", 0, match.start()),
+                )
+                clause_prefix = text[clause_start + 1:match.start()].casefold()
+                if target.casefold() not in damage_owners and not any(
+                    re.search(rf"\b{re.escape(owner)}\b", clause_prefix) for owner in damage_owners
+                ):
+                    unauthorized_targets.add(target)
+        unauthorized = sorted(unauthorized_targets)
+        if unauthorized:
+            errors.append(
+                "A source-owned damage state was transferred to an unauthorized subject or object: "
+                + repr(unauthorized)
+                + "; keep damage attached only to " + repr(sorted(damage_owners))
+            )
+
     source_has_forced_exit = re.search(
         r"\b(?:fly|flies|flying|goes?\s+flying|is\s+sent|propelled|hurled|flung|knocked|thrown)\b"
         r".{0,140}\b(?:off[- ]?screen|out\s+of\s+(?:the\s+)?frame)\b",
@@ -1554,6 +1619,28 @@ def _source_fidelity_contract(source_prompt: str) -> str:
     for aid in ("wheelchair", "crutches", "walker", "cane"):
         if re.search(rf"\b{aid}\b", source, re.IGNORECASE):
             facts.append(f"Preserve the explicit mobility aid: {aid!r}.")
+    for match in re.finditer(
+        r"\b(?:intact|undamaged)\s+(?:(?:black|blue|brown|green|gr[ae]y|red|silver|white|yellow)\s+)?"
+        r"([\wÀ-ÿ'-]+)\b",
+        source,
+        re.IGNORECASE,
+    ):
+        facts.append(
+            f"Preserve the explicit intact state of {match.group(1)!r}; do not add damage, weathering, wear, "
+            "breakage, dents, scratches, or missing parts to it."
+        )
+    for match in re.finditer(
+        r"\b([\wÀ-ÿ]+-(?:damaged|haired|colou?red|painted|covered|stained|marked|scarred|"
+        r"worn|weathered|broken|lit))\s+([\wÀ-ÿ'-]+)\b",
+        source,
+        flags=re.IGNORECASE,
+    ):
+        modifier, owner = match.groups()
+        facts.append(
+            f"Preserve exact attribute ownership: {modifier!r} modifies only {owner!r}. Do not transfer that "
+            "condition, appearance, damage, wear, color, or material state to any other person, garment, object, "
+            "vehicle, prop, or location merely because it shares the scene."
+        )
     for sentence in re.split(r"(?<=[.!?])\s+", source):
         if re.search(
             r"\b(?:off[- ]?screen|out\s+of\s+(?:the\s+)?frame)\b",
@@ -1618,7 +1705,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         creative_treatment.get("contentFormat", "none"),
         enabled=bool(enhance_description), source_prompt=basic_prompt,
         voice_performance=voice_performance, background_score_policy=background_score_policy,
-        mode=resolved,
+        mode=resolved, duration_seconds=effective_duration,
     )
     cinematography = parse_cinematography(cinematography_json)
     explicit_shot_plan = parse_shot_plan(
@@ -1805,6 +1892,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
             "singing, lyrics, or vocal samples:\n" + requested_instrumental
         )
+    if bool(enhance_description):
+        # Keep this after source, reference, shot-plan, cinematography and audio authority have been
+        # established, but before the chained early return so every output mode receives it once.
+        parts.append(EMOTIONAL_PERFORMANCE_CONTRACT)
     if resolved == "chained_multishot":
         if bool(enhance_description):
             parts.append(
@@ -2785,6 +2876,13 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
             flags=re.IGNORECASE,
         )
 
+    # Temporal references to the one exact line are not additional vocal actions. Canonicalize the
+    # common phrases local models emit so validation does not mistake "after speaking" for a second,
+    # untagged line; concrete vocal delivery still belongs in the sentence containing <d>.
+    value = re.sub(r"\bafter\s+speaking\b", "after the tagged line", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bbefore\s+speaking\b", "before the tagged line", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bwhile\s+speaking\b", "during the tagged line", value, flags=re.IGNORECASE)
+
     remaining = list(contracts)
 
     def take_contract(candidate: str):
@@ -3048,15 +3146,25 @@ def normalize_visual_style_signature(text: str, mode: str, style: Mapping[str, A
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
-    if signature in _section_body(value, section):
-        return value
-    header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
-    if not header:
-        return value
-    header_text = header.group(0)
-    newline = "\r\n" if "\r\n" in header_text else "\n"
-    separator = "" if header_text.endswith(("\n", "\r")) else newline
-    return value[:header.end()] + separator + signature + newline + value[header.end():]
+    if signature not in _section_body(value, section):
+        header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
+        if not header:
+            return value
+        header_text = header.group(0)
+        newline = "\r\n" if "\r\n" in header_text else "\n"
+        separator = "" if header_text.endswith(("\n", "\r")) else newline
+        value = value[:header.end()] + separator + signature + newline + value[header.end():]
+
+    components = [
+        *style.get("creativeSignatures", {}).values(),
+        style.get("cinematographySignature", ""),
+    ]
+    for component in (str(item).strip() for item in components if str(item).strip()):
+        first = value.find(component)
+        if first >= 0:
+            tail_start = first + len(component)
+            value = value[:tail_start] + value[tail_start:].replace(component, "")
+    return re.sub(r"[ \t]{2,}", " ", value)
 
 
 def normalize_content_format_signature(text: str, mode: str, content_format: Mapping[str, Any]) -> str:
@@ -3148,6 +3256,24 @@ def normalize_instrumental_style_signature(text: str, mode: str, policy: str, st
     newline = "\r\n" if "\r\n" in header.group(0) else "\n"
     separator = "" if header.group(0).endswith(("\n", "\r")) else newline
     return value[:header.end()] + separator + signature + " " + value[header.end():]
+
+
+def normalize_audio_section_sentence_limits(text: str, mode: str) -> str:
+    """Keep H3's documented sound and music sections within their sentence budgets."""
+    if mode == "chained_multishot":
+        return str(text)
+    value = str(text)
+    for section, maximum in (("overall_soundscape", 4), ("non_diegetic_music", 3)):
+        body = _section_body(value, section).strip()
+        if not body or body.casefold() == "n/a":
+            continue
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", body) if part.strip()]
+        if len(sentences) <= maximum:
+            continue
+        head = sentences[:maximum - 1]
+        tail = "; ".join(sentence.rstrip(".!? ") for sentence in sentences[maximum - 1:]) + "."
+        value = _replace_section_body(value, section, " ".join([*head, tail]))
+    return value
 
 
 def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str,
@@ -3778,13 +3904,13 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         selected_creative_treatment, selected_cinematography,
     )
     resolved_visual_style = resolve_visual_style(selected_creative_treatment, selected_cinematography)
+    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     resolved_content_format = resolve_content_format(
         selected_creative_treatment.get("contentFormat", "none"),
         enabled=enhance_description is not False, source_prompt=source_prompt,
         voice_performance=voice_performance, background_score_policy=background_score_policy,
-        mode=resolved,
+        mode=resolved, duration_seconds=profile["effectiveDurationSeconds"],
     )
-    profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     try:
         explicit_shot_plan = parse_shot_plan(
             shot_plan_json, profile["effectiveDurationSeconds"], 0, resolved,
@@ -4003,7 +4129,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         )
     timeline_without_headers = _SHOT_RE.sub("", timeline)
     invented_inline_times = re.findall(
-        r"\b(?:At|After)\s+(?:\d+(?:\.\d+)?\s+seconds?|\d+\.\d{2,3})\b",
+        r"\b(?:At|After)\s+(?:(?:\d{2}:)?\d{2}:\d{2}(?:\.\d{1,3})?|"
+        r"\d+(?:\.\d+)?\s+seconds?|\d+\.\d{2,3})\b",
         timeline_without_headers,
         flags=re.IGNORECASE,
     )
@@ -4278,6 +4405,15 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             )
     if missing_quotes:
         errors.append("Quoted source text was not preserved exactly: " + repr(missing_quotes))
+    source_visible_quotes = Counter(_QUOTED_RE.findall(source_prompt or ""))
+    source_visible_quotes.subtract(quote for _language, quote, _internal in source_contracts)
+    source_visible_quotes += Counter()  # discard zero and negative counts after subtracting dialogue
+    output_visible_quotes = Counter(_QUOTED_RE.findall(timeline))
+    invented_visible_quotes = list((output_visible_quotes - source_visible_quotes).elements())
+    if invented_visible_quotes:
+        errors.append(
+            "Visible quoted text was invented without source authorization: " + repr(invented_visible_quotes)
+        )
     source_dialogue = re.findall(r"<d>(.*?)</d>", source_prompt or "", flags=re.DOTALL)
     missing_dialogue = [item for item in source_dialogue if item not in text]
     if missing_dialogue:
