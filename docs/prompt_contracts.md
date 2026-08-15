@@ -177,11 +177,24 @@ When `frame_count > 0` is set, effective duration is calculated as `frame_count 
 
 MiniMax H3 performs best when descriptive text matches its cross-attention window sweet spot (~600–1100 tokens):
 
-- **Single-shot Baseline (5s–10s)**: 350–500 English words in the visual timeline description.
-- **Dynamic Scaling Formula (`_adaptive_description_budget`)**:
-  - `+75 words` per additional shot beyond 2.
-  - `+50 words` per additional reference asset (`<Picture N>`, `<Video N>`, `<Audio N>`).
-  - `+1 word` per spoken word in dialogue beyond 60 words.
-  - `+35 words` per explicit transformation or state change.
-
 This guarantees rich physical conditioning without attention overflow or drift.
+
+---
+
+## Proportional Resolution & Megapixel Math
+
+MiniMax H3 prompt enhancer nodes output aligned integer dimensions (`width` and `height`) that calculate proportional pixel counts aligned to multiples of 16 for downstream video samplers:
+
+$$\text{Total Pixels} = \text{target\_megapixels} \times 1,000,000$$
+$$\text{Height } (H) = \sqrt{\frac{\text{Total Pixels}}{r}} \quad \text{and} \quad \text{Width } (W) = H \times r$$
+$$\text{Aligned Dimension} = \max\left(16, \text{round}\left(\frac{\text{dim}}{16}\right) \times 16\right)$$
+
+| Aspect Ratio ($r$) | `0.2` MP (Draft) | `0.3` MP (Light) | `0.5` MP (540p) | `0.0` (Default 720p) | `1.0` MP | `2.0` MP (1080p) |
+|---|---|---|---|---|---|---|
+| **`16:9`** ($1.778$) | `592 × 336` | `736 × 416` | `944 × 528` | **`1280 × 720`** | `1328 × 752` | `1888 × 1056` |
+| **`9:16`** ($0.5625$) | `336 × 592` | `416 × 736` | `528 × 944` | **`720 × 1280`** | `752 × 1328` | `1056 × 1888` |
+| **`1:1`** ($1.0$) | `448 × 448` | `544 × 544` | `704 × 704` | **`1080 × 1080`** | `1008 × 1008` | `1408 × 1408` |
+| **`4:3`** ($1.333$) | `512 × 384` | `640 × 480` | `816 × 608` | **`960 × 720`** | `1152 × 864` | `1632 × 1216` |
+| **`3:4`** ($0.75$) | `384 × 512` | `480 × 640` | `608 × 816` | **`720 × 960`** | `864 × 1152` | `1216 × 1632` |
+| **`21:9`** ($2.333$) | `688 × 288` | `832 × 352` | `1088 × 464` | **`1680 × 720`** | `1536 × 656` | `2160 × 928` |
+

@@ -29,7 +29,8 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Multilingual & Dialects** | Generic or broken `[Original language]` | **18+ Canonical Languages & Dialects** (Castilian, Québécois, Flemish, etc.) |
 | **Audio Reference Binding** | Treated as background noise | **Cross-Modal Voice Binding** (`<Audio N>` $\rightarrow$ `<Subject N> (Sx)`) |
 | **Visual Text vs Speech** | Signs converted into dialogue | **Intelligent Separation** of signs/shirts/doors from spoken character dialogue |
-| **Style Bible & Directing** | Generic buzzwords | **131+ Curated Profiles** + 13-axis Cinematography with Conflict Precedence |
+| **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16px from Aspect Ratio & `target_megapixels` (0.2–2.0+ MP) |
+| **Visual Style Presets** | Generic prompt words | **18 Direct Preset Styles** + 131+ Curated Profiles & 13-Axis Cinematography Engine |
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
@@ -42,7 +43,7 @@ Explore the specialized guides in [`docs/`](docs/):
 
 | Guide | Description |
 |---|---|
-| 📜 [**Prompt Contracts & Modes**](docs/prompt_contracts.md) | Full specifications for T2VA, Ref2VA, I2VA, FL2VA, L2VA, Chained Multishot, and Frame Grid Math ($17 \times n + 5$). |
+| 📜 [**Prompt Contracts & Modes**](docs/prompt_contracts.md) | Full specifications for T2VA, Ref2VA, I2VA, FL2VA, L2VA, Chained Multishot, Frame Grid Math ($17 \times n + 5$), and Megapixel Scaling. |
 | 🎙️ [**Dialogue & Audio Architecture**](docs/dialogue_and_audio.md) | Multilingual engine, dialect recognition, audio reference binding (`<Audio N>`), and acoustic space policies. |
 | 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 53 Visual Languages, 20 World Aesthetics, 18 Tones, 12 Genres, 18 Content Formats, and 13 Cinematography Axes. |
 | 🖼️ [**Media References & Manifests**](docs/media_references_and_manifests.md) | Plain-text reference context vs structured JSON manifests, subject mapping, and retention analysis. |
@@ -86,7 +87,7 @@ graph LR
     subgraph Input
         A[Basic Prompt]
         B[Reference Context / Manifest]
-        C[Creative Selections]
+        C[Presets & Target Megapixels]
     end
     subgraph Enhancer Pack
         D[MiniMax H3 Prompt Enhancer]
@@ -95,6 +96,7 @@ graph LR
     subgraph Downstream H3
         F[H3 Video Conditioning]
         G[Duration Input]
+        H[Width & Height Latents]
     end
     A --> D
     B --> D
@@ -102,10 +104,11 @@ graph LR
     D --> E
     E -->|enhanced_prompt| F
     D -->|duration_seconds| G
+    D -->|width, height| H
 ```
 
-1. **`MiniMaxH3PromptEnhancer`**: Remote API / OpenAI-compatible endpoint prompt enhancer with self-repair loop.
-2. **`MiniMaxH3GGUFPromptEnhancer`**: Direct local GGUF prompt enhancer with automatic process lifecycle management.
+1. **`MiniMaxH3PromptEnhancer`**: Remote API / OpenAI-compatible endpoint prompt enhancer with self-repair loop and direct resolution outputs (`width`, `height`).
+2. **`MiniMaxH3GGUFPromptEnhancer`**: Direct local GGUF prompt enhancer with automatic process lifecycle management and resolution outputs.
 3. **`MiniMaxH3PromptGuideBuilder`**: Compiles system prompts and user instructions for existing ComfyUI LLM nodes.
 4. **`MiniMaxH3PromptValidator`**: Standalone structural validator checking 6-block contracts, tags, dialogue, and reference counts.
 5. **`MiniMaxH3MediaManifestValidator`**: Pre-validates structured JSON media inventories before prompting.
@@ -114,6 +117,14 @@ graph LR
 ---
 
 ## Key Highlights
+
+### Direct Resolution Outputs & Megapixel Scaling (`target_megapixels`)
+All enhancer nodes output calibrated `width` and `height` integer slots compatible with downstream video samplers and empty latent generators.
+- **Default (`0.0`)**: Standard MiniMax H3 720p base (`1280x720` for 16:9, `720x1280` for 9:16, `1080x1080` for 1:1, `1680x720` for 21:9).
+- **Custom Megapixels**: Enter any float target (e.g. `0.2` MP $\rightarrow$ `592x336`, `0.3` MP $\rightarrow$ `736x416`, `0.5` MP $\rightarrow$ `944x528`, `2.0` MP $\rightarrow$ `1888x1056`) automatically rounded to the nearest multiple of 16.
+
+### One-Click Visual Style Presets (`visual_style_preset`)
+Instant dropdown selection for 18 curated directorial styles (`live_action_cinematic`, `1970s_new_hollywood`, `anime_ultradetailed_cinematic`, `stylized_3d_animation`, `stop_motion_handcrafted`, `giallo`, `cyberpunk_noir`, etc.) without writing manual JSON schemas.
 
 ### Multilingual & Dialect Recognition
 Spoken dialogue is preserved verbatim in its natural language while all structural prose is translated into English for H3:
