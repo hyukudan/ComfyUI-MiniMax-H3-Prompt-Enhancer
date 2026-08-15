@@ -37,10 +37,146 @@ from prompt_guides import (
 from creative_treatments import CINEMATOGRAPHY_CHOICES
 
 
+TELENOVELA_SOURCE_WITH_ORPHAN_QUOTE = '''Soap opera scene, telenovela,with dramatic cuts, tense music, and sound effects like chan chan chaaaaaaan when he says his phrase", in a luxury house, the man in image 3 is talking with the main in image 2 while standing up, and the man in image 1 is sitting on a sofa, looking at the man in image 2. The man in image 3 says in latin spanish with strong mexican accent and lots of suspense "Primo..." and then gives a sigh, then he seems to think for a bit and then says slowly "tengo que decirte una cosa...". Then we get a cut to a close up as he talks, then does a dramatic pause, and we get a cut as he says "tu no eres mi primo, eres mi sobrino". Then we have a cut at a close up at the man in image 2, very surprised, with a sigh of surprise, with his hands in his mouth. Soap opera, with dramatic cuts. We get sound effect to emphasize the dramatic scene.'''
+
+TWO_VOICE_BOAT_SOURCE = '''Scene in Spain's spanish. Extreme close up of the cihinese man in image 1 with the voice in audio 1 looking to the right side, he is inside a chinese boat, sitting on a bench, we can see the sea outside the window and the boat moving softly up and down in the water, he is looking down. He's sad, depressed. He then says in spain's spanish "Sifu Chicu ha muerto..." with the voice of audio 1, does a dramatic pose, looks even more down, and then finishes with "se acabó". Then we wee the man in image 2 sitting on the other side of the boat, he seems decidido, and says with lots of energy "Enséñeme...", does a pause, then makes a somewhat weird face closing his eyes a little and says "yo puedo aprender!" with the voice in audio 2'''
+
+
 def test_auto_mode_is_conservative():
     assert resolve_mode("auto", "") == "t2va"
     assert resolve_mode("auto", "<Subject 1> comes from <Picture 1>") == "ref2va"
     assert resolve_mode("auto", "", "The person in image 1 holds the object in image 2") == "ref2va"
+
+
+def test_orphan_closing_quote_does_not_absorb_telenovela_scene_directions_as_dialogue():
+    assert _source_dialogue_contracts(TELENOVELA_SOURCE_WITH_ORPHAN_QUOTE) == [
+        ("Spanish", "Primo...", False),
+        ("Spanish", "tengo que decirte una cosa...", False),
+        ("Spanish", "tu no eres mi primo, eres mi sobrino", False),
+    ]
+    swallowed = """subject_definitions:
+<Subject 1> is the man in <Picture 3>.
+
+summary:
+[reference generation] test.
+
+retention_analysis:
+<Subject 1>: fully_preserved.
+
+detailed_description:
+[Shot 1] <Subject 1> (S1) says <d>[Original language] , in a luxury house, the man in image 3 is talking with the man in image 2 while standing up, and the man in image 1 watches. The man in image 3 says in latin spanish with strong mexican accent and lots of suspense </d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    repaired = normalize_source_dialogue(
+        swallowed, TELENOVELA_SOURCE_WITH_ORPHAN_QUOTE, "ref2va",
+    )
+    assert "in a luxury house, the man in image 3" not in repaired
+    assert repaired.count("<d>") == 3
+    assert "<d>[Spanish] Primo...</d>" in repaired
+    assert "<d>[Spanish] tengo que decirte una cosa...</d>" in repaired
+    assert "<d>[Spanish] tu no eres mi primo, eres mi sobrino</d>" in repaired
+
+
+def test_two_audio_voice_references_stay_bound_to_their_own_subjects_and_speakers():
+    assert _source_dialogue_contracts(TWO_VOICE_BOAT_SOURCE) == [
+        ("Spanish", "Sifu Chicu ha muerto...", False),
+        ("Spanish", "se acabó", False),
+        ("Spanish", "Enséñeme...", False),
+        ("Spanish", "yo puedo aprender!", False),
+    ]
+    generated = """subject_definitions:
+<Subject 1> is the reusable cihinese man from <Picture 1> with the voice in <Audio 1> and the whole boat scene.
+<Subject 2> is the man in <Picture 2>.
+<Audio 1> is a voice reference for the speaking character.
+<Audio 2> is a voice reference for the speaking character.
+
+summary:
+[reference generation + audio reference] The target video is a continuation of an already-supplied action.
+
+retention_analysis:
+<Subject 1>: fully_preserved.
+<Subject 2>: fully_preserved.
+<Audio 1>: reference.
+<Audio 2>: reference.
+
+detailed_description:
+[Shot 1] <Subject 1> looks down. He (S3) says <d>[Spanish] Sifu Chicu ha muerto...</d> and then <d>[Original language] se acabó</d>.
+[Shot 2] <Subject 2> sits opposite him. He (S5) says <d>[Spanish] Enséñeme...</d> and then <d>[Spanish] yo puedo aprender!</d>.
+
+overall_soundscape:
+The boat creaks. The four tagged lines are the only speech; after them only non-verbal ambience and physicalScene in Spain's spanish. Extreme close up of the cihinese man in image 1 with the voice in audio 1 looking to the right side.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_reference_definitions(generated, TWO_VOICE_BOAT_SOURCE)
+    fixed = normalize_source_dialogue(fixed, TWO_VOICE_BOAT_SOURCE, "ref2va")
+
+    definitions = fixed.split("summary:", 1)[0]
+    assert "reusable Chinese man" in definitions
+    assert "boat moving softly" not in definitions
+    assert "<Audio 1> is the supplied audio signal used exclusively" in definitions
+    assert "for <Subject 1> (S1)'s newly generated dialogue" in definitions
+    assert "for <Subject 2> (S2)'s newly generated dialogue" in definitions
+    assert "video continuation" not in fixed
+    assert "target video is a continuation" not in fixed.casefold()
+    assert fixed.count("<d>[Spanish]") == 4
+    assert "He (S1) says" in fixed
+    assert "He (S2) says" in fixed
+    assert "(S3)" not in fixed
+    assert "(S5)" not in fixed
+    assert "physicalScene in Spain's spanish" not in fixed
+
+    request = build_user_request(TWO_VOICE_BOAT_SOURCE, "ref2va", 9.0, "")
+    assert "infer this relationship from the user's full grammatical context, not from matching asset ordinals" in request
+    assert "<Audio 1> belongs exclusively to <Subject 1> (S1)" in request
+    assert "<Audio 2> belongs exclusively to <Subject 2> (S2)" in request
+
+
+def test_telenovela_reference_typo_and_duplicate_subject_are_canonicalized():
+    model = _official_reference_model(TELENOVELA_SOURCE_WITH_ORPHAN_QUOTE)
+    assert [(item["label"], item["asset"]) for item in model["subjects"]] == [
+        ("<Subject 1>", "<Picture 3>"),
+        ("<Subject 2>", "<Picture 2>"),
+        ("<Subject 3>", "<Picture 1>"),
+    ]
+    assert all(item["contribution"] == "identity" for item in model["subjects"])
+
+    malformed = """subject_definitions:
+<Subject 1> is the man in <Picture 3>.
+<Subject 2> is the main in <Picture 2>.
+<Subject 3> is the man in <Picture 1>.
+<Subject 4> is the man in <Picture 2>.
+
+summary:
+[reference generation] placeholder
+
+retention_analysis:
+<Subject 1>: fully_preserved.
+<Subject 2>: fully_preserved.
+<Subject 3>: fully_preserved.
+<Subject 4>: fully_preserved.
+
+detailed_description:
+[Shot 1] <Subject 1> faces <Subject 4>. [Shot 2] At 00:02.500, At [Shot 2], <Subject 4> reacts.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    normalized = normalize_reference_definitions(
+        malformed, TELENOVELA_SOURCE_WITH_ORPHAN_QUOTE,
+    )
+    normalized = normalize_shot_timestamps(normalized)
+    assert "<Subject 4>" not in normalized
+    assert "the main in" not in normalized
+    assert normalized.count("<Subject 2>") >= 3
+    assert "At [Shot 2]" not in normalized
+    assert "[Shot 2] At 00:02.500," in normalized
 
 
 def test_system_prompt_contains_only_the_resolved_mode_contract():
@@ -419,7 +555,7 @@ non_diegetic_music: N/A"""
 
 
 def test_missing_dialogue_language_marker_gets_non_translating_fallback():
-    assert normalize_dialogue_tags("<d>Hola.</d>") == "<d>[Original language] Hola.</d>"
+    assert normalize_dialogue_tags("<d>Hola.</d>") == "<d>[Spanish] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish] Hola.</d>") == "<d>[Spanish] Hola.</d>"
     assert normalize_dialogue_tags("<d>[Spanish]Hola.</d>") == "<d>[Spanish] Hola.</d>"
 
@@ -675,7 +811,7 @@ N/A"""
 def test_unrelated_in_phrase_is_not_misread_as_language():
     source = 'A detective with his hand in his pocket says "Proceed."'
     request = build_user_request(source, "t2va", 5.0)
-    assert '<d>[Original language] Proceed.</d>' in request
+    assert '<d>[English] Proceed.</d>' in request
     assert "[His]" not in request
 
 
@@ -690,8 +826,8 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     assert "do not force it to 350-500 words" in enhanced
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
     assert "DESCRIPTION DEPTH" not in conservative
-    assert '<d>[Original language] Do not move.</d>' in enhanced
-    assert '<d>[Original language] Do not move.</d>' in conservative
+    assert '<d>[English] Do not move.</d>' in enhanced
+    assert '<d>[English] Do not move.</d>' in conservative
 
 
 @pytest.mark.parametrize("mode", ["t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"])
@@ -709,7 +845,7 @@ def test_enhancement_translates_only_source_authorized_emotion_into_observable_a
     assert "Never add a cut, push-in, close-up, camera move, or lighting change" in enhanced
     assert "Avoid millimeter or centimeter measurements" in enhanced
     assert "preserve every word and its assigned timing" in enhanced
-    assert '<d>[Original language] I am fine.</d>' in enhanced
+    assert '<d>[English] I am fine.</d>' in enhanced
 
 
 def test_emotional_performance_contract_does_not_authorize_incomplete_ordinary_actions():
@@ -1947,7 +2083,7 @@ def _scenetrans_prompt(continuity: str) -> str:
     return (
         "integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium shot frames a woman beside "
         "a train window. The quiet young woman (S1), in her mid-twenties with a soft mid-range voice, "
-        "says: <d>[Original language] I get off at the next "
+        "says: <d>[English] I get off at the next "
         "station.</d> <scenetrans>\n\n"
         "[Shot 2] At 00:03.000, the camera cuts to the platform, <scenetrans> where the same woman (S1) is framed "
         "in a matching medium shot as she steps down onto wet concrete. The camera trucks right at slow speed, "
@@ -2087,6 +2223,105 @@ def test_endonym_dialogue_requests_resolve_to_the_canonical_tag_name(request_tex
     assert resolved == expected
 
 
+@pytest.mark.parametrize(("source", "expected"), [
+    ('He says in Spain\'s Spanish "Ya hemos terminado este rollo."', "Spanish"),
+    ('He says in British English "We are finished."', "English"),
+    ('She says in Canadian French "Nous avons terminé."', "French"),
+    ('She says in Brazilian Portuguese "Terminamos."', "Portuguese"),
+])
+def test_regional_language_varieties_use_the_canonical_h3_tag(source, expected):
+    contracts = _source_dialogue_contracts(source)
+    assert contracts[0][0] == expected
+
+
+@pytest.mark.parametrize(("request_text", "expected"), [
+    ("Write the dialogue in Spain's Spanish.", "Spanish"),
+    ("Write the dialogue in British English.", "English"),
+    ("Write the dialogue in Canadian French.", "French"),
+    ("Write the dialogue in Brazilian Portuguese.", "Portuguese"),
+])
+def test_regional_authoring_requests_use_the_canonical_h3_tag(request_text, expected):
+    assert _dialogue_authoring_request(request_text) == (True, expected)
+
+
+def test_regional_language_detection_does_not_treat_a_setting_as_a_dialogue_cue():
+    source = 'In a Spanish tavern, she says "Welcome."'
+    assert _source_dialogue_contracts(source) == [("English", "Welcome.", False)]
+
+
+def test_spains_spanish_is_detected_in_the_original_user_sentence():
+    source = (
+        'Then he starts saying with some relief in his face, like finally it arrived, in Spain\'s Spanish '
+        '"bueno, ya hemos terminado este rollo, es el momento de prenderle fuego".'
+    )
+    assert _source_dialogue_contracts(source) == [(
+        "Spanish",
+        "bueno, ya hemos terminado este rollo, es el momento de prenderle fuego",
+        False,
+    )]
+
+
+@pytest.mark.parametrize("word", ["audio", "voice", "voz"])
+def test_numbered_voice_reference_is_canonicalized_and_locked_without_video(word):
+    source = (
+        f'A terminator looks at the camera and says in Spain\'s Spanish using {word} 1 '
+        '"Hola primo, ya hemos terminado"'
+    )
+    raw = """subject_definitions:
+Terminator: A humanoid robot.
+
+summary:
+reference generation + video continuation. The target video is an edited version of <Video 1>.
+
+retention_analysis:
+fully_preserved: the dialogue.
+
+detailed_description:
+[Shot 1] The Terminator speaks with a synthesized, slightly rough timbre: <d>[Spanish] Hola primo, ya hemos terminado</d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+    fixed = normalize_reference_definitions(raw, source)
+    assert "<Audio 1> is the supplied audio signal used exclusively as the voice-timbre" in fixed
+    assert "[audio reference]" in fixed
+    assert "<Video 1>" not in fixed
+    assert "video continuation" not in fixed
+    assert "<Audio 1> is the exclusive voice-timbre and delivery reference" in fixed
+    assert "synthesized" not in fixed
+
+
+def test_voice_reference_collapses_duplicate_dialogue_attribution():
+    source = 'Arnold looks at the camera and says using voice 1 "Hola primo"'
+    generated = """subject_definitions:
+<Audio 1> is a generic audio reference.
+summary:
+[audio reference] reference generation + video continuation
+retention_analysis:
+<Audio 1>: reference.
+detailed_description:
+He (S1) speaks using the vocal characteristics of Constantino Romero from <Audio 1>: Arnold Schwarzenegger shouts, <d>[Spanish] Hola primo</d>.
+overall_soundscape:
+Room tone.
+non_diegetic_music:
+N/A"""
+    fixed = normalize_reference_definitions(generated, source)
+    assert "Arnold Schwarzenegger shouts" not in fixed
+    assert "speaks using the vocal characteristics" in fixed
+
+
+def test_do_not_copy_audio_is_not_misread_as_audio_reuse():
+    source = (
+        'A speaker says using voice 1 "Hola". Use Audio 1 exclusively as the voice-timbre reference. '
+        'Do not copy the original words or background sounds from Audio 1.'
+    )
+    request = build_user_request(source, "ref2va", 5.0, "")
+    assert "copied as a synchronized audio layer" not in request
+    assert "used exclusively as the voice-timbre" in request
+
+
 def test_cantonese_is_not_folded_into_chinese():
     assert _dialogue_authoring_request("write the dialogue in cantonese")[1] == "Cantonese"
 
@@ -2098,9 +2333,9 @@ def test_cantonese_is_not_folded_into_chinese():
 def test_garment_and_food_senses_of_mandarin_do_not_tag_dialogue_as_chinese(garment):
     # "dressed in mandarin collar" used to make an English line come back as [Chinese].
     source = f'A tailor dressed in {garment} says "Hold still, please."'
-    assert _source_dialogue_contracts(source) == [("Original language", "Hold still, please.", False)]
+    assert _source_dialogue_contracts(source) == [("English", "Hold still, please.", False)]
     assert _dialogue_authoring_request(f"Write the dialogue. The tailor wears a {garment}.")[1] == (
-        "Original language"
+        "English"
     )
 
 
@@ -2112,7 +2347,7 @@ def test_the_language_sense_of_mandarin_still_resolves_to_chinese():
 def test_bare_brasileiro_is_not_read_as_a_requested_language():
     # It is an ordinary demonym; only the "português brasileiro" forms name a language.
     source = 'A brasileiro street vendor says "Two for one."'
-    assert _source_dialogue_contracts(source) == [("Original language", "Two for one.", False)]
+    assert _source_dialogue_contracts(source) == [("English", "Two for one.", False)]
     assert _source_dialogue_contracts('Dice en português brasileiro: "Bom dia."') == [
         ("Portuguese", "Bom dia.", False)
     ]
@@ -2133,7 +2368,7 @@ def test_unknown_language_still_falls_through_to_capitalize():
     # Lowercase aliased names keep using the plain .capitalize() fallthrough.
     assert _dialogue_authoring_request("write the dialogue in dutch")[1] == "Dutch"
     # An unlisted language keeps the pre-existing conservative authoring default.
-    assert _dialogue_authoring_request("Write the dialogue in Swedish.")[1] == "Original language"
+    assert _dialogue_authoring_request("Write the dialogue in Swedish.")[1] == "English"
 
 
 def test_endonym_language_reaches_the_dialogue_authoring_contract():
@@ -2251,6 +2486,58 @@ N/A"""
     assert "The target keeps <Subject 1> beside the same workshop door." in once
 
 
+def test_late_generic_picture_reference_keeps_literal_binding_not_earlier_actor():
+    source = (
+        'Construction workers wait and one points while saying "mirad! el chispas!". '
+        'A car stops, then the person in image 1 as an electrician in electrician clothes, '
+        'with beard and very long dreadlocks steps out in shadow.'
+    )
+    model = _official_reference_model(source)
+    assert model["subjects"][0]["role"] == "person"
+    assert model["subjects"][0]["contribution"] == "identity"
+    assert "person in <Picture 1> as an electrician" in model["subjects"][0]["binding_excerpt"]
+    assert "electrician" in model["subjects"][0]["binding_cues"]
+
+    wrong = """subject_definitions:
+<Subject 1> is the construction worker who points; its source provenance is <Picture 1>.
+
+summary:
+[reference generation] A car arrives at a construction site.
+
+retention_analysis:
+<Subject 1>: fully_preserved - preserve the pointing worker from <Picture 1>.
+
+detailed_description:
+[Shot 1] <Subject 1>, a construction worker, points and says <d>[Original language] mirad! el chispas!</d>. The car stops.
+[Shot 2] At 00:03.000, an electrician with very long dreadlocks steps out in shadow.
+
+overall_soundscape:
+The car engine and the supplied dialogue are audible.
+
+    non_diegetic_music:
+N/A"""
+    normalized = normalize_reference_definitions(wrong, source)
+    assert "<Subject 1> is the reusable person" in normalized
+    assert "person in <Picture 1> as an electrician" in normalized
+    assert "pointing worker from <Picture 1>" not in normalized
+    report = validate_prompt(normalized, "ref2va", 5.0, source)
+    assert any("bound by the source wording" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize(("source", "role", "asset", "cue"), [
+    ("The red motorcycle in image 2 skids to a stop.", "red motorcycle", "<Picture 2>", "motorcycle"),
+    ("She lifts the cracked vase in image 1 with both hands.", "cracked vase", "<Picture 1>", "cracked"),
+    ("Use the visual style in image 3 for the new city.", "visual style", "<Picture 3>", "style"),
+    ("La persona en imagen 4 como astronauta entra en la nave.", "persona", "<Picture 4>", "astronauta"),
+])
+def test_literal_picture_bindings_are_general_across_reference_kinds(source, role, asset, cue):
+    subject = _official_reference_model(source)["subjects"][0]
+    assert subject["role"] == role
+    assert subject["asset"] == asset
+    assert cue in subject["binding_cues"]
+    assert asset in subject["binding_excerpt"]
+
+
 @pytest.mark.parametrize("source", [
     "Write a cinematic scene with no dialogue.",
     "Create a silent scene without spoken words.",
@@ -2270,7 +2557,7 @@ def test_positive_dialogue_request_after_a_separate_prohibition_is_honored():
 
 def test_visible_text_after_spoken_dialogue_is_not_reclassified_as_speech():
     source = 'A woman says "Hello." Behind her, a sign reads "EXIT".'
-    assert _source_dialogue_contracts(source) == [("Original language", "Hello.", False)]
+    assert _source_dialogue_contracts(source) == [("English", "Hello.", False)]
     assert _source_dialogue_contracts('A woman speaks to camera. Her shirt displays "OPENAI".') == []
 
 

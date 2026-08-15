@@ -65,7 +65,7 @@ try:
     )
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -75,7 +75,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     )
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -122,6 +122,7 @@ class MiniMaxH3PromptGuideBuilder:
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
+            "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -131,7 +132,7 @@ class MiniMaxH3PromptGuideBuilder:
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
-              dialogue_coverage="off"):
+              dialogue_coverage="off", dialogue_language="auto"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
@@ -144,7 +145,7 @@ class MiniMaxH3PromptGuideBuilder:
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                 (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
-                acoustic_space, dialogue_coverage,
+                acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
             ),
             resolved,
             treatment_warning_report(
@@ -215,6 +216,7 @@ class MiniMaxH3PromptEnhancer:
             # anywhere else would shift every saved workflow's widgets_values by one slot.
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
+            "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
         }}
 
     @classmethod
@@ -243,7 +245,7 @@ class MiniMaxH3PromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False, delivery_target="local"):
+                always_re_enhance=False, delivery_target="local", dialogue_language="auto"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         if bool(use_remote_model):
             remote_args = (
@@ -260,11 +262,12 @@ class MiniMaxH3PromptEnhancer:
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
                     instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
-                    delivery_target != "local")):
+                    delivery_target != "local", dialogue_language != "auto")):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                 creative_treatment_json, shot_plan_json, cinematography_json,
-                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target)
+                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
+                                dialogue_language)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -282,11 +285,12 @@ class MiniMaxH3PromptEnhancer:
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
                     instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
-                    delivery_target != "local")):
+                    delivery_target != "local", dialogue_language != "auto")):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                creative_treatment_json, shot_plan_json, cinematography_json,
-                               instrumental_style, acoustic_space, dialogue_coverage, delivery_target)
+                               instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
+                               dialogue_language)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -355,6 +359,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             # anywhere else would shift every saved workflow's widgets_values by one slot.
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
+            "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
         }}
 
     @classmethod
@@ -374,7 +379,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False, delivery_target="local"):
+                always_re_enhance=False, delivery_target="local", dialogue_language="auto"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
@@ -390,7 +395,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
-            acoustic_space, dialogue_coverage, delivery_target,
+            acoustic_space, dialogue_coverage, delivery_target, dialogue_language,
         )
         return (
             prompt,
@@ -585,6 +590,7 @@ class MiniMaxH3PromptValidator:
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none"}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none"}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
+            "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto"}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -594,7 +600,8 @@ class MiniMaxH3PromptValidator:
                  multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                  creative_treatment_json="", shot_plan_json="", cinematography_json="",
                  enhance_description=True, delivery_target="local", instrumental_description="",
-                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off"):
+                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
+                 dialogue_language="auto"):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
@@ -604,6 +611,7 @@ class MiniMaxH3PromptValidator:
             enhance_description=bool(enhance_description), delivery_target=delivery_target,
             instrumental_description=instrumental_description, instrumental_style=instrumental_style,
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
+            dialogue_language=dialogue_language,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {

@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import Any
 
 
-CONTENT_FORMAT_CATALOG_VERSION = 2
+CONTENT_FORMAT_CATALOG_VERSION = 3
 CONTENT_FORMAT_DIMENSIONS = (
     "editing_and_pacing",
     "camera_and_framing",
@@ -183,7 +183,7 @@ CONTENT_FORMAT_PROFILES = {
         must_not_invent="Functions, steps, controls, settings, quantities, accessories, ingredients, safety advice, verification messages, claims, captions, arrows, UI copy, narration, music, CTA, logo, or slogan.",
     ),
     "cinematic_teaser": _format(
-        signature=("The sequence opens on an already-supplied visual or action, progressively releases only "
+        signature=("The sequence opens on a source-authorized visual or action, progressively releases only "
                    "source-authorized information, and ends on a concise hold on an already-authorized beat while "
                    "preserving every supplied title, exact text, dialogue, edit, and permitted sound and adding none."),
         editing_and_pacing="Use a compact information arc of supplied hook, progressive disclosure, and authorized closing hold; never create a trailer montage or automatic edit.",
@@ -222,18 +222,22 @@ CONTENT_FORMAT_PROFILES = {
         must_not_invent="Song, lyrics, BPM, arrangement, instruments, performance roles, performers, crowd, stage, microphones, choreography, costumes, applause, pyrotechnics, VFX, or visible instruments inferred from audio.",
     ),
     "opening_title_sequence": _format(
+        version=2,
         signature=("Organize only the supplied opening material as one compact recurring-identity sequence: "
                    "establish the supplied world, subject, or motif; advance each distinct supplied identity or "
                    "action beat once; place only exact source-authorized title or credit text in its assigned "
                    "readable moment; and settle on the supplied title, tableau, motif, or transition endpoint "
                    "without adding content or treating format beats as automatic cuts."),
-        editing_and_pacing="Open on a supplied anchor, distribute distinct supplied subjects, motifs, relationships, or actions once each, place exact authorized title or credit text only in its assigned beat, and settle on the supplied endpoint; beats never authorize cuts.",
-        camera_and_framing="Give each supplied opening beat one clear visual owner, preserve faces, silhouettes, relationships, screen direction, and reference identity, and reserve readable space only for exact authorized text; explicit shot rows and cinematography win.",
+        editing_and_pacing=("Open on a supplied anchor, distribute distinct supplied subjects, motifs, relationships, or actions once each, place exact authorized title or credit text only in its assigned beat, and settle on the supplied endpoint; beats never authorize cuts.",
+                            "When main-title timing is not supplied, first establish at least one supplied visual anchor, then reveal the title over the strongest supplied anchor or culminating tableau with a readable entrance, hold, and settled state; never default to a detached first card merely because this is an opening."),
+        camera_and_framing=("Give each supplied opening beat one clear visual owner, preserve faces, silhouettes, relationships, screen direction, and reference identity, and reserve readable space only for exact authorized text; explicit shot rows and cinematography win.",
+                            "Compose source-authorized main-title typography as a hero graphic with intentional silhouette, scale hierarchy, negative space, figure-to-ground separation, and purposeful foreground overlap or partial occlusion when useful; keep subordinate credits in stable title-safe regions that do not cover a required face, eyes, identity cue, action, object, contact point, or another exact-text owner unless an isolated card or intertitle is explicitly requested."),
         lighting_and_color="Inherit the fully resolved genre, visual-language, world, tone, reference, and cinematography look; create text separation only through compatible existing values without inventing glow, flashes, palette changes, or light sources.",
-        production_design="Use only supplied or reference-bound characters, locations, objects, emblems, motifs, logos, and exact text, maintaining one coherent graphic system without manufacturing a series identity.",
+        production_design=("Use only supplied or reference-bound characters, locations, objects, emblems, motifs, logos, and exact text, maintaining one coherent graphic system without manufacturing a series identity.",
+                           "Derive typography palette, contour language, texture, spacing, and reveal behavior from the resolved genre, visual language, world aesthetic, tone, references, and explicit cinematography without copying a known franchise logo or inventing a decorative object."),
         blocking_and_performance="Present each supplied character through only the supplied pose, relationship, ability, or action while preserving identity, count, wardrobe, ownership, and capabilities; do not impose an opening cliché.",
         sound_treatment="Synchronize to music, lyrics, dialogue, or accents only when that exact audio is authorized by the source, reference roles, and audio gates; the format grants no opening song, fanfare, announcer, ident sting, or transition whoosh.",
-        may_fill_unspecified="Relative order among already supplied beats, duration-aware holds, neutral visual handoffs, exact text placement inside an authorized title beat, and continuity into the supplied endpoint.",
+        may_fill_unspecified="Relative order among already supplied beats, duration-aware holds, neutral visual handoffs, exact text placement and graphic hierarchy inside an authorized title beat, scene-integrated title reveal when placement is unspecified, and continuity into the supplied endpoint.",
         must_not_invent="Title, subtitle, logo, emblem, credits, names, roles, channel, studio, sponsor, episode number, characters, symbolic props, powers, locations, lore, actions, montage beats, dialogue, music, lyrics, vocals, or elements of an existing IP.",
     ),
     "procedural_how_to": _format(
@@ -389,13 +393,16 @@ def resolve_content_format(name: str, *, enabled: bool, source_prompt: str,
         if seconds <= 5.5:
             timing = (
                 "For this short duration, use one supplied opening anchor, at most one distinct supplied beat, "
-                "and the supplied close; when exact title text is authorized, reserve a stable readable hold "
-                "rather than compressing multiple credits."
+                "and the supplied close; when title text is authorized without assigned timing, establish the "
+                "anchor first and integrate one reveal plus a stable readable hold into that same composition rather "
+                "than opening on a detached card or compressing multiple credits."
             )
         elif seconds <= 10.5:
             timing = (
                 "For this duration, use the supplied opening anchor, one or two distinct supplied subject, world, "
-                "or motif beats, any assigned exact title moment, and the supplied endpoint."
+                "or motif beats, any assigned title moment, and the supplied endpoint; when title timing is "
+                "unspecified, reveal it only after the visual anchor is established and hold it over the strongest "
+                "supplied tableau."
             )
         else:
             timing = (

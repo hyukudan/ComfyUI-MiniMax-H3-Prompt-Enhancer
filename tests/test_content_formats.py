@@ -9,7 +9,11 @@ from content_formats import (
     content_format_signatures,
     resolve_content_format,
 )
-from creative_treatments import compose_creative_treatment, parse_creative_treatment
+from creative_treatments import (
+    TITLE_SCREEN_STYLE_PROFILES,
+    compose_creative_treatment,
+    parse_creative_treatment,
+)
 from prompt_guides import (
     build_user_request,
     content_format_coverage_gaps,
@@ -195,6 +199,24 @@ def test_opening_duration_guidance_scales_density_without_authorizing_cuts():
         assert "beats never authorize cuts" in " ".join(item["dimensions"]["editing_and_pacing"]).lower()
 
 
+def test_opening_defaults_to_integrated_title_after_establishing_the_anchor():
+    item = resolved(
+        "opening_title_sequence",
+        source_prompt='Jason Voorhees walks down the street and title "Jason Kills" appears.',
+        duration_seconds=5,
+    )
+    pacing = " ".join(item["dimensions"]["editing_and_pacing"])
+    framing = " ".join(item["dimensions"]["camera_and_framing"])
+    design = " ".join(item["dimensions"]["production_design"])
+    assert item["profileVersion"] == 2
+    assert "establish at least one supplied visual anchor" in pacing
+    assert "never default to a detached first card" in pacing
+    assert "hero graphic" in framing
+    assert "purposeful foreground overlap or partial occlusion" in framing
+    assert "subordinate credits in stable title-safe regions" in framing
+    assert "resolved genre, visual language, world aesthetic, tone" in design
+
+
 def test_opening_request_combines_full_format_and_visual_bibles_without_emitting_ids():
     request = build_user_request(
         source_for("opening_title_sequence"),
@@ -218,6 +240,22 @@ def test_opening_request_combines_full_format_and_visual_bibles_without_emitting
     assert "one or two distinct supplied" in request
     for identifier in ("opening_title_sequence", "anime_shonen", "high_fantasy", "classic_cel"):
         assert identifier not in request
+
+
+def test_series_called_wording_sends_the_title_style_bible_to_the_llm():
+    request = build_user_request(
+        'Doraemon faces Jason Voorhees, for the series called "Jason Kills".',
+        "t2va",
+        10.0,
+        creative_treatment_json=json.dumps({
+            "schemaVersion": 1,
+            "contentFormat": "opening_title_sequence",
+            "titleScreenStyle": "classic_cel",
+        }),
+    )
+    lock = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" in request
+    assert lock in request
 
 
 def test_every_format_has_distinct_first_middle_final_chained_roles():

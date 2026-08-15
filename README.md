@@ -725,7 +725,7 @@ lyric/performance videos, and seamless loops, so autonomous items do not restart
 | Format | Organizes | Never authorizes |
 |---|---|---|
 | `narrative_animation_short` (Narrative short) | supplied opening → causal action/response → supplied consequence | goals, conflict, twists, endings, cuts, dialogue, music, or a rendering medium |
-| `opening_title_sequence` | supplied opening anchor → distinct supplied identity/world/motif beats → exact authorized title or supplied endpoint | title, credits, logos, characters, lore, opening song, montage filler, or IP elements |
+| `opening_title_sequence` | supplied opening anchor → distinct supplied identity/world/motif beats → scene-integrated authorized title reveal or supplied endpoint; if placement is unspecified, establish the anchor before revealing the title over the strongest tableau | title, credits, logos, characters, lore, opening song, montage filler, or IP elements |
 | `brand_promo` | supplied hook → mechanism/evidence → payoff → authorized close | claims, metrics, proof, logo, CTA, announcer, or jingle |
 | `co_op_game_intro` | all supplied player slots → individually assigned states → joint confirmation | players, equipment, UI copy, missions, gameplay, or branding |
 | `handdrawn_live_fusion` | causal contact and continuity between photographed and drawn layers | hands, entities, transformations, glow, locations, or a global drawn look |
@@ -791,16 +791,30 @@ If `Background score = off` and no source/reference audio exists, the format fai
 `missing_authorized_music`.
 
 Title-screen treatment is deliberately conditional and local. Selecting a style never creates a title card or authorizes
-new visible text. The Basic prompt must explicitly bind a quoted exact title to a title screen/card/intertitle or opening,
-for example: `Opening title screen displays the exact visible text "NIGHT RUN".` An opening may equivalently say
-`The exact title "NIGHT RUN" appears after the supplied character beat.` The enhancer preserves spelling,
+new visible text. The Basic prompt must bind quoted title or credit text to a title screen/card/intertitle, opening, or
+named series, for example: `Title "NIGHT RUN" appears.` or `for the series called "NIGHT RUN"`. Words such as `exact`
+are optional and do not activate a separate path. The enhancer preserves spelling,
 capitalization, punctuation, language and line order exactly; it cannot add a subtitle, credit, logo, tagline or extra
-word. The title treatment applies only to that authorized shot and does not change the visual language of the rest of
-the video. Explicit Cinematography remains authoritative for palette, exposure, camera, optics, texture, and motion;
-the selected title treatment adapts within it. A selected title style is recorded but not applied when no locally bound
-exact title text exists.
+word. Unless the source or chosen intertitle treatment explicitly requires a separate card, every title style shares a
+common composition contract: establish the supplied scene first, then treat the title as a designed hero graphic inside
+its strongest anchor or culminating tableau, with authored silhouette, scale hierarchy, reserved negative space,
+figure-to-ground separation, purposeful foreground overlap or partial scene occlusion when compositionally useful,
+and readable entrance/hold/settle timing. The main title may dominate the frame. Exact source-authorized credits use
+the same graphic system but remain subordinate and stay in stable title-safe regions without covering required faces,
+identity cues, actions, objects, contact points, or other exact text. Genre, visual language,
+world aesthetic, tone, references, and explicit Cinematography determine how that shared composition is rendered; the
+individual title selector adds its own lettering, palette, texture, and reveal grammar. Explicit Cinematography remains
+authoritative. A selected title style is recorded but not applied when no locally bound quoted title or credit exists.
 
-The normalizer inserts the selected title style's declarative rendering lock beside the first exact authorized title
+Presentation role is inferred locally from ordinary source wording; it is not another style selector and does not rely
+on `exact`. `title "…"` or a named series resolves to `main_title`, `credit "…"` resolves to `credits`, and
+`intertitle "…"`/`intertítulo "…"`/`cartela "…"` resolves to `intertitle`. Main titles are hero graphics and may
+dominate or partially occlude the scene. Credits inherit the selected graphic language but remain subordinate in safe
+informational positions. Intertitles are intentionally isolated full-frame narrative cards with their own entrance,
+hold, and return to the supplied scene. The manifest records the inferred values in `titlePresentationRoles`.
+
+The normalizer inserts the matching role-specific composition lock and the selected title style's declarative rendering
+lock beside the corresponding authorized text
 occurrence. If the LLM repeats the same quoted title merely to say that it remains on screen, later prose is changed to
 `the same exact title` rather than emitting the visible string again. This preserves one exact spelling while allowing
 the title to remain visible across a hold. It never creates a missing title or repairs arbitrary unquoted copy.
@@ -809,7 +823,7 @@ the title to remain visible across a hold. It never creates a missing title or r
 |---|---|---|
 | `minimal_cinematic` | restrained composition, disciplined negative space, precise spacing and a subtle clean reveal | subtitles, credits, logos, ornaments or new light sources |
 | `bold_broadcast` | bold geometric lettering, modular grid, broadcast-safe separation and quick entrance/hold/exit | channel identity, bugs, tickers, sponsors or lower thirds |
-| `classic_cel` | hand-drawn opaque title shapes, stable ink, compact cel palette and painted graphic background | characters, mascots, transformations or studio marks |
+| `classic_cel` | purpose-built hand-lettered cel composition, distinctive silhouette, expressive stable ink, scene-derived accent palette, negative-space integration and an economical reveal inside the supplied tableau unless an isolated card is requested | characters, mascots, transformations, invented decorative events or studio marks |
 | `illustrated_pulp` | forceful illustrated lettering, controlled print texture, shadow masses and compact dramatic color | weapons, creatures, issue data or publisher marks |
 | `elegant_editorial` | refined high-contrast letterforms, measured tracking, balanced margins and restrained motion | publication identities, monograms, branding or taglines |
 | `neon_technology` | crisp geometric letters, restrained emissive edges, modular alignment and stable line-build reveal | HUDs, holograms, code, data, glitches or circuitry |
@@ -827,7 +841,8 @@ common high-impact cases but are not a general semantic proof, so state critical
 Basic prompt.
 
 After the LLM responds, deterministic normalizers retain one global creative/cinematography signature in a normal H3
-generation, one autonomous signature per chained item, one source-authorized title-style lock, and one content-format
+generation, one autonomous signature per chained item, the shared title-composition lock plus one source-authorized
+title-style lock, and one content-format
 delivery lock. Exact repeated global signatures are removed without deleting differently worded shot-specific staging.
 The documented H3 section budgets are also enforced: `overall_soundscape` is compacted to 1–4 sentences and
 `non_diegetic_music` to 1–3 sentences, joining excess clauses with semicolons instead of dropping instrumentation,
@@ -1404,11 +1419,14 @@ The speaker (S1) says warmly: <d>[Catalan] Bon dia, m'alegra molt veure't.</d>.
 
 The enhancer now creates an explicit mandatory-dialogue contract before generation and performs deterministic post-normalization:
 
-- speech cues such as `says`, `asking`, `preguntando`, or `gritando` identify spoken quotes;
-- requested language names become the `[Language]` marker;
-- all eleven officially supported dialogue languages (Arabic, Chinese, English, French, German, Italian, Japanese, Korean, Portuguese, Russian, Spanish) plus Catalan are recognized, including endonyms and common variants such as `français`, `deutsch`, `italiano`, `português (brasileiro)`, `日本語`, `한국어`, `中文`, `mandarin`, `русский`, `العربية`, `castellano`, and `català`, which normalize to the canonical `[Language]` marker (Cantonese stays `[Cantonese]` rather than being folded into Chinese);
+- speech cues such as `says`, `asking`, `preguntando`, `gritando`, `dit`, `sagt`, `diz`, `と言う`, or `喊道` identify spoken quotes;
+- quotes wrapped in ASCII straight quotes (`"..."`), typographic curly quotes (`“...”`), European guillemets (`«...»`), German low-9 quotes (`„...“`), or East Asian brackets (`「...」`, `『...』`) are seamlessly extracted across scripts;
+- the built-in multi-language detection engine automatically identifies the natural language of the dialogue and user prompt (Spanish, French, German, Italian, Portuguese, Catalan, Japanese, Korean, Chinese, Cantonese, Russian, Arabic, Hindi, Turkish, and English) even when unaccented or without explicit language phrases;
+- all enhancer and validator nodes include a `dialogue_language` widget (`auto` by default, or an explicit language override);
+- canonical H3 `[Language]` markers are always generated (e.g. `<d>[Spanish] ...</d>`, `<d>[French] ...</d>`), eliminating invalid or silent fallbacks such as `[Original language]`;
+- system prompts strictly mandate English for all visual prose, camera directions, lighting, and soundscape, while dialogue text is preserved 100% verbatim in its spoken natural language;
 - every quoted spoken line is copied verbatim, without translation, censorship, or paraphrase;
-- if an LLM still omits the line, it is restored to the timeline inside `<d>` before validation.
+- if an LLM still omits the line, it is restored to the timeline inside `<d>[Language]` before validation.
 - each source dialogue line must occur exactly once inside the timeline;
 - duplicated or invented `<d>` blocks and dialogue placed in `overall_soundscape` are rejected;
 - affirmative vocal cues outside their matching `<d>` sentence are rejected, including `speaks`, `continues
@@ -1468,9 +1486,8 @@ additional intelligible speech, without audio post-processing.
 
 Quoted thoughts and internal monologue are treated as audible, non-lip-synced speech when `voice_performance=audible`. The enhancer preserves the
 exact words inside `<d>[Language] ...</d>`, describes them as an off-screen internal monologue, and explicitly keeps
-the on-screen character's lips closed. If an explicit language is absent, conservative recognition handles clear
-markers such as Spanish inverted punctuation and accented interrogatives; otherwise the non-translating
-`[Original language]` marker is used.
+the on-screen character's lips closed. Natural language is resolved dynamically by the built-in detection engine or widget override,
+ensuring a canonical `[Language]` tag (e.g. `[Spanish]`, `[English]`, `[French]`, `[Catalan]`) is always emitted.
 
 ## Audio policies
 
@@ -1650,7 +1667,7 @@ Transcript entries may be plain strings or objects such as:
 }
 ```
 
-A string uses `[Original language]`. `unclear=true` becomes the literal `[unclear]` rather than guessed words.
+A string transcript automatically resolves to its detected natural language (e.g. `[Spanish]`, `[English]`, `[French]`, `[Catalan]`). `unclear=true` becomes the literal `[unclear]` rather than guessed words.
 Conservative cleanup removes leading bullet marks and repeated tildes, collapses repeated punctuation, and adds final
 punctuation when absent. An item or transcript entry with `reuse_mode=reference_only` guides delivery/timbre but does
 not import exact spoken words. A video transcript is ignored when its `audio_mode` is `off`.
@@ -1664,6 +1681,14 @@ number before later standalone audio.
 Counters are independent by media type. For example, a video with `audio_mode=paired`, followed by standalone audio
 and then a picture, becomes `<Video 1>` plus `<Audio 1>`, then `<Audio 2>`, then `<Picture 1>`. `subjects.sources`
 must use those effective labels; unknown labels are validation errors.
+
+### Audio References and Character Voice Binding
+
+MiniMax H3 supports cross-modal reference pairing where an `<Audio N>` file provides the vocal timbre, delivery, and rhythm for an on-screen character defined by `<Subject N>` / `(Sx)`:
+
+- **Voice Timbre Reference (Default Ref2VA)**: When a character speaks newly authored dialogue using an audio reference (`"el personaje de imagen 1 usa el audio 1 para su voz"`, `"la mujer habla con la voz de audio 1"`, `"ponle a imagen 1 el audio 1"`, `"the man in image 2 with voice from audio 2"`), `<Audio N>` is bound exclusively as the voice-timbre and delivery reference for `<Subject N> (SN)`. Its original spoken words are not copied.
+- **Synchronized Audio Layer (Audio Reuse)**: When the source prompt asks to copy, reuse, or pair the exact audio track (`"copy audio 1"`, `"reutiliza el audio 1"`), `<Audio N>` is marked with `partially_copy` or `fully_copy` as a synchronized audio layer.
+- **Natural Language Parsing**: Proximity, clause structure, and character roles (e.g., `mujer`, `hombre`, `personaje`, `detective`) are automatically resolved so each audio reference attaches to the correct character without manual tag formatting.
 
 MiniMax full-reference semantics separate reusable content from standalone media structure:
 

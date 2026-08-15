@@ -220,6 +220,32 @@ def test_visual_language_is_not_applied_when_description_enhancement_is_off():
     assert report["styleCoverageGaps"] == []
 
 
+def test_latin_american_telenovela_is_explicit_and_wins_over_generic_drama_pacing():
+    treatment = json.dumps({
+        "schemaVersion": 1,
+        "genre": "drama",
+        "visualLanguage": "live_action_latin_american_telenovela",
+        "worldAesthetic": "none",
+        "tone": "none",
+    })
+    delivered, report, manifest = enhance_prompt_with_completion(
+        SOURCE, "t2va", 5.0, "", lambda _messages: BASE_OUTPUT, 0,
+        {"provider": "test"}, creative_treatment_json=treatment,
+        enhance_description=True,
+    )
+
+    signature = manifest["resolvedVisualStyle"]["visualSignature"]
+    assert "polished Latin American telenovela visual system" in signature
+    assert signature in delivered
+    assert "without melodramatic acceleration" not in delivered
+    assert "naturalistic pacing" not in delivered
+    assert report["styleCoverageGaps"] == []
+    assert any(
+        item["loserProfile"] == "drama" and item["winnerProfile"] == "live_action_latin_american_telenovela"
+        for item in manifest["treatmentConflicts"]
+    )
+
+
 def test_every_genre_world_aesthetic_and_tone_has_a_unique_required_signature():
     axes = (
         ("genre", "genre", GENRE_PROFILES),

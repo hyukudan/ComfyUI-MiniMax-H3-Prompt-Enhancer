@@ -113,7 +113,7 @@ def test_disabled_video_audio_does_not_import_transcript_and_enabled_audio_is_no
     disabled = {"items": [{"type": "video", "duration": 4, "audio_mode": "off", "transcript": "Hello"}]}
     assert manifest_dialogue(disabled) == []
     paired = {"items": [{"type": "video", "duration": 4, "audio_mode": "paired", "transcript": "Hello~~~"}]}
-    assert manifest_dialogue(paired) == [("<Audio 1>", "Original language", "Hello.")]
+    assert manifest_dialogue(paired) == [("<Audio 1>", "English", "Hello.")]
 
 
 def test_manifest_supports_many_to_many_authoritative_subjects():

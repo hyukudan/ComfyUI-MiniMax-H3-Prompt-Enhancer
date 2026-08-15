@@ -10,12 +10,15 @@ import pytest
 
 from creative_treatments import (
     CAMERA_MOTION_HEADS,
+    CREDIT_COMPOSITION_DELIVERY_LOCK,
     CINEMATOGRAPHY_CHOICES,
     CREATIVE_AXES,
     LEGACY_CAMERA_MOTIONS,
+    INTERTITLE_COMPOSITION_DELIVERY_LOCK,
     PROFILE_CATALOGS,
     PROFILE_DIMENSIONS,
     SHOT_TRANSITION_CHOICES,
+    TITLE_COMPOSITION_DELIVERY_LOCK,
     TITLE_SCREEN_STYLE_PROFILES,
     camera_motion_sentence,
     compose_creative_treatment,
@@ -34,6 +37,7 @@ from creative_treatments import (
     shot_transition_choices,
     treatment_warnings,
     title_screen_requested,
+    title_screen_roles,
     title_screen_text_authorized,
     title_screen_style_adherence_errors,
     title_screen_style_choices,
@@ -353,7 +357,9 @@ def test_title_screen_styles_are_independent_declarative_and_source_gated():
         assert profile["deliveryLock"] in instruction
         assert "exact supplied title text" in instruction
         assert "Explicit Cinematography remains authoritative" in instruction
-        assert title_screen_style_adherence_errors(profile["deliveryLock"], treatment, source) == []
+        assert title_screen_style_adherence_errors(
+            TITLE_COMPOSITION_DELIVERY_LOCK + " " + profile["deliveryLock"], treatment, source,
+        ) == []
         assert title_screen_style_adherence_errors("A generic title card.", treatment, source)
         assert title_screen_style_instruction(treatment, "A woman crosses a station.") == ""
         assert title_screen_style_adherence_errors(
@@ -383,6 +389,7 @@ def test_exact_title_wording_is_locally_authorized_inside_an_opening_request():
     normalized = normalize_title_screen_style_signature(output, treatment, opening)
     lock = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
     assert normalized.count(lock) == 1
+    assert normalized.count(TITLE_COMPOSITION_DELIVERY_LOCK) == 1
     assert normalize_title_screen_style_signature(normalized, treatment, opening) == normalized
 
     repeated = output.replace(
@@ -391,6 +398,136 @@ def test_exact_title_wording_is_locally_authorized_inside_an_opening_request():
     normalized_repeated = normalize_title_screen_style_signature(repeated, treatment, opening)
     assert normalized_repeated.count('"SKY PATH"') == 1
     assert "the same exact title remains visible" in normalized_repeated
+
+
+@pytest.mark.parametrize("source", [
+    'Doraemon gets his head cut by Jason Voorhees, for the series called "Jason Kills".',
+    'An opening for the show titled "Night Run".',
+    'Una apertura para la serie llamada "Noche Roja".',
+    'Una obertura per a la sèrie anomenada "Camí Fosc".',
+    'Opening credits: "Created by Ana Sol".',
+    'Créditos finales: "Creado por Ana Sol".',
+    'Crédito "Protagonizada por Ana Sol".',
+    'Cartela "Diez años después".',
+    'Crèdits: "Creat per Ana Sol".',
+])
+def test_series_name_wording_authorizes_the_selected_title_treatment(source):
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    assert title_screen_requested(source)
+    assert title_screen_text_authorized(source)
+    instruction = title_screen_style_instruction(treatment, source)
+    lock = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
+    assert "SOURCE-AUTHORIZED TITLE SCREEN" in instruction
+    assert lock in instruction
+
+
+def test_series_name_wording_normalizes_the_classic_cel_delivery_lock():
+    source = (
+        'Doraemon gets his head cut by Jason Voorhees with his machete, '
+        'with his head falling to the ground surrounded by black oil, '
+        'for the series called "Jason Kills"'
+    )
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    output = (
+        'integrated_multimodal_description:\n[Shot 5] A title card materializes: '
+        '<d>[Original language] Jason Kills</d>. After the final tagged line, no character speaks '
+        'any additional words.\n\noverall_soundscape:\nThe tagged line is the only intelligible speech; '
+        'after the final line ends, only ambience remains.\n\nnon_diegetic_music:\nN/A'
+    )
+    normalized = normalize_title_screen_style_signature(output, treatment, source)
+    lock = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
+    assert normalized.count(lock) == 1
+    assert normalized.count(TITLE_COMPOSITION_DELIVERY_LOCK) == 1
+    assert '"Jason Kills"' in normalized
+    assert "<d>" not in normalized
+    assert "tagged line" not in normalized
+    assert title_screen_style_adherence_errors(normalized, treatment, source) == []
+
+
+def test_title_style_instruction_explicitly_separates_visible_text_from_dialogue():
+    source = 'Opening for the series called "Jason Kills".'
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    instruction = title_screen_style_instruction(treatment, source)
+    assert "silent visible typography, not speech" in instruction
+    assert "Never wrap it in <d> tags" in instruction
+    assert "TITLE ART DIRECTION — ROLE-AWARE COMPOSITION" in instruction
+    assert "MAIN TITLE ROLE — HERO GRAPHIC" in instruction
+    assert TITLE_COMPOSITION_DELIVERY_LOCK in instruction
+    assert "may dominate the frame" in instruction
+    assert "partially occlude scene imagery" in instruction
+    assert "intentional foreground overlap or partial occlusion" in TITLE_COMPOSITION_DELIVERY_LOCK
+
+
+@pytest.mark.parametrize(("source", "role", "role_lock", "guidance"), [
+    ('Jason walks down the street and title "Jason Kills" appears.', "main_title",
+     TITLE_COMPOSITION_DELIVERY_LOCK, "MAIN TITLE ROLE — HERO GRAPHIC"),
+    ('Jason walks down the street and opening credit "Starring Jason Voorhees" appears.', "credits",
+     CREDIT_COMPOSITION_DELIVERY_LOCK, "CREDIT ROLE — SUBORDINATE INFORMATION"),
+    ('Jason walks down the street, then intertitle "Ten years later" appears.', "intertitle",
+     INTERTITLE_COMPOSITION_DELIVERY_LOCK, "INTERTITLE ROLE — ISOLATED NARRATIVE CARD"),
+])
+def test_title_presentation_roles_are_inferred_and_normalized_separately(
+    source, role, role_lock, guidance,
+):
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    assert title_screen_roles(source) == (role,)
+    instruction = title_screen_style_instruction(treatment, source)
+    assert guidance in instruction
+    assert role_lock in instruction
+    quote = re.search(r'"([^"]+)"', source).group(1)
+    output = (
+        f'integrated_multimodal_description:\n[Shot 1] The visible text "{quote}" appears.\n\n'
+        'overall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A'
+    )
+    normalized = normalize_title_screen_style_signature(output, treatment, source)
+    assert normalized.count(role_lock) == 1
+    assert normalized.count(TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]) == 1
+    assert title_screen_style_adherence_errors(normalized, treatment, source) == []
+
+
+def test_mixed_title_roles_receive_distinct_locks_without_promoting_credits():
+    source = (
+        'Title "Jason Kills" appears, followed later by opening credit '
+        '"Starring Jason Voorhees" and intertitle "Ten years later".'
+    )
+    treatment = parse_creative_treatment({
+        "schemaVersion": 1,
+        "titleScreenStyle": "classic_cel",
+    })
+    assert title_screen_roles(source) == ("main_title", "credits", "intertitle")
+    instruction = title_screen_style_instruction(treatment, source)
+    assert "may dominate the frame" in instruction
+    assert "stable title-safe placement" in instruction
+    assert "intentional full-frame text card" in instruction
+    invalid = (
+        TITLE_SCREEN_STYLE_PROFILES["classic_cel"]["deliveryLock"]
+        + " <d>[Original language] Jason Kills</d>"
+    )
+    assert any("never <d> dialogue tags" in error for error in title_screen_style_adherence_errors(
+        invalid, treatment, source,
+    ))
+
+
+def test_classic_cel_is_a_scene_integrated_hero_title_not_plain_card_text():
+    profile = TITLE_SCREEN_STYLE_PROFILES["classic_cel"]
+    assert profile["version"] == 2
+    assert "purpose-built hand-lettered cel title composition" in profile["instruction"]
+    assert "not plain typed text on a generic card" in profile["instruction"]
+    assert "strongest supplied tableau" in profile["instruction"]
+    assert "distinctive large silhouette" in profile["deliveryLock"]
+    assert "integrated into the supplied tableau" in profile["deliveryLock"]
 
 
 def test_formerly_layered_profiles_are_self_contained_after_flattening():
@@ -959,7 +1096,7 @@ def _plan(shots, timing_mode="auto"):
         (_plan([{"id": "s1", "description": "One", "durationSeconds": 5},
                 {"id": "s2", "description": "Two"}], "exact"), "requires durationSeconds"),
         (_plan([{"id": "s1", "description": "One", "durationSeconds": 4},
-                {"id": "s2", "description": "Two", "durationSeconds": 3}], "exact"), "must sum"),
+                {"id": "s2", "description": "Two", "durationSeconds": 3}], "exact"), "shots require a clip duration"),
         (_plan([{"id": "same", "description": "One"}, {"id": "same", "description": "Two"}]), "duplicated"),
         (_plan([{"id": "bad id", "description": "One"}]), "id must be"),
         ('{"schemaVersion":1,"timingMode":"auto","shots":[{"id":1,"description":"One"}]}', "id must be a string"),
@@ -972,6 +1109,18 @@ def _plan(shots, timing_mode="auto"):
 def test_invalid_or_partially_timed_shot_plans_fail_safely(value, message):
     with pytest.raises(ValueError, match=message):
         parse_shot_plan(value, 8.0, mode="t2va")
+
+
+def test_exact_shot_duration_mismatch_reports_required_and_current_clip_duration():
+    value = _plan([
+        {"id": "s1", "description": "One", "durationSeconds": 4},
+        {"id": "s2", "description": "Two", "durationSeconds": 3},
+    ], "exact")
+    with pytest.raises(ValueError) as error:
+        parse_shot_plan(value, 8.0, mode="t2va")
+    message = str(error.value)
+    assert "shots require a clip duration of 7s" in message
+    assert "current effective clip duration is 8s" in message
 
 
 def test_shot_plan_rejects_abusive_counts_and_description_size():

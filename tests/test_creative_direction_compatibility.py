@@ -51,7 +51,7 @@ def _input_names(node_class):
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
     delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [*NEW_FIELDS, *caching, *delivery]
+    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language"]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -86,6 +86,8 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
             assert optional["always_re_enhance"][1]["default"] is False
         if "delivery_target" in appended:
             assert optional["delivery_target"][1]["default"] == "local"
+        if "dialogue_language" in appended:
+            assert optional["dialogue_language"][1]["default"] == "auto"
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -106,6 +108,8 @@ def test_generation_duration_matches_native_h3_ceiling_and_frontend_preserves_it
     assert 'sanitizeNumberWidget(node, "duration_seconds", 5, 4, MAX_GENERATION_SECONDS);' in frontend
     assert 'panel.root.style.maxWidth = `${panelWidth}px`;' in frontend
     assert 'new ResizeObserver(() => scheduleCreativePanelLayout(node))' in frontend
+    assert "the shots require a clip duration of ${roundedDuration(total)} s" in frontend
+    assert "the current effective duration is ${roundedDuration(expected)} s" in frontend
 
 
 def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
@@ -141,6 +145,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        if parameters[-1].name == "dialogue_language":
+            assert parameters[-1].default == "auto"
+            parameters = parameters[:-1]
         if caching:
             assert [parameter.name for parameter in parameters[-2:]] == [*caching, "delivery_target"]
             assert [parameter.default for parameter in parameters[-2:]] == [False, "local"]
@@ -195,7 +202,7 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-5:] == ("", "none", "none", "off", "local")
+    assert captured["args"][-6:] == ("", "none", "none", "off", "local", "auto")
 
 
 def test_main_and_specialized_nodes_forward_appended_fields_without_positional_shift(monkeypatch):
@@ -220,8 +227,8 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
         0.2, 4096, 300, 180, 0, True, True, False,
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert remote_calls[0][-7:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local")
-    assert gguf_calls[0][-7:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local")
+    assert remote_calls[0][-8:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto")
+    assert gguf_calls[0][-8:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():

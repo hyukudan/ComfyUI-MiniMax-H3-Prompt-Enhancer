@@ -177,6 +177,18 @@ def manifest_context(value: str | dict | list | None) -> str:
     return "\n".join(lines)
 
 
+def _detect_lang_fallback(text: str) -> str:
+    try:
+        from .prompt_guides import _detect_language
+        return _detect_language(text, default="English")
+    except Exception:
+        try:
+            from prompt_guides import _detect_language
+            return _detect_language(text, default="English")
+        except Exception:
+            return "English"
+
+
 def manifest_dialogue(value: str | dict | list | None) -> list[tuple[str, str, str]]:
     """Return authoritative transcribed reference-audio dialogue."""
     found: list[tuple[str, str, str]] = []
@@ -192,10 +204,12 @@ def manifest_dialogue(value: str | dict | list | None) -> list[tuple[str, str, s
         entries = transcript if isinstance(transcript, list) else [transcript]
         for entry in entries:
             if isinstance(entry, str):
+                cleaned = _normalize_transcript_text(entry)
+                lang = _detect_lang_fallback(cleaned)
                 found.append((
                     item.get("soundtrack_label", item["label"]),
-                    "Original language",
-                    _normalize_transcript_text(entry),
+                    lang,
+                    cleaned,
                 ))
             elif isinstance(entry, dict) and (entry.get("text") or entry.get("unclear")):
                 if str(entry.get("reuse_mode", item.get("reuse_mode", ""))).strip().lower() == "reference_only":
@@ -203,9 +217,10 @@ def manifest_dialogue(value: str | dict | list | None) -> list[tuple[str, str, s
                 transcript_text = "[unclear]" if entry.get("unclear") else _normalize_transcript_text(entry.get("text", ""))
                 if not transcript_text:
                     transcript_text = "[unclear]"
+                lang = str(entry.get("language") or _detect_lang_fallback(transcript_text))
                 found.append((
                     str(entry.get("source", item.get("soundtrack_label", item["label"]))),
-                    str(entry.get("language", "Original language")),
+                    lang,
                     transcript_text,
                 ))
     return found

@@ -19,8 +19,8 @@ from typing import Any
 
 
 CREATIVE_TREATMENT_SCHEMA_VERSION = 1
-CREATIVE_PROFILE_CATALOG_VERSION = 21
-TITLE_SCREEN_STYLE_CATALOG_VERSION = 1
+CREATIVE_PROFILE_CATALOG_VERSION = 22
+TITLE_SCREEN_STYLE_CATALOG_VERSION = 2
 CINEMATOGRAPHY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_CATALOG_VERSION = 6
 SHOT_PLAN_SCHEMA_VERSION = 1
@@ -41,6 +41,24 @@ PROFILE_DIMENSIONS = (
     "sound_treatment",
     "may_fill_unspecified",
     "must_not_invent",
+)
+
+TITLE_COMPOSITION_DELIVERY_LOCK = (
+    "The authorized main title is composed as a deliberate hero graphic within the strongest supplied scene anchor "
+    "or culminating tableau, using authored silhouette, scale hierarchy, reserved negative space, clear "
+    "figure-to-ground separation, intentional foreground overlap or partial occlusion when compositionally useful, "
+    "and readable entrance-hold-settle timing, unless the source or accompanying declarative title treatment "
+    "explicitly requires an isolated card or intertitle."
+)
+CREDIT_COMPOSITION_DELIVERY_LOCK = (
+    "Each authorized credit is subordinate informational typography in the same resolved graphic system, placed in "
+    "a stable title-safe region with clear reading order and without covering a required face, eyes, identity cue, "
+    "action, object, contact point, main title, or another exact-text owner."
+)
+INTERTITLE_COMPOSITION_DELIVERY_LOCK = (
+    "Each authorized intertitle is an intentionally isolated full-frame text card with strong figure-to-ground "
+    "separation, stable composition, a readable entrance and hold, and a clean exit back to the supplied scene, "
+    "without presenting it as a main-series logo or an overlaid credit."
 )
 
 
@@ -70,10 +88,10 @@ def _profile(*, version=1, tags=(), editing_and_pacing=(), camera_and_framing=()
 
 
 def _title_screen_profile(*, instruction: str, delivery_lock: str,
-                          must_not_invent: str) -> dict[str, Any]:
+                          must_not_invent: str, version: int = 1) -> dict[str, Any]:
     """Define one independent title-screen treatment and its H3-safe lock."""
     return {
-        "version": 1,
+        "version": int(version),
         "instruction": str(instruction).strip(),
         "deliveryLock": str(delivery_lock).strip(),
         "mustNotInvent": str(must_not_invent).strip(),
@@ -93,8 +111,22 @@ TITLE_SCREEN_STYLE_PROFILES = {
         must_not_invent="No channel identity, station bug, lower third, ticker, sponsor, logo, subtitle, credit, or additional wording may be added.",
     ),
     "classic_cel": _title_screen_profile(
-        instruction="Use hand-drawn opaque title shapes, stable ink contours, a compact cel palette, a painted graphic background, and economical limited-animation movement that remains consistent with the selected visual language.",
-        delivery_lock="The requested title screen is hand-drawn cel artwork with opaque title shapes, stable ink contours, a compact cel palette, a painted graphic background, and economical limited-animation movement.",
+        version=2,
+        instruction=(
+            "Design a purpose-built hand-lettered cel title composition, not plain typed text on a generic card. "
+            "Give the exact words a distinctive large silhouette, opaque hand-drawn display shapes, stable expressive "
+            "ink contours, deliberate internal spacing, and a compact accent palette derived from the resolved scene. "
+            "Unless the source explicitly requests an isolated card, integrate the lettering into the strongest "
+            "supplied tableau using reserved negative space, controlled foreground overlap and clear figure-to-ground "
+            "separation. Use a painted graphic treatment consistent with the selected visual language and an economical "
+            "limited-animation reveal motivated only by movement, light or framing already present in the source."
+        ),
+        delivery_lock=(
+            "The requested title is a purpose-built hand-lettered cel composition with a distinctive large silhouette, "
+            "opaque display shapes, stable expressive ink contours, deliberate spacing, a compact scene-derived accent "
+            "palette, strong figure-to-ground separation, and an economical limited-animation reveal integrated into "
+            "the supplied tableau unless an isolated card was explicitly requested."
+        ),
         must_not_invent="No character, mascot, prop, scenery event, sparkle, transformation, studio mark, subtitle, credit, or additional wording may be added.",
     ),
     "illustrated_pulp": _title_screen_profile(
@@ -240,13 +272,13 @@ GENRE_PROFILES = {
     ),
     "drama": _profile(
         tags={"pacing": "long_takes"},
-        editing_and_pacing=("Use sustained, motivated takes and let requested emotional changes develop without melodramatic acceleration.",),
+        editing_and_pacing=("Use sustained, motivated takes and let requested emotional changes develop with controlled escalation appropriate to the selected visual language.",),
         camera_and_framing=("Favor restrained medium and close framing only where expression, gesture, or relationship is narratively relevant.",),
         lighting_and_color=("Use motivated naturalistic light, plausible contrast, and lived-in tonal variation.",),
         production_design=("Emphasize credible wear, use, personal arrangement, and environmental specificity already compatible with the setting.",),
         blocking_and_performance=("Direct subtext through listening, silence, micro-expression, posture, and purposeful gesture rather than exaggerated emotion.",),
         sound_treatment=("When allowed, preserve natural room tone, distance, clothing, and unembellished physical sounds.",),
-        may_fill_unspecified=("Subtextual reaction, naturalistic pacing, and lived-in environmental detail.",),
+        may_fill_unspecified=("Subtextual reaction, controlled pacing, and lived-in environmental detail.",),
         must_not_invent=("Arguments, trauma, crying, tragedy, confession, loss, reconciliation, or sentimental music."),
     ),
     "adventure": _profile(
@@ -873,6 +905,7 @@ VISUAL_LANGUAGE_PROFILES = {
         ),
     ),
     "live_action_latin_american_telenovela": _profile(
+        tags={"pacing": "fast_cuts"},
         editing_and_pacing=(
             "Present photographed live action with the emphatic dialogue-and-reaction grammar of a polished Latin American telenovela: clearly staged conversational beats, deliberate revelation pauses, readable emotional reversals, and sustained reaction holds only where the supplied dialogue or action already supports them.",
             "When automatic planning or the authoritative source already permits multiple shots, favor lucid two-shots, shot/reverse-shot exchanges, progressively tighter close-ups, concise hard cuts on supplied verbal or visual turns, and an ordered reaction chain among participants already present. When cuts are fixed or a single shot is required, preserve that boundary and express the cadence through blocking, focus, reframing, and zoom rather than inventing coverage.",
@@ -886,7 +919,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Preserve explicit skin, wardrobe, set, product, time-of-day, and source-light colors; do not impose an orange or yellow regional filter, excessive saturation, clipped reds, green cast, crushed contrast, neon, haze, beauty smoothing, VHS damage, scanlines, chroma bleed, or unstable video texture.",
         ),
         production_design=(
-            "Photograph the supplied interiors, exteriors, wardrobe, jewelry, furniture, props, vehicles, and architecture with clear color hierarchy, polished practical materials, and uncluttered conversational staging without upgrading wealth, adding luxury, or changing place, culture, era, or social class.",
+            "Photograph the supplied interiors, exteriors, wardrobe, jewelry, furniture, props, vehicles, and architecture within a polished Latin American telenovela visual system: clear color hierarchy, polished practical materials, and uncluttered conversational staging without upgrading wealth, adding luxury, or changing place, culture, era, or social class.",
         ),
         blocking_and_performance=(
             "Strengthen only emotion and intention already present through precise eyelines, composed turns, held gaze, controlled breath, readable hand gesture, incremental facial response, purposeful approach or withdrawal, and a clean final reaction state; do not manufacture tears, shouting, seduction, hostility, shock, fainting, slaps, or melodrama.",
@@ -2463,9 +2496,18 @@ def title_screen_style_choices() -> tuple[str, ...]:
 
 _TITLE_SCREEN_REQUEST_RE = re.compile(
     r"\b(?:title\s+(?:screen|card)|opening\s+title|end\s+title|intertitle|"
+    r"intert[ií]tulo(?=\s*[:\-]?\s*[\"\u201c])|cartela(?=\s*[:\-]?\s*[\"\u201c])|"
     r"(?:exact\s+)?title(?:\s+text)?(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:series|show|anime|programme|program)\s+(?:called|titled|named)(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:series|show|anime|programme|program)\s+(?:name|title)\s+is(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:(?:opening|end)\s+)?credits?(?:\s+text)?(?=\s*[:\-]?\s*[\"\u201c])|"
     r"pantalla\s+de\s+t[ií]tulo|tarjeta\s+de\s+t[ií]tulo|t[ií]tulo\s+(?:inicial|final)|"
-    r"t[ií]tulo(?:\s+exacto)?(?=\s*[:\-]?\s*[\"\u201c]))\b",
+    r"t[ií]tulo(?:\s+exacto)?(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:serie|programa|anime)\s+(?:llamad[ao]|titulad[ao]|denominad[ao]|que\s+se\s+llama)"
+    r"(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:s[eè]rie|programa|anime)\s+(?:anomenad[ao]|titulad[ao]|que\s+es\s+diu)"
+    r"(?=\s*[:\-]?\s*[\"\u201c])|"
+    r"(?:cr[eé]ditos?|cr[eè]dits?)(?:\s+(?:iniciales?|finales?|text))?(?=\s*[:\-]?\s*[\"\u201c]))\b",
     re.IGNORECASE,
 )
 
@@ -2491,6 +2533,43 @@ def _authorized_title_quotes(source_prompt: str) -> list[str]:
     return list(dict.fromkeys(quotes))
 
 
+def _authorized_title_occurrences(source_prompt: str) -> list[tuple[str, str]]:
+    """Return locally authorized visible text with its semantic presentation role."""
+    source = str(source_prompt or "")
+    occurrences: list[tuple[str, str]] = []
+    for match in re.finditer(r'["“][^"”]+["”]', source):
+        window = source[max(0, match.start() - 180):min(len(source), match.end() + 100)]
+        if not _TITLE_SCREEN_REQUEST_RE.search(window):
+            continue
+        prefix = source[max(0, match.start() - 120):match.start()]
+        if re.search(r"\b(?:intertitle|intert[ií]tulo|cartela)\b[^\r\n.!?;]{0,48}$", prefix, re.IGNORECASE):
+            role = "intertitle"
+        elif re.search(
+            r"\b(?:(?:opening|end)\s+)?credits?(?:\s+text)?\b[^\r\n.!?;]{0,48}$|"
+            r"\b(?:cr[eé]ditos?|cr[eè]dits?)(?:\s+(?:iniciales?|finales?|text))?\b[^\r\n.!?;]{0,48}$",
+            prefix,
+            re.IGNORECASE,
+        ):
+            role = "credits"
+        else:
+            role = "main_title"
+        occurrences.append((match.group(0)[1:-1], role))
+    return list(dict.fromkeys(occurrences))
+
+
+def title_screen_roles(source_prompt: str) -> tuple[str, ...]:
+    """Return stable source-inferred title presentation roles in first-occurrence order."""
+    return tuple(dict.fromkeys(role for _quote, role in _authorized_title_occurrences(source_prompt)))
+
+
+def _title_role_lock(role: str) -> str:
+    return {
+        "main_title": TITLE_COMPOSITION_DELIVERY_LOCK,
+        "credits": CREDIT_COMPOSITION_DELIVERY_LOCK,
+        "intertitle": INTERTITLE_COMPOSITION_DELIVERY_LOCK,
+    }[str(role)]
+
+
 def normalize_title_screen_style_signature(prompt: str, treatment: Mapping[str, Any],
                                            source_prompt: str) -> str:
     """Place the declarative title-style lock beside the first authorized title occurrence.
@@ -2506,15 +2585,43 @@ def normalize_title_screen_style_signature(prompt: str, treatment: Mapping[str, 
         return str(prompt)
     value = str(prompt)
     lock = str(TITLE_SCREEN_STYLE_PROFILES[name]["deliveryLock"])
-    if lock and lock not in value:
-        for quote in _authorized_title_quotes(source_prompt):
-            match = re.search(r'["“]' + re.escape(quote) + r'["”]', value)
-            if not match:
-                continue
-            sentence_end = re.search(r"[.!?](?=\s|$)", value[match.end():])
-            insert_at = match.end() + sentence_end.end() if sentence_end else match.end()
-            value = value[:insert_at] + " " + lock + value[insert_at:]
-            break
+    recovered_visible_title = False
+    for quote in _authorized_title_quotes(source_prompt):
+        tagged_title = re.compile(
+            r"<d>\s*(?:\[[^\]]+\]\s*)?" + re.escape(quote) + r"\s*</d>",
+            re.IGNORECASE,
+        )
+        value, replacements = tagged_title.subn(f'"{quote}"', value)
+        recovered_visible_title = recovered_visible_title or bool(replacements)
+    if recovered_visible_title:
+        # A small LLM can mistake a series-name quote for speech and then add a
+        # dialogue-closure sentence. Recover the visible title deterministically;
+        # neither the title nor the synthetic closure belongs to the audio track.
+        value = re.sub(
+            r"(?im)(?:^|(?<=[.!?])\s+)(?:after\s+the\s+final\s+tagged\s+line|"
+            r"the\s+tagged\s+line\s+is\s+the\s+only\s+intelligible\s+speech)"
+            r"[^.!?]*(?:[.!?](?=\s|$)|$)",
+            " ",
+            value,
+        )
+        value = re.sub(r"[ \t]{2,}", " ", value)
+    style_lock_added = bool(lock and lock in value)
+    for quote, role in _authorized_title_occurrences(source_prompt):
+        role_lock = _title_role_lock(role)
+        missing_locks = []
+        if role_lock not in value:
+            missing_locks.append(role_lock)
+        if lock and not style_lock_added:
+            missing_locks.append(lock)
+            style_lock_added = True
+        if not missing_locks:
+            continue
+        match = re.search(r'["“]' + re.escape(quote) + r'["”]', value)
+        if not match:
+            continue
+        sentence_end = re.search(r"[.!?](?=\s|$)", value[match.end():])
+        insert_at = match.end() + sentence_end.end() if sentence_end else match.end()
+        value = value[:insert_at] + " " + " ".join(missing_locks) + value[insert_at:]
     for quote in _authorized_title_quotes(source_prompt):
         allowed = len(re.findall(r'["“]' + re.escape(quote) + r'["”]', str(source_prompt)))
         mention_re = re.compile(
@@ -2536,18 +2643,53 @@ def title_screen_style_instruction(treatment: Mapping[str, Any], source_prompt: 
             or not title_screen_text_authorized(source_prompt)):
         return ""
     profile = TITLE_SCREEN_STYLE_PROFILES[name]
+    roles = title_screen_roles(source_prompt)
+    role_guidance = {
+        "main_title": (
+            "MAIN TITLE ROLE — HERO GRAPHIC: Treat the authorized main title as a deliberate hero composition with "
+            "an authored silhouette, scale hierarchy, negative space, figure-to-ground separation, and a readable "
+            "entrance, hold, and settled state. If a supplied scene exists and no separate card is requested, first "
+            "establish its visual system and then integrate the title into its strongest anchor or culminating "
+            "tableau. The main title may dominate the frame, cross a subject silhouette, or partially occlude scene "
+            "imagery when compositionally useful."
+        ),
+        "credits": (
+            "CREDIT ROLE — SUBORDINATE INFORMATION: Render each exact source-authorized credit in the same resolved "
+            "graphic system but with secondary hierarchy and a stable title-safe placement. Never let a credit cover "
+            "a required face, eyes, identity cue, action, object, contact point, main title, or another exact-text "
+            "owner, and never promote it into another hero title."
+        ),
+        "intertitle": (
+            "INTERTITLE ROLE — ISOLATED NARRATIVE CARD: Render each exact source-authorized intertitle as an "
+            "intentional full-frame text card with stable composition, strong figure-to-ground separation, a readable "
+            "entrance and hold, and a clean return to the supplied scene. Do not overlay it like a credit or turn it "
+            "into a main-series logo."
+        ),
+    }
+    role_locks = tuple(_title_role_lock(role) for role in roles)
     return "\n".join((
         "SOURCE-AUTHORIZED TITLE SCREEN — EXACT VISIBLE TEXT ONLY:",
-        "Apply this treatment only to the title screen/card/intertitle explicitly requested by the basic prompt. "
-        "It does not authorize a title, another cut, or any visible word. Preserve the exact supplied title text, "
+        "Apply this treatment consistently to every title or credit typography occurrence explicitly requested by "
+        "the basic prompt. "
+        "It does not authorize a title, credit, another cut, or any visible word. Preserve the exact supplied title text "
+        "or credit text, "
         "capitalization, punctuation, language, line order, and spelling; never rewrite, translate, complete, or add "
         "a subtitle, credit, logo, tagline, label, or extra word.",
+        "This is silent visible typography, not speech: write each authorized title or credit in straight double "
+        "quotes inside integrated_multimodal_description. Never wrap it in <d> tags, assign a speaker ID or vocal "
+        "action, call it a line, or mention it in overall_soundscape.",
+        "TITLE ART DIRECTION — ROLE-AWARE COMPOSITION: Adapt every authorized text occurrence to the resolved "
+        "narrative genre, visual language, world aesthetic, tone, references, and explicit Cinematography rather than "
+        "falling back to generic centered type. Use only existing scene geometry, motion, light, color, and motifs; "
+        "never invent an icon, emblem, object, effect, or event to decorate it.",
+        *(role_guidance[role] for role in roles),
         "Explicit Cinematography remains authoritative for palette, exposure, camera, optics, texture, and motion. "
         "Adapt the local title treatment inside those choices rather than replacing or contradicting them.",
         "Private rendering direction for the title shot: " + profile["instruction"],
         "Forbidden additions: " + profile["mustNotInvent"],
-        "Integrate the following declarative delivery lock once inside the authorized title shot; emit no style ID, "
+        "Integrate each following declarative delivery lock once beside its matching authorized text role; emit no style ID, "
         "preset label, control name, or instruction about transforming supplied content:",
+        *role_locks,
         profile["deliveryLock"],
     ))
 
@@ -2561,9 +2703,24 @@ def title_screen_style_adherence_errors(output_prompt: str, treatment: Mapping[s
             or not title_screen_text_authorized(source_prompt)):
         return []
     lock = str(TITLE_SCREEN_STYLE_PROFILES[name]["deliveryLock"])
-    return [] if lock and lock in str(output_prompt) else [
+    output = str(output_prompt)
+    errors = [] if lock and lock in output else [
         f"The source-authorized title screen is missing the exact declarative {name!r} delivery lock"
     ]
+    for role in title_screen_roles(source_prompt):
+        role_lock = _title_role_lock(role)
+        if role_lock not in output:
+            errors.append(f"The source-authorized {role} is missing its exact role-specific delivery lock")
+    for quote in _authorized_title_quotes(source_prompt):
+        if re.search(
+            r"<d>\s*(?:\[[^\]]+\]\s*)?" + re.escape(quote) + r"\s*</d>",
+            output,
+            flags=re.IGNORECASE,
+        ):
+            errors.append(
+                f"Source-authorized visible title {quote!r} must use straight double quotes, never <d> dialogue tags"
+            )
+    return errors
 
 
 def _dedupe(values) -> list[str]:
@@ -3480,8 +3637,9 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
         else:
             if abs(total - effective) > tolerance:
                 raise ValueError(
-                    "shot_plan_json exact durations must sum to the effective clip duration "
-                    f"({effective:.6g}s; observed {total:.6g}s; tolerance {tolerance:.3g}s)"
+                    "shot_plan_json exact shots require a clip duration of "
+                    f"{total:.6g}s, but the current effective clip duration is {effective:.6g}s "
+                    f"(tolerance {tolerance:.3g}s)"
                 )
             elapsed = 0.0
             for duration in durations[:-1]:

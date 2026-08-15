@@ -2243,7 +2243,10 @@ function updateShotSummary(node) {
             });
             if (invalidSegment) problems.push(`each segment must last ${roundedDuration(expected)} s`);
         } else if (Math.abs(total - expected) > 0.05) {
-            problems.push(`the total must be ${roundedDuration(expected)} s`);
+            problems.push(
+                `the shots require a clip duration of ${roundedDuration(total)} s; `
+                + `the current effective duration is ${roundedDuration(expected)} s`,
+            );
         }
         panel.shotSummary.textContent = problems.length
             ? `⚠ ${problems.join("; ")}. Fix the plan before running.`

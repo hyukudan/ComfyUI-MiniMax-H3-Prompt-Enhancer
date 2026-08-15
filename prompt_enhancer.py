@@ -16,14 +16,14 @@ from urllib.request import Request, urlopen
 
 try:
     from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
-    from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_text_authorized, treatment_warnings
+    from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
-    from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_text_authorized, treatment_warnings
+    from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -212,15 +212,18 @@ def _parse_dialogue_ledger(candidate: str, requested_language: str, max_lines: i
         else:
             raise ValueError(f"ledger line {index} must be a string or object")
         language = language.strip()
+        language = re.sub(r"[\[\]]", "", language).strip()
         text = re.sub(r"\s+", " ", text).strip()
-        if not language or "[" in language or "]" in language:
+        if not language:
             raise ValueError(f"ledger line {index} has an invalid language")
-        if requested_language != "Original language" and language.casefold() != requested_language.casefold():
+        canonical_ledger = _LANGUAGE_ALIASES.get(language.casefold(), language.capitalize())
+        canonical_req = _LANGUAGE_ALIASES.get(requested_language.casefold(), requested_language.capitalize())
+        if requested_language.casefold() not in {"auto", "original language"} and canonical_ledger.casefold() != canonical_req.casefold():
             raise ValueError(
                 f"ledger line {index} must use {requested_language}, observed {language or 'no language'}"
             )
-        if requested_language != "Original language":
-            language = requested_language
+        if requested_language.casefold() not in {"auto", "original language"}:
+            language = canonical_req
         if not text or "<d>" in text.casefold() or "</d>" in text.casefold():
             raise ValueError(f"ledger line {index} must contain plain spoken words without <d> tags")
         if re.fullmatch(
@@ -315,6 +318,7 @@ def enhance_prompt_with_completion(
     acoustic_space: str = "none",
     dialogue_coverage: str = "off",
     delivery_target: str = "local",
+    dialogue_language: str = "auto",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -363,21 +367,23 @@ def enhance_prompt_with_completion(
             + str(resolved_content_format.get("notAppliedReason") or "requirements_not_met")
             + "."
         )
-    dialogue_authoring, dialogue_language = _dialogue_authoring_request(basic_prompt)
+    dialogue_authoring, resolved_dialogue_language = _dialogue_authoring_request(
+        basic_prompt, override_language=dialogue_language
+    )
     user_request = build_user_request(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
-        acoustic_space, dialogue_coverage,
+        acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
     if dialogue_authoring and voice_performance == "audible":
         dialogue_ledger, dialogue_planning_repairs = _plan_dialogue_ledger(
             basic_prompt,
-            dialogue_language,
+            resolved_dialogue_language,
             effective_duration,
             (
                 explicit_shot_plan["shotCount"]
@@ -393,7 +399,7 @@ def enhance_prompt_with_completion(
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
-            acoustic_space, dialogue_coverage,
+            acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -461,6 +467,7 @@ def enhance_prompt_with_completion(
         enhance_description=bool(enhance_description), delivery_target=delivery_target,
         instrumental_description=instrumental_description, instrumental_style=instrumental_style,
         acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
+        dialogue_language=dialogue_language,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -574,6 +581,7 @@ def enhance_prompt_with_completion(
             and title_screen_requested(basic_prompt)
             and title_screen_text_authorized(basic_prompt)
         ),
+        "titlePresentationRoles": list(title_screen_roles(basic_prompt)),
         "cinematographySchemaVersion": cinematography["schemaVersion"],
         "cinematographyCatalogVersion": cinematography["catalogVersion"],
         "shotPlanSchemaVersion": explicit_shot_plan["schemaVersion"],
@@ -630,6 +638,17 @@ def enhance_prompt_with_completion(
         ),
         "acousticSpace": acoustic_space,
         "dialogueCoverage": dialogue_coverage,
+        "dialogueLanguage": (
+            resolved_dialogue_language if dialogue_authoring
+            else (
+                _LANGUAGE_ALIASES.get(dialogue_language.casefold(), dialogue_language.capitalize())
+                if dialogue_language and dialogue_language != "auto"
+                else (
+                    source_contracts[0][0] if (source_contracts := _source_dialogue_contracts(basic_prompt))
+                    else _detect_language(basic_prompt)
+                )
+            )
+        ),
         "voicePerformance": voice_performance,
         "silentMouthActingExperimental": voice_performance == "silent_mouth_acting_experimental",
         "dialogueLedgerLineCount": len(dialogue_ledger),
@@ -667,7 +686,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    instrumental_style: str = "none",
                    acoustic_space: str = "none",
                    dialogue_coverage: str = "off",
-                   delivery_target: str = "local") -> tuple[str, dict, dict]:
+                   delivery_target: str = "local",
+                   dialogue_language: str = "auto") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -716,4 +736,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         acoustic_space,
         dialogue_coverage,
         delivery_target,
+        dialogue_language,
     )

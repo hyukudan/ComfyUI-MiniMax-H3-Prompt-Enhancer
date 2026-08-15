@@ -76,6 +76,26 @@ DIALOGUE_COVERAGE_CONTRACT = (
     "Keep each speaking character's mouth and eyes unobstructed and in focus for the full duration of their line, "
     "at medium close-up or tighter, with a stable eyeline."
 )
+DIALOGUE_LANGUAGE_CHOICES = (
+    "auto",
+    "Spanish",
+    "English",
+    "French",
+    "German",
+    "Italian",
+    "Portuguese",
+    "Japanese",
+    "Chinese",
+    "Korean",
+    "Russian",
+    "Arabic",
+    "Cantonese",
+    "Catalan",
+    "Dutch",
+    "Polish",
+    "Turkish",
+    "Hindi",
+)
 ACOUSTIC_SPACE_CHOICES = (
     "none",
     "small_reflective_interior",
@@ -312,11 +332,12 @@ _SECTION_RE = re.compile(rf"(?m)^({_SECTION_PATTERN}):\s*")
 _SHOT_RE = re.compile(r"\[Shot\s+(\d+)\](?:\s+At\s+(\d{2}):(\d{2})\.(\d{3}),)?", re.IGNORECASE)
 _REFERENCE_RE = re.compile(r"<(?:Subject|Picture|Video|Audio)\s+\d+>", re.IGNORECASE)
 _ASSET_REFERENCE_RE = re.compile(
-    r"\b(image|imagen|picture|foto|video|vídeo|audio)\s*(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\b",
+    r"\b(image|imagen|picture|foto|video|vídeo|audio|voice|voz)\s*"
+    r"(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\b",
     re.IGNORECASE,
 )
 _ROLE_REFERENCE_RE = re.compile(
-    r"\b(?:the|a|an|el|la|los|las|un|una)\s+"
+    r"\b(?:the|a|an|el|la|los|las|un|una|al|del)\s+"
     r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,9}?)\s+"
     r"(?:in|en|from|de|que\s+(?:es|aparece\s+en|corresponde\s+a))\s+"
     r"(image|imagen|picture|foto)\s*(\d+)\b",
@@ -330,22 +351,78 @@ _COORDINATED_ROLE_REFERENCE_RE = re.compile(
     r"(?:in|en|from|de)\s+(image|imagen|picture|foto)\s*(\d+)\b",
     re.IGNORECASE,
 )
-_QUOTED_RE = re.compile(r'["“]([^"”\r\n]+)["”]')
+_ROLE_AFTER_REFERENCE_RE = re.compile(
+    r"\b(?:in|en|from|de)\s+(?:the\s+|la\s+|el\s+)?(image|imagen|picture|foto)\s*(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\s*"
+    r"(?:,\s*)?(?:aparece\s+|hay\s+|is\s+|there\s+is\s+|we\s+see\s+|vemos\s+|tenemos\s+|stands?\s+|sits?\s+)?"
+    r"(?:the|a|an|el|la|los|las|un|una)\s+([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,9}?)(?=[,;.!\n]|(?:\s+(?:with|con|in|en|who|que|y|and)\b))",
+    re.IGNORECASE,
+)
+_QUOTED_RE = re.compile(
+    r'(?:(?<![\wÀ-ÿ])["“]([^"”\r\n]+)["”]|«([^»\r\n]+)»|„([^“”"\r\n]+)[“”"]|「([^」\r\n]+)」|『([^』\r\n]+)』|["“]([^"”\r\n]+)["”])'
+)
+# Source prose occasionally arrives with a stray closing straight quote (for
+# example ``when he says his phrase", ... says "Hello"``). Pairing every quote
+# by alternation turns the intervening scene directions into dialogue and also
+# shifts all later, valid quotations. For source dialogue extraction require
+# an opening straight quote to begin at a token boundary. Unambiguous quotes
+# («...», “...”, „...“, 「...」, 『...』) match directly across European/Asian scripts.
+_SOURCE_QUOTED_RE = re.compile(
+    r'(?:(?<![\wÀ-ÿ])["“]([^"”\r\n]+)["”]|«([^»\r\n]+)»|„([^“”"\r\n]+)[“”"]|「([^」\r\n]+)」|『([^』\r\n]+)』)'
+)
+
+
+def _extract_quote_string(match: re.Match[str]) -> str:
+    """Return the first matched non-None group from multi-quote alternations."""
+    return next((g for g in match.groups() if g is not None), "").strip()
+
+
+def _extract_source_quotes(text: str) -> list[str]:
+    """Extract all quoted string contents from text using _SOURCE_QUOTED_RE."""
+    results = []
+    for match in _SOURCE_QUOTED_RE.finditer(text or ""):
+        s = _extract_quote_string(match)
+        if s:
+            results.append(s)
+    return results
+
+
+def _extract_output_quotes(text: str) -> list[str]:
+    """Extract all quoted string contents from text using _QUOTED_RE."""
+    results = []
+    for match in _QUOTED_RE.finditer(text or ""):
+        s = _extract_quote_string(match)
+        if s:
+            results.append(s)
+    return results
+
+
 _INTERNAL_MONOLOGUE_CUE_RE = re.compile(
     r"\b(?:think|thinks|thinking|thought|inner\s+monologue|internal\s+monologue|"
-    r"piensa|pensando|pensamiento|mon[oó]logo\s+interno|reflexiona|reflexionando)\b",
+    r"piensa|piensan|pensando|pensamiento|mon[oó]logo\s+interno|reflexiona|reflexionan|reflexionando|"
+    r"pense|pensait|pensent|pensant|monologue\s+int[eé]rieur|"
+    r"denkt|dachte|dachten|denkend|innerer\s+monolog|"
+    r"pensava|pensam|pensamento|mon[oó]logo\s+interior)\b",
     re.IGNORECASE,
 )
 _SPEECH_CUE_RE = re.compile(
-    r"\b(?:say|says|said|saying|state|states|ask|asks|asking|shout|shouts|shouting|"
-    r"reply|replies|replied|replying|respond|responds|sing|sings|singing|chant|chants|"
-    r"call|calls|exclaim|exclaims|whisper|whispers|whispering|speak|speaks|speaking|"
-    r"explain|explains|explaining|narrate|narrates|narrating|describe|describes|describing|comment|comments|commenting|"
-    r"dice|dijo|diciendo|responde|contest[ao]|canta|cantando|pregunta|"
-    r"preguntando|grita|gritando|susurra|susurrando|habla|hablando|think|thinks|thinking|"
-    r"explica|explicando|narra|narrando|describe|describiendo|comenta|comentando|cuenta|contando|"
-    r"thought|hear|hears|heard|hearing|piensa|pensando|pensamiento|reflexiona|reflexionando|"
-    r"mon[oó]logo|oye|oyen|o[ií]r|escucha|escuchan)\b",
+    r"\b(?:say|says|said|saying|state|states|stated|stating|ask|asks|asked|asking|shout|shouts|shouted|shouting|"
+    r"reply|replies|replied|replying|respond|responds|responded|responding|finish(?:es|ed|ing)?\s+with|sing|sings|sang|singing|chant|chants|chanted|chanting|"
+    r"call|calls|called|calling|exclaim|exclaims|exclaimed|exclaiming|whisper|whispers|whispered|whispering|speak|speaks|spoke|spoken|speaking|"
+    r"explain|explains|explained|explaining|narrate|narrates|narrated|narrating|describe|describes|described|describing|comment|comments|commented|commenting|"
+    r"tell|tells|told|telling|hear|hears|heard|hearing|is\s+heard|are\s+heard|was\s+heard|were\s+heard|sound|sounds|sounding|sounded|boom|booms|boomed|booming|voice|voices|"
+    r"dice|dicen|dijo|dijeron|diciendo|responde|responden|respondi[oó]|respondieron|respondiendo|contest[ao]|contestan|contest[oó]|contestaron|contestando|"
+    r"canta|cantan|cant[oó]|cantaron|cantando|pregunta|preguntan|pregunt[oó]|preguntaron|preguntando|"
+    r"grita|gritan|grit[oó]|gritaron|gritando|susurra|susurran|susurr[oó]|susurraron|susurrando|"
+    r"habla|hablan|habl[oó]|hablaron|hablando|explica|explican|explic[oó]|explicaron|explicando|"
+    r"narra|narran|narr[oó]|narraron|narrando|describe|describen|describi[oó]|describieron|describiendo|"
+    r"comenta|comentan|coment[oó]|comentaron|comentando|cuenta|cuentan|cont[oó]|contaron|contando|"
+    r"dit|disent|disait|disant|parle|parlent|parlait|parlant|demande|demandent|demandait|demandant|répond|repond|répondent|repondent|répondait|repondait|répondant|repondant|crie|crient|criait|criant|chuchote|chuchotent|chuchotait|chuchotant|"
+    r"sagt|sagte|sagten|sagend|spricht|sprechen|sprach|sprachen|sprechend|fragt|fragte|fragten|fragend|antwortet|antwortete|antworteten|antwortend|schreit|schrie|schrien|schreiend|flüstert|flüsterte|flüsterten|flüsternd|"
+    r"diz|dizem|disse|disseram|dizendo|fala|falam|falou|falaram|falando|pergunta|perguntam|perguntou|perguntaram|perguntando|responde|respondem|respondeu|responderam|respondendo|grita|gritam|gritou|gritaram|gritando|sussurra|sussurram|sussurrou|sussurraram|sussurrando|"
+    r"diu|diuen|va\s+dir|dient|parla|parlen|parlant|crida|criden|cridant|xiuxiueja|xiuxiuegen|xiuxiuejant|"
+    r"zegt|zeggen|zei|zeiden|zeggend|spreekt|spreken|sprak|spraken|sprekend|vraagt|vragen|vroeg|vroegen|antwoordt|antwoorden|antwoordde|antwoordden|roept|roepen|riep|riepen|fluistert|fluisteren|fluisterde|fluisterden|"
+    r"piensa|piensan|pensando|pensamiento|mon[oó]logo|reflexiona|reflexionan|reflexionando|oye|oyen|o[ií]r|escucha|escuchan)\b|"
+    r"(?:言う|言った|叫ぶ|呟く|話す|答える|と語る|と叫ぶ|と言う|说|道|喊|大喊|喊道|叫道|呼喊|低语|回答|问道|讲述|解释)",
     re.IGNORECASE,
 )
 _UNTAGGED_SPEECH_ACTION_RE = re.compile(
@@ -353,9 +430,52 @@ _UNTAGGED_SPEECH_ACTION_RE = re.compile(
     r"responds?|repeats?|repeating|sing(?:s|ing)?|chants?|exclaims?|booms?|booming|utters?|uttering|"
     r"explains?|explaining|narrates?|narrating|describes?|describing|comments?|commenting|"
     r"continues?\s+(?:to\s+)?(?:speak|talk)|finishes?\s+(?:speaking|talking)|"
-    r"delivers?\s+(?:(?:his|her|their|the|required)\s+)?(?:line|dialogue|words?))\b",
+    r"delivers?\s+(?:(?:his|her|their|the|required)\s+)?(?:line|dialogue|words?)|"
+    r"dice|dicen|habla|hablan|explica|explican|narra|narran|grita|gritan|susurra|susurran|"
+    r"dit|disent|parle|parlent|demande|demandent|sagt|sagte|spricht|sprechen|diz|dizem|fala|falam|"
+    r"diu|diuen|crida|criden)\b",
     re.IGNORECASE,
 )
+_VISIBLE_TEXT_RE = re.compile(
+    r"\b(?:sign|title\s+card|caption|subtitle|shirt|t-shirt|screen|label|poster|placard|book|page|cover|"
+    r"door|wall|window|board|billboard|banner|card|paper|note|badge|tag|box|hammer|weapon|object|"
+    r"vehicle|car|boat|plane|building|shop|bar|store|storefront|entrance|facade|package|can|bottle|cup|"
+    r"header|heading|intertitle|display|overlay|"
+    r"letrero|cartel|t[ií]tulo|tarjeta|subt[ií]tulo|camiseta|pantalla|etiqueta|p[oó]ster|placa|libro|"
+    r"p[aá]gina|portada|puerta|pared|muro|ventana|pizarra|valla|pancarta|papel|nota|chapa|caja|martillo|"
+    r"arma|objeto|veh[ií]culo|coche|edificio|tienda|bar|fachada|paquete|lata|botella|vaso|cabecera|"
+    r"intert[ií]tulo|r[oó]tulo)\b[^\r\n.!?;]{0,80}"
+    r"\b(?:reads?|reading|says?|saying|shows?|showing|displays?|displaying|written|inscribed|engraved|"
+    r"printed|painted|marked|labeled|spelling|spells?|spelled|"
+    r"dice|diciendo|reza|rezando|muestra|mostrando|pone|poniendo|escrito|grabado|impreso|pintado|marcado|etiquetado)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_visible_text_quote(source_prompt: str, match: re.Match[str]) -> bool:
+    """Return true when a quoted string represents on-screen visual text rather than spoken dialogue."""
+    source = source_prompt or ""
+    prefix = source[:match.start()]
+    boundary = max([prefix.rfind(mark) for mark in ".!?;\n\"”»“„」"] + [-1])
+    cue_window = prefix[boundary + 1:]
+    trailing_candidates = [i for i in [source.find(mark, match.end()) for mark in ".!?;\n\"”»“„」"] if i != -1]
+    trailing_boundary = min(trailing_candidates) if trailing_candidates else len(source)
+    trailing_window = source[match.end():trailing_boundary]
+    if _VISIBLE_TEXT_RE.search(cue_window):
+        return True
+    if re.search(
+        r"\b(?:written|printed|painted|marked|inscribed|labeled|escrito|impreso|pintado|marcado)\s+(?:on|in|en)\b",
+        cue_window, re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r"^\s*(?:written|printed|painted|marked|inscribed|labeled|escrito|impreso|pintado|marcado)\s+(?:on|in|en)\b",
+        trailing_window, re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 _EXPLICIT_CUT_RE = re.compile(
     r"\b(?:hard\s+cut|smash\s+cut|match\s+cut|cut\s+scene(?:\s+to)?|cut(?:s|ting)?\s+to|cutaway|insert\s+shot|"
     r"montage|shot\s+\d+|scene\s+\d+|plano\s+\d+|escena\s+\d+|corta\s+a|corte\s+a)\b|"
@@ -428,16 +548,47 @@ _LANGUAGE_ALIASES = {
     "catalán": "Catalan",
     "catala": "Catalan",
     "català": "Catalan",
+    "valencian": "Catalan",
+    "valenciano": "Catalan",
+    "valencià": "Catalan",
+    "valencia": "Catalan",
     "castilian": "Spanish",
     "castellano": "Spanish",
     "español": "Spanish",
     "espanol": "Spanish",
+    "español de españa": "Spanish",
+    "espanol de espana": "Spanish",
+    "español latino": "Spanish",
+    "espanol latino": "Spanish",
+    "español de américa": "Spanish",
+    "español de america": "Spanish",
+    "español neutro": "Spanish",
+    "espanol neutro": "Spanish",
+    "español de méxico": "Spanish",
+    "espanol de mexico": "Spanish",
+    "castellano de españa": "Spanish",
+    "castellano de espana": "Spanish",
+    "latin spanish": "Spanish",
+    "latam spanish": "Spanish",
+    "mexican spanish": "Spanish",
+    "peninsular spanish": "Spanish",
     "français": "French",
     "francais": "French",
+    "quebecois": "French",
+    "québécois": "French",
+    "canadian french": "French",
+    "français canadien": "French",
+    "francais canadien": "French",
     "deutsch": "German",
+    "austrian german": "German",
+    "swiss german": "German",
+    "schweizerdeutsch": "German",
     "italiano": "Italian",
     "português brasileiro": "Portuguese",
     "portugues brasileiro": "Portuguese",
+    "brazilian portuguese": "Portuguese",
+    "português do brasil": "Portuguese",
+    "portugues do brasil": "Portuguese",
     "português": "Portuguese",
     "portugues": "Portuguese",
     "brasileiro": "Portuguese",
@@ -446,26 +597,60 @@ _LANGUAGE_ALIASES = {
     "hangugeo": "Korean",
     "한국어": "Korean",
     "mandarin": "Chinese",
+    "mandarin chinese": "Chinese",
+    "standard chinese": "Chinese",
+    "simplified chinese": "Chinese",
+    "traditional chinese": "Chinese",
     "putonghua": "Chinese",
+    "guoyu": "Chinese",
     "中文": "Chinese",
     "汉语": "Chinese",
     "普通话": "Chinese",
+    "yue": "Cantonese",
     "粤语": "Cantonese",
     "廣東話": "Cantonese",
+    "cantonés": "Cantonese",
+    "cantones": "Cantonese",
+    "guangdonghua": "Cantonese",
     "russkiy": "Russian",
     "русский": "Russian",
     "العربية": "Arabic",
+    "hindi": "Hindi",
+    "dutch": "Dutch",
+    "flemish": "Dutch",
+    "vlaams": "Dutch",
+    "flamenco": "Dutch",
+    "holandés": "Dutch",
+    "holandes": "Dutch",
+    "nederlands": "Dutch",
+    "polish": "Polish",
+    "polski": "Polish",
+    "turkish": "Turkish",
+    "türkçe": "Turkish",
+    "turkce": "Turkish",
+    "vietnamese": "Vietnamese",
+    "tiếng việt": "Vietnamese",
+    "tieng viet": "Vietnamese",
 }
 # Spaced scripts (Latin, Cyrillic, Arabic) keep letter boundaries; CJK and Hangul aliases are
 # written without separators and agglutinate particles, so \b-style assertions never hold there.
 _SPACED_DIALOGUE_LANGUAGES = (
     "english", "spanish", "french", "german", "italian", "portuguese", "japanese", "korean",
-    "chinese", "cantonese", "russian", "arabic", "hindi", "dutch", "polish", "turkish",
-    "catalonian", "catalan", "catalán", "català", "catala", "español", "espanol", "castilian",
-    "castellano", "français", "francais", "deutsch", "italiano",
-    "português brasileiro", "portugues brasileiro",
-    "português", "portugues", "nihongo", "hangugeo", "putonghua",
-    "russkiy", "русский", "العربية",
+    "chinese", "cantonese", "russian", "arabic", "hindi", "dutch", "polish", "turkish", "vietnamese",
+    "catalonian", "catalan", "catalán", "català", "catala", "valencian", "valenciano", "valencià", "valencia",
+    "español", "espanol", "castilian", "castellano",
+    "español de españa", "espanol de espana", "español latino", "espanol latino",
+    "español de américa", "español de america", "español neutro", "espanol neutro",
+    "español de méxico", "espanol de mexico", "castellano de españa", "castellano de espana",
+    "latin spanish", "latam spanish", "mexican spanish", "peninsular spanish",
+    "français", "francais", "quebecois", "québécois", "canadian french", "français canadien", "francais canadien",
+    "deutsch", "austrian german", "swiss german", "schweizerdeutsch", "italiano",
+    "português brasileiro", "portugues brasileiro", "brazilian portuguese", "português do brasil", "portugues do brasil",
+    "português", "portugues", "nihongo", "hangugeo", "putonghua", "guoyu",
+    "mandarin chinese", "standard chinese", "simplified chinese", "traditional chinese",
+    "yue", "cantonés", "cantones", "guangdonghua",
+    "flemish", "vlaams", "flamenco", "holandés", "holandes", "nederlands", "polski", "türkçe", "turkce",
+    "tiếng việt", "tieng viet", "russkiy", "русский", "العربية",
 )
 _UNSPACED_DIALOGUE_LANGUAGES = ("日本語", "한국어", "普通话", "汉语", "中文", "粤语", "廣東話")
 # "mandarin" also names a collar, a jacket, a duck and a fruit, and bare "brasileiro" is an
@@ -488,6 +673,20 @@ _DIALOGUE_LANGUAGE_PATTERN = (
     + r"|" + _MANDARIN_LANGUAGE_SENSE + r")(?![^\W\d_])|"
     + _language_alternation(_UNSPACED_DIALOGUE_LANGUAGES)
 )
+# A language may be qualified by its regional variety.  H3's tag still wants the
+# canonical language (for example [Spanish]), while delivery prose may retain the
+# variety ("Spain's Spanish", "British English", "Canadian French", etc.).
+# Keep the prefix deliberately constrained: accepting arbitrary adjectives here
+# would misread scene descriptions such as "in a Spanish tavern" as dialogue cues.
+_DIALOGUE_VARIETY_PREFIX_PATTERN = (
+    r"(?:[\wÀ-ÿ-]+(?:['’]s)|Spain|European|Peninsular|Latin(?:[ -]American)?|Mexican|Argentinian|"
+    r"Colombian|British|American|US|U\.S\.|UK|U\.K\.|Australian|Canadian|Irish|Scottish|Indian|"
+    r"Metropolitan|Quebec|Québécois|Belgian|Swiss|Brazilian|Portugal|Austrian|Modern Standard|"
+    r"Egyptian|Levantine|Gulf)"
+)
+_QUALIFIED_DIALOGUE_LANGUAGE_PATTERN = (
+    rf"(?:{_DIALOGUE_VARIETY_PREFIX_PATTERN}\s+){{1,2}}({_DIALOGUE_LANGUAGE_PATTERN})"
+)
 _DIALOGUE_AUTHORING_RE = re.compile(
     r"\b(?:generate|write|create|invent|compose|provide|draft|author|make\s+up|come\s+up\s+with|"
     r"genera(?:r)?|escribe|escribir|crea(?:r)?|inventa(?:r)?|comp[oó]n|componer|redacta(?:r)?|"
@@ -509,8 +708,128 @@ _DIALOGUE_PROHIBITION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_LANGUAGE_KEYWORDS = {
+    "Spanish": {
+        "chars": set("¿¡ñáéíóú"),
+        "words": {
+            "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "en", "y", "que", "por", "para", "con",
+            "como", "su", "sus", "al", "se", "es", "son", "dice", "dicen", "dijo", "dijeron", "habla", "hablan", "explica", "explican",
+            "narra", "narran", "grita", "gritan", "susurra", "susurran", "hola", "adiós", "buenos", "días", "tarde", "noche",
+            "amigo", "amiga", "caballero", "plano", "secuencia", "cámara", "vídeo", "video", "escena", "personaje", "pero",
+            "más", "aquí", "ahora", "todo", "todos", "toda", "todas", "esta", "este", "estos", "estas", "está", "están", "vamos", "tenemos",
+            "puedo", "quiero", "tenéis", "queréis", "venceremos", "moriremos", "pasará", "pasarás", "nadie", "quien", "quién",
+            "anda", "ahí", "ahi", "socorro", "ayudadme", "policías", "policias", "alto", "disparo", "queda", "quedan", "tiempo",
+            "nos", "nosotros", "vosotros", "ellos", "ellas", "casa", "tierra", "fuego", "agua", "espada", "rey", "vida", "muerte",
+            "amor", "mundo", "hombre", "mujer", "chico", "chica", "niño", "niña", "siempre", "nunca", "nada", "algo", "alguien",
+            "bueno", "buena", "bien", "mal", "tranquilo", "tranquila", "estás", "cabrones", "asesino", "cargadores"
+        }
+    },
+    "French": {
+        "chars": set("çœæàèùéêëîïôû"),
+        "words": {
+            "le", "la", "les", "un", "une", "des", "du", "dans", "en", "sur", "avec", "pour", "qui", "que", "est", "sont",
+            "dit", "disent", "parle", "parlent", "bonjour", "merci", "oui", "non", "ici", "tout", "tous", "plan", "séquence",
+            "caméra", "vidéo", "homme", "femme", "nous", "vous", "ils", "elles", "au", "aux", "monde", "temps", "chambre",
+            "vie", "mort", "ami", "amie", "chose", "bien", "très", "ne", "pas", "plus", "ce", "cette", "ces", "mon", "ma",
+            "mes", "ton", "ta", "tes", "son", "sa", "ses", "notre", "nos", "votre", "vos", "leur", "leurs", "faire", "fait",
+            "va", "vont", "bon", "bonne", "police", "arrive", "bougez", "arrêtez", "regarde", "regardez", "voici", "voilà",
+            "pourquoi", "comment", "quand", "où", "jamais", "rien", "personne"
+        }
+    },
+    "German": {
+        "chars": set("äöüß"),
+        "words": {
+            "der", "die", "das", "dem", "den", "des", "ein", "eine", "einen", "einem", "einer", "und", "in", "von", "mit",
+            "für", "auf", "ist", "sind", "nicht", "sagt", "sagte", "sagten", "spricht", "sprach", "hallo", "danke", "guten", "tag",
+            "morgen", "abend", "wir", "ihr", "sie", "es", "video", "kamera", "mann", "frau", "mein", "freund", "zeit",
+            "welt", "leben", "tod", "hier", "jetzt", "gut", "sehr", "bleiben", "stehen", "kommen", "kommt", "bitte", "ja",
+            "nein", "kein", "keine", "alles", "immer", "nie"
+        }
+    },
+    "Italian": {
+        "chars": set("àèéìòù"),
+        "words": {
+            "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "in", "con", "su", "per", "tra", "fra", "di", "da",
+            "del", "dello", "della", "dei", "degli", "delle", "che", "è", "sono", "dice", "dicono", "disse", "parla", "parlano",
+            "ciao", "grazie", "buongiorno", "arrivederci", "andiamo", "piano", "sequenza", "video", "uomo", "donna", "tutto",
+            "tutti", "subito", "tempo", "mondo", "amico", "amica", "casa", "vita", "morte", "bene", "molto", "questo", "questa",
+            "qui", "qua", "non", "più", "sempre", "mai", "niente"
+        }
+    },
+    "Portuguese": {
+        "chars": set("ãõçáéíóúâêô"),
+        "words": {
+            "o", "a", "os", "as", "um", "uma", "uns", "umas", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+            "com", "para", "que", "é", "são", "diz", "dizem", "disse", "fala", "falam", "olá", "obrigado", "obrigada", "bom", "dia",
+            "boa", "noite", "vamos", "plano", "sequência", "vídeo", "homem", "mulher", "tudo", "todos", "amigo", "amiga",
+            "tempo", "vida", "morte", "aqui", "agora", "bem", "muito", "este", "esta", "não", "mais", "sempre", "nunca", "nada"
+        }
+    },
+    "Catalan": {
+        "chars": set("àçèéíòóúïü"),
+        "words": {
+            "el", "la", "els", "les", "un", "una", "uns", "unes", "en", "amb", "per", "que", "és", "són", "diu", "diuen",
+            "va", "parla", "parlen", "hola", "gràcies", "adeu", "flaó", "aquest", "aquesta", "aquests", "aquestes", "pla",
+            "seqüència", "vídeo", "home", "dona", "tot", "tots", "totes", "cabrons", "aqui", "ara", "més", "molt", "ben",
+            "sempre", "mai", "res"
+        }
+    },
+    "English": {
+        "chars": set(),
+        "words": {
+            "the", "a", "an", "and", "in", "on", "at", "of", "to", "for", "with", "by", "from", "is", "are", "was", "were",
+            "be", "been", "says", "said", "speaks", "spoke", "explains", "narrates", "shouts", "whispers", "shot", "camera",
+            "video", "scene", "character", "man", "woman", "we", "they", "this", "that", "these", "those", "pilot", "target",
+            "acquired", "world", "time", "friend", "life", "death", "here", "now", "well", "very", "first", "batch", "no",
+            "music", "score", "sound", "sounds", "audio", "open", "opens", "door", "walk", "walks", "enter", "enters",
+            "looking", "looks", "good", "morning", "evening", "night", "hello", "proceed", "stop", "move", "fine"
+        }
+    }
+}
 
-def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
+
+def _detect_language(text: str, default: str = "English") -> str:
+    """Detect natural language of text returning canonical MiniMax H3 language name."""
+    if not text or not str(text).strip():
+        return default
+    s = str(text)
+    if re.search(r"[\u3040-\u30ff]", s):
+        return "Japanese"
+    if re.search(r"[\uac00-\ud7af]", s):
+        return "Korean"
+    if re.search(r"[\u4e00-\u9fff]", s):
+        if re.search(r"[唔咁哋咗諗睇邊]", s) or "粤语" in s or "廣東話" in s:
+            return "Cantonese"
+        return "Chinese"
+    if re.search(r"[\u0400-\u04ff]", s):
+        return "Russian"
+    if re.search(r"[\u0600-\u06ff]", s):
+        return "Arabic"
+    if re.search(r"[\u0900-\u097f]", s):
+        return "Hindi"
+
+    lower = s.lower()
+    scores = {lang: 0 for lang in _LANGUAGE_KEYWORDS}
+    for char in lower:
+        for lang, data in _LANGUAGE_KEYWORDS.items():
+            if char in data["chars"]:
+                scores[lang] += 4
+    words = re.findall(r"\b[\wÀ-ÿ'-]+\b", lower)
+    for word in words:
+        for lang, data in _LANGUAGE_KEYWORDS.items():
+            if word in data["words"]:
+                scores[lang] += 2
+    best_lang, best_score = max(scores.items(), key=lambda item: item[1])
+    if best_score <= 0:
+        return default
+    if scores.get("English", 0) >= best_score:
+        return "English"
+    if best_score >= 2:
+        return best_lang
+    return default
+
+
+def _dialogue_authoring_request(source_prompt: str, override_language: str = "auto") -> tuple[bool, str]:
     """Return whether the source authorizes new spoken words and their requested language."""
     source = str(source_prompt or "")
 
@@ -582,9 +901,14 @@ def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
     if not direct and (_DIALOGUE_PROHIBITION_RE.search(source) or not unscripted):
         return False, "Original language"
 
+    if override_language and override_language.casefold() not in {"auto", "none", "original language"}:
+        return True, _LANGUAGE_ALIASES.get(override_language.casefold(), override_language.capitalize())
+
     language_mentions = []
     language_patterns = (
         rf"\b(?:in|en)\s+(?:(?:the\s+)?(?:language|idioma)\s+)?({_DIALOGUE_LANGUAGE_PATTERN})",
+        rf"\b(?:in|en)\s+(?:(?:the\s+)?(?:language|idioma)\s+)?"
+        rf"{_QUALIFIED_DIALOGUE_LANGUAGE_PATTERN}",
         rf"({_DIALOGUE_LANGUAGE_PATTERN})\s+(?:language\s+)?(?:dialogue|dialog|lines?|voice[ -]?over|"
         rf"narration|speech|di[aá]logo|l[ií]neas?|voz\s+en\s+off|narraci[oó]n)\b",
     )
@@ -592,7 +916,7 @@ def _dialogue_authoring_request(source_prompt: str) -> tuple[bool, str]:
         for match in re.finditer(pattern, source, flags=re.IGNORECASE):
             language_mentions.append((match.start(), match.group(1)))
     if not language_mentions:
-        return True, "Original language"
+        return True, _detect_language(source, default="English")
     raw = re.sub(r"\s+", " ", max(language_mentions, key=lambda item: item[0])[1]).strip()
     return True, _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
 
@@ -622,14 +946,20 @@ def _source_requests_offscreen_voice(source_prompt: str) -> bool:
 
 SYSTEM_PROMPT = """You rewrite basic user requests into production-ready MiniMax H3 audiovisual prompts.
 
-Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation. Write
-all structural prose in English. Preserve the original language only inside dialogue/lyrics and visible on-screen
-text. Never translate, paraphrase, censor, soften, or extend quoted dialogue, lyrics, or visible text. Do not invent
-new dialogue unless the authoritative user prompt explicitly asks you to write/generate dialogue or gives an
-unscripted speech/narration brief such as what a character explains. In that case, write concrete, natural,
-speakable lines in the requested language; do not return a dialogue placeholder or merely describe that speech
-happens. If the request includes an AUTHORITATIVE DIALOGUE LEDGER, copy every ledger line exactly once and author no
-additional words. Keep requested identities, actions, camera behavior, timing, reference roles, and ending intact.
+Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation.
+Write all structural prose, section headers, shot timeline descriptions, camera motions, lighting, atmosphere,
+actions, and soundscape strictly in English. If the user request is written in Spanish, French, German, Chinese,
+Japanese, or any other language, translate all visual, narrative, and soundscape descriptions into fluent English prose.
+Preserve or author the intended language ONLY inside dialogue/lyrics and visible on-screen text.
+For dialogue/lyrics, format every spoken block strictly as <d>[Language] spoken text</d> where [Language] is the
+canonical English name of the language (for example, [Spanish], [English], [French], [German], [Italian], [Portuguese],
+[Russian], [Japanese], [Chinese], [Korean], [Arabic], [Cantonese], [Catalan]). Never emit [Original language], [Language],
+or placeholder brackets. Never translate, paraphrase, censor, soften, or extend quoted dialogue, lyrics, or visible text.
+Do not invent new dialogue unless the authoritative user prompt explicitly asks you to write/generate dialogue or gives an
+unscripted speech/narration brief such as what a character explains; in that case, author concrete, natural, speakable
+lines in the character's intended language inside <d>[Language] ...</d>. If the request includes an
+AUTHORITATIVE DIALOGUE LEDGER, copy every ledger line exactly once and author no additional words. Keep requested
+identities, actions, camera behavior, timing, reference roles, and ending intact.
 
 Shared timeline rules:
 - Make every added detail concretely visible or audible. Develop the timeline in playback order through style,
@@ -848,7 +1178,7 @@ def resolve_mode(mode: str, reference_context: str = "", basic_prompt: str = "",
 def _asset_label(kind: str, number: str | int) -> str:
     canonical = {
         "image": "Picture", "imagen": "Picture", "picture": "Picture", "foto": "Picture",
-        "video": "Video", "vídeo": "Video", "audio": "Audio",
+        "video": "Video", "vídeo": "Video", "audio": "Audio", "voice": "Audio", "voz": "Audio",
     }
     return f"<{canonical[str(kind).lower()]} {int(number)}>"
 
@@ -887,6 +1217,7 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         }
 
     picture_roles = []
+    binding_metadata: dict[tuple[str, str], dict[str, Any]] = {}
     for first_role, second_role, kind, number in _COORDINATED_ROLE_REFERENCE_RE.findall(source):
         asset = _asset_label(kind, number)
         picture_roles.extend(((first_role.strip(), asset), (second_role.strip(), asset)))
@@ -895,9 +1226,17 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         role = role.strip()
         # When a sentence begins with another actor ("the woman tells the person in image 2"), bind the
         # reference to the nearest noun phrase rather than the sentence-leading subject.
-        nested_determiners = list(re.finditer(r"\b(?:the|a|an|el|la|los|las|un|una)\s+", role, re.IGNORECASE))
+        nested_determiners = list(re.finditer(r"\b(?:the|a|an|el|la|los|las|un|una|al|del)\s+", role, re.IGNORECASE))
         if nested_determiners:
             role = role[nested_determiners[-1].end():].strip()
+        if not role or re.search(r"^(?:audio|voice|voz|video|vídeo|image|imagen|picture|foto)\s*\d+\b", role, re.IGNORECASE):
+            continue
+        role_was_main_typo = role.casefold() == "main"
+        if role_was_main_typo:
+            role = "man"
+        # Repair a frequent source typo only in the inferred role label.  The
+        # original prompt remains authoritative and is never rewritten.
+        role = re.sub(r"\bcihinese\b", "Chinese", role, flags=re.IGNORECASE)
         role = re.sub(
             r"^.*\b(?:appear|appears|appearing|emerge|emerges|show|shows|reveal|reveals|"
             r"aparece|aparecen|apareciendo|emerge|emergen|vemos|son)\s+",
@@ -905,10 +1244,89 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             role,
             flags=re.IGNORECASE,
         ).strip()
+        asset = _asset_label(kind, number)
+        # Preserve the user's literal local binding rather than guessing which kind of
+        # entity it describes. This works equally for people, objects, vehicles, styles,
+        # late reveals, wardrobe clauses, and other explicit image associations.
+        trailing = re.split(r"[.;\r\n]", source[match.end():match.end() + 180], maxsplit=1)[0]
+        cue_stopwords = {
+            "image", "imagen", "picture", "foto", "subject", "person", "persona", "people",
+            "character", "personaje", "thing", "object", "the", "this", "that", "then", "than",
+            "with", "from", "into", "inside", "outside", "where", "when", "while", "only", "very",
+            "como", "para", "desde", "donde", "cuando", "mientras", "este", "esta", "esto", "that",
+            "can't", "cannot",
+        }
+        generic_binding_roles = {
+            "person", "persona", "people", "character", "personaje", "thing", "object", "objeto",
+        }
+        descriptor_tail = ""
+        if re.match(
+            r"\s*(?:(?:,\s*)?(?:as|como|wearing|dressed|holding|carrying|with|"
+            r"vestido|vestida|llevando|sosteniendo|con|who|que)\b|,\s*(?:a|an|un|una)\b)",
+            trailing,
+            flags=re.IGNORECASE,
+        ):
+            descriptor_tail = trailing
+        # ``with the voice in Audio N`` is a cross-modal binding, not a visual
+        # descriptor of the Picture subject.  Let the dedicated audio mapping
+        # below retain it without swallowing the rest of the scene sentence.
+        if re.match(
+            r"\s*,?\s*(?:with|using|usando|con)\s+(?:the\s+|la\s+|el\s+)?"
+            r"(?:voice|voz)\s+(?:in|of|from|en|de)\s+(?:audio|voice|voz)\s*\d+\b",
+            descriptor_tail,
+            flags=re.IGNORECASE,
+        ):
+            descriptor_tail = ""
+        binding_excerpt = re.sub(
+            r"\s+", " ", source[match.start():match.end()] + descriptor_tail,
+        ).strip(" ,")
+        binding_excerpt = _ASSET_REFERENCE_RE.sub(lambda item: _asset_label(*item.groups()), binding_excerpt)
+        if role_was_main_typo:
+            binding_excerpt = re.sub(r"\bmain\b", "man", binding_excerpt, count=1, flags=re.IGNORECASE)
+        binding_excerpt = re.sub(r"\bcihinese\b", "Chinese", binding_excerpt, flags=re.IGNORECASE)
+        cue_text = role
+        if role.casefold() in generic_binding_roles:
+            cue_text = descriptor_tail
+        elif descriptor_tail:
+            cue_text += " " + descriptor_tail
+        binding_cues = tuple(dict.fromkeys(
+            word.casefold() for word in re.findall(r"[\wÀ-ÿ'-]{4,}", cue_text)
+            if word.casefold() not in cue_stopwords
+        ))
         pieces = re.split(r"\s+(?:and|y)\s+", role, flags=re.IGNORECASE)
         for piece in pieces:
             if piece.strip():
-                picture_roles.append((piece.strip(), _asset_label(kind, number)))
+                clean_piece = piece.strip()
+                picture_roles.append((clean_piece, asset))
+                binding_metadata.setdefault((clean_piece.casefold(), asset.casefold()), {
+                    "excerpt": binding_excerpt,
+                    "cues": binding_cues,
+                })
+    for match in _ROLE_AFTER_REFERENCE_RE.finditer(source):
+        kind, number, role = match.groups()
+        role = role.strip()
+        nested_determiners = list(re.finditer(r"\b(?:the|a|an|el|la|los|las|un|una|al|del)\s+", role, re.IGNORECASE))
+        if nested_determiners:
+            role = role[nested_determiners[-1].end():].strip()
+        if not role or re.search(r"^(?:audio|voice|voz|video|vídeo|image|imagen|picture|foto)\s*\d+\b", role, re.IGNORECASE):
+            continue
+        role_was_main_typo = role.casefold() == "main"
+        if role_was_main_typo:
+            role = "man"
+        role = re.sub(r"\bcihinese\b", "Chinese", role, flags=re.IGNORECASE)
+        role = re.sub(
+            r"^.*\b(?:appear|appears|appearing|emerge|emerges|show|shows|reveal|reveals|"
+            r"aparece|aparecen|apareciendo|emerge|emergen|vemos|son)\s+",
+            "",
+            role,
+            flags=re.IGNORECASE,
+        ).strip()
+        asset = _asset_label(kind, number)
+        pieces = re.split(r"\s+(?:and|y)\s+", role, flags=re.IGNORECASE)
+        for piece in pieces:
+            if piece.strip():
+                clean_piece = piece.strip()
+                picture_roles.append((clean_piece, asset))
     for asset, role, analysis in re.findall(
         r"Connected asset\s+(<Picture\s+\d+>)\s+has role:\s*([^;\r\n]+)(?:;\s*analysis:\s*([^\r\n]+))?",
         reference_context or "", flags=re.IGNORECASE,
@@ -960,12 +1378,13 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         )
         # Generic singular/plural labels in prose commonly refer back to the same person. Collapse
         # those demonstrable aliases, but retain coordinated concrete roles such as woman + man.
-        if role_family(role) == "identity" and (
+        family = role_family(role)
+        if family == "identity" and (
             all(word in generic_role_words for word in role_words)
             or re.search(r"\b(?:version|versi[oó]n)\b", role, re.IGNORECASE)
         ):
             alias_key = "__generic_identity__"
-        key = (asset.casefold(), role_family(role), alias_key)
+        key = (asset.casefold(), family, alias_key)
         if key not in grouped_roles:
             grouped_roles[key] = role
             group_order.append(key)
@@ -979,6 +1398,7 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         role = grouped_roles[key]
         asset = next(item for item in picture_assets if item.casefold() == key[0])
         contribution = key[1]
+        binding = binding_metadata.get((role.casefold(), asset.casefold()), {})
         if contribution == "style":
             description = (
                 f"the reusable visual style abstracted from {asset}, including its palette, rendering treatment, "
@@ -1012,14 +1432,70 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
                 f"come from {asset}"
             )
             marker = "fully_preserved"
+        if binding.get("excerpt"):
+            description += (
+                f"; this label applies only to the entity explicitly bound by the source wording "
+                f"{binding['excerpt']!r}"
+            )
         subjects.append({"role": role, "asset": asset, "contribution": contribution,
-                         "description": description, "marker": marker})
+                         "description": description, "marker": marker,
+                         "binding_excerpt": binding.get("excerpt", ""),
+                         "binding_cues": binding.get("cues", ())})
         if contribution == "identity" and primary_identity_label is None:
             # Labels are assigned in this same stable order below.
             primary_identity_label = f"<Subject {len(subjects)}>"
         used_assets.add(asset)
 
     independent = {}
+
+    # Infer only explicit local Picture/Audio pairings such as
+    # ``the man in image 2 ... with the voice in audio 2``.  For each voice
+    # clause, the nearest preceding Picture in the same bounded span wins;
+    # conflicting pairings are deliberately left unbound.
+    audio_subject_candidates: dict[str, set[str]] = {}
+    known_picture_roles_map = {s["asset"].casefold(): s["role"].casefold() for s in subjects}
+    clauses = re.split(r"[,;.!\n]|\s+(?:y|and)\s+", source)
+    for clause in clauses:
+        clause_audios = list(_ASSET_REFERENCE_RE.finditer(clause))
+        clause_audios = [m for m in clause_audios if m.group(1).casefold() in {"audio", "voice", "voz"}]
+        clause_pics = list(_ASSET_REFERENCE_RE.finditer(clause))
+        clause_pics = [m for m in clause_pics if m.group(1).casefold() in {"image", "imagen", "picture", "foto"}]
+        if clause_audios:
+            for a_match in clause_audios:
+                audio_asset = _asset_label(a_match.group(1), a_match.group(2))
+                if clause_pics:
+                    pic_asset = _asset_label(clause_pics[0].group(1), clause_pics[0].group(2))
+                    audio_subject_candidates.setdefault(audio_asset, set()).add(pic_asset)
+                else:
+                    matched_pic = None
+                    for p_asset, p_role in known_picture_roles_map.items():
+                        role_words = [w for w in re.findall(r"[\wÀ-ÿ'-]+", p_role) if w not in {"the", "a", "an", "el", "la", "un", "una"}]
+                        if any(w in clause.lower() for w in role_words):
+                            matched_pic = next((s["asset"] for s in subjects if s["asset"].casefold() == p_asset), None)
+                            break
+                    if matched_pic:
+                        audio_subject_candidates.setdefault(audio_asset, set()).add(matched_pic)
+
+    voice_binding_re = re.compile(
+        r"\b(?:with|using|use|uses|usando|usa|utiliza|con|tiene|teniendo|has|having|gives|giving|su|his|her|their|whose|cuya|cuyo)\s+"
+        r"(?:the\s+|la\s+|el\s+|su\s+|his\s+|her\s+|their\s+)?(?:voice|voz)(?:\s+(?:in|of|from|en|de|del|is|es|proviene\s+de|viene\s+de|as|como|being))?\s*"
+        r"(audio|voice|voz)\s*(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\b",
+        re.IGNORECASE,
+    )
+    picture_mentions = [
+        (match.start(), _asset_label(match.group(1), match.group(2)))
+        for match in _ASSET_REFERENCE_RE.finditer(source)
+        if match.group(1).casefold() in {"image", "imagen", "picture", "foto"}
+    ]
+    for voice_match in voice_binding_re.finditer(source):
+        audio_asset = _asset_label(voice_match.group(1), voice_match.group(2))
+        if audio_asset not in audio_subject_candidates:
+            preceding = [
+                (position, asset) for position, asset in picture_mentions
+                if 0 <= voice_match.start() - position <= 420
+            ]
+            if preceding:
+                audio_subject_candidates.setdefault(audio_asset, set()).add(max(preceding)[1])
     for asset in picture_assets:
         number = re.search(r"\d+", asset).group()
         token = rf"(?:image|imagen|picture|foto)\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number}"
@@ -1071,17 +1547,44 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
     for asset in audio_assets:
         number = re.search(r"\d+", asset).group()
         token = rf"(?:audio\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number}|{re.escape(asset)})"
-        exact_copy = bool(re.search(
+        # The source text has not been canonicalized yet at this point, so
+        # preserve voice/voz aliases while detecting voice-cloning intent.
+        voice_token = rf"(?:{token}|(?:voice|voz)\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number})"
+        copy_match = re.search(
             rf"(?:\b(?:copy|copied|reuse|reused|reutiliza|copiar|paired)\b.{{0,60}}{token}|"
             rf"{token}.{{0,60}}\b(?:copy|copied|reuse|reused|reutiliza|copiar|paired)\b)",
             combined_context,
             re.IGNORECASE,
-        ))
+        )
+        exact_copy = bool(copy_match)
+        if copy_match:
+            # A prohibition such as "do not copy the original words from
+            # Audio 1" must never be inverted into synchronized audio reuse.
+            local_copy_context = combined_context[max(0, copy_match.start() - 30):copy_match.end() + 30]
+            if re.search(
+                r"\b(?:do\s+not|don't|never|without|no)\s+(?:fully\s+|directly\s+)?"
+                r"(?:copy|reuse|reutiliza|copiar)\b",
+                local_copy_context,
+                re.IGNORECASE,
+            ):
+                exact_copy = False
+        voice_reference = bool(re.search(
+            rf"(?:\b(?:voice|voz|timbre|speaker|delivery)\b.{{0,70}}{voice_token}|"
+            rf"{voice_token}.{{0,70}}\b(?:voice|voz|timbre|speaker|delivery)\b|"
+            rf"\b(?:using|use|uses|with|usando|usa|utiliza|con|pon|ponle|poner|asigna|asignar)\s+(?:the\s+|la\s+|el\s+|al\s+|a\s+)?{voice_token})",
+            combined_context,
+            re.IGNORECASE,
+        )) or asset in audio_subject_candidates
         independent[asset] = {
             "description": (
-                f"the supplied audio signal {'copied as a synchronized audio layer' if exact_copy else 'used as an audio reference for voice, delivery, rhythm, or sound texture'}"
+                f"the supplied audio signal {'copied as a synchronized audio layer' if exact_copy else 'used exclusively as the voice-timbre and delivery reference for the speaking character; its original words and unrelated sounds are not copied' if voice_reference else 'used as an audio reference for voice, delivery, rhythm, or sound texture'}"
             ),
             "marker": "partially_copy" if exact_copy else "reference",
+            "voice_reference": voice_reference,
+            "bound_subject_asset": (
+                next(iter(audio_subject_candidates.get(asset, ())))
+                if len(audio_subject_candidates.get(asset, ())) == 1 else None
+            ),
         }
         used_assets.add(asset)
 
@@ -1097,11 +1600,29 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         definitions.append({
             "label": subject["label"], "line": f"{subject['label']} is {subject['description']}.",
             "marker": subject["marker"], "asset": subject["asset"], "kind": "subject",
+            "role": subject["role"],
         })
+    subject_labels_by_asset: dict[str, list[str]] = {}
+    for subject in subjects:
+        subject_labels_by_asset.setdefault(subject["asset"].casefold(), []).append(subject["label"])
+    for item in independent.values():
+        bound_asset = item.get("bound_subject_asset")
+        labels = subject_labels_by_asset.get(str(bound_asset).casefold(), []) if bound_asset else []
+        if item.get("voice_reference") and len(labels) == 1:
+            item["bound_subject"] = labels[0]
+            s_match = re.search(r'\d+', labels[0])
+            s_num = s_match.group() if s_match else "1"
+            item["description"] = (
+                f"the supplied audio signal used exclusively as the voice-timbre and delivery reference for "
+                f"{labels[0]} (S{s_num})'s newly generated dialogue; its original "
+                "words and unrelated sounds are not copied"
+            )
     for label, item in independent.items():
         definitions.append({
             "label": label, "line": f"{label} is {item['description']}.",
             "marker": item["marker"], "asset": label, "kind": label[1:].split()[0].lower(),
+            "voice_reference": bool(item.get("voice_reference")),
+            "bound_subject": item.get("bound_subject"),
         })
 
     reveal_match = re.search(
@@ -1153,6 +1674,26 @@ def _official_reference_contract(source_prompt: str, reference_context: str = ""
           for item in model["definitions"]],
         "- Use every defined Subject in detailed_description. Do not invent labels or reinterpret source assets as generated moments.",
     ]
+    for subject in model["subjects"]:
+        binding = subject.get("binding_excerpt") or subject["role"]
+        lines.append(
+            f"- BINDING LOCK: {subject['label']} maps only to the entity, object, or visual concept explicitly "
+            f"linked to {subject['asset']} in the user's source wording {binding!r}. Attach the reference to that "
+            "grammatical referent—not to an earlier, nearby, speaking, or more prominent subject. Its first use in "
+            "detailed_description must identify that exact referent."
+        )
+    for item in model["definitions"]:
+        bound_subject = item.get("bound_subject")
+        if item["kind"] != "audio" or not bound_subject:
+            continue
+        speaker_id = re.search(r"\d+", bound_subject).group()
+        lines.append(
+            f"- VOICE BINDING LOCK: infer this relationship from the user's full grammatical context, not from "
+            f"matching asset ordinals: {item['label']} belongs exclusively to {bound_subject} (S{speaker_id}). "
+            f"Every newly generated line spoken by {bound_subject} must use the exact stable speaker ID "
+            f"(S{speaker_id}) and explicitly identify {item['label']} as its timbre/delivery reference. Never "
+            "transfer that voice to another Subject, and never assign a different S-number to this Subject."
+        )
     for asset in sorted(model.get("unassigned_assets", ())):
         lines.append(
             f"- UNASSIGNED ASSET: {asset} has no authoritative role. Do not invent a Subject or bind it to a "
@@ -1270,11 +1811,67 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
         match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", line, re.IGNORECASE)
         if match and match.group(1).casefold() not in existing_definitions:
             existing_definitions[match.group(1).casefold()] = line.strip()
+
+    # If the model split one source person into an extra Subject but its own
+    # definition cites a Picture that has exactly one authoritative Subject,
+    # fold the orphan label back into that canonical Subject everywhere before
+    # rebuilding the reference sections.  Do not guess when one Picture is
+    # intentionally bound to multiple distinct entities.
+    canonical_by_asset: dict[str, list[str]] = {}
+    for item in model["definitions"]:
+        if item["kind"] == "subject":
+            canonical_by_asset.setdefault(item["asset"].casefold(), []).append(item["label"])
+    expected_labels = {item["label"].casefold() for item in model["definitions"]}
+    for orphan_key, line in tuple(existing_definitions.items()):
+        if not orphan_key.startswith("<subject ") or orphan_key in expected_labels:
+            continue
+        assets = {item.casefold() for item in re.findall(r"<Picture\s+\d+>", line, re.IGNORECASE)}
+        targets = {
+            labels[0] for asset in assets
+            for labels in (canonical_by_asset.get(asset, []),) if len(labels) == 1
+        }
+        if len(targets) == 1:
+            orphan_label = re.match(r"\s*(<Subject\s+\d+>)", line, re.IGNORECASE).group(1)
+            value = re.sub(re.escape(orphan_label), next(iter(targets)), value, flags=re.IGNORECASE)
+    existing_definitions = {}
+    for line in _section_body(value, "subject_definitions").splitlines():
+        match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", line, re.IGNORECASE)
+        if match and match.group(1).casefold() not in existing_definitions:
+            existing_definitions[match.group(1).casefold()] = line.strip()
     merged_definitions = []
+    semantically_replaced: set[str] = set()
     for item in model["definitions"]:
         line = existing_definitions.get(item["label"].casefold(), item["line"])
-        if item["kind"] == "subject" and item["asset"].casefold() not in line.casefold():
-            line = line.rstrip(". ") + f"; its source provenance is {item['asset']}."
+        if item["kind"] == "subject":
+            expected_role = str(item.get("role", "")).strip()
+            subject_model = next(
+                (subject for subject in model["subjects"] if subject["label"] == item["label"]),
+                {},
+            )
+            expected_cues = tuple(subject_model.get("binding_cues", ()))
+            role_words = re.findall(r"[\wÀ-ÿ'-]+", expected_role.casefold())
+            role_is_specific = any(word not in {
+                "the", "a", "an", "el", "la", "los", "las", "un", "una", "person", "persona",
+                "people", "man", "men", "hombre", "hombres", "character", "personaje",
+            } for word in role_words)
+            cue_matches = [cue for cue in expected_cues if cue in line.casefold()]
+            obvious_man_typo = (
+                expected_role.casefold() == "man"
+                and bool(re.search(r"\bmain\b", line, re.IGNORECASE))
+            )
+            if (obvious_man_typo
+                    or (expected_cues and not cue_matches)
+                    or (not expected_cues and role_is_specific and expected_role.casefold() not in line.casefold())):
+                # Provenance alone is insufficient: an LLM may cite the right Picture while
+                # assigning it to the wrong person.  Replace only a semantically mismatched
+                # inferred definition; retain richer correct definitions and analysis.
+                line = item["line"]
+                semantically_replaced.add(item["label"].casefold())
+            elif item["asset"].casefold() not in line.casefold():
+                line = line.rstrip(". ") + f"; its source provenance is {item['asset']}."
+        elif item["kind"] == "audio" and item.get("bound_subject"):
+            if item["bound_subject"].casefold() not in line.casefold():
+                line = item["line"]
         merged_definitions.append(line)
     value = _replace_section_body(value, "subject_definitions", "\n".join(merged_definitions))
 
@@ -1287,7 +1884,9 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
     for item in model["definitions"]:
         line = existing_retention.get(item["label"].casefold(), "")
         marker_match = re.search(r"(:\s*)([a-z_]+)\b", line, re.IGNORECASE)
-        if line and marker_match:
+        if item["label"].casefold() in semantically_replaced:
+            line = _default_retention_line(item)
+        elif line and marker_match:
             line = line[:marker_match.start(2)] + item["marker"] + line[marker_match.end(2):]
         else:
             line = _default_retention_line(item)
@@ -1309,13 +1908,65 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
         r"(?:\s*(?:\+|/)\s*(?:reference generation|keyframe completion|video editing|video continuation|"
         r"audio reuse|audio reference))*[.!]?"
     )
-    if summary_tail.casefold() in {"placeholder", "n/a"} or re.fullmatch(
+    hallucinates_video = (
+        not any(item["kind"] == "video" for item in model["definitions"])
+        and bool(re.search(
+            r"\bvideo\b[^.\r\n]{0,48}\b(?:edit(?:ed|ing)?|continuation|continues?)\b|<Video\s+\d+>",
+            summary_tail,
+            re.IGNORECASE,
+        ))
+    )
+    if hallucinates_video or summary_tail.casefold() in {"placeholder", "n/a"} or re.fullmatch(
         stale_task_tail, summary_tail, re.IGNORECASE,
     ):
         summary_tail = ""
     if not summary_tail:
         summary_tail = _reference_summary_tail(model, task_types)
     value = _replace_section_body(value, "summary", f"[{' + '.join(task_types)}] {summary_tail}")
+    voice_references = [
+        item["label"] for item in model["definitions"]
+        if item["kind"] == "audio" and item.get("voice_reference")
+    ]
+    if voice_references:
+        detail = _section_body(value, "detailed_description")
+        def _bound_lock(item):
+            if item.get("bound_subject"):
+                m = re.search(r'\d+', item['bound_subject'])
+                num = m.group() if m else "1"
+                return (
+                    f"{item['label']} is the exclusive voice-timbre and delivery reference for "
+                    f"{item['bound_subject']} (S{num})'s newly generated "
+                    "dialogue; preserve that speaker identity without copying the audio's original words or unrelated sounds."
+                )
+            return (
+                f"{item['label']} is the exclusive voice-timbre and delivery reference for the speaking character's "
+                "newly generated dialogue; preserve its speaker identity without copying its original words or unrelated sounds."
+            )
+        locks = " ".join(
+            _bound_lock(item)
+            for item in model["definitions"]
+            if item["kind"] == "audio" and item.get("voice_reference")
+        )
+        detail = re.sub(
+            r"\b(?:with\s+)?(?:a\s+)?(?:synthesi[sz]ed|synthetic|robotic|mechanical)"
+            r"(?:,?\s+(?:slightly\s+)?(?:rough|metallic|processed))?\s+(?:voice|timbre)\b",
+            "with the referenced voice timbre",
+            detail,
+            flags=re.IGNORECASE,
+        )
+        # Avoid assigning one tagged line twice (for example, "He speaks ...:
+        # Arnold shouts, <d>..."). A duplicate attribution can weaken which
+        # speaker is meant to inherit the reference voice.
+        detail = re.sub(
+            r"(\b(?:speaks?|says?|shouts?|whispers?)\b[^:\n]{0,180}:\s*)"
+            r"[^<:\n]{1,100}\b(?:speaks?|says?|shouts?|whispers?)\s*,?\s*(?=<d>)",
+            r"\1",
+            detail,
+            flags=re.IGNORECASE,
+        )
+        if locks not in detail:
+            detail = locks + "\n" + detail.lstrip()
+        value = _replace_section_body(value, "detailed_description", detail)
     return value
 
 
@@ -1440,9 +2091,16 @@ def _source_dialogue_shot_indices(source_prompt: str) -> list[int]:
     """Map each quoted spoken occurrence to its user-authored explicit shot."""
     source = source_prompt or ""
     indices = []
-    for match in _QUOTED_RE.finditer(source):
+    for match in _SOURCE_QUOTED_RE.finditer(source):
+        if _is_visible_text_quote(source, match):
+            continue
         cue_window = source[max(0, match.start() - 180):match.start()]
-        if _SPEECH_CUE_RE.search(cue_window):
+        trailing_window = source[match.end():match.end() + 60]
+        if (
+            _SPEECH_CUE_RE.search(cue_window)
+            or _INTERNAL_MONOLOGUE_CUE_RE.search(cue_window)
+            or _SPEECH_CUE_RE.search(trailing_window)
+        ):
             indices.append(1 + len(list(_CUT_COMMAND_RE.finditer(source, 0, match.start()))))
     return indices
 
@@ -1678,7 +2336,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        cinematography_json: str = "",
                        instrumental_style: str = "none",
                        acoustic_space: str = "none",
-                       dialogue_coverage: str = "off") -> str:
+                       dialogue_coverage: str = "off",
+                       dialogue_language: str = "auto") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -1695,7 +2354,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
     active_enhancement_profile = enhancement_profile(enhance_description)
-    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(basic_prompt)
+    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(
+        basic_prompt, override_language=dialogue_language
+    )
     profile = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = profile["effectiveDurationSeconds"]
     creative_treatment = parse_creative_treatment(
@@ -1944,7 +2605,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                     for index, segment in enumerate(shot_segments, start=1)
                 )
             )
-        dialogue_contracts = _source_dialogue_contracts(basic_prompt)
+        dialogue_contracts = _source_dialogue_contracts(basic_prompt, override_language=dialogue_language)
         dialogue_items = _source_dialogue_shot_indices(basic_prompt)
         if (voice_performance == "audible" and dialogue_contracts
                 and len(dialogue_items) == len(dialogue_contracts)):
@@ -2101,7 +2762,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "styling, set dressing, new props, new events, new light sources, or new sound sources. Keep creative "
             "treatment disabled, but apply explicit cinematography, shot-plan, reference, and audio controls literally."
         )
-    dialogue_contracts = _source_dialogue_contracts(basic_prompt)
+    dialogue_contracts = _source_dialogue_contracts(basic_prompt, override_language=dialogue_language)
     if dialogue_contracts and voice_performance == "audible":
         dialogue_totals = Counter(
             (language, _dialogue_lexical_key(quote), internal)
@@ -2325,11 +2986,27 @@ def normalize_dialogue_tags(text: str) -> str:
         str(text),
         flags=re.IGNORECASE,
     )
+    def _add_detected_tag(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        lang = _detect_language(inner, default="English")
+        return f"<d>[{lang}] {inner}</d>"
+
     value = re.sub(
-        r"<d>\s*(?!\[[^\]]+\])",
-        "<d>[Original language] ",
+        r"<d>\s*(?!\[[^\]]+\])(.*?)\s*</d>",
+        _add_detected_tag,
         value,
-        flags=re.IGNORECASE,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    def _replace_original_language(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        lang = _detect_language(inner, default="English")
+        return f"<d>[{lang}] {inner}</d>"
+
+    value = re.sub(
+        r"<d>\s*\[(?:original\s+language|language)\]\s*(.*?)\s*</d>",
+        _replace_original_language,
+        value,
+        flags=re.IGNORECASE | re.DOTALL,
     )
     value = re.sub(r"(<d>\[[^\]]+\])\s*", r"\1 ", value, flags=re.IGNORECASE)
     # The official <d> block is the quotation boundary. Extra prose quotes
@@ -2342,48 +3019,77 @@ def normalize_dialogue_tags(text: str) -> str:
     )
 
 
-def _source_dialogue_language(source_prompt: str, quote_match) -> str:
-    window = (source_prompt or "")[max(0, quote_match.start() - 180):quote_match.start()]
+def _source_dialogue_language(source_prompt: str, quote_match, quote_text: str = "", override_language: str = "auto") -> str:
+    if override_language and override_language.casefold() not in {"auto", "none", "original language"}:
+        return _LANGUAGE_ALIASES.get(override_language.casefold(), override_language.capitalize())
+    # A delivery/language clause can govern a short sequence of interrupted
+    # lines (line, sigh, pause, line, cut, line).  Keep enough preceding prose
+    # to retain that scope without looking beyond the current paragraph.
+    paragraph_start = (source_prompt or "").rfind("\n", 0, quote_match.start()) + 1
+    window = (source_prompt or "")[max(paragraph_start, quote_match.start() - 700):quote_match.start()]
     trailing = (source_prompt or "")[quote_match.end():quote_match.end() + 80]
     matches = re.findall(
-        r"\b(?:in|en)\s+(?:(?:the\s+)?([\wÀ-ÿ-]+)\s+(?:language|idioma)|"
-        r"(?:language|idioma)\s+([\wÀ-ÿ-]+))",
+        r"\b(?:in|en|auf|em|in\s+het|in\s+'t)\s+(?:(?:the\s+|het\s+|das\s+)?([\wÀ-ÿ-]+)\s+(?:language|idioma|taal|sprache)|"
+        r"(?:language|idioma|taal|sprache)\s+([\wÀ-ÿ-]+))",
         window,
         flags=re.IGNORECASE,
     )
     if matches:
         raw = re.sub(r"\s+", " ", next((part for part in matches[-1] if part), "")).strip()
-        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "English"
     known = re.findall(
-        rf"\b(?:in|en)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
+        rf"\b(?:in|en|auf|em|in\s+het|in\s+'t|en\s+el|en\s+la)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
         window,
         flags=re.IGNORECASE,
     )
     if known:
         raw = re.sub(r"\s+", " ", known[-1]).strip()
-        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "Original language"
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "English"
+    qualified = re.findall(
+        rf"\b(?:in|en|auf|em|in\s+het|in\s+'t|en\s+el|en\s+la)\s+(?:the\s+|het\s+|das\s+)?{_QUALIFIED_DIALOGUE_LANGUAGE_PATTERN}",
+        window,
+        flags=re.IGNORECASE,
+    )
+    if qualified:
+        raw = re.sub(r"\s+", " ", qualified[-1]).strip()
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize()) or "English"
     trailing_known = re.match(
-        rf"^\s*(?:,\s*)?(?:in|en)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
+        rf"^\s*(?:,\s*)?(?:in|en|auf|em|in\s+het|in\s+'t|en\s+el|en\s+la)\s+({_DIALOGUE_LANGUAGE_PATTERN})",
         trailing,
         flags=re.IGNORECASE,
     )
     if trailing_known:
         raw = trailing_known.group(1)
         return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
-    quote = quote_match.group(1)
-    if re.search(
-        r"[¿¡áéíóúñ]|\b(?:quién|qué|cuál|cuándo|dónde|cómo|por qué|tranquilo|tranquila|"
-        r"estás|está|quiero|queréis|cabrones|asesino|cargadores)\b",
-        quote,
-        re.IGNORECASE,
-    ):
-        return "Spanish"
-    return "Original language"
+    trailing_qualified = re.match(
+        rf"^\s*(?:,\s*)?(?:in|en|auf|em|in\s+het|in\s+'t|en\s+el|en\s+la)\s+(?:the\s+|het\s+|das\s+)?{_QUALIFIED_DIALOGUE_LANGUAGE_PATTERN}",
+        trailing,
+        flags=re.IGNORECASE,
+    )
+    if trailing_qualified:
+        raw = trailing_qualified.group(1)
+        return _LANGUAGE_ALIASES.get(raw.casefold(), raw.capitalize())
+
+    quote = quote_text or _extract_quote_string(quote_match)
+    detected_from_quote = _detect_language(quote, default="")
+    if detected_from_quote and detected_from_quote != "English":
+        return detected_from_quote
+    detected_from_prompt = _detect_language(source_prompt, default="English")
+    if detected_from_prompt != "English":
+        return detected_from_prompt
+    return detected_from_quote or "English"
 
 
 def _source_quote_is_internal_monologue(source_prompt: str, quote_match) -> bool:
     window = (source_prompt or "")[max(0, quote_match.start() - 180):quote_match.start()]
-    return bool(_INTERNAL_MONOLOGUE_CUE_RE.search(window))
+    thought_cues = list(_INTERNAL_MONOLOGUE_CUE_RE.finditer(window))
+    if not thought_cues:
+        return False
+    # "he seems to think for a bit and then says ..." describes a visible
+    # pause before ordinary speech, not an internal-monologue voiceover.  A
+    # later explicit vocal verb therefore closes the thought-cue scope.
+    later_speech = _SPEECH_CUE_RE.search(window, thought_cues[-1].end())
+    return not bool(later_speech)
 
 
 def _dialogue_lexical_key(quote: str) -> str:
@@ -2392,33 +3098,42 @@ def _dialogue_lexical_key(quote: str) -> str:
     return re.sub(r"[.!?…]+$", "", value).strip()
 
 
-def _source_dialogue_contracts(source_prompt: str) -> list[tuple[str, str, bool]]:
+def _source_dialogue_contracts(source_prompt: str, override_language: str = "auto") -> list[tuple[str, str, bool]]:
     contracts = []
-    for match in _QUOTED_RE.finditer(source_prompt or ""):
+    for match in _SOURCE_QUOTED_RE.finditer(source_prompt or ""):
+        if _is_visible_text_quote(source_prompt, match):
+            continue
         prefix = (source_prompt or "")[:match.start()]
         boundary = max(prefix.rfind(mark) for mark in ".!?;\n")
         cue_window = prefix[boundary + 1:]
-        visible_text = re.search(
-            r"\b(?:sign|title\s+card|caption|subtitle|shirt|screen|label|poster|placard|book|page|"
-            r"letrero|cartel|t[ií]tulo|camiseta|pantalla|etiqueta)\b[^\r\n.!?;]{0,48}"
-            r"\b(?:reads?|says?|shows?|displays?|dice|reza|muestra|pone)\s*$",
-            cue_window, flags=re.IGNORECASE,
-        )
+        quote_text = _extract_quote_string(match)
+        trailing_window = (source_prompt or "")[match.end():match.end() + 60]
         repeated_previous = bool(
             contracts
-            and re.search(r"\b(?:again|otra\s+vez|de\s+nuevo)\b", cue_window, re.IGNORECASE)
-            and _dialogue_lexical_key(contracts[-1][1]) == _dialogue_lexical_key(match.group(1))
+            and (
+                re.search(r"\b(?:again|otra\s+vez|de\s+nuevo)\b", cue_window, re.IGNORECASE)
+                or re.search(r"\b(?:again|otra\s+vez|de\s+nuevo)\b", trailing_window, re.IGNORECASE)
+            )
+            and _dialogue_lexical_key(contracts[-1][1]) == _dialogue_lexical_key(quote_text)
         )
-        if (_SPEECH_CUE_RE.search(cue_window) or repeated_previous) and not visible_text:
+        has_speech_cue = bool(
+            _SPEECH_CUE_RE.search(cue_window)
+            or _INTERNAL_MONOLOGUE_CUE_RE.search(cue_window)
+            or _SPEECH_CUE_RE.search(trailing_window)
+            or _INTERNAL_MONOLOGUE_CUE_RE.search(trailing_window)
+            or repeated_previous
+        )
+        if has_speech_cue:
             contracts.append((
-                _source_dialogue_language(source_prompt, match),
-                match.group(1),
+                _source_dialogue_language(source_prompt, match, quote_text=quote_text, override_language=override_language),
+                quote_text,
                 _source_quote_is_internal_monologue(source_prompt, match),
             ))
     for language, quote in re.findall(
         r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
     ):
-        contracts.append((language.strip(), quote.strip(), False))
+        lang = _LANGUAGE_ALIASES.get(language.strip().casefold(), language.strip().capitalize())
+        contracts.append((lang, quote.strip(), False))
 
     # "Again" commonly repeats a short quoted cue without restating its
     # language. Carry an explicit language across identical occurrences while
@@ -2574,9 +3289,14 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         sentence_start = 0 if sentence_start < 0 else sentence_start + 1
         prefix = value[sentence_start:dialogue.start()]
         subject_matches = list(re.finditer(r"<Subject\s+\d+>", prefix, flags=re.IGNORECASE))
+        shot_start = value.rfind("[Shot", 0, dialogue.start())
+        shot_start = 0 if shot_start < 0 else shot_start
+        prior_shot_subjects = list(re.finditer(
+            r"<Subject\s+\d+>", value[shot_start:sentence_start], flags=re.IGNORECASE,
+        ))
         actor_match = re.search(
             rf"\b((?:The|An?|This)\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){{0,4}}|He|She|They)\s+"
-            rf"(?={vocal_action}\b)",
+            rf"(?:\(S\d+(?:\s*,\s*S\d+)*\)\s*)?(?={vocal_action}\b)",
             prefix,
             flags=re.IGNORECASE,
         )
@@ -2585,6 +3305,13 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
             last_concrete_identity = identity
         elif actor_match and actor_match.group(1).casefold() not in {"he", "she", "they"}:
             identity = re.sub(r"\s+", " ", actor_match.group(1).casefold())
+            last_concrete_identity = identity
+        elif actor_match and prior_shot_subjects:
+            # Resolve a pronoun from the nearest explicit Subject in the same
+            # shot.  This prevents an LLM-authored ``He (S5)`` from escaping
+            # canonical Subject/Speaker numbering merely because the Subject
+            # name was in the preceding sentence.
+            identity = prior_shot_subjects[-1].group(0).casefold()
             last_concrete_identity = identity
         elif actor_match and last_concrete_identity:
             identity = last_concrete_identity
@@ -2596,19 +3323,21 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
             original_prefix = prefix
             repair_recorded = False
             explicit_id = int(explicit.group(1))
-            canonical_id = identity_ids.get(identity)
+            subject_number = re.fullmatch(r"<subject\s+(\d+)>", identity, flags=re.IGNORECASE)
+            canonical_id = int(subject_number.group(1)) if subject_number else identity_ids.get(identity)
             if canonical_id is None:
                 identity_ids[identity] = explicit_id
             elif canonical_id != explicit_id:
                 prefix = prefix[:explicit.start()] + f"(S{canonical_id})" + prefix[explicit.end():]
                 explicit_id = canonical_id
+                identity_ids[identity] = canonical_id
             action_match = re.search(vocal_action, prefix, flags=re.IGNORECASE)
             if action_match and explicit.start() > action_match.start() and (subject_matches or actor_match):
                 cleaned = (prefix[:explicit.start()] + prefix[explicit.end():]).rstrip() + " "
                 clean_subjects = list(re.finditer(r"<Subject\s+\d+>", cleaned, flags=re.IGNORECASE))
                 clean_actor = re.search(
                     rf"\b((?:The|An?|This)\s+[\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){{0,4}}|He|She|They)\s+"
-                    rf"(?={vocal_action}\b)",
+                    rf"(?:\(S\d+(?:\s*,\s*S\d+)*\)\s*)?(?={vocal_action}\b)",
                     cleaned,
                     flags=re.IGNORECASE,
                 )
@@ -2625,7 +3354,8 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
             if not repair_recorded and prefix != original_prefix:
                 repairs.append((sentence_start, dialogue.start(), prefix))
             continue
-        speaker_id = identity_ids.get(identity)
+        subject_number = re.fullmatch(r"<subject\s+(\d+)>", identity, flags=re.IGNORECASE)
+        speaker_id = int(subject_number.group(1)) if subject_number else identity_ids.get(identity)
         if speaker_id is None:
             speaker_id = next_speaker_id
             next_speaker_id += 1
@@ -2732,6 +3462,19 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         )
         value = _replace_section_body(value, timeline_section, before + after)
     soundscape = _section_body(value, "overall_soundscape").strip()
+    # Drop an accidental raw-source suffix from the soundscape.  Small local
+    # models occasionally concatenate their input after a truncated final
+    # sentence (``...physicalScene in ...``).  Match a substantial source
+    # prefix so ordinary shared wording cannot trigger this repair.
+    source_prefix = re.sub(r"\s+", " ", (source_prompt or "").strip())[:64].strip()
+    if len(source_prefix) >= 40:
+        echo_pattern = re.escape(source_prefix).replace(r"\ ", r"\s+")
+        echo = re.search(echo_pattern, soundscape, flags=re.IGNORECASE)
+        if echo:
+            soundscape = soundscape[:echo.start()].rstrip()
+            if soundscape and soundscape[-1] not in ".!?":
+                last_boundary = max(soundscape.rfind("."), soundscape.rfind("!"), soundscape.rfind("?"))
+                soundscape = soundscape[:last_boundary + 1].rstrip() if last_boundary >= 0 else ""
     soundscape = re.sub(
         r"\s*The (?:(?:single|one|two|three|four|five|\d+)\s+)?tagged lines? (?:is|are) the only intelligible "
         r"(?:voice|speech); after (?:it|they|the final line) ends?, only non-verbal ambience and physical sounds remain, "
@@ -2867,6 +3610,28 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
     contracts = _source_dialogue_contracts(source_prompt)
     if not contracts:
         return _finalize_audible_dialogue(value, source_prompt)
+    expected_keys = {_dialogue_lexical_key(quote) for _language, quote, _internal in contracts}
+
+    def repair_swallowed_directions(match: re.Match[str]) -> str:
+        inner = re.sub(r"^\s*\[[^\]]+\]\s*", "", match.group(1), flags=re.IGNORECASE).strip()
+        if _dialogue_lexical_key(inner) in expected_keys:
+            return match.group(0)
+        looks_like_scene_prose = bool(
+            len(inner) >= 120
+            and re.search(r"\b(?:image|picture|shot|scene)\s*\d+\b", inner, re.IGNORECASE)
+            and _SPEECH_CUE_RE.search(inner)
+        )
+        if not looks_like_scene_prose:
+            return match.group(0)
+        # This exact corruption is caused by an orphan source quote shifting
+        # every later quote boundary.  Restore only source-authorized words, in
+        # their original order; the repair pass can still improve placement.
+        return " ".join(f"<d>[{language}] {quote}</d>" for language, quote, _internal in contracts)
+
+    value = re.sub(
+        r"<d>(.*?)</d>", repair_swallowed_directions, value,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
     if any(internal for _language, _quote, internal in contracts):
         value = _remove_internal_monologue_placeholders(value)
         value = re.sub(
@@ -2893,12 +3658,22 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
         return None
 
     def canonicalize_tag(match: re.Match[str]) -> str:
-        inner = re.sub(r"^\s*\[[^\]]+\]\s*", "", match.group(1), flags=re.IGNORECASE)
+        inner = re.sub(r"^\s*\[[^\]]+\]\s*", "", match.group(1), flags=re.IGNORECASE).strip()
         contract = take_contract(inner)
-        if not contract:
-            return match.group(0)
-        language, quote, _internal = contract
-        return f"<d>[{language}] {quote}</d>"
+        if contract:
+            language, quote, _internal = contract
+            return f"<d>[{language}] {quote}</d>"
+        if any(
+            _dialogue_lexical_key(inner) == _dialogue_lexical_key(_extract_quote_string(m))
+            for m in _SOURCE_QUOTED_RE.finditer(source_prompt or "")
+            if _is_visible_text_quote(source_prompt, m)
+        ):
+            return f'"{inner}"'
+        tag_match = re.match(r"^\s*\[([^\]]+)\]\s*(.*)", match.group(1).strip(), flags=re.DOTALL)
+        if tag_match and tag_match.group(1).strip().casefold() == "original language":
+            detected = _detect_language(tag_match.group(2).strip(), default="English")
+            return f"<d>[{detected}] {tag_match.group(2).strip()}</d>"
+        return match.group(0)
 
     # Canonicalize whole blocks first. Replacing raw substrings before this step
     # can create invalid nested <d> tags when punctuation differs.
@@ -3025,6 +3800,15 @@ def normalize_shot_timestamps(text: str) -> str:
         str(text),
         flags=re.IGNORECASE,
     )
+    # Remove a redundant model echo such as
+    # ``[Shot 2] At 00:02.500, At [Shot 2], ...`` while preserving the one
+    # canonical numbered header and timestamp.
+    value = re.sub(
+        r"(\[Shot\s+(\d+)\]\s+At\s+\d{2}:\d{2}\.\d{3},)\s*At\s+\[Shot\s+\2\]\s*,?",
+        r"\1",
+        value,
+        flags=re.IGNORECASE,
+    )
     return re.sub(
         r"(\[Shot\s+\d+\]\s+At\s+\d{2}:\d{2}\.\d{3})(?!,)",
         r"\1,",
@@ -3074,7 +3858,7 @@ def normalize_shot_timeline(text: str, mode: str, duration_seconds: float,
 
 
 def normalize_first_shot_marker(text: str, mode: str) -> str:
-    """Bracket an unambiguous timeline-leading `Shot 1` without touching keyframe prose."""
+    """Bracket an unambiguous timeline-leading `Shot 1` without touching keyframe prose, or prefix if omitted."""
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
     pattern = re.compile(
         rf"(?ms)(^{re.escape(section)}:\s*)(.*?)(?=^[a-z_]+:\s*|\Z)"
@@ -3082,7 +3866,10 @@ def normalize_first_shot_marker(text: str, mode: str) -> str:
     match = pattern.search(str(text))
     if not match or re.search(r"\[Shot\s+1\]", match.group(2), re.IGNORECASE):
         return str(text)
-    body = re.sub(r"\bShot\s+1\b", "[Shot 1]", match.group(2), count=1, flags=re.IGNORECASE)
+    if re.search(r"\bShot\s+1\b", match.group(2), re.IGNORECASE):
+        body = re.sub(r"\bShot\s+1\b", "[Shot 1]", match.group(2), count=1, flags=re.IGNORECASE)
+    else:
+        body = "[Shot 1] " + match.group(2).lstrip()
     return str(text)[:match.start()] + match.group(1) + body + str(text)[match.end():]
 
 
@@ -3299,7 +4086,7 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
     for index, item in enumerate(prompts, start=1):
         if forbidden.search(item):
             errors.append(f"Multishot item {index} must be fluent standalone prose without H3 section or shot labels")
-        dialogue_words = sum(len(re.findall(r"\b[\wÀ-ÿ'-]+\b", quote)) for quote in _QUOTED_RE.findall(item))
+        dialogue_words = sum(len(re.findall(r"\b[\wÀ-ÿ'-]+\b", quote)) for quote in _extract_output_quotes(item))
         capacity = max(1, round(float(duration_seconds) * 2.5))
         if dialogue_words > capacity * 1.2:
             warnings.append(f"Multishot item {index} has {dialogue_words} quoted words; ~{capacity} words is a planning heuristic for {duration_seconds:g}s")
@@ -3341,7 +4128,7 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
     dialogue_authoring = dialogue_authoring and voice_performance == "audible"
 
     def item_spoken_keys(item: str) -> list[str]:
-        raw = [_dialogue_lexical_key(quote) for quote in _QUOTED_RE.findall(item)]
+        raw = [_dialogue_lexical_key(quote) for quote in _extract_output_quotes(item)]
         tagged = [
             _dialogue_lexical_key(re.sub(r"^\s*\[[^\]]+\]\s*", "", inner))
             for inner in re.findall(r"<d>(.*?)</d>", item, flags=re.DOTALL | re.IGNORECASE)
@@ -3433,10 +4220,10 @@ def _validate_multishot(prompt: str, duration_seconds: float, source_prompt: str
 
     # Non-spoken quoted text remains exact; punctuation flexibility applies only
     # to dialogue delivery, never to visible titles, signs, or labels.
-    source_quotes = Counter(_QUOTED_RE.findall(source_prompt or ""))
+    source_quotes = Counter(_extract_source_quotes(source_prompt or ""))
     source_visible_quotes = source_quotes - Counter(quote for _language, quote, _internal in source_contracts)
     output_visible_quotes = Counter(
-        quote for item in prompts for quote in _QUOTED_RE.findall(item)
+        quote for item in prompts for quote in _extract_output_quotes(item)
         if _dialogue_lexical_key(quote) not in spoken_keys
     )
     missing_visible = list((source_visible_quotes - output_visible_quotes).elements())
@@ -3874,7 +4661,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     instrumental_description: str = "",
                     instrumental_style: str = "none",
                     acoustic_space: str = "none",
-                    dialogue_coverage: str = "off") -> dict[str, Any]:
+                    dialogue_coverage: str = "off",
+                    dialogue_language: str = "auto") -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
     profile_name = (
         enhancement_profile(enhance_description)
@@ -4183,9 +4971,11 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         if not re.match(r"\[[^\]]+\]\s+\S", dialogue.strip()):
             errors.append("Every <d> block must begin with a language tag and contain dialogue")
 
-    source_contracts = _source_dialogue_contracts(source_prompt)
+    source_contracts = _source_dialogue_contracts(source_prompt, override_language=dialogue_language)
     contracts = source_contracts if voice_performance == "audible" else []
-    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(source_prompt)
+    dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(
+        source_prompt, override_language=dialogue_language
+    )
     reference_dialogue = manifest_dialogue(media_manifest)
 
     def dialogue_text(item: str) -> str:
@@ -4385,7 +5175,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         if not re.search(r"lips\s+remain\s+(?:completely\s+)?closed", timeline, re.IGNORECASE):
             errors.append("Internal monologue must state that the character's lips remain closed")
 
-    missing_quotes = [quote for quote in _QUOTED_RE.findall(source_prompt or "") if quote not in text]
+    missing_quotes = [quote for quote in _extract_source_quotes(source_prompt or "") if quote not in text]
     if voice_performance != "audible":
         missing_quotes = []
         leaked = [quote for _language, quote, _internal in source_contracts if quote in text]
@@ -4405,10 +5195,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             )
     if missing_quotes:
         errors.append("Quoted source text was not preserved exactly: " + repr(missing_quotes))
-    source_visible_quotes = Counter(_QUOTED_RE.findall(source_prompt or ""))
+    source_visible_quotes = Counter(_extract_source_quotes(source_prompt or ""))
     source_visible_quotes.subtract(quote for _language, quote, _internal in source_contracts)
     source_visible_quotes += Counter()  # discard zero and negative counts after subtracting dialogue
-    output_visible_quotes = Counter(_QUOTED_RE.findall(timeline))
+    output_visible_quotes = Counter(_extract_output_quotes(timeline))
     invented_visible_quotes = list((output_visible_quotes - source_visible_quotes).elements())
     if invented_visible_quotes:
         errors.append(
@@ -4419,10 +5209,16 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     if missing_dialogue:
         errors.append("Source <d> dialogue was not preserved exactly")
     tagged_dialogue = "\n".join(re.findall(r"<d>(.*?)</d>", text, flags=re.DOTALL))
-    for match in _QUOTED_RE.finditer(source_prompt or ""):
+    for match in _SOURCE_QUOTED_RE.finditer(source_prompt or ""):
+        quote_text = _extract_quote_string(match)
         cue_window = (source_prompt or "")[max(0, match.start() - 100):match.start()]
-        if voice_performance == "audible" and _SPEECH_CUE_RE.search(cue_window) and match.group(1) not in tagged_dialogue:
-            errors.append(f"Quoted spoken dialogue must appear inside a language-tagged <d> block: {match.group(1)!r}")
+        if (
+            voice_performance == "audible"
+            and not _is_visible_text_quote(source_prompt or "", match)
+            and (_SPEECH_CUE_RE.search(cue_window) or _INTERNAL_MONOLOGUE_CUE_RE.search(cue_window))
+            and quote_text not in tagged_dialogue
+        ):
+            errors.append(f"Quoted spoken dialogue must appear inside a language-tagged <d> block: {quote_text!r}")
     source_requests_voiceover = (
         _source_requests_offscreen_voice(source_prompt)
         or any(internal for _language, _quote, internal in source_contracts)
@@ -4569,6 +5365,21 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                 errors.append(f"{label} must cite its provenance asset {subject['asset']}")
             if label.casefold() not in detail_text.casefold():
                 errors.append(f"{label} must be applied inside detailed_description")
+            elif subject.get("binding_cues"):
+                first_use = detail_text.casefold().find(label.casefold())
+                # Keep this deliberately local. A later correct appearance must not excuse an
+                # earlier wrong assignment of the same label to somebody else.
+                binding_context = detail_text[max(0, first_use - 60):first_use + len(label) + 120]
+                observed_cues = [
+                    cue for cue in subject["binding_cues"]
+                    if cue in binding_context.casefold()
+                ]
+                if not observed_cues:
+                    errors.append(
+                        f"{label} is bound by the source wording {subject['binding_excerpt']!r} to "
+                        f"{subject['asset']}; its first detailed_description use must identify that exact referent, "
+                        "not an earlier or different subject"
+                    )
         for label in reference_model["independent_assets"]:
             if label.casefold().startswith("<audio"):
                 continue
