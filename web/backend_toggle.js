@@ -93,6 +93,7 @@ const DISPLAY_LABELS = {
     instrumental_style: "Music genre / style",
     acoustic_space: "Acoustic space (diegetic sound)",
     dialogue_coverage: "Dialogue coverage",
+    dialogue_language: "Dialogue language",
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
     media_manifest: "Media metadata JSON (optional)",
@@ -3379,6 +3380,10 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "open_exterior", "urban_exterior", "underwater_muffled",
     ], "none");
     sanitizeEnumWidget(node, "dialogue_coverage", ["off", "on"], "off");
+    sanitizeEnumWidget(node, "dialogue_language", [
+        "auto", "Spanish", "English", "French", "German", "Italian", "Portuguese", "Japanese",
+        "Chinese", "Korean", "Russian", "Arabic", "Cantonese", "Catalan", "Dutch", "Polish", "Turkish", "Hindi",
+    ], "auto");
     sanitizeEnumWidget(node, "delivery_target", ["local", "api_v2"], "local");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");

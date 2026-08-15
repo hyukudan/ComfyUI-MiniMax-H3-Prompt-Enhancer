@@ -5005,7 +5005,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         )
         prefix = timeline[(0 if sentence_start < 0 else sentence_start + 1):dialogue_match.start()]
         if re.search(r"says\s+in\s+an\s+off-screen\s+voiceover", prefix, flags=re.IGNORECASE):
-            if not re.search(r"\(S\d+\).*?says\s+in\s+an\s+off-screen\s+voiceover", prefix, flags=re.IGNORECASE):
+            if not re.search(r"\(S\d+(?:\s*,\s*S\d+)*\).*?says\s+in\s+an\s+off-screen\s+voiceover", prefix, flags=re.IGNORECASE):
                 errors.append("Every authored off-screen voiceover must keep a stable (Sx) ID beside its named source")
             continue
         if not re.search(
@@ -5155,7 +5155,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             timeline.rfind("?", 0, block.start()), timeline.rfind("[Shot", 0, block.start()),
         )
         prefix = timeline[(0 if sentence_start < 0 else sentence_start + 1):block.start()]
-        if source_label.startswith("<Audio") and source_label not in prefix and not re.search(r"\(S\d+", prefix):
+        if source_label.startswith("<Audio") and source_label not in prefix and not re.search(r"\(S\d+(?:\s*,\s*S\d+)*\)", prefix):
             errors.append(f"Reference transcript {transcript!r} must be attributed to {source_label} or a concrete speaker")
 
     expected_language_blocks = Counter(
@@ -5234,7 +5234,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         errors.append("Requested voiceover must use the exact phrase 'says in an off-screen voiceover' and name its source")
     if re.search(
         r"\b(?:an?\s+(?:(?:unseen|unidentified|anonymous|off-screen)\s+)?voice|"
-        r"(?:unseen|unidentified|anonymous|off-screen)\s+voice|voice\s+from\s+off-screen)\s*\(S\d+\)",
+        r"(?:unseen|unidentified|anonymous|off-screen)\s+voice|voice\s+from\s+off-screen)\s*\(S\d+(?:\s*,\s*S\d+)*\)",
         timeline,
         flags=re.IGNORECASE,
     ):
