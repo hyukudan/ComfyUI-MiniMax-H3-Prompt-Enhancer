@@ -16,7 +16,7 @@ VALIDATION = {"valid": True, "errors": [], "mode": "t2va"}
 
 
 def test_guide_builder_can_feed_an_existing_llm_node():
-    system, user, mode, warnings = MiniMaxH3PromptGuideBuilder().build(
+    system, user, mode, warnings, width, height = MiniMaxH3PromptGuideBuilder().build(
         'A detective enters a ramen shop and says "Good evening."', "t2va", 5.0, "",
     )
     assert "MiniMax H3" in system
@@ -24,6 +24,8 @@ def test_guide_builder_can_feed_an_existing_llm_node():
     assert '"Good evening."' in user
     assert mode == "t2va"
     assert warnings == ""
+    assert width == 1280
+    assert height == 720
 
 
 def test_main_enhancer_preserves_remote_defaults_and_appends_duration(monkeypatch):
@@ -93,10 +95,10 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-3:] == (
-        "duration_seconds", "aspect_ratio", "treatment_warnings",
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-5:] == (
+        "duration_seconds", "aspect_ratio", "treatment_warnings", "width", "height",
     )
-    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-3:] == ("FLOAT", "STRING", "STRING")
+    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-5:] == ("FLOAT", "STRING", "STRING", "INT", "INT")
 
 
 def test_empty_multiline_controls_expose_non_serialized_ux_placeholders():
@@ -185,7 +187,7 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-3:] == ["always_re_enhance", "delivery_target", "dialogue_language"]
+        assert list(optional)[-4:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset"]
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
     assert "always_re_enhance" not in MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]
@@ -207,3 +209,25 @@ def test_enhance_accepts_the_caching_flag_without_changing_the_result(monkeypatc
         4096, 300, 1, True, False, always_re_enhance=True,
     )
     assert result[0] == "remote prompt"
+    assert result[6] == 1280
+    assert result[7] == 720
+
+
+def test_h3_dimensions_for_various_aspect_ratios():
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9") == (1280, 720)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("9:16") == (720, 1280)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("1:1") == (1080, 1080)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("4:3") == (960, 720)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("3:4") == (720, 960)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("21:9") == (1680, 720)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("auto") == (1280, 720)
+
+
+def test_visual_style_preset_merges_into_guide_builder():
+    _sys, req, _mode, _warn, w, h = MiniMaxH3PromptGuideBuilder().build(
+        "A samurai stands in rain.", "t2va", 5.0, "",
+        visual_style_preset="anime_ultradetailed_cinematic",
+        aspect_ratio="9:16",
+    )
+    assert w == 720 and h == 1280
+    assert "visualLanguage:anime_ultradetailed_cinematic" in req or "Anime" in req or "cel" in req.lower() or "line" in req.lower()

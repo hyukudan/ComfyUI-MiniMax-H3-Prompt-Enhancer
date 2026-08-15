@@ -83,13 +83,66 @@ GENERATION_DURATION_INPUT = {"default": 5.0, "min": 4.0, "max": MAX_GENERATION_S
                              "tooltip": "4-150 seconds. H3 was trained around 5-15 seconds; longer generations are experimental and require much more memory."}
 FRAME_COUNT_INPUT = {"default": 0, "min": 0, "max": 3600, "step": 1,
                      "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5. Above about 362 frames (~15 s) is experimental."}
+VISUAL_STYLE_PRESET_CHOICES = [
+    "none",
+    "live_action_cinematic",
+    "live_action_naturalistic",
+    "1970s_new_hollywood",
+    "live_action_gritty",
+    "giallo",
+    "storybook_symmetrical",
+    "anime_ultradetailed_cinematic",
+    "anime_shonen",
+    "anime_retro_dramatic",
+    "stylized_3d_animation",
+    "stop_motion_handcrafted",
+    "papercraft_stop_motion",
+    "pixel_art_16bit",
+    "clean_commercial",
+    "documentary_observational",
+    "home_camcorder_1990s",
+    "surveillance_found_footage",
+]
+
+H3_ASPECT_RATIO_DIMENSIONS = {
+    "16:9": (1280, 720),
+    "9:16": (720, 1280),
+    "1:1": (1080, 1080),
+    "4:3": (960, 720),
+    "3:4": (720, 960),
+    "21:9": (1680, 720),
+    "auto": (1280, 720),
+}
+
+
+def h3_dimensions_for_aspect_ratio(aspect_ratio: str) -> tuple[int, int]:
+    """Return standard (width, height) pixel dimensions for MiniMax H3 aspect ratios."""
+    ratio = str(aspect_ratio or "").strip().lower()
+    return H3_ASPECT_RATIO_DIMENSIONS.get(ratio, (1280, 720))
+
+
+def _merge_visual_style_preset(creative_treatment_json: str, visual_style_preset: str = "none") -> str:
+    preset = str(visual_style_preset or "none").strip().lower()
+    if preset in ("none", ""):
+        return creative_treatment_json or ""
+    if not creative_treatment_json or not str(creative_treatment_json).strip():
+        return json.dumps({"schemaVersion": 1, "visualLanguage": preset})
+    try:
+        data = json.loads(creative_treatment_json)
+        if isinstance(data, dict):
+            if data.get("visualLanguage", "none") in ("none", ""):
+                data["visualLanguage"] = preset
+                return json.dumps(data)
+    except Exception:
+        pass
+    return creative_treatment_json
 
 
 class MiniMaxH3PromptGuideBuilder:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "build"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("system_prompt", "user_prompt", "resolved_mode", "treatment_warnings")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = ("system_prompt", "user_prompt", "resolved_mode", "treatment_warnings", "width", "height")
     DESCRIPTION = (
         "Build the official MiniMax H3 rewriting instructions without running an LLM. Connect these outputs to "
         "QwenVL Prompt Enhancer, a GGUF node, Ollama, LM Studio, or any other text-generation node."
@@ -123,6 +176,7 @@ class MiniMaxH3PromptGuideBuilder:
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
+            "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -132,10 +186,12 @@ class MiniMaxH3PromptGuideBuilder:
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
-              dialogue_coverage="off", dialogue_language="auto"):
+              dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+        merged_treatment = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
         return (
             system_prompt_for_mode(resolved, bool(enhance_description)),
             build_user_request(
@@ -144,24 +200,26 @@ class MiniMaxH3PromptGuideBuilder:
                 instrumental_description,
                 aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
-                (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
+                (), merged_treatment, shot_plan_json, cinematography_json, instrumental_style,
                 acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
             ),
             resolved,
             treatment_warning_report(
-                creative_treatment_json, cinematography_json, shot_plan_json, duration_seconds,
+                merged_treatment, cinematography_json, shot_plan_json, duration_seconds,
                 frame_count, resolved, enhance_description,
             ),
+            width,
+            height,
         )
 
 
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
-        "treatment_warnings",
+        "treatment_warnings", "width", "height",
     )
     DESCRIPTION = (
         "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
@@ -217,6 +275,7 @@ class MiniMaxH3PromptEnhancer:
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
+            "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
         }}
 
     @classmethod
@@ -245,8 +304,11 @@ class MiniMaxH3PromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False, delivery_target="local", dialogue_language="auto"):
+                always_re_enhance=False, delivery_target="local", dialogue_language="auto",
+                visual_style_preset="none"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
+        creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -299,16 +361,18 @@ class MiniMaxH3PromptEnhancer:
             _effective_duration(validation, duration_seconds),
             str(aspect_ratio),
             "\n".join(manifest.get("treatmentWarnings", ())),
+            width,
+            height,
         )
 
 
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
-        "treatment_warnings",
+        "treatment_warnings", "width", "height",
     )
     DESCRIPTION = (
         "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
@@ -360,6 +424,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "always_re_enhance": ("BOOLEAN", dict(ALWAYS_RE_ENHANCE_INPUT)),
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
+            "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
         }}
 
     @classmethod
@@ -379,9 +444,12 @@ class MiniMaxH3GGUFPromptEnhancer:
                 multishot_voice_lock="", multishot_setting_lock="", show_advanced_controls=False,
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                always_re_enhance=False, delivery_target="local", dialogue_language="auto"):
+                always_re_enhance=False, delivery_target="local", dialogue_language="auto",
+                visual_style_preset="none"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
+        creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
@@ -404,6 +472,8 @@ class MiniMaxH3GGUFPromptEnhancer:
             _effective_duration(validation, duration_seconds),
             str(aspect_ratio),
             "\n".join(manifest.get("treatmentWarnings", ())),
+            width,
+            height,
         )
 
 

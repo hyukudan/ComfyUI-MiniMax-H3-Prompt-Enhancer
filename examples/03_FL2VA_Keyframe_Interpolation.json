@@ -1,0 +1,222 @@
+{
+  "last_node_id": 3,
+  "last_link_id": 2,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MiniMaxH3PromptEnhancer",
+      "pos": [
+        100,
+        100
+      ],
+      "size": [
+        580,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "enhanced_prompt",
+          "type": "STRING",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "validation_report",
+          "type": "STRING",
+          "links": [
+            2
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "enhancement_manifest",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "duration_seconds",
+          "type": "FLOAT",
+          "links": null,
+          "slot_index": 3
+        },
+        {
+          "name": "aspect_ratio",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 4
+        },
+        {
+          "name": "treatment_warnings",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 5
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null,
+          "slot_index": 6
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null,
+          "slot_index": 7
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MiniMaxH3PromptEnhancer"
+      },
+      "widgets_values": [
+        "A sports car accelerates from a standing start at the traffic light and speeds into the illuminated tunnel.",
+        "fl2va",
+        5.0,
+        "Picture 1 is the starting frame at the red light. Picture 2 is the ending frame deep inside the tunnel.",
+        "http://127.0.0.1:1234/v1",
+        "",
+        "",
+        0.2,
+        4096,
+        300,
+        2,
+        true,
+        false,
+        true,
+        true,
+        "ensure_audible",
+        "follow_prompt",
+        "",
+        "none",
+        "16:9",
+        "",
+        0,
+        0,
+        "",
+        "",
+        "",
+        false,
+        "",
+        "",
+        "",
+        "none",
+        "open_exterior",
+        "off",
+        false,
+        "local",
+        "auto",
+        "live_action_cinematic"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "ShowText|pysssss",
+      "pos": [
+        740,
+        100
+      ],
+      "size": [
+        540,
+        240
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ShowText|pysssss",
+      "pos": [
+        740,
+        380
+      ],
+      "size": [
+        540,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "widgets_values": [
+        ""
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      1,
+      1,
+      3,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "MiniMax H3 First-and-Last Frame (FL2VA) Keyframe Interpolation",
+      "bounding": [
+        60,
+        40,
+        1260,
+        560
+      ],
+      "color": "#9e5f3f",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 636 Passed](https://img.shields.io/badge/tests-636%20passed-brightgreen.svg)](tests/)
+[![Tests: 638 Passed](https://img.shields.io/badge/tests-638%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -65,6 +65,17 @@ Explore the specialized guides in [`docs/`](docs/):
 2. Add **MiniMax H3 GGUF Prompt Enhancer** to your canvas.
 3. Select your `.gguf` file from the dropdown.
 4. Leave `keep_server_loaded = false` to start the server during prompt enhancement and immediately reclaim 100% of your GPU VRAM before MiniMax H3 begins sampling.
+
+---
+
+## Ready-to-Use Example Workflows
+
+Drag and drop any of these JSON workflows from [`examples/`](examples/) directly into ComfyUI:
+
+1. 🎬 [**`01_T2VA_Cinematic_Dialogue_and_Score.json`**](examples/01_T2VA_Cinematic_Dialogue_and_Score.json): Text-to-Video generation with verbatim Spanish dialogue, jazz instrumental score, and automatic `16:9` (`1280x720`) resolution outputs.
+2. 🎭 [**`02_Ref2VA_Character_Identity_and_Voice_Clone.json`**](examples/02_Ref2VA_Character_Identity_and_Voice_Clone.json): Multimodal reference generation using Picture references for character identity and Audio references (`<Audio 1>`) for vocal cloning.
+3. ⚡ [**`03_FL2VA_Keyframe_Interpolation.json`**](examples/03_FL2VA_Keyframe_Interpolation.json): First-and-last frame interpolation with physical micro-foley and speed ramp staging.
+4. 🚀 [**`04_Chained_Multishot_Autonomous.json`**](examples/04_Chained_Multishot_Autonomous.json): Chained 3-shot sequence with `MiniMaxH3ShotSelector` and multi-shot identity locks.
 
 ---
 

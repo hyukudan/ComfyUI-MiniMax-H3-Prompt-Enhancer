@@ -2483,8 +2483,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         ),
         "ensure_audible": (
             "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
-            "room tone, environmental ambience, physically motivated foley, impacts, movement, and appropriate "
-            "non-verbal human sounds. Do not invent intelligible background speech."
+            "room tone, environmental ambience, physically motivated foley, impacts with concrete material resonance "
+            "(solid wood, metallic ring, glass shatter, surface friction), movement, and appropriate non-verbal human sounds. "
+            "Do not invent intelligible background speech."
         ),
         "off": (
             "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "

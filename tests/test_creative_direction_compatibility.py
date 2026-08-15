@@ -51,7 +51,7 @@ def _input_names(node_class):
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
     delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language"]
+    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language", "visual_style_preset"]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -89,6 +89,8 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
             assert optional["delivery_target"][1]["default"] == "local"
         if "dialogue_language" in appended:
             assert optional["dialogue_language"][1]["default"] == "auto"
+        if "visual_style_preset" in appended:
+            assert optional["visual_style_preset"][1]["default"] == "none"
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -115,11 +117,11 @@ def test_generation_duration_matches_native_h3_ceiling_and_frontend_preserves_it
 
 def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
     assert MiniMaxH3PromptGuideBuilder.RETURN_NAMES == (
-        "system_prompt", "user_prompt", "resolved_mode", "treatment_warnings",
+        "system_prompt", "user_prompt", "resolved_mode", "treatment_warnings", "width", "height",
     )
     expected_enhancer_outputs = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
-        "treatment_warnings",
+        "treatment_warnings", "width", "height",
     )
     assert MiniMaxH3PromptEnhancer.RETURN_NAMES == expected_enhancer_outputs
     assert MiniMaxH3GGUFPromptEnhancer.RETURN_NAMES == expected_enhancer_outputs
@@ -146,6 +148,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        if parameters[-1].name == "visual_style_preset":
+            assert parameters[-1].default == "none"
+            parameters = parameters[:-1]
         if parameters[-1].name == "dialogue_language":
             assert parameters[-1].default == "auto"
             parameters = parameters[:-1]
@@ -162,12 +167,14 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
 
 
 def test_legacy_guide_builder_positional_call_still_uses_neutral_behavior():
-    system, request, mode, warnings = MiniMaxH3PromptGuideBuilder().build(
+    system, request, mode, warnings, width, height = MiniMaxH3PromptGuideBuilder().build(
         "A woman crosses a quiet station.", "t2va", 5.0, "",
     )
     assert "MiniMax H3" in system
     assert mode == "t2va"
     assert warnings == ""
+    assert width == 1280
+    assert height == 720
     assert "SECONDARY CREATIVE TREATMENT" not in request
     assert "AUTHORITATIVE EXPLICIT SHOT PLAN" not in request
 
@@ -186,7 +193,7 @@ def test_legacy_main_node_positional_call_still_reaches_remote_backend(monkeypat
     )
     assert result[0] == "prompt"
     assert captured["args"][-5:] == (True, "auto", "follow_prompt", "audible", "")
-    assert result[-1] == ""
+    assert result[-3:] == ("", 1280, 720)
 
 
 def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monkeypatch):
@@ -204,6 +211,7 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
     assert captured["args"][-6:] == ("", "none", "none", "off", "local", "auto")
+    assert result[-3:] == ("", 1280, 720)
 
 
 def test_main_and_specialized_nodes_forward_appended_fields_without_positional_shift(monkeypatch):
@@ -233,7 +241,7 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
-    _system, request, _mode, _warnings = MiniMaxH3PromptGuideBuilder().build(
+    _system, request, _mode, _warnings, _width, _height = MiniMaxH3PromptGuideBuilder().build(
         "A woman crosses a station.", "t2va", 5.0, "",
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )

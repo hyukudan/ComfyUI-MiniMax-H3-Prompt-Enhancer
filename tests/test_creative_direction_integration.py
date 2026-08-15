@@ -534,7 +534,7 @@ def test_pipeline_surfaces_treatment_warnings_through_the_manifest_and_node_outp
         line in recorded["dimensions"]["camera_and_framing"] for line in recorded["droppedLines"]
     )
 
-    _system, _request, _mode, warnings = MiniMaxH3PromptGuideBuilder().build(
+    _system, _request, _mode, warnings, _width, _height = MiniMaxH3PromptGuideBuilder().build(
         "A woman approaches a car.", "t2va", 8.0, "",
         creative_treatment_json=json.dumps({"schemaVersion": 1, "genre": "action"}),
         cinematography_json=json.dumps({"schemaVersion": 1, "cameraMotion": "shake_slightly"}),

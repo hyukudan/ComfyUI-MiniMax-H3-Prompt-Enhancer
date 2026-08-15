@@ -96,6 +96,7 @@ const DISPLAY_LABELS = {
     dialogue_language: "Dialogue language",
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
+    visual_style_preset: "Visual style preset",
     media_manifest: "Media metadata JSON (optional)",
     multishot_shot_count: "Multishot count",
     frame_count: "Exact frames (0 = use duration)",
@@ -3387,6 +3388,12 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "delivery_target", ["local", "api_v2"], "local");
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
+    sanitizeEnumWidget(node, "visual_style_preset", [
+        "none", "live_action_cinematic", "live_action_naturalistic", "1970s_new_hollywood", "live_action_gritty",
+        "giallo", "storybook_symmetrical", "anime_ultradetailed_cinematic", "anime_shonen", "anime_retro_dramatic",
+        "stylized_3d_animation", "stop_motion_handcrafted", "papercraft_stop_motion", "pixel_art_16bit",
+        "clean_commercial", "documentary_observational", "home_camcorder_1990s", "surveillance_found_footage",
+    ], "none");
     sanitizeBooleanWidget(node, "use_remote_model", true);
     sanitizeBooleanWidget(node, "enhance_description", true);
     sanitizeBooleanWidget(node, "disable_thinking", true);
