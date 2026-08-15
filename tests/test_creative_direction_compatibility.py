@@ -55,9 +55,10 @@ def _appended_fields(node_class):
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
-    text = README.read_text(encoding="utf-8")
-    match = re.search(r"The minimal manifest form is:\s*```json\s*(.*?)\s*```", text, flags=re.DOTALL)
-    assert match, "README minimal media-manifest example is missing"
+    doc_path = Path(__file__).parents[1] / "docs" / "media_references_and_manifests.md"
+    text = doc_path.read_text(encoding="utf-8") if doc_path.exists() else README.read_text(encoding="utf-8")
+    match = re.search(r"```json\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+    assert match, "Media manifest example is missing in documentation"
     example = json.loads(match.group(1))
     report = parse_media_manifest(example)
     assert report["errors"] == []
