@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 
 DEFAULT_LOCAL_CONTEXT_SIZE = 16384
@@ -114,11 +115,35 @@ H3_ASPECT_RATIO_DIMENSIONS = {
     "auto": (1280, 720),
 }
 
+H3_ASPECT_RATIO_VALUES = {
+    "16:9": 16.0 / 9.0,
+    "9:16": 9.0 / 16.0,
+    "1:1": 1.0,
+    "4:3": 4.0 / 3.0,
+    "3:4": 3.0 / 4.0,
+    "21:9": 21.0 / 9.0,
+    "auto": 16.0 / 9.0,
+}
 
-def h3_dimensions_for_aspect_ratio(aspect_ratio: str) -> tuple[int, int]:
-    """Return standard (width, height) pixel dimensions for MiniMax H3 aspect ratios."""
-    ratio = str(aspect_ratio or "").strip().lower()
-    return H3_ASPECT_RATIO_DIMENSIONS.get(ratio, (1280, 720))
+
+def h3_dimensions_for_aspect_ratio(aspect_ratio: str, target_megapixels: float = 0.0, multiple_of: int = 16) -> tuple[int, int]:
+    """Return aligned (width, height) pixel dimensions for MiniMax H3 aspect ratio and optional target megapixels."""
+    ratio_str = str(aspect_ratio or "").strip().lower()
+    try:
+        mp = float(target_megapixels or 0.0)
+    except (TypeError, ValueError):
+        mp = 0.0
+    if mp <= 0.0:
+        return H3_ASPECT_RATIO_DIMENSIONS.get(ratio_str, (1280, 720))
+
+    r = H3_ASPECT_RATIO_VALUES.get(ratio_str, 16.0 / 9.0)
+    total_pixels = mp * 1_000_000.0
+    h = math.sqrt(total_pixels / r)
+    w = h * r
+
+    w_aligned = max(multiple_of, int(round(w / multiple_of)) * multiple_of)
+    h_aligned = max(multiple_of, int(round(h / multiple_of)) * multiple_of)
+    return (w_aligned, h_aligned)
 
 
 def _merge_visual_style_preset(creative_treatment_json: str, visual_style_preset: str = "none") -> str:
@@ -177,6 +202,7 @@ class MiniMaxH3PromptGuideBuilder:
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -186,12 +212,13 @@ class MiniMaxH3PromptGuideBuilder:
               multishot_identity_lock="", multishot_voice_lock="", multishot_setting_lock="",
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
-              dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none"):
+              dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
+              target_megapixels=0.0):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
         merged_treatment = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
-        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         return (
             system_prompt_for_mode(resolved, bool(enhance_description)),
             build_user_request(
@@ -276,6 +303,7 @@ class MiniMaxH3PromptEnhancer:
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
         }}
 
     @classmethod
@@ -305,10 +333,10 @@ class MiniMaxH3PromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none"):
+                visual_style_preset="none", target_megapixels=0.0):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
-        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -425,6 +453,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
         }}
 
     @classmethod
@@ -445,11 +474,11 @@ class MiniMaxH3GGUFPromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none"):
+                visual_style_preset="none", target_megapixels=0.0):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
-        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio)
+        width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,

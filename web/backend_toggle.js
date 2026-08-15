@@ -97,6 +97,7 @@ const DISPLAY_LABELS = {
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
     visual_style_preset: "Visual style preset",
+    target_megapixels: "Target Megapixels (0.0 = auto)",
     media_manifest: "Media metadata JSON (optional)",
     multishot_shot_count: "Multishot count",
     frame_count: "Exact frames (0 = use duration)",
@@ -3361,6 +3362,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     }
     sanitizeEnumWidget(node, "mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"], "auto");
     sanitizeNumberWidget(node, "duration_seconds", 5, 4, MAX_GENERATION_SECONDS);
+    sanitizeNumberWidget(node, "target_megapixels", 0.0, 0.0, 8.0);
     sanitizeNumberWidget(node, "temperature", 0.2, 0, 2);
     sanitizeIntegerWidget(node, "max_tokens", 4096, 512, 32768);
     sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);

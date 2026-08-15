@@ -187,7 +187,7 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-4:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset"]
+        assert list(optional)[-5:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels"]
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
     assert "always_re_enhance" not in MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]
@@ -213,7 +213,7 @@ def test_enhance_accepts_the_caching_flag_without_changing_the_result(monkeypatc
     assert result[7] == 720
 
 
-def test_h3_dimensions_for_various_aspect_ratios():
+def test_h3_dimensions_for_various_aspect_ratios_and_megapixels():
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9") == (1280, 720)
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("9:16") == (720, 1280)
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("1:1") == (1080, 1080)
@@ -221,6 +221,13 @@ def test_h3_dimensions_for_various_aspect_ratios():
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("3:4") == (720, 960)
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("21:9") == (1680, 720)
     assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("auto") == (1280, 720)
+    # Custom Megapixel scaling (0.2, 0.3, 0.5, 2.0 MP)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9", 0.2) == (592, 336)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9", 0.3) == (736, 416)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9", 0.5) == (944, 528)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("16:9", 2.0) == (1888, 1056)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("9:16", 0.3) == (416, 736)
+    assert prompt_enhancer_node.h3_dimensions_for_aspect_ratio("1:1", 0.5) == (704, 704)
 
 
 def test_visual_style_preset_merges_into_guide_builder():

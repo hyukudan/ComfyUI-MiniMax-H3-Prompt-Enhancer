@@ -51,7 +51,7 @@ def _input_names(node_class):
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
     delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language", "visual_style_preset"]
+    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language", "visual_style_preset", "target_megapixels"]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -91,6 +91,8 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
             assert optional["dialogue_language"][1]["default"] == "auto"
         if "visual_style_preset" in appended:
             assert optional["visual_style_preset"][1]["default"] == "none"
+        if "target_megapixels" in appended:
+            assert optional["target_megapixels"][1]["default"] == 0.0
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -148,6 +150,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        if parameters[-1].name == "target_megapixels":
+            assert parameters[-1].default == 0.0
+            parameters = parameters[:-1]
         if parameters[-1].name == "visual_style_preset":
             assert parameters[-1].default == "none"
             parameters = parameters[:-1]
