@@ -187,9 +187,11 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-5:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels"]
+        assert list(optional)[-6:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent"]
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
+        assert optional["editing_intent"][0] == list(prompt_enhancer_node.EDITING_INTENT_CHOICES)
+        assert optional["editing_intent"][1]["default"] == "none"
     assert "always_re_enhance" not in MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]
 
 
@@ -238,3 +240,15 @@ def test_visual_style_preset_merges_into_guide_builder():
     )
     assert w == 720 and h == 1280
     assert "visualLanguage:anime_ultradetailed_cinematic" in req or "Anime" in req or "cel" in req.lower() or "line" in req.lower()
+
+
+def test_editing_intent_in_guide_builder():
+    _sys, req, resolved_mode, _warn, _w, _h = MiniMaxH3PromptGuideBuilder().build(
+        "Change the character walking into the room.", "auto", 6.0,
+        reference_context="Video 1 is the walking motion. Picture 1 is the new character.",
+        editing_intent="character_swap",
+    )
+    assert resolved_mode == "ref2va"
+    assert "CHARACTER / ACTOR SWAP" in req
+    assert "weak_reference" in req
+    assert "[video editing + character swap]" in req or "character swap" in req.lower()

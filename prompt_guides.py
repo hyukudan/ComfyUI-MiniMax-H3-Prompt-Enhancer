@@ -12,6 +12,7 @@ from collections.abc import Mapping
 import json
 import hashlib
 import re
+import unicodedata
 from typing import Any
 
 try:
@@ -96,6 +97,53 @@ DIALOGUE_LANGUAGE_CHOICES = (
     "Turkish",
     "Hindi",
 )
+EDITING_INTENT_CHOICES = (
+    "none",
+    "character_swap",
+    "wardrobe_transfer",
+    "voice_dialogue_swap",
+    "environment_background",
+    "motion_transfer",
+    "custom_editing",
+)
+EDITING_INTENT_CONTRACTS = {
+    "character_swap": (
+        "EDITING INTENT — CHARACTER / ACTOR SWAP: <Video 1> provides timing, body motion, and camera trajectory. "
+        "<Picture 1> (or defined <Subject 1>) provides the new character's facial features and appearance. "
+        "In retention_analysis, mark <Video 1> as weak_reference (retain motion and camera, discard original face) "
+        "and <Subject 1> as fully_preserved (retain new face, hair, and wardrobe from <Picture 1>). "
+        "In summary, declare [video editing + character swap]."
+    ),
+    "wardrobe_transfer": (
+        "EDITING INTENT — WARDROBE / OUTFIT TRANSFER: <Video 1> provides the actor's facial identity, expressions, "
+        "and motion. <Picture 1> provides the new outfit, costume, or armor. "
+        "In retention_analysis, mark <Video 1> as partially_preserved (keep original face and motion) "
+        "and <Picture 1> as attribute_transfer (apply outfit and materials onto character). "
+        "In summary, declare [video editing + wardrobe transfer]."
+    ),
+    "voice_dialogue_swap": (
+        "EDITING INTENT — VOICE & DIALOGUE SWAP: Replace the spoken dialogue in <Video 1> with new speech wrapped in "
+        "<d>[Language] ...</d> tags. If <Audio 1> is present, set retention_analysis for <Audio 1> to reference "
+        "(use exclusively as voice timbre and delivery conditioning for the speaker). "
+        "In summary, declare [video editing + audio reference]."
+    ),
+    "environment_background": (
+        "EDITING INTENT — BACKGROUND / ENVIRONMENT REPLACEMENT: Preserve the subject and action from <Video 1> while "
+        "replacing the environment or background setting as described in the prompt and reference images. "
+        "In retention_analysis, mark <Video 1> as partially_preserved and the new setting reference as attribute_transfer or weak_reference. "
+        "In summary, declare [video editing]."
+    ),
+    "motion_transfer": (
+        "EDITING INTENT — MOTION TRANSFER: Use <Video 1> strictly as a motion, timing, and camera trajectory guide. "
+        "The subject and environment come from <Picture 1> and the prompt text. "
+        "In retention_analysis, mark <Video 1> as weak_reference. "
+        "In summary, declare [video editing + motion reference]."
+    ),
+    "custom_editing": (
+        "EDITING INTENT — GENERAL VIDEO EDITING: The generated output is an edited version of <Video 1>. "
+        "In summary, declare [video editing] and specify explicit retention_analysis policies for all referenced media."
+    ),
+}
 ACOUSTIC_SPACE_CHOICES = (
     "none",
     "small_reflective_interior",
@@ -1126,12 +1174,14 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None) -
 
 
 def resolve_mode(mode: str, reference_context: str = "", basic_prompt: str = "",
-                 media_manifest: str = "") -> str:
+                 media_manifest: str = "", editing_intent: str = "none") -> str:
     mode = str(mode).strip().lower()
     if mode not in TASK_MODES:
         raise ValueError(f"Unsupported MiniMax H3 prompt mode {mode!r}")
     if mode != "auto":
         return mode
+    if editing_intent in EDITING_INTENT_CHOICES and editing_intent != "none":
+        return "ref2va"
     parsed = parse_media_manifest(media_manifest)
     manifest_mode = parsed.get("mode", "")
     if manifest_mode in TASK_MODES and manifest_mode != "auto":
@@ -1190,9 +1240,32 @@ def _definition_labels(text: str) -> list[str]:
     )))
 
 
+def _renumber_zero_indexed_assets(source_prompt: str) -> str:
+    """Shift a whole asset kind up by one when the source counts it from zero.
+
+    Connected media is numbered from 1, so "audio 0" names nothing and silently
+    costs the generation a voice. A source that says audio 0 and audio 1 is
+    counting from zero throughout, so the repair that preserves the author's
+    intent is to shift that kind as a block rather than to guess per mention.
+    """
+    source = source_prompt or ""
+    for kinds in (("image", "imagen", "picture", "foto"), ("audio", "voice", "voz"), ("video", "vídeo")):
+        pattern = r"\b(" + "|".join(kinds) + r")\s*(?:number\s*|n[uú]mero\s*|#\s*)?(\d+)\b"
+        numbers = {int(number) for _kind, number in re.findall(pattern, source, flags=re.IGNORECASE)}
+        if 0 not in numbers:
+            continue
+        source = re.sub(
+            pattern,
+            lambda match: f"{match.group(1)} {int(match.group(2)) + 1}",
+            source,
+            flags=re.IGNORECASE,
+        )
+    return source
+
+
 def _official_reference_model(source_prompt: str, reference_context: str = "") -> dict[str, Any]:
     """Build high-confidence Ref2VA semantics without equating asset and Subject ordinals."""
-    source = source_prompt or ""
+    source = _renumber_zero_indexed_assets(source_prompt)
     canonical_reference_context = _ASSET_REFERENCE_RE.sub(
         lambda match: _asset_label(*match.groups()), reference_context or "",
     )
@@ -1204,6 +1277,9 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         + _REFERENCE_RE.findall(source)
     ))
     assets = [label for label in assets if not label.casefold().startswith("<subject")]
+    # Connected media is numbered from 1, so "audio 0" names nothing. Defining it
+    # anyway hands the writer a phantom asset it will happily spend a voice on.
+    assets = [label for label in assets if not re.search(r"\s0>$", label)]
     if explicit_definitions:
         return {
             "explicit": True,
@@ -1213,12 +1289,19 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             "provenance_assets": set(),
             "independent_assets": {label for label in explicit_definitions if not label.lower().startswith("<subject")},
             "subjects": [],
+            "text_speakers": [],
             "reveal": None,
         }
 
     picture_roles = []
     binding_metadata: dict[tuple[str, str], dict[str, Any]] = {}
     for first_role, second_role, kind, number in _COORDINATED_ROLE_REFERENCE_RE.findall(source):
+        # This pattern is for two roles sharing one image ("the man and the woman
+        # in image 1"). When a role carries its own reference the coordination is
+        # between two separately sourced characters, and pinning both to the last
+        # image invents a subject and misbinds the first.
+        if _ASSET_REFERENCE_RE.search(first_role) or _ASSET_REFERENCE_RE.search(second_role):
+            continue
         asset = _asset_label(kind, number)
         picture_roles.extend(((first_role.strip(), asset), (second_role.strip(), asset)))
     for match in _ROLE_REFERENCE_RE.finditer(source):
@@ -1465,7 +1548,13 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
                 audio_asset = _asset_label(a_match.group(1), a_match.group(2))
                 if clause_pics:
                     pic_asset = _asset_label(clause_pics[0].group(1), clause_pics[0].group(2))
-                    audio_subject_candidates.setdefault(audio_asset, set()).add(pic_asset)
+                    taken = any(
+                        pic_asset in pics
+                        for other, pics in audio_subject_candidates.items()
+                        if other != audio_asset
+                    )
+                    if not taken:
+                        audio_subject_candidates.setdefault(audio_asset, set()).add(pic_asset)
                 else:
                     matched_pic = None
                     for p_asset, p_role in known_picture_roles_map.items():
@@ -1473,7 +1562,12 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
                         if any(w in clause.lower() for w in role_words):
                             matched_pic = next((s["asset"] for s in subjects if s["asset"].casefold() == p_asset), None)
                             break
-                    if matched_pic:
+                    already_paired = any(
+                        matched_pic in pics
+                        for other, pics in audio_subject_candidates.items()
+                        if other != audio_asset
+                    )
+                    if matched_pic and not already_paired:
                         audio_subject_candidates.setdefault(audio_asset, set()).add(matched_pic)
 
     voice_binding_re = re.compile(
@@ -1487,15 +1581,25 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         for match in _ASSET_REFERENCE_RE.finditer(source)
         if match.group(1).casefold() in {"image", "imagen", "picture", "foto"}
     ]
+    # A Picture already paired with one voice cannot lend its identity to a
+    # second voice: two audios in the same source describe two speakers, and the
+    # extra ones belong to characters that exist only in the text. Binding them
+    # by mere proximity would silently give one Subject both voices.
+    claimed_pictures = {
+        pic for pics in audio_subject_candidates.values() for pic in pics
+    }
     for voice_match in voice_binding_re.finditer(source):
         audio_asset = _asset_label(voice_match.group(1), voice_match.group(2))
         if audio_asset not in audio_subject_candidates:
             preceding = [
                 (position, asset) for position, asset in picture_mentions
                 if 0 <= voice_match.start() - position <= 420
+                and asset not in claimed_pictures
             ]
             if preceding:
-                audio_subject_candidates.setdefault(audio_asset, set()).add(max(preceding)[1])
+                nearest = max(preceding)[1]
+                audio_subject_candidates.setdefault(audio_asset, set()).add(nearest)
+                claimed_pictures.add(nearest)
     for asset in picture_assets:
         number = re.search(r"\d+", asset).group()
         token = rf"(?:image|imagen|picture|foto)\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number}"
@@ -1617,12 +1721,52 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
                 f"{labels[0]} (S{s_num})'s newly generated dialogue; its original "
                 "words and unrelated sounds are not copied"
             )
+
+    # A voice reference left over after every Subject is served belongs to a
+    # character the source only describes in prose.  The guide binds it to a
+    # stable voice description rather than to a Subject label, so consume the
+    # prose speakers in the order the source introduces them.
+    text_speakers = _text_only_speaker_descriptors(
+        source, tuple(subject.get("binding_excerpt", "") for subject in subjects),
+    )
+    spare_speakers = list(text_speakers)
+    for label in audio_assets:
+        item = independent.get(label)
+        if not item or not item.get("voice_reference") or item.get("bound_subject"):
+            continue
+        # A copied signal is reused wholesale; it is not a timbre reference that
+        # needs an owner, and its description must survive untouched.
+        if item.get("marker") != "reference":
+            continue
+        if not spare_speakers:
+            # No descriptor could be recovered, but the audio still cannot belong
+            # to a Subject that already owns a voice. Say so rather than leaving
+            # the generic wording, which reads as an invitation to reuse (S1).
+            item["unowned_voice"] = True
+            item["description"] = (
+                "the supplied audio signal used exclusively as the voice-timbre and delivery reference for a "
+                "speaker who has no reference asset of their own and who therefore carries a stable voice "
+                "description plus their own speaker ID, never the speaker ID of a defined Subject; its "
+                "original words and unrelated sounds are not copied"
+            )
+            continue
+        descriptor = spare_speakers.pop(0)
+        item["bound_voice_descriptor"] = descriptor
+        item["description"] = (
+            f"the supplied audio signal used exclusively as the voice-timbre and delivery reference for "
+            f"{descriptor}, a speaker the source describes only in prose and who therefore carries a stable "
+            "voice description plus a speaker ID instead of a Subject label; its original words and unrelated "
+            "sounds are not copied"
+        )
+
     for label, item in independent.items():
         definitions.append({
             "label": label, "line": f"{label} is {item['description']}.",
             "marker": item["marker"], "asset": label, "kind": label[1:].split()[0].lower(),
             "voice_reference": bool(item.get("voice_reference")),
             "bound_subject": item.get("bound_subject"),
+            "bound_voice_descriptor": item.get("bound_voice_descriptor"),
+            "unowned_voice": bool(item.get("unowned_voice")),
         })
 
     reveal_match = re.search(
@@ -1648,6 +1792,7 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         "independent_assets": set(independent),
         "unassigned_assets": unassigned_assets,
         "subjects": subjects,
+        "text_speakers": text_speakers,
         "reveal": reveal,
     }
 
@@ -1682,7 +1827,30 @@ def _official_reference_contract(source_prompt: str, reference_context: str = ""
             "grammatical referent—not to an earlier, nearby, speaking, or more prominent subject. Its first use in "
             "detailed_description must identify that exact referent."
         )
+    for descriptor in model.get("text_speakers", ()):
+        lines.append(
+            f"- PROSE SPEAKER: {descriptor} speaks but has no reference asset. Do not invent a <Subject N> label "
+            f"for this character. Introduce it as a stable voice description reused verbatim at every vocal "
+            f"event, followed by its own speaker ID, and never reuse the speaker ID of a defined Subject."
+        )
     for item in model["definitions"]:
+        descriptor = item.get("bound_voice_descriptor")
+        if item["kind"] == "audio" and descriptor:
+            lines.append(
+                f"- VOICE BINDING LOCK: {item['label']} belongs exclusively to {descriptor}, not to any defined "
+                f"Subject. Every line that character speaks must identify {item['label']} as its timbre/delivery "
+                f"reference and reuse that character's own stable speaker ID. Never attach this voice to a "
+                "<Subject N> or to another speaker."
+            )
+            continue
+        if item["kind"] == "audio" and item.get("unowned_voice"):
+            lines.append(
+                f"- VOICE BINDING LOCK: {item['label']} belongs to a speaker with no reference asset. Introduce "
+                f"that character with a stable voice description reused verbatim at every vocal event, give them "
+                f"their own speaker ID, and identify {item['label']} as their timbre/delivery reference. Never "
+                "attach this voice to a defined Subject and never reuse a Subject's speaker ID for it."
+            )
+            continue
         bound_subject = item.get("bound_subject")
         if item["kind"] != "audio" or not bound_subject:
             continue
@@ -1706,7 +1874,9 @@ def _official_reference_contract(source_prompt: str, reference_context: str = ""
                 f"- REVEAL LOCK: {label} remains completely concealed until the spoken cue {cue!r}; reveal that "
                 "Subject at the cue, never before it, even within the same shot."
             )
-    canonical = _ASSET_REFERENCE_RE.sub(lambda match: _asset_label(*match.groups()), source_prompt or "")
+    canonical = _ASSET_REFERENCE_RE.sub(
+        lambda match: _asset_label(*match.groups()), _renumber_zero_indexed_assets(source_prompt),
+    )
     lines.append("CANONICALIZED SOURCE WORDING:\n" + canonical)
     return "\n".join(lines)
 
@@ -1930,6 +2100,20 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
     if voice_references:
         detail = _section_body(value, "detailed_description")
         def _bound_lock(item):
+            if item.get("unowned_voice"):
+                return (
+                    f"{item['label']} is the exclusive voice-timbre and delivery reference for a speaker who has "
+                    "no reference asset; that character carries a stable voice description and its own speaker "
+                    "ID, never the speaker ID of a defined Subject. Preserve that speaker identity without "
+                    "copying the audio's original words or unrelated sounds."
+                )
+            if item.get("bound_voice_descriptor"):
+                return (
+                    f"{item['label']} is the exclusive voice-timbre and delivery reference for "
+                    f"{item['bound_voice_descriptor']}, a speaker described only in prose who carries a stable "
+                    "voice description and its own speaker ID rather than a Subject label; preserve that speaker "
+                    "identity without copying the audio's original words or unrelated sounds."
+                )
             if item.get("bound_subject"):
                 m = re.search(r'\d+', item['bound_subject'])
                 num = m.group() if m else "1"
@@ -1989,10 +2173,128 @@ def _ordinary_generated_character_descriptors(source_prompt: str) -> list[str]:
     return list(dict.fromkeys(descriptors))
 
 
+_TEXT_SPEAKER_VOCAL_ACTION = (
+    r"(?:says?|said|asks?|asked|replies|replied|responds?|exclaims?|shouts?|screams?|whispers?|"
+    r"sings?|calls?|adds?|answers?|speaks?|spoke|"
+    r"dice|dicen|dijo|grita|gritan|responde|contesta|exclama|pregunta|susurra)"
+)
+# Scene nouns that routinely head an indefinite phrase near a speech verb. A
+# speaker is a who, and none of these can be one.
+_NON_SPEAKER_HEAD_NOUNS = frozenset({
+    "table", "chair", "bed", "desk", "bench", "stool", "door", "window", "wall", "floor",
+    "ceiling", "room", "building", "house", "hospital", "street", "road", "comic", "book",
+    "magazine", "scroll", "page", "cover", "poster", "sign", "screen", "phone", "lamp",
+    "light", "candle", "fire", "sword", "knife", "gun", "arm", "hand", "leg", "head", "face",
+    "eye", "mouth", "voice", "sound", "noise", "song", "moment", "second", "minute", "hour",
+    "day", "night", "scene", "shot", "camera", "mesa", "silla", "puerta", "ventana", "pared",
+    "suelo", "sala", "edificio", "cama", "libro", "espada", "brazo", "mano", "voz",
+})
+
+
+def _text_only_speaker_descriptors(
+    source_prompt: str, bound_excerpts: tuple[str, ...] = (),
+) -> list[str]:
+    """Speakers the source introduces in prose only, with no reference asset.
+
+    The official Ref2VA guide does not give these characters a ``<Subject N>``
+    label: an audio whose speaker "does not correspond to a defined subject"
+    takes "a stable voice description followed by ``(Sx)``" instead.  So they
+    need a descriptor stable enough to reuse verbatim at every vocal event.
+
+    The speaker is taken as the first indefinite noun phrase standing before the
+    sentence's speech verb.  Indefinite because a definite phrase in a Ref2VA
+    source normally points back at an asset-bound subject; before the verb
+    because a phrase introduced afterwards ("says while holding a sword") is a
+    prop of the utterance rather than its author.  Arbitrary distance is allowed
+    between the two: a character is routinely introduced with a long trailing
+    description before the sentence gets to what they say.
+    """
+    source = source_prompt or ""
+    # Spoken content carries noun phrases of its own ("Es una herida superficial"),
+    # and none of them is ever the speaker.
+    masked = re.sub(
+        r"[\"“”«»„][^\"“”«»„]*[\"“”«»„]", lambda match: " " * len(match.group(0)), source,
+    )
+    descriptors: list[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", masked):
+        speech = None
+        for candidate in re.finditer(
+            rf"\b{_TEXT_SPEAKER_VOCAL_ACTION}\b", sentence, flags=re.IGNORECASE,
+        ):
+            # "the cover that says ..." is writing on a prop, not a character
+            # speaking, and the noun phrase before it is scenery.
+            if re.search(
+                r"\b(?:that|which|who|que)\s*$|"
+                r"\b(?:cover|sign|label|poster|screen|text|title|note|letter|banner|page|"
+                r"portada|cartel|letrero)\s+\w*\s*$",
+                sentence[:candidate.start()],
+                flags=re.IGNORECASE,
+            ):
+                continue
+            speech = candidate
+            break
+        if not speech:
+            continue
+        region = sentence[:speech.start()]
+        # Scan determiner by determiner rather than matching whole phrases: a
+        # rejected candidate must not consume the words after it, or "from a
+        # doorway a soldier appears and says" loses the soldier with the doorway.
+        for determiner in re.finditer(r"\b(?:a|an|un|una)\b", region, flags=re.IGNORECASE):
+            # A noun phrase governed by a locative preposition is where the scene
+            # happens, not who speaks in it.
+            if re.search(
+                r"\b(?:on|at|in|into|onto|over|under|behind|near|by|from|to|with|inside|beside|"
+                r"en|desde|sobre|bajo|junto|tras|hacia|entre|delante|detr[aá]s)\s+$",
+                region[:determiner.start()],
+                flags=re.IGNORECASE,
+            ):
+                continue
+            tail = re.match(
+                r"\s+((?:[\wÀ-ÿ'’-]+)(?:\s+[\wÀ-ÿ'’-]+){0,4})", region[determiner.end():],
+            )
+            if not tail:
+                continue
+            # Stop at the predicate: the speaker is the noun phrase, not the
+            # clause it goes on to perform.
+            phrase = re.split(
+                rf"\s+(?:{_TEXT_SPEAKER_VOCAL_ACTION}|and|y|who|que|which|while|mientras|"
+                r"arrives?|appears?|enters?|runs?|walks?|comes?|steps?|stumbles?|staggers?|"
+                r"llega|entra|aparece|camina|corre)\b",
+                tail.group(1), maxsplit=1, flags=re.IGNORECASE,
+            )[0]
+            phrase = re.sub(r"\s+", " ", phrase).strip(" ,;:")
+            # The word cap can land mid-modifier ("the man with a scar on"); a
+            # dangling function word makes an unusable voice description.
+            while re.search(
+                r"\s+(?:with|on|in|of|at|from|to|for|and|the|a|an|his|her|their|its|"
+                r"con|en|de|del|la|el|los|las|un|una|y|su)$", phrase, flags=re.IGNORECASE,
+            ):
+                phrase = re.sub(
+                    r"\s+(?:with|on|in|of|at|from|to|for|and|the|a|an|his|her|their|its|"
+                    r"con|en|de|del|la|el|los|las|un|una|y|su)$", "", phrase, flags=re.IGNORECASE,
+                )
+            if not phrase or _ASSET_REFERENCE_RE.search(phrase) or _REFERENCE_RE.search(phrase):
+                continue
+            if phrase.split()[0].casefold() in _NON_SPEAKER_HEAD_NOUNS:
+                continue
+            # "with the voice in audio 2" describes the delivery, not the speaker.
+            if re.search(r"\b(?:voice|voz|timbre|tone|accent)\b", phrase, re.IGNORECASE):
+                continue
+            if any(phrase.casefold() in excerpt.casefold() for excerpt in bound_excerpts):
+                continue
+            descriptors.append("the " + phrase.casefold())
+            break
+    return list(dict.fromkeys(descriptors))
+
+
 def normalize_unassigned_subjects(text: str, source_prompt: str, reference_context: str = "") -> str:
     """Replace invented Subject labels with literal generated-character descriptions."""
     value = str(text)
     model = _official_reference_model(source_prompt, reference_context)
+    if model["explicit"]:
+        # Authoritative definitions carry no inferred subject list, so every label
+        # would read as an orphan here and be rewritten away.
+        return value
     allowed_subjects = {
         item["label"].casefold() for item in model["definitions"] if item["kind"] == "subject"
     }
@@ -2002,6 +2304,12 @@ def normalize_unassigned_subjects(text: str, source_prompt: str, reference_conte
         if label.casefold().startswith("<subject ") and label.casefold() not in allowed_subjects
     ]
     descriptors = _ordinary_generated_character_descriptors(source_prompt)
+    # A prose-only speaker is a legitimate character that simply has no asset, so
+    # its own descriptor stands in for the label the writer should never have used.
+    descriptors += [
+        descriptor for descriptor in model.get("text_speakers", ())
+        if descriptor not in descriptors
+    ]
     for label, descriptor in zip(orphan_subjects, descriptors):
         value = re.sub(re.escape(label), descriptor, value, flags=re.IGNORECASE)
     return value
@@ -2337,7 +2645,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        instrumental_style: str = "none",
                        acoustic_space: str = "none",
                        dialogue_coverage: str = "off",
-                       dialogue_language: str = "auto") -> str:
+                       dialogue_language: str = "auto",
+                       editing_intent: str = "none") -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -2352,7 +2661,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         raise ValueError(f"Unsupported dialogue coverage {dialogue_coverage!r}")
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unsupported aspect ratio {aspect_ratio!r}")
-    resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    if editing_intent not in EDITING_INTENT_CHOICES:
+        raise ValueError(f"Unsupported editing intent {editing_intent!r}")
+    resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
     active_enhancement_profile = enhancement_profile(enhance_description)
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(
         basic_prompt, override_language=dialogue_language
@@ -2475,6 +2786,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     )
     if positional_contract:
         parts.append(positional_contract)
+    if editing_intent in EDITING_INTENT_CONTRACTS:
+        parts.append(EDITING_INTENT_CONTRACTS[editing_intent])
 
     ambience_contracts = {
         "auto": (
@@ -3094,9 +3407,19 @@ def _source_quote_is_internal_monologue(source_prompt: str, quote_match) -> bool
 
 
 def _dialogue_lexical_key(quote: str) -> str:
-    """Match repeated cues despite terminal emphasis while preserving authored text later."""
-    value = re.sub(r"\s+", " ", str(quote)).strip().casefold()
-    return re.sub(r"[.!?…]+$", "", value).strip()
+    """Recognize an authored cue through the drift a writer model introduces.
+
+    A local model retyping Spanish routinely drops accents or adds a comma, and an
+    exact key then fails to recognize its own source line: the quote stays
+    untagged, the validator objects, and every repair attempt reproduces the same
+    near-miss. Only this lookup key is loosened -- the authored wording is
+    restored verbatim from the contract, so a match repairs the drift rather than
+    blessing it.
+    """
+    value = unicodedata.normalize("NFD", str(quote)).casefold()
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = re.sub(r"[^\w\s]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _source_dialogue_contracts(source_prompt: str, override_language: str = "auto") -> list[tuple[str, str, bool]]:
@@ -4663,8 +4986,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     instrumental_style: str = "none",
                     acoustic_space: str = "none",
                     dialogue_coverage: str = "off",
-                    dialogue_language: str = "auto") -> dict[str, Any]:
-    resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest)
+                    dialogue_language: str = "auto",
+                    editing_intent: str = "none") -> dict[str, Any]:
+    resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest, editing_intent=editing_intent)
     profile_name = (
         enhancement_profile(enhance_description)
         if enhance_description is not None else "legacy_unprofiled"
@@ -4951,6 +5275,33 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
 
     if text.count("<d>") != text.count("</d>"):
         errors.append("Dialogue tags are unbalanced")
+    canonical_source = _ASSET_REFERENCE_RE.sub(
+        lambda match: _asset_label(*match.groups()), source_prompt or "",
+    )
+    zero_indexed = sorted(set(re.findall(
+        r"<(?:Picture|Video|Audio|Subject)\s+0>", canonical_source, flags=re.IGNORECASE,
+    )))
+    if zero_indexed:
+        warnings.append(
+            f"The source references {', '.join(zero_indexed)}; connected media is numbered from 1, so that "
+            "asset kind was shifted up by one for binding. Renumber the source from 1 to remove the guess"
+        )
+    if re.search(r"<(?:Picture|Video|Audio|Subject)\s+0>", text, flags=re.IGNORECASE):
+        errors.append("Reference labels are numbered from 1; a label with index 0 names no connected asset")
+    # Speech that cannot physically fit the clip gets truncated mid-word at render
+    # time, so flag the overrun while the wording is still editable.  Natural
+    # delivery sits near 2.5 words/second; stay conservative and warn only past it.
+    spoken_words = sum(
+        len(re.sub(r"^\s*\[[^\]]*\]", "", block).split())
+        for block in re.findall(r"<d>(.*?)</d>", text, flags=re.DOTALL | re.IGNORECASE)
+    )
+    if spoken_words and duration_seconds:
+        speech_seconds = spoken_words / 2.5
+        if speech_seconds > float(duration_seconds):
+            warnings.append(
+                f"Tagged dialogue runs about {speech_seconds:.1f}s of natural speech but the clip is "
+                f"{float(duration_seconds):.1f}s; shorten the lines or the delivery will be cut off"
+            )
     # Case-insensitive throughout: a stray <SCENETRANS>/<CUTOFF> must not slip past these checks.
     scenetrans_markers = re.findall(r"(?i)<scenetrans>", timeline)
     if len(scenetrans_markers) % 2:
@@ -5401,6 +5752,22 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             errors.append("Each referenced Subject must reuse one stable speaker ID across all vocal events")
         if any(len(subjects) > 1 for subjects in speaker_subjects.values()):
             errors.append("A speaker ID cannot be assigned to multiple referenced Subjects")
+        # Two voice references claiming one speaker is the signature of a voice
+        # bleeding onto a character it was never bound to, and it is invisible in
+        # detailed_description because only the definitions carry the claim.
+        definition_voice_owners: dict[str, set[str]] = {}
+        for audio_label, owner in re.findall(
+            r"(?im)^\s*(<Audio\s+\d+>)[^\r\n]*?\((S\d+)\)", definitions,
+        ):
+            definition_voice_owners.setdefault(owner.casefold(), set()).add(audio_label.casefold())
+        shared_voices = sorted(
+            owner for owner, labels in definition_voice_owners.items() if len(labels) > 1
+        )
+        if shared_voices:
+            errors.append(
+                f"Each speaker ID accepts one voice reference; subject_definitions binds several to "
+                f"{shared_voices}"
+            )
         visual_markers = {"fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference"}
         audio_markers = {"fully_copy", "partially_copy", "reference", "weak_reference"}
         expected_items = {item["label"].casefold(): item for item in reference_model["definitions"]}

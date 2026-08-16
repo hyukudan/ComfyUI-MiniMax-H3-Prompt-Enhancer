@@ -66,7 +66,7 @@ try:
     )
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     )
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -203,6 +203,7 @@ class MiniMaxH3PromptGuideBuilder:
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -213,10 +214,10 @@ class MiniMaxH3PromptGuideBuilder:
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
-              target_megapixels=0.0):
+              target_megapixels=0.0, editing_intent="none"):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
-        resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+        resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
         merged_treatment = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         return (
@@ -229,6 +230,7 @@ class MiniMaxH3PromptGuideBuilder:
                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                 (), merged_treatment, shot_plan_json, cinematography_json, instrumental_style,
                 acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
+                editing_intent=editing_intent,
             ),
             resolved,
             treatment_warning_report(
@@ -304,6 +306,7 @@ class MiniMaxH3PromptEnhancer:
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
         }}
 
     @classmethod
@@ -333,7 +336,7 @@ class MiniMaxH3PromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none", target_megapixels=0.0):
+                visual_style_preset="none", target_megapixels=0.0, editing_intent="none"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
@@ -352,12 +355,12 @@ class MiniMaxH3PromptEnhancer:
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
                     instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
-                    delivery_target != "local", dialogue_language != "auto")):
+                    delivery_target != "local", dialogue_language != "auto", editing_intent != "none")):
                 remote_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                 multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                 creative_treatment_json, shot_plan_json, cinematography_json,
                                 instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
-                                dialogue_language)
+                                dialogue_language, editing_intent)
             prompt, validation, manifest = enhance_prompt(*remote_args)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
@@ -375,12 +378,12 @@ class MiniMaxH3PromptEnhancer:
                     multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                     creative_treatment_json, shot_plan_json, cinematography_json,
                     instrumental_style != "none", acoustic_space != "none", dialogue_coverage != "off",
-                    delivery_target != "local", dialogue_language != "auto")):
+                    delivery_target != "local", dialogue_language != "auto", editing_intent != "none")):
                 local_args += (aspect_ratio, media_manifest, multishot_shot_count, frame_count,
                                multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
                                creative_treatment_json, shot_plan_json, cinematography_json,
                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
-                               dialogue_language)
+                               dialogue_language, editing_intent)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
         return (
             prompt,
@@ -454,6 +457,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
         }}
 
     @classmethod
@@ -474,7 +478,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none", target_megapixels=0.0):
+                visual_style_preset="none", target_megapixels=0.0, editing_intent="none"):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
@@ -493,6 +497,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             acoustic_space, dialogue_coverage, delivery_target, dialogue_language,
+            editing_intent,
         )
         return (
             prompt,
@@ -690,6 +695,7 @@ class MiniMaxH3PromptValidator:
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none"}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto"}),
+            "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none"}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -700,7 +706,7 @@ class MiniMaxH3PromptValidator:
                  creative_treatment_json="", shot_plan_json="", cinematography_json="",
                  enhance_description=True, delivery_target="local", instrumental_description="",
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                 dialogue_language="auto"):
+                 dialogue_language="auto", editing_intent="none"):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
@@ -711,6 +717,7 @@ class MiniMaxH3PromptValidator:
             instrumental_description=instrumental_description, instrumental_style=instrumental_style,
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
             dialogue_language=dialogue_language,
+            editing_intent=editing_intent,
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {

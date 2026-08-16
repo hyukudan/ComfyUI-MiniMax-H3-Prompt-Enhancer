@@ -51,7 +51,10 @@ def _input_names(node_class):
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
     delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [*NEW_FIELDS, *caching, *delivery, "dialogue_language", "visual_style_preset", "target_megapixels"]
+    return [
+        *NEW_FIELDS, *caching, *delivery,
+        "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent",
+    ]
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -150,6 +153,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        if parameters[-1].name == "editing_intent":
+            assert parameters[-1].default == "none"
+            parameters = parameters[:-1]
         if parameters[-1].name == "target_megapixels":
             assert parameters[-1].default == 0.0
             parameters = parameters[:-1]
@@ -215,7 +221,7 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-6:] == ("", "none", "none", "off", "local", "auto")
+    assert captured["args"][-7:] == ("", "none", "none", "off", "local", "auto", "none")
     assert result[-3:] == ("", 1280, 720)
 
 
@@ -241,8 +247,8 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
         0.2, 4096, 300, 180, 0, True, True, False,
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
-    assert remote_calls[0][-8:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto")
-    assert gguf_calls[0][-8:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto")
+    assert remote_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
+    assert gguf_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():

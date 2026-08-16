@@ -125,6 +125,22 @@ def _model_name(root: str, requested: str, api_key: str, timeout: int) -> str:
     return min(enumerate(models), key=lambda item: (_compact_model_rank(item[1]), item[0]))[1]
 
 
+def _native_chat_content(answer: dict) -> str:
+    """Read the assistant text out of an LM Studio native /api/v1/chat answer."""
+    for item in answer.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if isinstance(content, list):
+            content = "".join(
+                str(part.get("text", "")) for part in content if isinstance(part, dict)
+            )
+        text = str(content or "").strip()
+        if text:
+            return text
+    return ""
+
+
 def _completion(root: str, model: str, messages: list[dict], api_key: str,
                 temperature: float, max_tokens: int, timeout: int,
                 disable_thinking: bool = True,
@@ -145,27 +161,18 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
             "reasoning": "off",
             "store": False,
         }
+        # The native route is the only one that reliably silences reasoning on
+        # LM Studio; the OpenAI-compatible payload below merely requests it.
         try:
-            native_response = _request_json(
-                native_root + "/api/v1/chat", native_payload, api_key, timeout
-            )
-            content = "\n".join(
-                str(item.get("content", ""))
-                for item in (native_response.get("output") or [])
-                if item.get("type") == "message" and item.get("content")
-            ).strip()
-            if content:
-                _record_native_chat_support(native_root, True)
-                return strip_markdown_fence(content)
-            # An answered but empty native response is treated as a one-off, not as proof that the
-            # endpoint is missing: this call falls through without touching the cache.
+            answer = _request_json(native_root + "/api/v1/chat", native_payload, api_key, timeout)
         except RuntimeError as exc:
-            # Non-LM-Studio OpenAI-compatible servers do not expose this endpoint. Remember that
-            # so later calls stop paying for a failing round-trip, including a server that used to
-            # answer natively and was replaced by another implementation.
             if _is_missing_native_endpoint(exc):
                 _record_native_chat_support(native_root, False)
-
+        else:
+            _record_native_chat_support(native_root, True)
+            content = _native_chat_content(answer)
+            if content:
+                return strip_markdown_fence(content)
     payload = {
         "model": model,
         "messages": messages,
@@ -175,9 +182,21 @@ def _completion(root: str, model: str, messages: list[dict], api_key: str,
     }
     if disable_thinking:
         payload["chat_template_kwargs"] = {"enable_thinking": False}
+        payload["reasoning_effort"] = "low"
     response = _request_json(root + "/chat/completions", payload, api_key, timeout)
     try:
-        return strip_markdown_fence(response["choices"][0]["message"]["content"])
+        msg = response["choices"][0]["message"]
+        content = (msg.get("content") or "").strip()
+        if not content and msg.get("reasoning_content"):
+            content = str(msg.get("reasoning_content")).strip()
+            # If the reasoning content has a final output, extract it
+            if "\n\n" in content:
+                parts = content.split("\n\n")
+                content = parts[-1].strip() if parts[-1].strip() else content
+        # Strip XML/think tags if present
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        content = re.sub(r"^Thinking Process:.*?(?=\n\n|\Z)", "", content, flags=re.DOTALL).strip()
+        return strip_markdown_fence(content)
     except (KeyError, IndexError, TypeError) as exc:
         raise RuntimeError("LLM endpoint returned no choices[0].message.content") from exc
 
@@ -319,6 +338,7 @@ def enhance_prompt_with_completion(
     dialogue_coverage: str = "off",
     delivery_target: str = "local",
     dialogue_language: str = "auto",
+    editing_intent: str = "none",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -327,7 +347,7 @@ def enhance_prompt_with_completion(
     parsed_manifest_preflight = parse_media_manifest(media_manifest)
     if parsed_manifest_preflight.get("errors"):
         raise ValueError("Invalid media_manifest: " + "; ".join(parsed_manifest_preflight["errors"]))
-    resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest)
+    resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
     generation = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = generation["effectiveDurationSeconds"]
     creative_treatment = parse_creative_treatment(
@@ -377,6 +397,7 @@ def enhance_prompt_with_completion(
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
         (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
         acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
+        editing_intent=editing_intent,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -400,6 +421,7 @@ def enhance_prompt_with_completion(
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
+            editing_intent=editing_intent,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -468,6 +490,7 @@ def enhance_prompt_with_completion(
         instrumental_description=instrumental_description, instrumental_style=instrumental_style,
         acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
         dialogue_language=dialogue_language,
+        editing_intent=editing_intent,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -548,6 +571,7 @@ def enhance_prompt_with_completion(
             enhance_description=bool(enhance_description), delivery_target=delivery_target,
             instrumental_description=instrumental_description, instrumental_style=instrumental_style,
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
+            editing_intent=editing_intent,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -687,7 +711,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    acoustic_space: str = "none",
                    dialogue_coverage: str = "off",
                    delivery_target: str = "local",
-                   dialogue_language: str = "auto") -> tuple[str, dict, dict]:
+                   dialogue_language: str = "auto",
+                   editing_intent: str = "none") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -737,4 +762,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_coverage,
         delivery_target,
         dialogue_language,
+        editing_intent,
     )
