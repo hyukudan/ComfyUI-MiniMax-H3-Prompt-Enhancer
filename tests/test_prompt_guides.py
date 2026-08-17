@@ -2845,3 +2845,53 @@ def test_an_unexplained_extra_picture_stays_unassigned():
     )
     assert "<Picture 2>" in model["unassigned_assets"]
     assert all(item["kind"] != "setting" for item in model["definitions"])
+
+
+def test_named_characters_bind_their_own_picture():
+    """A source often names characters instead of describing them.
+
+    "Rastas, in image 1, and Primo, in image 2" left both pictures unassigned because role
+    detection required a determiner, so the writer referenced <Subject 2>/<Subject 3> with
+    nothing defining them and H3 received labels with no identity behind them.
+    """
+    model = _official_reference_model(
+        "We see Rastas, in image 1, and Primo, in image 2, sitting down. "
+        "Then the man in image 3 enters with an angry face.", "",
+    )
+    lines = {item["label"]: item["line"] for item in model["definitions"]}
+    assert not model["unassigned_assets"]
+    assert "Rastas" in lines["<Subject 1>"] and "<Picture 1>" in lines["<Subject 1>"]
+    assert "Primo" in lines["<Subject 2>"] and "<Picture 2>" in lines["<Subject 2>"]
+    # A name identifies a character, so it must not fall into the prop wording.
+    assert "identity and intrinsic physical appearance" in lines["<Subject 1>"]
+    assert "proportions, materials, colors" not in lines["<Subject 1>"]
+
+
+def test_spanish_personal_a_does_not_discard_a_named_character():
+    """Spanish marks a personal object with "a", which reads exactly like an English article."""
+    model = _official_reference_model(
+        "Vemos a Marta, en la imagen 1, y a Juan, en la imagen 2.", "",
+    )
+    roles = {item["role"] for item in model["definitions"]}
+    assert {"Marta", "Juan"} <= roles
+    assert not model["unassigned_assets"]
+
+
+def test_an_article_leaves_the_reference_to_the_noun_phrase_pattern():
+    """Both patterns claiming "the Uzi in image 2" would split one picture across two Subjects."""
+    model = _official_reference_model(
+        "The person in image 1 reveals the Uzi in image 2.", "",
+    )
+    labels = {item["label"]: item["role"] for item in model["definitions"]}
+    assert labels["<Subject 1>"] == "person"
+    assert labels["<Subject 2>"] == "Uzi"
+
+
+def test_a_place_word_never_becomes_a_subject():
+    """Claiming the location as a role would shadow the setting detector and grant it agency."""
+    model = _official_reference_model(
+        "El hombre de la imagen 1 entra en el escenario de la imagen 2.", "",
+    )
+    kinds = {item["label"]: item["kind"] for item in model["definitions"]}
+    assert kinds["<Subject 1>"] == "subject"
+    assert kinds["<Picture 2>"] == "setting"

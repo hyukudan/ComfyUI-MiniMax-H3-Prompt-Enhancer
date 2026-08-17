@@ -387,10 +387,21 @@ _ASSET_REFERENCE_RE = re.compile(
 _ROLE_REFERENCE_RE = re.compile(
     r"\b(?:the|a|an|el|la|los|las|un|una|al|del)\s+"
     r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,9}?)\s+"
-    r"(?:in|en|from|de|que\s+(?:es|aparece\s+en|corresponde\s+a))\s+"
+    r"(?:in|en|from|de|que\s+(?:es|aparece\s+en|corresponde\s+a))\s+(?:la\s+|el\s+|the\s+)?"
     r"(image|imagen|picture|foto)\s*(\d+)\b",
     re.IGNORECASE,
 )
+# A source often names its characters instead of describing them: "Rastas, in image 1, and
+# Primo, in image 2". _ROLE_REFERENCE_RE requires a determiner, so those pictures stayed
+# unassigned and the writer invented <Subject 2>/<Subject 3> with nothing defining them.
+# The name must be capitalized and must not already carry a determiner, which is what keeps
+# this from swallowing the noun phrases the determiner pattern already owns.
+_NAMED_ROLE_REFERENCE_RE = re.compile(
+    r"(?:(?P<determiner>\b(?:the|a|an|el|la|los|las|un|una|al|del)\s+))?"
+    r"(?P<name>[A-ZÁÉÍÓÚÑÜ][\wÀ-ÿ'-]*(?:\s+[A-ZÁÉÍÓÚÑÜ][\wÀ-ÿ'-]*){0,2})"
+    r"\s*,?\s+(?:in|en|from|de)\s+(?:la\s+|el\s+|the\s+)?(?P<kind>image|imagen|picture|foto)\s*(?P<number>\d+)\b",
+)
+
 _COORDINATED_ROLE_REFERENCE_RE = re.compile(
     r"\b(?:the|a|an|el|la|los|las|un|una)\s+"
     r"([\wÀ-ÿ'-]+(?:\s+[\wÀ-ÿ'-]+){0,4}?)\s+(?:and|y)\s+"
@@ -1436,6 +1447,32 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             continue
         asset = _asset_label(kind, number)
         picture_roles.extend(((first_role.strip(), asset), (second_role.strip(), asset)))
+    # Named characters are collected before the determiner pattern so a picture that carries a
+    # name is bound to it; the determiner pattern still wins later by role specificity when the
+    # source also describes the same picture with a noun phrase.
+    named_assets, named_roles = set(), set()
+    for match in _NAMED_ROLE_REFERENCE_RE.finditer(source):
+        # An article means the noun-phrase pattern already owns this reference ("the Uzi in
+        # image 2"), and letting both claim it would split one picture across two Subjects.
+        # "a" is excluded from that test on purpose: Spanish marks a personal object with it
+        # ("Vemos a Marta, en la imagen 1"), so treating it as an article would discard every
+        # named character.
+        determiner = (match.group("determiner") or "").strip().casefold()
+        if determiner and determiner != "a":
+            continue
+        name = match.group("name").strip()
+        kind, number = match.group("kind"), match.group("number")
+        # Sentence-leading connectives are capitalized too and are never character names.
+        if name.casefold() in {
+            "then", "and", "but", "we", "he", "she", "they", "it", "this", "that", "there",
+            "first", "next", "later", "after", "before", "now", "here", "also", "luego",
+            "entonces", "despues", "después", "ahora", "aqui", "aquí", "el", "la", "ellos",
+        }:
+            continue
+        asset = _asset_label(kind, number)
+        picture_roles.append((name, asset))
+        named_assets.add(asset)
+        named_roles.add(name)
     for match in _ROLE_REFERENCE_RE.finditer(source):
         role, kind, number = match.groups()
         role = role.strip()
@@ -1445,6 +1482,13 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         if nested_determiners:
             role = role[nested_determiners[-1].end():].strip()
         if not role or re.search(r"^(?:audio|voice|voz|video|vídeo|image|imagen|picture|foto)\s*\d+\b", role, re.IGNORECASE):
+            continue
+        # A place is not a character. Claiming it here would shadow the setting detector
+        # and give the location a Subject number, inviting the writer to give it agency.
+        if re.fullmatch(
+            r"(?:scenario|setting|environment|surroundings|background|location|place|scene|"
+            r"escenario|entorno|fondo|lugar|escena)", role, re.IGNORECASE,
+        ):
             continue
         role_was_main_typo = role.casefold() == "main"
         if role_was_main_typo:
@@ -1569,6 +1613,11 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             r"actor|actress|presenter|driver|identity|face|body|character|version|versi[oó]n)\b",
             lowered,
         ):
+            return "identity"
+        # A proper name identifies a character, so it belongs with identity rather than with the
+        # object branch, whose wording ("exact visible design, proportions, materials, colors,
+        # and markings") describes a prop and would read as one for a named person.
+        if role in named_roles:
             return "identity"
         return "design"
 
