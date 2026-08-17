@@ -811,6 +811,9 @@ function ensureFieldTitleStyles() {
             color: var(--descrip-text, #999);
             text-align: center;
         }
+        .minimax-h3-shot-field-inert {
+            opacity: 0.45;
+        }
         .minimax-h3-shot-row {
             display: grid;
             grid-template-columns: 29px minmax(0, 1fr) 57px;
@@ -1290,6 +1293,24 @@ function sanitizeCreativeTreatment(value) {
     };
 }
 
+// A motion that never travels: amplitude and speed have nothing to qualify.
+function isStillMotion(motion) {
+    return ["none", "static"].includes(motion);
+}
+
+// Per-shot framing axes, in the order H3 reads a shot: what the frame holds, then the move,
+// then how the move is executed.
+const SHOT_FRAMING_FIELDS = [
+    ["shotScale", "Scale", "Optional. Framing for this shot only."],
+    ["cameraAngle", "Angle", "Optional. Camera height and cant for this shot only."],
+    ["cameraAmplitude", "Amplitude", "How far the camera move travels."],
+    ["cameraSpeed", "Speed", "How fast the camera move runs."],
+];
+
+function shotFramingNeutral(key) {
+    return ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none";
+}
+
 function allowedCinematographyValue(key, value) {
     const values = CINEMATOGRAPHY_CHOICES[key]?.map(([token]) => token) ?? [];
     const fallback = ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none";
@@ -1304,7 +1325,7 @@ function sanitizeCinematography(value) {
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
         state[key] = allowedCinematographyValue(key, legacy?.[key] ?? parsed[key]);
     }
-    if (["none", "static"].includes(state.cameraMotion)) {
+    if (isStillMotion(state.cameraMotion)) {
         state.cameraAmplitude = "auto";
         state.cameraSpeed = "auto";
     }
@@ -1359,6 +1380,15 @@ function sanitizeShotPlan(value) {
         const motion = LEGACY_CAMERA_MOTIONS[source.cameraMotion]?.cameraMotion ?? source.cameraMotion;
         const cameraMotion = allowedCinematographyValue("cameraMotion", motion);
         if (cameraMotion !== "none") shot.cameraMotion = cameraMotion;
+        for (const [key] of SHOT_FRAMING_FIELDS) {
+            const neutral = shotFramingNeutral(key);
+            // Amplitude and speed qualify a move, so they are dropped without one rather than
+            // stored as a directive the backend would only warn about.
+            if (neutral === "auto" && cameraMotion === "none") continue;
+            if (typeof source[key] !== "string") continue;
+            const resolved = allowedCinematographyValue(key, source[key]);
+            if (resolved !== neutral) shot[key] = resolved;
+        }
         const transitions = SHOT_TRANSITION_CHOICES.map(([token]) => token);
         if (typeof source.transitionIn === "string" && transitions.includes(source.transitionIn)
             && source.transitionIn !== "cut") {
@@ -1407,7 +1437,7 @@ function serializeCinematography(state) {
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
         result[key] = allowedCinematographyValue(key, state?.[key]);
     }
-    if (["none", "static"].includes(result.cameraMotion)) {
+    if (isStillMotion(result.cameraMotion)) {
         result.cameraAmplitude = "auto";
         result.cameraSpeed = "auto";
     }
@@ -2170,7 +2200,7 @@ function updateCinematographySummary(node) {
         .filter(([key, value]) => !(["cameraAmplitude", "cameraSpeed"].includes(key) ? value === "auto" : value === "none"))
         .map(([key, value]) => cinematographyChoiceLabel(key, value));
     panel.cinematographySummary.textContent = `Cinematography · ${active.length ? active.join(" · ") : "No preferences"}`;
-    const moving = !["none", "static"].includes(state.cameraMotion);
+    const moving = !isStillMotion(state.cameraMotion);
     for (const key of ["cameraAmplitude", "cameraSpeed"]) {
         const select = panel.cinematographySelects?.[key];
         if (select) {
@@ -2356,6 +2386,40 @@ function renderShotRows(node) {
         });
         cameraField.appendChild(cameraSelect);
         fields.appendChild(cameraField);
+
+        // H3 reads camera grammar as motion + amplitude + speed, so motion alone leaves the
+        // move under-specified. Scale and angle sit here too because they are what changes
+        // shot to shot; palette, optics and texture stay global so the look holds across cuts.
+        for (const [key, label, hint] of SHOT_FRAMING_FIELDS) {
+            const neutral = shotFramingNeutral(key);
+            const field = createPanelElement("label", "minimax-h3-shot-camera-field");
+            field.appendChild(createPanelElement("span", "", label));
+            const select = createPanelElement("select", "minimax-h3-shot-camera");
+            select.setAttribute("aria-label", `${label} for row ${index + 1}`);
+            select.title = hint;
+            addSelectOptions(select, CINEMATOGRAPHY_CHOICES[key]);
+            select.value = shot[key] ?? neutral;
+            select.addEventListener("change", () => {
+                const selected = allowedCinematographyValue(key, select.value);
+                if (selected === neutral) delete shot[key];
+                else shot[key] = selected;
+                commitShotPlan(node);
+            });
+            // Amplitude and speed qualify a move: without one they are inert, and the backend
+            // says so rather than silently dropping them. Mirror that in the UI.
+            if (key === "cameraAmplitude" || key === "cameraSpeed") {
+                const syncEnabled = () => {
+                    const moving = !isStillMotion(cameraSelect.value);
+                    select.disabled = !moving;
+                    field.classList.toggle("minimax-h3-shot-field-inert", !moving);
+                    field.title = moving ? hint : `${hint} Choose a camera motion first.`;
+                };
+                syncEnabled();
+                cameraSelect.addEventListener("change", syncEnabled);
+            }
+            field.appendChild(select);
+            fields.appendChild(field);
+        }
 
         if (index > 0) {
             const transitionField = createPanelElement("label", "minimax-h3-shot-transition-field");
@@ -3034,7 +3098,7 @@ function addCreativeDirectionPanel(node) {
             const state = node.__minimaxCinematographyState;
             if (!state) return;
             state[key] = allowedCinematographyValue(key, select.value);
-            if (key === "cameraMotion" && ["none", "static"].includes(state.cameraMotion)) {
+            if (key === "cameraMotion" && isStillMotion(state.cameraMotion)) {
                 state.cameraAmplitude = "auto";
                 state.cameraSpeed = "auto";
                 cinematographySelects.cameraAmplitude.value = "auto";
@@ -3368,7 +3432,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);
     sanitizeIntegerWidget(node, "request_timeout", 300, 10, 1800);
     sanitizeIntegerWidget(node, "repair_attempts", 2, 0, 4);
-    sanitizeIntegerWidget(node, "context_size", 16384, 4096, 131072);
+    sanitizeIntegerWidget(node, "context_size", 32768, 4096, 131072);
     sanitizeIntegerWidget(node, "threads", 0, 0, 256);
     sanitizeIntegerWidget(node, "startup_timeout", 180, 10, 1800);
     sanitizeIntegerWidget(node, "multishot_shot_count", 0, 0, 64);
@@ -3395,6 +3459,10 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "giallo", "storybook_symmetrical", "anime_ultradetailed_cinematic", "anime_shonen", "anime_retro_dramatic",
         "stylized_3d_animation", "stop_motion_handcrafted", "papercraft_stop_motion", "pixel_art_16bit",
         "clean_commercial", "documentary_observational", "home_camcorder_1990s", "surveillance_found_footage",
+    ], "none");
+    sanitizeEnumWidget(node, "editing_intent", [
+        "none", "character_swap", "wardrobe_transfer", "voice_dialogue_swap",
+        "environment_background", "motion_transfer", "custom_editing",
     ], "none");
     sanitizeBooleanWidget(node, "use_remote_model", true);
     sanitizeBooleanWidget(node, "enhance_description", true);

@@ -224,3 +224,35 @@ def test_visible_text_on_door_sign_not_confused_with_spoken_dialogue():
     assert '<d>[Original language] XYZ bar</d>' not in normalized
 
 
+
+
+SHORT_DIALOGUE_CORPUS = [
+    # The <d> line that exposed the bug: "no" belonged to Portuguese only, so one shared
+    # function word decided a Spanish line and H3 would have voiced it with Portuguese phonetics.
+    ("No pienso decir nada.", "Spanish"),
+    ("Se donde estuviste esa noche.", "Spanish"),
+    ("No me lo esperaba.", "Spanish"),
+    ("No puedo mas.", "Spanish"),
+    ("No quiero hablar contigo.", "Spanish"),
+    ("Dejame en paz.", "Spanish"),
+    ("No es lo que parece.", "Spanish"),
+    ("Nunca te lo dije.", "Spanish"),
+    ("Nao vou dizer nada.", "Portuguese"),
+    ("Eu sei onde voce esteve.", "Portuguese"),
+    ("Nao consigo mais.", "Portuguese"),
+    ("Non ho niente da dire.", "Italian"),
+    ("So dove sei stato quella notte.", "Italian"),
+    ("Non e quello che sembra.", "Italian"),
+    ("No pense dir res.", "Catalan"),
+    ("Vine amb mi ara.", "Catalan"),
+    ("Je ne dirai rien.", "French"),
+    ("Je sais ou tu etais.", "French"),
+    ("I am not saying anything.", "English"),
+    ("I know where you were that night.", "English"),
+]
+
+
+@pytest.mark.parametrize("text,expected", SHORT_DIALOGUE_CORPUS)
+def test_short_dialogue_lines_resolve_to_the_spoken_language(text, expected):
+    """A <d> line is a few words long, which is exactly where detection used to break."""
+    assert _detect_language(text) == expected

@@ -17,6 +17,7 @@ from prompt_guides import (
     normalize_audio_policy,
     normalize_audio_section_sentence_limits,
     normalize_dialogue_tags,
+    normalize_instrumental_style_signature,
     normalize_source_dialogue,
     normalize_first_shot_marker,
     normalize_reference_definitions,
@@ -2590,7 +2591,13 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     # the measurement plus ~10-15%;
     # exceeding one means prompt growth that silently degrades small local GGUF models and must be
     # reviewed deliberately.
-    assert len(SYSTEM_PROMPT) < 12000
+    #
+    # Reviewed 2026-08-17: raised 12000 -> 12500 to admit the DIRECTION IN, DESCRIPTION OUT rule.
+    # Three separate contracts had independently drifted into ordering their own text into the
+    # delivered prompt, because the rule they all depended on was never stated anywhere; each was
+    # locally consistent, so nothing caught it. Stating it once buys back per-block repetition and
+    # is the invariant test_no_verbatim_echo_contracts.py now enforces.
+    assert len(SYSTEM_PROMPT) < 12500
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
         "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
@@ -2706,7 +2713,9 @@ def test_system_prompt_forbids_completing_an_inherited_transient_at_the_first_fr
     assert "When the request continues a previous take" in SYSTEM_PROMPT
     assert "When the request continues a previous take" in system_prompt_for_mode("t2va")
     assert "When the request continues a previous take" in system_prompt_for_mode("ref2va")
-    assert len(SYSTEM_PROMPT) < 12000
+    # The size budget is owned by test_system_prompt_and_worst_case_user_request_stay_inside_
+    # their_token_budgets, where the measurement and its review history live. Duplicating the
+    # number here only meant two places to update and one of them silently going stale.
 
 
 def test_title_screen_style_is_source_gated_and_validates_its_declarative_lock():
@@ -2756,3 +2765,83 @@ N/A"""
         enhance_description=True,
     )
     assert any("title screen is missing" in error for error in missing["errors"])
+
+
+def test_echoed_musical_language_directive_is_stripped_from_the_output():
+    """The style conditions the writer; H3 must receive audible description, not directives.
+
+    prompt_guides limits non_diegetic_music to instrumentation, tempo, rhythm and dynamics,
+    so an echoed overlay both blows that budget and feeds H3 negative instructions such as
+    "do not invent gore, monsters".
+    """
+    signature = instrumental_style_signature("horror_intense")
+    score = (
+        "A low, sustained cello drone under a thin violin counterline, "
+        "irregular accents, dynamics swelling then receding."
+    )
+    echoed = (
+        "integrated_multimodal_description:\n[Shot 1] A basement.\n\n"
+        "overall_soundscape:\nDripping water.\n\n"
+        f"non_diegetic_music:\n{signature} {score}\n"
+    )
+    cleaned = normalize_instrumental_style_signature(
+        echoed, "t2va", "add_instrumental", "horror_intense",
+    )
+    assert signature not in cleaned
+    assert "do not invent gore" not in cleaned
+    assert score in cleaned
+    assert "[Shot 1] A basement." in cleaned
+
+
+def test_clean_music_section_is_left_untouched():
+    clean = (
+        "integrated_multimodal_description:\n[Shot 1] A basement.\n\n"
+        "overall_soundscape:\nDripping water.\n\n"
+        "non_diegetic_music:\nA low cello drone at 48 BPM, dynamics receding to silence.\n"
+    )
+    assert normalize_instrumental_style_signature(
+        clean, "t2va", "add_instrumental", "horror_intense",
+    ) == clean
+
+
+def test_a_picture_named_as_the_setting_gets_its_own_definition():
+    """An image can carry a stated non-subject role, and the writer needs it defined.
+
+    "enters the scenario of image 2" binds that picture to the location. Only subject roles
+    were detected before, so the label reached the delivered prompt with nothing behind it:
+    H3 saw <Picture 2> referenced but never told what it supplies.
+    """
+    model = _official_reference_model(
+        "The man in image 1 enters the scenario of image 2, then stops and looks away.", "",
+    )
+    kinds = {item["label"]: item["kind"] for item in model["definitions"]}
+    assert kinds.get("<Subject 1>") == "subject"
+    assert kinds.get("<Picture 2>") == "setting"
+    assert not model["unassigned_assets"]
+    setting = next(i for i in model["definitions"] if i["kind"] == "setting")
+    assert "location, architecture, surfaces" in setting["line"]
+    # It stays a place: numbering it as a Subject would invite the writer to give it agency.
+    assert "<Subject 2>" not in model["definition_labels"]
+
+
+def test_proximity_alone_does_not_turn_a_subject_picture_into_a_setting():
+    """The place word must govern the asset, not merely sit near it.
+
+    "imagen 1 entra en el escenario de la imagen 2" puts "escenario" a few words after
+    "imagen 1", which a windowed match read as image 1 being the location.
+    """
+    model = _official_reference_model(
+        "El hombre de la imagen 1 entra en el escenario de la imagen 2.", "",
+    )
+    kinds = {item["label"]: item["kind"] for item in model["definitions"]}
+    assert kinds.get("<Picture 2>") == "setting"
+    assert kinds.get("<Picture 1>") != "setting"
+
+
+def test_an_unexplained_extra_picture_stays_unassigned():
+    """Without a stated role the asset must stay unbound rather than be guessed into one."""
+    model = _official_reference_model(
+        "The man in image 1 walks forward. Image 2 is also connected.", "",
+    )
+    assert "<Picture 2>" in model["unassigned_assets"]
+    assert all(item["kind"] != "setting" for item in model["definitions"])

@@ -474,8 +474,11 @@ def content_format_instruction(resolved: Mapping[str, Any]) -> str:
         ))
     else:
         lines.extend((
-            "CANONICAL DELIVERY LOCK — include this exact declarative sentence in the visual timeline:",
+            "FORMAT ARC — STRUCTURE THE TIMELINE THIS WAY, DO NOT WRITE THIS SENTENCE:",
             str(resolved["signature"]),
+            "It says how to order the supplied events, so it is executed by the shape of the "
+            "timeline and never quoted inside it. H3 reads the delivered prompt as what the "
+            "camera sees and hears, so editorial direction placed there is rendered as content.",
         ))
     for key in CONTENT_FORMAT_DIMENSIONS:
         values = resolved.get("dimensions", {}).get(key, ())

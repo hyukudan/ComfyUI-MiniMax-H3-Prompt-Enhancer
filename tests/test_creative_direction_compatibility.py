@@ -348,7 +348,11 @@ def test_frontend_mirrors_the_new_camera_axes_and_legacy_motion_migration():
     assert 'shake_slightly: { cameraMotion: "shake", cameraAmplitude: "small" }' in source
     assert 'pov: { cameraMotion: "none", cameraViewpoint: "pov" }' in source
     assert '["none", "static", "pov"]' not in source
-    assert source.count('["none", "static"].includes') == 4
+    # "still motion" is decided in one place, so every caller stays in step and the rule is
+    # not re-derived per site. The point of the check is that "pov" is not one of them.
+    assert source.count('["none", "static"].includes') == 1
+    assert "function isStillMotion(motion) {" in source
+    assert source.count("isStillMotion(") >= 5
     assert 'sanitizeEnumWidget(node, "dialogue_coverage", ["off", "on"], "off");' in source
     assert 'assignMigratedValue(manifest, "");' in source
     assert '"underwater_muffled",' in source

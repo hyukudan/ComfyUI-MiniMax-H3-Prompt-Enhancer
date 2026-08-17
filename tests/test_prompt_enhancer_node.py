@@ -136,8 +136,8 @@ def test_zero_filled_local_runtime_widgets_migrate_to_safe_defaults(monkeypatch)
         True, False, False, "model.gguf", "llama-server.exe", "auto", 0, 0, 0, False,
     )
     assert result[0] == "local prompt"
-    assert captured["args"][8] == 16384
-    assert captured["args"][13] == 180
+    assert captured["args"][8] == prompt_enhancer_node.DEFAULT_LOCAL_CONTEXT_SIZE
+    assert captured["args"][13] == prompt_enhancer_node.DEFAULT_LOCAL_STARTUP_TIMEOUT
 
 
 def test_local_runtime_zero_is_accepted_as_an_auto_migration_value():
@@ -149,7 +149,8 @@ def test_local_runtime_zero_is_accepted_as_an_auto_migration_value():
 def test_non_numeric_shifted_local_runtime_values_fall_back_safely():
     assert prompt_enhancer_node._local_runtime_limits(
         r"D:\models\llama-server.exe", "follow_prompt",
-    ) == (16384, 180)
+    ) == (prompt_enhancer_node.DEFAULT_LOCAL_CONTEXT_SIZE,
+          prompt_enhancer_node.DEFAULT_LOCAL_STARTUP_TIMEOUT)
 
 
 def test_identical_inputs_reuse_the_cached_enhancement():

@@ -127,21 +127,26 @@ def test_request_receives_the_expanded_bible_and_audio_precedence():
     assert "minimalist_product_ad" not in request
 
 
-def test_signature_normalization_is_idempotent_in_base_and_chained_modes():
+def test_echoed_format_arc_is_stripped_in_base_and_chained_modes():
+    """The arc orders the timeline; quoting it would hand H3 a stage note to render."""
     item = resolved("brand_promo")
-    base = "integrated_multimodal_description:\nA product moves.\noverall_soundscape:\nN/A\nnon_diegetic_music:\nN/A"
+    base = (
+        "integrated_multimodal_description:\n"
+        f"{item['signature']}\nA product moves.\n"
+        "overall_soundscape:\nN/A\nnon_diegetic_music:\nN/A"
+    )
     once = normalize_content_format_signature(base, "t2va", item)
+    assert item["signature"] not in once
+    assert "A product moves." in once
     assert normalize_content_format_signature(once, "t2va", item) == once
-    assert once.count(item["signature"]) == 1
-    chained = '{"prompts":["First.","Second."]}'
+
+    signatures = content_format_signatures(item, 2)
+    chained = json.dumps({"prompts": [f"{signatures[0]} First.", f"{signatures[1]} Second."]})
     chained_once = normalize_content_format_signature(chained, "chained_multishot", item)
     assert normalize_content_format_signature(chained_once, "chained_multishot", item) == chained_once
-    assert all(
-        signature in value
-        for signature, value in zip(
-            content_format_signatures(item, 2), json.loads(chained_once)["prompts"]
-        )
-    )
+    prompts = json.loads(chained_once)["prompts"]
+    assert all(signature not in value for signature, value in zip(signatures, prompts))
+    assert "First." in prompts[0] and "Second." in prompts[1]
 
 
 def test_coverage_reports_missing_signature():

@@ -2436,7 +2436,7 @@ def cinematography_instruction(cinematography: Mapping[str, Any]) -> str:
         "stable and omit any effect not selected below.",
         "For chained_multishot output, restate the resolved cinematography compactly inside every autonomous prompt "
         "item so no segment depends on styling declared only in another item.",
-        "OUTPUT INTEGRATION — MANDATORY: Translate every selected control into concrete visible prompt wording inside "
+        "CINEMATOGRAPHY OUTPUT: Write every selected control as concrete visible wording inside "
         "the applicable shot or autonomous segment. Describe the resulting palette, exposure, material color response, "
         "camera behavior, optics, focus, texture, and motion rendering; do not merely name a preset, repeat its ID, "
         "mention this control panel, or say that a look is applied. The final prompt must remain self-contained if all "
@@ -3323,24 +3323,41 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
         "reference identity, geometry, wardrobe, product, object, and endpoint facts.",
         "A profile never creates a cut or conventional genre event. Explicit controls override any conflicting "
         "camera, optical, exposure, or color advice field by field; compatible treatment lines remain active.",
-        "OUTPUT INTEGRATION — MANDATORY: Translate every remaining field into observable wording in the applicable "
+        # The ban on preset IDs and on echoing direction is stated once in the system prompt's
+        # DIRECTION IN, DESCRIPTION OUT rule; repeating it per block only dilutes both.
+        "VISUAL STYLE OUTPUT: Write every remaining field as observable wording in the applicable "
         "shot. " + (
-            "Repeat one compact, self-contained visual-style signature in every autonomous prompt item. "
+            "Realize the same look in every autonomous prompt item so each stands alone."
             if mode == "chained_multishot" else
-            "State the global look once, carry it consistently through all shots, and describe only shot-specific camera or lighting deltas later. "
-        ) + "Never emit preset IDs or control-panel labels in the finished prompt.",
+            "State the global look once, carry it consistently through all shots, and describe only shot-specific camera or lighting deltas later."
+        ),
     ]
     resolved_signature = str(style.get("resolvedSignature", "")).strip()
     if resolved_signature:
         placement = (
-            "Copy the following sentence verbatim into every autonomous JSON prompt item"
+            "Realize it inside every autonomous JSON prompt item"
             if mode == "chained_multishot" else
-            "Copy the following sentence verbatim once inside the main visual timeline section"
+            "Realize it inside the main visual timeline section"
         )
         lines.extend([
-            "CANONICAL RESOLVED PRESENTATION SIGNATURE — REQUIRED IN FINAL OUTPUT:",
-            placement + "; it is the compact executable rendering contract, not a preset label:",
+            "RESOLVED PRESENTATION CONTRACT — WRITE IT OUT AS SHOT DESCRIPTION:",
+            placement + ". This is the contract you execute, not text to reproduce. Never copy these words, "
+            "and never restate them as direction to a filmmaker (\"use patience\", \"maintain tension cadence\", "
+            "\"render the supplied interiors\"). H3 reads the finished prompt as a description of what the camera "
+            "sees and hears, so every clause below must reappear as concrete observable prose about this scene:",
             resolved_signature,
+            "COVERAGE — EACH AXIS THE CONTRACT SPECIFIES MUST BE VISIBLE IN THE FINISHED PROMPT:",
+            "- Camera grammar: state the motion as type + amplitude + speed (for example a slow prowling glide "
+            "that commits to a fast push-in onto a face or object already present). A pacing adjective alone "
+            "does not satisfy this; the movement itself must be written.",
+            "- Light and color: name the sources, colors, and contrast falling on the supplied subjects and "
+            "surfaces instead of the palette's label.",
+            "- Composition and framing: state what the frame contains and how it is arranged, using only "
+            "elements the source already supplies.",
+            "- Surfaces and texture: state how the supplied materials respond to that light.",
+            "- Performance and blocking: state the observable acting and staging the look implies.",
+            "Omit any axis this scene cannot show with supplied elements; never invent a subject, prop, "
+            "location, or event to satisfy it.",
         ])
     directives = style.get("cinematographyDirectives", ())
     if directives:
@@ -3429,7 +3446,7 @@ def creative_treatment_instruction(treatment: Mapping[str, Any]) -> str:
         "or the number/order/boundaries of shots. A profile never creates a cut, plot event, subject, object, "
         "location, ability, relationship, sound source, dialogue, or music merely because it is conventional for "
         "that genre/style. Resolve any conflict in favor of the authoritative user content and explicit controls.",
-        "OUTPUT INTEGRATION — MANDATORY: Translate every resolved treatment line into concrete visible or audible "
+        "TREATMENT OUTPUT: Write every resolved treatment line as concrete visible or audible "
         "prompt wording inside the applicable shot or autonomous segment. Describe the resulting editing rhythm, "
         "framing, light, color, production design, performance, and permitted sound; do not merely name a profile, "
         "repeat its ID, mention this control panel, or say that a treatment is applied. The final prompt must remain "
@@ -3536,7 +3553,14 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
     for index, item in enumerate(raw_shots, start=1):
         if not isinstance(item, dict):
             raise ValueError(f"shot_plan_json shot {index} must be an object")
-        allowed_item = {"id", "description", "durationSeconds", "cameraMotion", "transitionIn"}
+        allowed_item = {
+            "id", "description", "durationSeconds", "cameraMotion", "transitionIn",
+            # Per-shot framing: H3 reads camera grammar as motion + amplitude + speed, so motion
+            # alone under-specifies the move. Scale and angle belong here too because they are
+            # what actually changes from shot to shot; palette, optics and texture stay global
+            # so the look holds across the cut.
+            "cameraAmplitude", "cameraSpeed", "shotScale", "cameraAngle",
+        }
         unknown_item = sorted(set(item) - allowed_item)
         if unknown_item:
             raise ValueError(f"shot_plan_json shot {index} contains unsupported keys: {unknown_item}")
@@ -3581,6 +3605,33 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
             )
         if motion != "none":
             shot["cameraMotion"] = motion
+        # Each axis carries its own neutral: amplitude and speed default to "auto", framing
+        # axes to "none". Storing the neutral would turn a blank control into a directive.
+        for key, field in (
+            ("cameraAmplitude", "camera_amplitude"),
+            ("cameraSpeed", "camera_speed"),
+            ("shotScale", "shot_scale"),
+            ("cameraAngle", "camera_angle"),
+        ):
+            neutral = "auto" if "auto" in CINEMATOGRAPHY_CHOICES[field] else "none"
+            raw_value = item.get(key, neutral)
+            if raw_value in (None, ""):
+                raw_value = neutral
+            if not isinstance(raw_value, str):
+                raise ValueError(f"shot_plan_json shot {index} {key} must be a string")
+            resolved = raw_value.strip().lower()
+            if resolved not in CINEMATOGRAPHY_CHOICES[field]:
+                raise ValueError(
+                    f"shot_plan_json shot {index} {key} {resolved!r} must be one of: "
+                    + ", ".join(CINEMATOGRAPHY_CHOICES[field])
+                )
+            if resolved != neutral:
+                shot[key] = resolved
+        if ("cameraAmplitude" in shot or "cameraSpeed" in shot) and motion == "none":
+            warnings.append(
+                f"shot_plan_json shot {index} sets cameraAmplitude/cameraSpeed without a "
+                "cameraMotion; they describe a move, so they are ignored until one is chosen."
+            )
         raw_transition = item.get("transitionIn", "cut")
         if raw_transition in (None, ""):
             raw_transition = "cut"
@@ -3724,7 +3775,19 @@ def shot_plan_instruction(plan: Mapping[str, Any], mode: str) -> str:
             timing = f"; duration {float(shot['durationSeconds']):.3f}s; no timestamp"
         description_json = json.dumps(shot["description"], ensure_ascii=False)
         item_label = "Independent Prompt Item" if chained else "Shot"
-        camera = CINEMATOGRAPHY_CHOICES["camera_motion"].get(shot.get("cameraMotion", "none"), "")
+        # Framing first, then the move and how it is executed: that is the order H3 reads a
+        # shot in, and amplitude/speed are meaningless without the motion they qualify.
+        camera_parts = [
+            CINEMATOGRAPHY_CHOICES["shot_scale"].get(shot.get("shotScale", "none"), ""),
+            CINEMATOGRAPHY_CHOICES["camera_angle"].get(shot.get("cameraAngle", "none"), ""),
+            CINEMATOGRAPHY_CHOICES["camera_motion"].get(shot.get("cameraMotion", "none"), ""),
+        ]
+        if shot.get("cameraMotion"):
+            camera_parts.extend((
+                CINEMATOGRAPHY_CHOICES["camera_amplitude"].get(shot.get("cameraAmplitude", "none"), ""),
+                CINEMATOGRAPHY_CHOICES["camera_speed"].get(shot.get("cameraSpeed", "none"), ""),
+            ))
+        camera = " ".join(part for part in camera_parts if part)
         transition = SHOT_TRANSITION_CHOICES.get(shot.get("transitionIn", "cut"), "")
         camera_text = f"; camera={json.dumps(camera, ensure_ascii=False)}" if camera else ""
         transition_text = (

@@ -191,7 +191,7 @@ def test_midcentury_dye_transfer_is_an_independent_color_treatment():
     assert "mid-century dye-transfer color treatment" in instruction
     assert "luminous protected skin" in instruction
     assert "do not add fading" in instruction
-    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
+    assert "CINEMATOGRAPHY OUTPUT:" in instruction
     assert "do not merely name a preset" in instruction
     assert "self-contained" in instruction
 
@@ -247,7 +247,7 @@ def test_analog_and_early_digital_video_textures_stay_honest_captures(texture, p
     }))
     assert phrase in instruction
     assert guardrail in instruction
-    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
+    assert "CINEMATOGRAPHY OUTPUT:" in instruction
 
 
 def test_cinematography_rejects_invalid_or_orphaned_motion_modifiers():
@@ -1231,7 +1231,7 @@ def test_camera_motion_presets_are_lowercase_targeted_sentences_with_splice_poin
 def test_new_camera_axes_reach_the_cinematography_contract(field, value, phrase):
     instruction = cinematography_instruction(parse_cinematography({"schemaVersion": 1, field: value}))
     assert phrase in instruction
-    assert "OUTPUT INTEGRATION — MANDATORY" in instruction
+    assert "CINEMATOGRAPHY OUTPUT:" in instruction
 
 
 def test_motion_amplitude_and_speed_are_fused_into_one_sentence():
@@ -1364,7 +1364,7 @@ def test_both_contracts_declare_their_precedence_and_output_integration():
         "the secondary creative treatment."
     ) in cinematography
     treatment = creative_treatment_instruction(compose_creative_treatment(genre="horror"))
-    assert "OUTPUT INTEGRATION — MANDATORY" in treatment
+    assert "TREATMENT OUTPUT:" in treatment
     assert "do not merely name a profile, repeat its ID, mention this control panel" in treatment
     assert "The final prompt must remain self-contained if all control metadata is removed." in treatment
 
@@ -1616,3 +1616,57 @@ def test_worst_case_creative_treatment_instruction_stays_inside_its_token_budget
         "tone": "pulp_heightened",
     }
     assert len(instruction) < 12800
+
+
+def _shot_plan(**shot):
+    base = {"id": "s1", "description": "She steps into the basement."}
+    return json.dumps({"schemaVersion": 1, "shots": [{**base, **shot}]})
+
+
+def test_per_shot_framing_composes_scale_angle_motion_amplitude_and_speed():
+    """H3 reads camera grammar as motion + amplitude + speed, so motion alone under-specifies."""
+    plan = parse_shot_plan(_shot_plan(
+        shotScale="wide", cameraAngle="low_angle", cameraMotion="push_in",
+        cameraAmplitude="small", cameraSpeed="slow",
+    ), 8.0)
+    line = next(
+        item for item in shot_plan_instruction(plan, "t2va").splitlines()
+        if item.startswith("- Shot 1")
+    )
+    assert "wide shot" in line
+    assert "below the subject's eye line" in line
+    assert "pushes in" in line
+    # Framing precedes the move, and the move precedes how it is executed.
+    assert line.index("wide shot") < line.index("pushes in")
+
+
+def test_per_shot_framing_defaults_are_not_emitted_as_directives():
+    """A blank control must stay silent instead of pinning the shot to a neutral value."""
+    plan = parse_shot_plan(_shot_plan(), 8.0)
+    assert plan["shots"][0] == {"id": "s1", "description": "She steps into the basement."}
+    line = next(
+        item for item in shot_plan_instruction(plan, "t2va").splitlines()
+        if item.startswith("- Shot 1")
+    )
+    assert "camera=" not in line
+
+
+def test_amplitude_without_motion_warns_instead_of_silently_doing_nothing():
+    plan = parse_shot_plan(_shot_plan(cameraAmplitude="large"), 8.0)
+    assert any("without a cameraMotion" in warning for warning in plan["warnings"])
+    line = next(
+        item for item in shot_plan_instruction(plan, "t2va").splitlines()
+        if item.startswith("- Shot 1")
+    )
+    assert "camera=" not in line
+
+
+@pytest.mark.parametrize("key,value", [
+    ("cameraAmplitude", "enormous"),
+    ("cameraSpeed", "instant"),
+    ("shotScale", "panoramic"),
+    ("cameraAngle", "worm"),
+])
+def test_unknown_per_shot_framing_value_is_rejected(key, value):
+    with pytest.raises(ValueError, match=key):
+        parse_shot_plan(_shot_plan(cameraMotion="push_in", **{key: value}), 8.0)

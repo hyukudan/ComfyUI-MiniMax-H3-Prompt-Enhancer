@@ -836,6 +836,110 @@ _LANGUAGE_KEYWORDS = {
 }
 
 
+# High-frequency conversational vocabulary. A <d> line is short, so detection rests on a
+# handful of tokens: any language missing its everyday verbs and pronouns loses to a neighbour
+# that has them. Shared entries are fine — _language_marker_index discounts them automatically.
+_LANGUAGE_KEYWORDS_EXTRA = {
+    "Spanish": {
+        "no", "sí", "si", "me", "te", "lo", "le", "les", "mi", "tu", "muy", "porque", "cuando",
+        "donde", "dónde", "cómo", "qué", "pienso", "piensa", "decir", "digo", "dije", "dices",
+        "hacer", "hago", "tengo", "tiene", "tienes", "eres", "soy", "estoy", "estaba", "esperaba",
+        "quiero", "quieres", "puedo", "puedes", "hablar", "hablo", "contigo", "conmigo", "déjame",
+        "dejame", "paz", "eso", "esa", "ese", "esto", "allí", "alli", "ya", "aún", "aun", "sé",
+        "sabes", "vas", "voy", "vino", "hay", "había", "habia", "fue", "era", "sin", "sobre",
+        "también", "tambien", "entonces", "ahora", "luego", "otra", "otro", "mismo", "mejor",
+    },
+    "Portuguese": {
+        "não", "nao", "sim", "eu", "você", "voce", "vou", "vai", "dizer", "digo", "disse",
+        "sei", "sabe", "onde", "esteve", "estou", "está", "esta", "estava", "tenho", "tem",
+        "quero", "quer", "posso", "pode", "falar", "comigo", "contigo", "isso", "isto", "aquilo",
+        "ainda", "então", "entao", "depois", "antes", "muito", "porque", "quando", "como",
+        "embora", "consigo", "mesmo", "melhor", "sobre", "sem", "foi", "era", "havia",
+    },
+    "Italian": {
+        "niente", "dire", "dico", "detto", "dove", "stato", "stata", "quella", "quello", "notte",
+        "sembra", "voglio", "vuoi", "posso", "puoi", "parlare", "sono", "sei", "siamo", "ho",
+        "hai", "abbiamo", "adesso", "ancora", "allora", "dopo", "prima", "perché", "perche",
+        "quando", "come", "cosa", "anche", "stesso", "meglio", "senza", "era", "stato",
+    },
+    "Catalan": {
+        "res", "amb", "vaig", "vas", "nit", "pense", "penso", "dir", "dic", "fer", "faig",
+        "tinc", "tens", "vull", "vols", "puc", "pots", "parlar", "estic", "estàs", "estas",
+        "això", "aixo", "aquell", "aquella", "encara", "llavors", "després", "despres",
+        "abans", "perquè", "perque", "quan", "com", "també", "tambe", "millor", "sense",
+    },
+    "French": {
+        "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "rien", "sais", "sait",
+        "dire", "dis", "dirai", "veux", "veut", "peux", "peut", "parler", "suis", "était",
+        "etait", "etais", "étais", "encore", "alors", "après", "apres", "avant", "pourquoi",
+        "quand", "comment", "aussi", "même", "meme", "mieux", "sans", "chose", "nuit",
+    },
+    "English": {
+        "not", "know", "knew", "where", "were", "night", "saying", "anything", "nothing",
+        "something", "there", "here", "then", "than", "when", "what", "who", "why", "how",
+        "want", "wants", "can", "cannot", "will", "would", "could", "should", "have", "has",
+        "had", "does", "did", "doing", "going", "about", "again", "still", "just", "because",
+        "talk", "talking", "tell", "told", "look", "looks", "make", "made", "come", "came",
+    },
+}
+
+for _language, _extra in _LANGUAGE_KEYWORDS_EXTRA.items():
+    if _language in _LANGUAGE_KEYWORDS:
+        _LANGUAGE_KEYWORDS[_language]["words"] = set(
+            _LANGUAGE_KEYWORDS[_language]["words"]
+        ) | _extra
+
+
+# Word endings that belong to one Romance language where its neighbours use another form:
+# -ción/-ção/-ció/-tion/-zione, -ico/-ic/-ique, -mente vs -ment. These decide cases where every
+# function word in the line is shared.
+_LANGUAGE_SUFFIXES = (
+    (r"\w+ción\b", "Spanish"),
+    (r"\w+dad\b", "Spanish"),
+    (r"\w+ico\b", "Spanish"),
+    (r"\w+ção\b", "Portuguese"),
+    (r"\w+ções\b", "Portuguese"),
+    (r"\w+ade\b", "Portuguese"),
+    (r"\w+inho\b", "Portuguese"),
+    (r"\w+ció\b", "Catalan"),
+    (r"\w+tat\b", "Catalan"),
+    (r"\w+ic\b", "Catalan"),
+    (r"\w+ntica\b", "Catalan"),
+    (r"\w+tion\b", "French"),
+    (r"\w+ique\b", "French"),
+    (r"\w+eux\b", "French"),
+    (r"\w+zione\b", "Italian"),
+    (r"\w+ità\b", "Italian"),
+    (r"\w+etto\b", "Italian"),
+)
+
+# Deterministic tie-break for lines whose every marker is shared between close neighbours.
+_LANGUAGE_TIE_ORDER = (
+    "Spanish", "English", "Portuguese", "French", "Italian", "German", "Catalan",
+)
+
+_LANGUAGE_MARKER_INDEX: tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]] | None = None
+
+
+def _language_marker_index() -> tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]:
+    """Invert the keyword tables into marker -> languages, so shared markers can be discounted."""
+    global _LANGUAGE_MARKER_INDEX
+    if _LANGUAGE_MARKER_INDEX is not None:
+        return _LANGUAGE_MARKER_INDEX
+    words: dict[str, list[str]] = {}
+    chars: dict[str, list[str]] = {}
+    for lang, data in _LANGUAGE_KEYWORDS.items():
+        for word in data.get("words", ()):  # type: ignore[union-attr]
+            words.setdefault(str(word).casefold(), []).append(lang)
+        for char in data.get("chars", ()):  # type: ignore[union-attr]
+            chars.setdefault(str(char).casefold(), []).append(lang)
+    _LANGUAGE_MARKER_INDEX = (
+        {word: tuple(owners) for word, owners in words.items()},
+        {char: tuple(owners) for char, owners in chars.items()},
+    )
+    return _LANGUAGE_MARKER_INDEX
+
+
 def _detect_language(text: str, default: str = "English") -> str:
     """Detect natural language of text returning canonical MiniMax H3 language name."""
     if not text or not str(text).strip():
@@ -857,24 +961,44 @@ def _detect_language(text: str, default: str = "English") -> str:
         return "Hindi"
 
     lower = s.lower()
-    scores = {lang: 0 for lang in _LANGUAGE_KEYWORDS}
-    for char in lower:
-        for lang, data in _LANGUAGE_KEYWORDS.items():
-            if char in data["chars"]:
-                scores[lang] += 4
-    words = re.findall(r"\b[\wÀ-ÿ'-]+\b", lower)
-    for word in words:
-        for lang, data in _LANGUAGE_KEYWORDS.items():
-            if word in data["words"]:
-                scores[lang] += 2
-    best_lang, best_score = max(scores.items(), key=lambda item: item[1])
+    word_index, char_index = _language_marker_index()
+    scores = {lang: 0.0 for lang in _LANGUAGE_KEYWORDS}
+
+    # Evidence is weighted by how many languages claim the marker. "no" belongs to Spanish and
+    # Portuguese alike, so it must not decide between them; "pienso" or "dizer" belong to one
+    # and should. Without this, one shared function word settles a short line of dialogue.
+    for char in set(lower):
+        owners = char_index.get(char)
+        if owners:
+            for lang in owners:
+                scores[lang] += 4.0 / len(owners)
+    for word in re.findall(r"\b[\wÀ-ÿ'-]+\b", lower):
+        owners = word_index.get(word)
+        if owners:
+            for lang in owners:
+                scores[lang] += 2.0 / len(owners)
+
+    # Morphology separates the Romance languages where shared function words cannot: the
+    # ending of a content word is far more diagnostic than "un" or "la".
+    for suffix, lang in _LANGUAGE_SUFFIXES:
+        scores[lang] += 1.5 * len(re.findall(suffix, lower))
+
+    best_score = max(scores.values())
     if best_score <= 0:
         return default
-    if scores.get("English", 0) >= best_score:
-        return "English"
-    if best_score >= 2:
-        return best_lang
-    return default
+    # Resolve a tie by a fixed order rather than by dict insertion, which is what decided
+    # "hola" (Spanish and Catalan both claim it) before. Ties happen when every marker in the
+    # line is shared between mutually intelligible neighbours, so the order runs from the
+    # broadest language to the narrowest.
+    tied = [lang for lang, score in scores.items() if score >= best_score * 0.999]
+    best_lang = min(tied, key=lambda lang: _LANGUAGE_TIE_ORDER.index(lang)
+                    if lang in _LANGUAGE_TIE_ORDER else len(_LANGUAGE_TIE_ORDER))
+    runner_up = max(
+        (score for lang, score in scores.items() if lang not in tied), default=0.0,
+    )
+    if best_score < 1.0 or best_score < runner_up * 1.15:
+        return default
+    return best_lang
 
 
 def _dialogue_authoring_request(source_prompt: str, override_language: str = "auto") -> tuple[bool, str]:
@@ -993,6 +1117,14 @@ def _source_requests_offscreen_voice(source_prompt: str) -> bool:
 
 
 SYSTEM_PROMPT = """You rewrite basic user requests into production-ready MiniMax H3 audiovisual prompts.
+
+DIRECTION IN, DESCRIPTION OUT — THIS GOVERNS EVERY BLOCK BELOW:
+H3 has no settings: it reads the finished prompt as a description of what the camera sees and the
+microphone hears, so that is all it may contain. Every block below is direction addressed to you.
+Execute it, never reproduce it. Wording aimed at a filmmaker ("use patience", "do not invent
+monsters") becomes scene content once it lands in the output, and H3 renders it. Convert each block
+into what is visible and audible here, drop any this scene cannot show with the supplied elements,
+and never emit a preset ID or selector label.
 
 Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation.
 Write all structural prose, section headers, shot timeline descriptions, camera motions, lighting, atmosphere,
@@ -1475,6 +1607,7 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             grouped_roles[key] = role
 
     subjects = []
+    setting_assets: dict[str, dict[str, Any]] = {}
     used_assets = set()
     primary_identity_label = None
     for key in group_order:
@@ -1698,6 +1831,37 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
     # reference notes, or media manifest states the relationship.
     unassigned_assets = {asset for asset in picture_assets if asset not in used_assets}
 
+    # A source can state a non-subject role just as authoritatively: "enters the scenario of
+    # <Picture 2>" binds that image to the setting, not to a character. Detecting only subject
+    # roles left such an asset undefined while the writer still referenced it, so H3 received a
+    # label with nothing behind it. This reads the stated role; it never guesses one.
+    for asset in sorted(unassigned_assets):
+        number = re.search(r"\d+", asset).group()
+        token = rf"(?:(?:picture|image|imagen|foto)\s*(?:number\s*|n[uú]mero\s*|#\s*)?{number}|{re.escape(asset)})"
+        place = (r"scenario|setting|environment|surroundings|background|location|place|scene|"
+                 r"escenario|entorno|fondo|lugar|escena")
+        # The link must be explicit and directional: the place word has to govern this asset.
+        # A looser window matched "imagen 1 entra en el escenario", turning the subject's own
+        # picture into the setting, so proximity alone is not evidence.
+        article = r"(?:the|a|an|el|la|los|las|un|una)\s+"
+        stated = re.search(
+            rf"\b(?:{place})\b\s+(?:of|from|in|de|del|en)\s+(?:{article})?{token}\b"
+            rf"|\b(?:enters?|entering|walks?\s+into|steps?\s+into|inside|within)\s+(?:{article})?{token}\b"
+            rf"|\b(?:entra|entrando|camina)\s+(?:en|dentro\s+de)\s+(?:{article})?{token}\b",
+            combined_context, re.IGNORECASE,
+        )
+        if not stated:
+            continue
+        setting_assets[asset] = {
+            "description": (
+                "the reusable setting supplying the location, architecture, surfaces, and lighting conditions "
+                "of the scene; subjects and actions enter this environment without altering its identity"
+            ),
+            "marker": "fully_preserved",
+            "excerpt": stated.group(0).strip(),
+        }
+    unassigned_assets -= set(setting_assets)
+
     definitions = []
     for index, subject in enumerate(subjects, 1):
         subject["label"] = f"<Subject {index}>"
@@ -1705,6 +1869,15 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
             "label": subject["label"], "line": f"{subject['label']} is {subject['description']}.",
             "marker": subject["marker"], "asset": subject["asset"], "kind": "subject",
             "role": subject["role"],
+        })
+    # The setting keeps its own asset label rather than becoming a Subject: it is a place, and
+    # numbering it as a Subject would invite the writer to give it agency.
+    for asset in sorted(setting_assets):
+        item = setting_assets[asset]
+        definitions.append({
+            "label": asset, "line": f"{asset} is {item['description']}.",
+            "marker": item["marker"], "asset": asset, "kind": "setting",
+            "role": "setting", "binding_excerpt": item.get("excerpt", ""),
         })
     subject_labels_by_asset: dict[str, list[str]] = {}
     for subject in subjects:
@@ -2829,7 +3002,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "or dialogue, and it never re-enables a disabled audio layer.\n"
             f"Selected acoustic space: {acoustic_space}.\n"
             + ACOUSTIC_SPACE_CONTRACTS[acoustic_space]
-            + "\nOUTPUT INTEGRATION — MANDATORY: Write the resulting reflections, decay, distance, localization, and "
+            + "\nACOUSTIC SPACE OUTPUT: Write the resulting reflections, decay, distance, localization, and "
             "frequency response as concrete audible prose in overall_soundscape, or compactly inside every autonomous "
             "chained item. Do not name the preset, repeat its ID, or state that an acoustic space is applied."
         )
@@ -2850,9 +3023,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "instrumental, with no singing, lyrics, speech, chants, choir, or vocal samples.\n"
             + INSTRUMENTAL_PRODUCTION_BIBLE + "\n"
             + "MUSICAL-LANGUAGE OVERLAY:\n" + INSTRUMENTAL_STYLE_CONTRACTS[instrumental_style]
-            + "\nCANONICAL AUDIBLE DELIVERY LOCK — include this exact sentence in non_diegetic_music or every "
-            "scored autonomous item:\n" + instrumental_style_signature(instrumental_style)
-            + "\nOUTPUT INTEGRATION — MANDATORY: In structured single-generation output, write the resolved "
+            + "\nThe overlay above is the arrangement grammar you execute, never text to emit: H3 reads "
+            "non_diegetic_music as a description of the audible score, so reproducing a directive there "
+            "would hand it instructions instead of music.\n"
+            + "SCORE OUTPUT: In structured single-generation output, write the resolved "
             "instrumentation, tempo, rhythm, harmony, texture, structure, and dynamics as concrete audible prose in "
             "non_diegetic_music. Do not output only the genre name, style ID, preset label, or a statement that the "
             "style is applied. Where an autonomous chained item carries score direction, restate the same resolved "
@@ -4228,17 +4402,36 @@ def normalize_multishot_output(text: str, required_locks: tuple[str, ...] = ()) 
 
 
 def normalize_visual_style_signature(text: str, mode: str, style: Mapping[str, Any]) -> str:
-    """Upsert the canonical visual-language signature into the delivered prompt.
+    """Keep the visual style as input conditioning, never as emitted prompt text.
 
-    A single-generation prompt carries one global signature in its visual timeline.
-    Chained items are independent generations, so each item receives the same
-    self-contained signature.  Exact-presence checks make the operation idempotent
-    without deleting stylistic prose authored by the model.
+    The resolved contract reaches the writer through RESOLVED PRESENTATION CONTRACT in the
+    user request, which now asks for it to be written out as observable shot description.
+    Its own wording is direction to a filmmaker ("Use patience, withheld information...",
+    "Maintain tension cadence..."), so H3 must never receive it: the delivered prompt is a
+    description of what the camera sees. Strip the contract and its per-axis components when
+    a model copies them back, leaving the stylistic prose the model authored.
     """
     value = str(text)
-    signature = str(style.get("resolvedSignature") or style.get("visualSignature", "")).strip()
-    if not signature:
+    signatures = [
+        str(style.get("resolvedSignature") or style.get("visualSignature", "")).strip(),
+        *(str(item).strip() for item in style.get("creativeSignatures", {}).values()),
+        str(style.get("cinematographySignature", "")).strip(),
+    ]
+    signatures = [item for item in signatures if item]
+    if not signatures:
         return value
+
+    def _strip(body: str) -> str:
+        for signature in signatures:
+            if signature in body:
+                body = body.replace(signature, " ")
+        body = re.sub(r"[ \t]{2,}", " ", body)
+        body = re.sub(r"(?m)^[ \t]+", "", body)
+        # Removing a signature that sat on its own line leaves the section header followed by a
+        # blank line; close it so the delivered prompt keeps H3's section shape.
+        body = re.sub(r"(?m)^([A-Za-z_]+:)[ \t]*\r?\n(?:[ \t]*\r?\n)+", r"\1\n", body)
+        return re.sub(r"\n{3,}", "\n\n", body).strip()
+
     if mode == "chained_multishot":
         try:
             data = json.loads(value)
@@ -4247,43 +4440,37 @@ def normalize_visual_style_signature(text: str, mode: str, style: Mapping[str, A
         prompts = data.get("prompts") if isinstance(data, dict) else None
         if not isinstance(prompts, list):
             return value
-        normalized = [
-            item if not isinstance(item, str) or signature in item else f"{signature} {item}".strip()
-            for item in prompts
-        ]
+        normalized = [_strip(item) if isinstance(item, str) else item for item in prompts]
         if normalized == prompts:
             return value
         data["prompts"] = normalized
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
-    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
-    if signature not in _section_body(value, section):
-        header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
-        if not header:
-            return value
-        header_text = header.group(0)
-        newline = "\r\n" if "\r\n" in header_text else "\n"
-        separator = "" if header_text.endswith(("\n", "\r")) else newline
-        value = value[:header.end()] + separator + signature + newline + value[header.end():]
-
-    components = [
-        *style.get("creativeSignatures", {}).values(),
-        style.get("cinematographySignature", ""),
-    ]
-    for component in (str(item).strip() for item in components if str(item).strip()):
-        first = value.find(component)
-        if first >= 0:
-            tail_start = first + len(component)
-            value = value[:tail_start] + value[tail_start:].replace(component, "")
-    return re.sub(r"[ \t]{2,}", " ", value)
+    if not any(signature in value for signature in signatures):
+        return value
+    return re.sub(r"[ \t]{2,}", " ", _strip(value))
 
 
 def normalize_content_format_signature(text: str, mode: str, content_format: Mapping[str, Any]) -> str:
-    """Insert the source-gated format delivery lock without exposing its internal ID."""
+    """Keep the format arc as input conditioning, never as emitted prompt text.
+
+    The arc says how to order the supplied events ("Organize only the supplied events as a
+    compact causal short..."), which is editorial direction rather than anything the camera
+    can show. It is executed by the shape of the timeline; quoting it would hand H3 a stage
+    note to render. Strip it when a model copies it back.
+    """
     value = str(text)
     signature = str(content_format.get("signature", "")).strip()
     if not signature:
         return value
+
+    def _strip(body: str, marker: str) -> str:
+        if marker not in body:
+            return body
+        cleaned = re.sub(r"[ \t]{2,}", " ", body.replace(marker, " "))
+        cleaned = re.sub(r"(?m)^([A-Za-z_]+:)[ \t]*\r?\n(?:[ \t]*\r?\n)+", r"\1\n", cleaned)
+        return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
     if mode == "chained_multishot":
         try:
             data = json.loads(value)
@@ -4294,28 +4481,26 @@ def normalize_content_format_signature(text: str, mode: str, content_format: Map
             return value
         signatures = content_format_signatures(content_format, len(prompts))
         normalized = [
-            item if not isinstance(item, str) or role_signature in item
-            else f"{role_signature} {item}".strip()
+            _strip(item, role_signature) if isinstance(item, str) else item
             for item, role_signature in zip(prompts, signatures)
         ]
         if normalized == prompts:
             return value
         data["prompts"] = normalized
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
-    if signature in _section_body(value, section):
+    if signature not in value:
         return value
-    header = re.search(rf"(?m)^{re.escape(section)}:[ \t]*(?:\r?\n)?", value)
-    if not header:
-        return value
-    newline = "\r\n" if "\r\n" in header.group(0) else "\n"
-    separator = "" if header.group(0).endswith(("\n", "\r")) else newline
-    return value[:header.end()] + separator + signature + newline + value[header.end():]
+    return _strip(value, signature)
 
 
 def content_format_coverage_gaps(text: str, mode: str,
                                  content_format: Mapping[str, Any]) -> list[str]:
-    """Require the canonical lock; deeper prose stays repairable by the LLM."""
+    """Check the arc was realized as a timeline, not that its wording was reproduced.
+
+    Presence of the sentence used to stand in for compliance, which a model satisfied by
+    pasting it. Observable realization is the property that actually matters, and it is what
+    the writer is now asked for.
+    """
     signature = str(content_format.get("signature", "")).strip()
     if not content_format.get("applied") or not signature:
         return []
@@ -4323,20 +4508,38 @@ def content_format_coverage_gaps(text: str, mode: str,
         try:
             prompts = json.loads(str(text)).get("prompts", [])
         except (json.JSONDecodeError, AttributeError):
-            return ["Content-format signature could not be checked in chained output"]
+            return ["Content-format arc could not be checked in chained output"]
         signatures = content_format_signatures(content_format, len(prompts))
         return [
-            f"Chained item {index} is missing the canonical content-format signature"
+            f"Chained item {index} does not observably realize the content-format arc"
             for index, (item, role_signature) in enumerate(zip(prompts, signatures), start=1)
-            if role_signature not in str(item)
+            if not _style_signature_observed(str(item), role_signature)
         ]
-    return [] if signature in str(text) else [
-        "Canonical content-format signature is missing or was changed"
+    return [] if _style_signature_observed(str(text), signature) else [
+        "The content-format arc is not observably realized in the timeline"
     ]
 
 
+def _strip_instrumental_signature(body: str, signature: str) -> str:
+    """Drop an echoed musical-language directive, keeping the observable score prose."""
+    if not signature or signature not in body:
+        return body
+    cleaned = body.replace(signature, " ")
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"(?m)^[ \t]*[;,][ \t]*", "", cleaned)
+    return cleaned.strip()
+
+
 def normalize_instrumental_style_signature(text: str, mode: str, policy: str, style: str) -> str:
-    """Make selected musical language observable instead of trusting a genre label."""
+    """Keep the musical language as input conditioning, never as emitted prompt text.
+
+    The selected style already reaches the writer through MUSICAL-LANGUAGE OVERLAY in the
+    user request. Its wording is a directive ("Build an intense instrumental horror cue...",
+    "do not invent gore, monsters"), not audible description, so H3 must never receive it:
+    prompt_guides requires non_diegetic_music to describe instrumentation, tempo, rhythm and
+    dynamics in 1-3 sentences. Echoing the directive both blows that budget and feeds H3
+    negative instructions. Strip it when a model copies it back.
+    """
     value = str(text)
     if policy != "add_instrumental" or style == "none":
         return value
@@ -4352,21 +4555,17 @@ def normalize_instrumental_style_signature(text: str, mode: str, policy: str, st
         if not isinstance(prompts, list):
             return value
         normalized = [
-            item if not isinstance(item, str) or signature in item else f"{item} {signature}".strip()
+            _strip_instrumental_signature(item, signature) if isinstance(item, str) else item
             for item in prompts
         ]
         if normalized == prompts:
             return value
         data["prompts"] = normalized
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    if signature in _section_body(value, "non_diegetic_music"):
+    body = _section_body(value, "non_diegetic_music")
+    if signature not in body:
         return value
-    header = re.search(r"(?m)^non_diegetic_music:[ \t]*(?:\r?\n)?", value)
-    if not header:
-        return value
-    newline = "\r\n" if "\r\n" in header.group(0) else "\n"
-    separator = "" if header.group(0).endswith(("\n", "\r")) else newline
-    return value[:header.end()] + separator + signature + " " + value[header.end():]
+    return value.replace(body, _strip_instrumental_signature(body, signature), 1)
 
 
 def normalize_audio_section_sentence_limits(text: str, mode: str) -> str:
@@ -4848,27 +5047,137 @@ _STYLE_SIGNATURE_STOPWORDS = {
     "about", "already", "applicable", "camera", "concrete", "describe", "existing", "frame", "inside",
     "keep", "make", "only", "present", "preserve", "render", "resulting", "scene", "selected", "shot",
     "stable", "style", "subject", "through", "treatment", "using", "visible", "with", "without",
+    # Instruction framing that addresses the writer and can never surface as shot description.
+    "allow", "allowed", "allows", "avoid", "based", "compose", "grant", "grants", "instead",
+    "invent", "never", "rather", "request", "requested", "require", "required", "source",
+    "supplied", "supplies", "supply", "these", "those", "unless", "where", "whatever", "when",
+    "whenever", "which", "while", "would", "should", "their", "there", "every",
 }
+
+# A word that appears across most profiles describes the vocabulary of the catalogue, not the
+# identity of one look, so it cannot evidence that a specific style was realized. Deriving the
+# list keeps it correct when profiles are edited, instead of drifting against a hand-kept set.
+_STYLE_SIGNATURE_GENERIC_RATIO = 0.25
+_STYLE_SIGNATURE_GENERIC_TOKENS: frozenset[str] | None = None
+
+
+def _shorten(value: str, limit: int) -> str:
+    """Trim a directive for a repair message without cutting mid-word."""
+    text = " ".join(str(value).split())
+    if len(text) <= limit:
+        return text
+    clipped = text[:limit].rsplit(" ", 1)[0]
+    return (clipped or text[:limit]).rstrip(",;:") + "…"
+
+
+def _style_profile_catalogues() -> list[Mapping[str, Any]]:
+    """Every creative-treatment catalogue, resolved lazily to avoid an import cycle."""
+    try:  # pragma: no cover - packaging variance only
+        from . import creative_treatments as _ct
+    except ImportError:  # pragma: no cover - direct test/import compatibility
+        import creative_treatments as _ct
+    names = (
+        "VISUAL_LANGUAGE_PROFILES", "GENRE_PROFILES",
+        "TONE_PROFILES", "WORLD_AESTHETIC_PROFILES",
+    )
+    return [
+        catalogue for catalogue in (getattr(_ct, name, None) for name in names)
+        if isinstance(catalogue, Mapping)
+    ]
+
+
+def _style_signature_generic_tokens() -> frozenset[str]:
+    global _STYLE_SIGNATURE_GENERIC_TOKENS
+    if _STYLE_SIGNATURE_GENERIC_TOKENS is not None:
+        return _STYLE_SIGNATURE_GENERIC_TOKENS
+    counts: Counter[str] = Counter()
+    profiles = 0
+    for catalogue in _style_profile_catalogues():
+        for profile in catalogue.values():
+            if not isinstance(profile, Mapping):
+                continue
+            profiles += 1
+            seen: set[str] = set()
+            for field, value in profile.items():
+                if field == "version":
+                    continue
+                items = [value] if isinstance(value, str) else (
+                    list(value) if isinstance(value, (list, tuple)) else []
+                )
+                for item in items:
+                    seen.update(
+                        token.casefold()
+                        for token in re.findall(r"\b[a-zA-Z][a-zA-Z-]{4,}\b", str(item))
+                    )
+            counts.update(seen)
+    if profiles < 8:  # too small a catalogue to infer anything reliable
+        _STYLE_SIGNATURE_GENERIC_TOKENS = frozenset()
+        return _STYLE_SIGNATURE_GENERIC_TOKENS
+    threshold = profiles * _STYLE_SIGNATURE_GENERIC_RATIO
+    _STYLE_SIGNATURE_GENERIC_TOKENS = frozenset(
+        token for token, count in counts.items() if count >= threshold
+    )
+    return _STYLE_SIGNATURE_GENERIC_TOKENS
+
+
+# A profile line mixes three kinds of clause: what the shot must show, what it must not show,
+# and prose about the style itself. Only the first can be evidenced in the delivered prompt, so
+# demanding the others produces gaps no writer can ever close.
+_STYLE_NEGATED_CLAUSE = re.compile(
+    r"\b(?:never|no|not|nor|none|avoid|avoids|without|neither|refrain)\b", re.IGNORECASE,
+)
+_STYLE_META_CLAUSE = re.compile(
+    r"\b(?:craft|grammar|language|vocabulary|idiom|register|tradition|convention|"
+    r"aesthetic|approach|principle|philosophy|engine|mode)\b", re.IGNORECASE,
+)
+
+
+def _realizable_clauses(instruction: str) -> list[str]:
+    """Split a profile line into the clauses that a shot description can actually evidence."""
+    clauses = re.split(r"(?<=[.;:])\s+|\s+—\s+|\s+-\s+", str(instruction))
+    realizable = [
+        clause for clause in (item.strip() for item in clauses)
+        if clause
+        and not _STYLE_NEGATED_CLAUSE.search(clause)
+        and not _STYLE_META_CLAUSE.search(clause)
+    ]
+    return realizable
+
+
+def _style_directive_is_checkable(instruction: str) -> bool:
+    return bool(_realizable_clauses(instruction))
 
 
 def _style_signature_observed(text: str, instruction: str) -> bool:
+    generic = _style_signature_generic_tokens()
+    checkable = " ".join(_realizable_clauses(instruction)) or str(instruction)
     tokens = [
-        token.casefold() for token in re.findall(r"\b[a-zA-Z][a-zA-Z-]{4,}\b", instruction)
+        token.casefold() for token in re.findall(r"\b[a-zA-Z][a-zA-Z-]{4,}\b", checkable)
         if token.casefold() not in _STYLE_SIGNATURE_STOPWORDS
+        and token.casefold() not in generic
     ]
-    distinctive = list(dict.fromkeys(tokens))[:8]
+    # No positional cap: a directive often names its examples first and states the actual
+    # requirement last ("...so the frame reads as layered, reflected, and geometrically
+    # ornate"), so truncating to the head would test the examples and ignore the rule.
+    distinctive = list(dict.fromkeys(tokens))
+    if not distinctive:  # a wholly generic directive cannot be evidenced either way
+        return True
     observed = (text or "").casefold()
-    return bool(distinctive) and sum(token in observed for token in distinctive) >= min(2, len(distinctive))
+    return sum(token in observed for token in distinctive) >= min(2, len(distinctive))
 
 
 def _resolved_style_coverage_gaps(text: str, style: Mapping[str, Any]) -> list[str]:
+    """Repairable gaps only: the explicit cinematography the user set field by field.
+
+    The resolved contract is input conditioning and is deliberately absent from the delivered
+    prompt, so it is checked by realization rather than by presence. Catalogue prose is not
+    checked here: its lines mix requirements with prohibitions and with description of the
+    style itself, so a missing one is not reliably actionable and is reported as a warning by
+    _resolved_style_coverage_warnings instead of burning repair attempts.
+    """
     if not style.get("applied"):
         return []
     gaps = []
-    resolved_signature = str(style.get("resolvedSignature") or style.get("visualSignature", "")).strip()
-    if resolved_signature and resolved_signature not in str(text):
-        gaps.append("Canonical resolved presentation signature is missing or was changed")
-    profile_line_indexes = style.get("profileLineIndexes", style.get("visualLanguageLineIndexes", {}))
     motion_fields = {"camera_motion", "camera_amplitude", "camera_speed"}
     checked_motion = False
     for item in style.get("cinematographyDirectives", ()):
@@ -4881,22 +5190,33 @@ def _resolved_style_coverage_gaps(text: str, style: Mapping[str, Any]) -> list[s
             continue
         if not _style_signature_observed(text, item["instruction"]):
             gaps.append(f"Explicit visual-style field {item['field']} is not observably realized in the output")
+    return gaps
+
+
+def _resolved_style_coverage_warnings(text: str, style: Mapping[str, Any]) -> list[str]:
+    """Advisory catalogue coverage: informative, never fed back as a repair instruction.
+
+    Measured against 5 visual languages, repair closed none of these and made several worse
+    while tripling generation time, because a catalogue line is not a self-contained
+    instruction: it mixes what to show with what to avoid and with prose about the style. The
+    writer already receives the contract up front, so this only reports what did not land.
+    """
+    if not style.get("applied"):
+        return []
+    warnings = []
     for dimension, lines in style.get("treatmentDimensions", {}).items():
         if dimension == "must_not_invent":
             continue
-        covered_by_signature = {
-            int(index) for index in profile_line_indexes.get(dimension, ())
-            if isinstance(index, int) or (isinstance(index, str) and index.isdigit())
-        }
         missing = [
-            line for index, line in enumerate(lines)
-            if index not in covered_by_signature and not _style_signature_observed(text, line)
+            line for line in lines
+            if _style_directive_is_checkable(line) and not _style_signature_observed(text, line)
         ]
         if missing:
-            gaps.append(
-                f"Resolved creative-treatment dimension {dimension} omitted {len(missing)} required directive(s)"
+            quoted = "; ".join(_shorten(line, 140) for line in missing)
+            warnings.append(
+                f"Creative-treatment dimension {dimension} may be under-realized: {quoted}"
             )
-    return gaps
+    return warnings
 
 
 def _description_coverage_gaps(timeline: str, mode: str, source_prompt: str,
@@ -5094,6 +5414,11 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             for index, item in enumerate(prompt_items, 1)
             for gap in _resolved_style_coverage_gaps(item, resolved_visual_style)
         ]
+        report["warnings"].extend(
+            f"Multishot item {index}: {warning}"
+            for index, item in enumerate(prompt_items, 1)
+            for warning in _resolved_style_coverage_warnings(item, resolved_visual_style)
+        )
         content_format_gaps = content_format_coverage_gaps(
             prompt, "chained_multishot", resolved_content_format,
         )
@@ -5868,6 +6193,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             "spatial, causal, camera, or audio-visual coverage without padding"
         )
     style_coverage_gaps = _resolved_style_coverage_gaps(text, resolved_visual_style)
+    warnings.extend(_resolved_style_coverage_warnings(text, resolved_visual_style))
     content_format_gaps = content_format_coverage_gaps(text, resolved, resolved_content_format)
     valid = not errors
     return {

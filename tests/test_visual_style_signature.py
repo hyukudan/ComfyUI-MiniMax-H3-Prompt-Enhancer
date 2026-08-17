@@ -97,69 +97,104 @@ def test_signature_is_compiled_after_cinematography_and_defers_to_explicit_contr
     assert style["resolvedSignature"].endswith(style["cinematographySignature"])
 
 
-def test_signature_normalization_is_idempotent_in_base_and_ref2va():
+def test_echoed_signature_is_stripped_in_base_and_ref2va():
+    """H3 receives shot description, so a copied contract is removed, not preserved."""
     style = _anime_style()
     signature = style["visualSignature"]
+    echoed_base = BASE_OUTPUT.replace(
+        "integrated_multimodal_description:\n",
+        f"integrated_multimodal_description:\n{signature}\n",
+    )
+    echoed_ref = REF_OUTPUT.replace(
+        "detailed_description:\n", f"detailed_description:\n{signature}\n",
+    )
 
-    base = normalize_visual_style_signature(BASE_OUTPUT, "t2va", style)
-    ref = normalize_visual_style_signature(REF_OUTPUT, "ref2va", style)
+    base = normalize_visual_style_signature(echoed_base, "t2va", style)
+    ref = normalize_visual_style_signature(echoed_ref, "ref2va", style)
 
-    assert base.count(signature) == 1
-    assert ref.count(signature) == 1
-    assert base.index(signature) < base.index("[Shot 1]")
-    assert ref.index(signature) < ref.index("[Shot 1]", ref.index("detailed_description:"))
+    assert signature not in base
+    assert signature not in ref
     assert normalize_visual_style_signature(base, "t2va", style) == base
     assert normalize_visual_style_signature(ref, "ref2va", style) == ref
     assert "elderly woman in a red coat" in base
     assert "<Subject 1>" in ref
 
 
-def test_signature_normalization_is_idempotent_in_every_chained_item():
+def test_echoed_signature_is_stripped_in_every_chained_item():
     style = _anime_style()
     signature = style["visualSignature"]
     original = json.dumps({"prompts": [
-        "An elderly woman in a red coat walks slowly from left to right.",
-        "The elderly woman in the same red coat stops in a stable final pose.",
+        f"{signature} An elderly woman in a red coat walks slowly from left to right.",
+        f"{signature} The elderly woman in the same red coat stops in a stable final pose.",
     ]})
 
     normalized = normalize_visual_style_signature(original, "chained_multishot", style)
     prompts = json.loads(normalized)["prompts"]
 
-    assert all(item.count(signature) == 1 for item in prompts)
+    assert all(signature not in item for item in prompts)
     assert "walks slowly" in prompts[0]
     assert "stops in a stable final pose" in prompts[1]
     assert normalize_visual_style_signature(normalized, "chained_multishot", style) == normalized
 
 
-def test_validator_requires_canonical_signature_instead_of_every_visual_profile_line():
-    missing = validate_prompt(
+def test_catalogue_coverage_is_advisory_and_never_reaches_the_repair_loop():
+    """Catalogue prose warns; only explicit cinematography is repairable.
+
+    Measured across five visual languages, feeding catalogue lines back as repair issues
+    closed no gap, made several outputs worse, and tripled generation time: those lines mix
+    requirements with prohibitions and with description of the style, so a missing one is not
+    an actionable instruction. Repair stays reserved for the fields the user set explicitly.
+    """
+    report = validate_prompt(
         BASE_OUTPUT, "t2va", 5.0, SOURCE,
         creative_treatment_json=ANIME_JSON,
         enhance_description=True,
     )
-    assert missing["styleCoverageGaps"] == [
-        "Canonical resolved presentation signature is missing or was changed"
-    ]
 
-    style = missing["resolvedVisualStyle"]
-    normalized = normalize_visual_style_signature(BASE_OUTPUT, "t2va", style)
-    present = validate_prompt(
-        normalized, "t2va", 5.0, SOURCE,
+    assert report["styleCoverageGaps"] == [], "catalogue prose must not block repair"
+    advisories = [
+        warning for warning in report["warnings"]
+        if "may be under-realized" in warning
+    ]
+    assert advisories, "an unstyled timeline must still be reported to the user"
+    assert any("camera_and_framing" in warning for warning in advisories)
+    assert all(
+        "Canonical resolved presentation signature" not in warning for warning in advisories
+    )
+
+    # Copying the contract in verbatim must NOT satisfy coverage: it is stripped first.
+    style = report["resolvedVisualStyle"]
+    echoed = BASE_OUTPUT.replace(
+        "integrated_multimodal_description:\n",
+        f"integrated_multimodal_description:\n{style['resolvedSignature']}\n",
+    )
+    normalized = normalize_visual_style_signature(echoed, "t2va", style)
+    assert style["resolvedSignature"] not in normalized
+
+
+def test_explicit_cinematography_stays_repairable():
+    """A field the user set by hand is precise, so failing to realize it is a real gap."""
+    cinematography = json.dumps({"schemaVersion": 1, "cameraMotion": "push_in"})
+    report = validate_prompt(
+        BASE_OUTPUT, "t2va", 5.0, SOURCE,
         creative_treatment_json=ANIME_JSON,
+        cinematography_json=cinematography,
         enhance_description=True,
     )
-    assert present["styleCoverageGaps"] == []
+    assert any(
+        "not observably realized" in gap for gap in report["styleCoverageGaps"]
+    ), "explicit camera control must remain a repairable gap"
 
 
-def test_enhancer_delivers_signature_in_base_and_every_chained_item():
-    base, base_report, base_manifest = enhance_prompt_with_completion(
+def test_enhancer_never_delivers_the_contract_verbatim_in_base_or_chained_items():
+    base, _base_report, base_manifest = enhance_prompt_with_completion(
         SOURCE, "t2va", 5.0, "", lambda _messages: BASE_OUTPUT, 0, {"provider": "test"},
         creative_treatment_json=ANIME_JSON,
         enhance_description=True,
     )
     signature = base_manifest["resolvedVisualStyle"]["visualSignature"]
-    assert base.count(signature) == 1
-    assert base_report["styleCoverageGaps"] == []
+    assert signature not in base
+    assert "elderly woman in a red coat" in base
 
     chained_source = (
         "An elderly woman in a red coat walks slowly from left to right. "
@@ -169,14 +204,13 @@ def test_enhancer_delivers_signature_in_base_and_every_chained_item():
         "An elderly woman in a red coat walks slowly from left to right.",
         "The same elderly woman in the same red coat stops in a stable final pose.",
     ]})
-    chained, chained_report, _manifest = enhance_prompt_with_completion(
+    chained, _chained_report, _manifest = enhance_prompt_with_completion(
         chained_source, "chained_multishot", 5.0, "", lambda _messages: generated, 0,
         {"provider": "test"}, multishot_shot_count=2,
         creative_treatment_json=ANIME_JSON, enhance_description=True,
     )
     items = json.loads(chained)["prompts"]
-    assert all(item.count(signature) == 1 for item in items)
-    assert chained_report["styleCoverageGaps"] == []
+    assert all(signature not in item for item in items)
     assert all("elderly woman" in item for item in items)
     assert all("red coat" in item for item in items)
 
@@ -200,8 +234,7 @@ def test_every_visual_language_has_one_unique_executable_signature_in_the_delive
         )
         signature = manifest["resolvedVisualStyle"]["visualSignature"]
         assert signature
-        assert delivered.count(signature) == 1
-        assert report["styleCoverageGaps"] == []
+        assert signature not in delivered
         signatures.setdefault(signature, []).append(visual_language)
 
     assert len(signatures) == len(VISUAL_LANGUAGE_PROFILES) - 1
@@ -236,10 +269,11 @@ def test_latin_american_telenovela_is_explicit_and_wins_over_generic_drama_pacin
 
     signature = manifest["resolvedVisualStyle"]["visualSignature"]
     assert "polished Latin American telenovela visual system" in signature
-    assert signature in delivered
+    # Precedence is resolved in the contract sent to the writer; the contract itself is
+    # never emitted, so the delivered prompt carries neither winner nor loser wording.
+    assert signature not in delivered
     assert "without melodramatic acceleration" not in delivered
     assert "naturalistic pacing" not in delivered
-    assert report["styleCoverageGaps"] == []
     assert any(
         item["loserProfile"] == "drama" and item["winnerProfile"] == "live_action_latin_american_telenovela"
         for item in manifest["treatmentConflicts"]
@@ -302,8 +336,10 @@ def test_all_four_creative_axes_and_cinematography_are_delivered_as_one_contract
         "genre", "visualLanguage", "worldAesthetic", "tone",
     }
     assert style["cameraMotionInstruction"] in style["cinematographySignature"]
-    assert delivered.count(style["resolvedSignature"]) == 1
-    assert report["styleCoverageGaps"] == []
+    # All four axes plus cinematography compile into one contract for the writer, and that
+    # contract stays out of the delivered prompt.
+    assert style["resolvedSignature"]
+    assert style["resolvedSignature"] not in delivered
 
 
 def test_llm_receives_expanded_direction_without_private_preset_ids():
@@ -391,8 +427,12 @@ def test_every_cinematography_choice_compiles_into_the_delivered_contract():
             elif field != "camera_motion":
                 assert CINEMATOGRAPHY_CHOICES[field][choice] in signature
 
-            delivered = normalize_visual_style_signature(BASE_OUTPUT, "t2va", style)
-            assert delivered.count(style["resolvedSignature"]) == 1
+            echoed = BASE_OUTPUT.replace(
+                "integrated_multimodal_description:\n",
+                f"integrated_multimodal_description:\n{style['resolvedSignature']}\n",
+            )
+            delivered = normalize_visual_style_signature(echoed, "t2va", style)
+            assert style["resolvedSignature"] not in delivered
 
 
 def test_pixel_medium_invariants_survive_every_cinematography_choice():

@@ -8,7 +8,7 @@ import json
 import math
 
 
-DEFAULT_LOCAL_CONTEXT_SIZE = 16384
+DEFAULT_LOCAL_CONTEXT_SIZE = 32768
 DEFAULT_LOCAL_STARTUP_TIMEOUT = 180
 BASIC_PROMPT_PLACEHOLDER = "Describe the video: subject, action, setting, camera, dialogue and sound…"
 REFERENCE_PLACEHOLDER = "Example: Picture 1 supplies the identity; Audio 1 supplies the Spanish voice…"
@@ -281,7 +281,7 @@ class MiniMaxH3PromptEnhancer:
             "local_model": (available_gguf_models(), {"tooltip": "Text GGUF models found in ComfyUI/models/llm_gguf; the first discovered model is the default"}),
             "llama_server_path": (available_llama_servers(), {"tooltip": "Detected llama.cpp llama-server executable used to run the selected GGUF; this is not a separate model or API backend"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
-            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 16384-token default (including migrated workflows)"}),
+            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 32768-token default (including migrated workflows)"}),
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1}),
             "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default (including migrated workflows)"}),
             "keep_server_loaded": ("BOOLEAN", {"default": False, "tooltip": "Keep the GGUF in memory for faster repeated enhancement; use the unload node before H3 if VRAM is needed"}),
@@ -327,7 +327,8 @@ class MiniMaxH3PromptEnhancer:
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
                 temperature, max_tokens, timeout_seconds, repair_attempts, disable_thinking,
                 allow_remote_endpoint, use_remote_model=True, local_model="", llama_server_path="",
-                gpu_layers="auto", context_size=16384, threads=0, startup_timeout=180,
+                gpu_layers="auto", context_size=DEFAULT_LOCAL_CONTEXT_SIZE, threads=0,
+                startup_timeout=DEFAULT_LOCAL_STARTUP_TIMEOUT,
                 keep_server_loaded=False, enhance_description=True, ambience_foley_policy="auto",
                 background_score_policy="follow_prompt", voice_performance="audible",
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
@@ -421,7 +422,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "gguf_model_path": ("STRING", {"default": "", "tooltip": "Existing GGUF under a registered model directory"}),
             "registered_model_dirs": ("STRING", {"default": "", "tooltip": "Optional additional roots separated by the OS path separator; ComfyUI and LM Studio model roots are automatic"}),
             "gpu_layers": ("STRING", {"default": "auto", "tooltip": "auto, all, -1, or an exact layer count"}),
-            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 16384-token default"}),
+            "context_size": ("INT", {"default": DEFAULT_LOCAL_CONTEXT_SIZE, "min": 0, "max": 131072, "step": 1024, "tooltip": "0 uses the safe 32768-token default"}),
             "threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1, "tooltip": "0 uses llama-server's default"}),
             "temperature": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05}),
             "max_tokens": ("INT", {"default": 4096, "min": 512, "max": 32768, "step": 256}),
