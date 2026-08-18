@@ -1247,7 +1247,15 @@ Ref2VA output has exactly these six sections in order:
 subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.
 Use stable <Subject N>, <Picture N>, <Video N>, and <Audio N> meanings. Subject labels describe reusable visible
 content; Picture labels are concrete frame/composition anchors; Video labels describe whole-video edit, continuation,
-or temporal structure; Audio labels describe copied or referenced signals. The summary starts with bracketed task
+or temporal structure; Audio labels describe copied or referenced signals.
+subject_definitions must account for every character who appears or speaks, so that nothing in the later blocks
+refers to someone never introduced. Give each one line naming the assets assigned to it, since that binding is what
+H3 has to act on: "<Subject 1> is <Picture 1>'s man, ... ; <Audio 1> supplies his voice." A <Subject N> label is
+only available to a character a supplied Picture or Video actually depicts — inventing one for a character the
+source describes in prose makes H3 look for a reference that does not exist. Define that character in this block
+too, but by a stable description carrying its own (Sx) instead of a Subject label, and reuse that exact description
+at every later mention: "The very old man, bald with a long white beard and a tortoise shell on his back, (S1);
+<Audio 1> supplies his voice." Never leave a speaking character undefined because it has no asset. The summary starts with bracketed task
 types chosen from keyframe completion, reference generation, video editing, video continuation, audio reuse, and
 audio reference. Join multiple task types with the exact separator " + ". A video editing summary continues right
 after that prefix with "The target video is an edited version of <Video 1>." The summary reuses only already defined
@@ -2444,6 +2452,63 @@ _NON_SPEAKER_HEAD_NOUNS = frozenset({
 })
 
 
+_WEAK_DESCRIPTOR_WORDS = frozenset({
+    "very", "big", "huge", "large", "the", "a", "an", "his", "her", "their", "its", "and", "with",
+    "then", "first", "him", "them", "muy", "gran", "el", "la", "un", "una", "su", "y", "con",
+})
+
+
+def _definite_speaker_introduction(region: str, preceding: str) -> str:
+    """Resolve "The old man ... says" back to the phrase that introduced him.
+
+    A definite phrase at the speech verb is normally an asset-bound subject pointing back at its
+    reference, which is why the indefinite scan skips it. But a source that defines its cast up
+    front -- "a very old man, ... and a bulky very muscled man. ... The old man approaches him and
+    says" -- refers back definitely from then on, and no reference asset is involved. Without this
+    the speaker is simply lost, and the audio reference falls through to a description of the
+    labelling rule itself, which H3 then renders as scene content.
+    """
+    definite = None
+    for match in re.finditer(r"\b(?:the|el|la|los|las)\s+([\wÀ-ÿ'’-]+(?:\s+[\wÀ-ÿ'’-]+){0,3})",
+                             region, flags=re.IGNORECASE):
+        # Trailing predicate words are harmless here -- they simply score nothing against the
+        # introductions -- so this only has to cut the connectives that would run two characters
+        # together ("the old man and the doorman").
+        phrase = re.split(
+            rf"\s+(?:{_TEXT_SPEAKER_VOCAL_ACTION}|and|y|who|que|which|while|mientras)\b",
+            match.group(1), maxsplit=1, flags=re.IGNORECASE,
+        )[0].strip(" ,;:")
+        if phrase and phrase.split()[0].casefold() not in _NON_SPEAKER_HEAD_NOUNS:
+            definite = phrase
+            break
+    if not definite:
+        return ""
+    # Score the introductions by shared words rather than demanding an exact containment: the
+    # definite phrase trails off into its predicate ("the bulky man opens the door") and no list of
+    # verbs to cut at stays complete. The winner must be unambiguous, so a tie resolves to nothing
+    # rather than to whichever character was introduced first.
+    wanted = {word for word in re.findall(r"[\wÀ-ÿ'’-]+", definite.casefold())
+              if word not in _WEAK_DESCRIPTOR_WORDS}
+    ranked: list[tuple[int, str]] = []
+    for match in re.finditer(r"\b(?:a|an|un|una)\s+([\wÀ-ÿ'’-]+(?:\s+[\wÀ-ÿ'’-]+){0,4})",
+                             preceding, flags=re.IGNORECASE):
+        candidate = re.split(r"\s*[,;]", match.group(1))[0].strip()
+        words = {word.casefold() for word in re.findall(r"[\wÀ-ÿ'’-]+", candidate)}
+        overlap = len(wanted & words)
+        if overlap:
+            ranked.append((overlap, candidate))
+    if not ranked:
+        return ""
+    ranked.sort(key=lambda item: (-item[0], -len(item[1])))
+    if len(ranked) > 1 and ranked[0][0] == ranked[1][0]:
+        return ""
+    # The word cap can land mid-modifier, and a dangling function word makes an unusable
+    # voice description.
+    return re.sub(r"(?:\s+(?:with|on|in|of|at|from|to|for|and|the|a|an|his|her|their|its|"
+                  r"con|en|de|del|la|el|los|las|un|una|y|su))+$", "", ranked[0][1],
+                  flags=re.IGNORECASE)
+
+
 def _text_only_speaker_descriptors(
     source_prompt: str, bound_excerpts: tuple[str, ...] = (),
 ) -> list[str]:
@@ -2537,6 +2602,12 @@ def _text_only_speaker_descriptors(
                 continue
             descriptors.append("the " + phrase.casefold())
             break
+        else:
+            # Nothing indefinite before the verb: the speaker may still be a prose character the
+            # source introduced earlier and now refers back to definitely.
+            introduction = _definite_speaker_introduction(region, masked[:masked.index(sentence)])
+            if introduction:
+                descriptors.append("the " + introduction.casefold())
     return list(dict.fromkeys(descriptors))
 
 

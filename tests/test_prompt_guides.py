@@ -2603,7 +2603,14 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     # caught the wordings already observed, so each new one -- "is visibly registered", "after this
     # violent action" -- leaked until someone read an output and added it. A criterion any sentence
     # can be checked against does not need extending, so this length should now stay put.
-    assert len(SYSTEM_PROMPT) < 13100
+    #
+    # Reviewed 2026-08-18: raised 13100 -> 14000 to say what subject_definitions must account for.
+    # The block never stated that a <Subject N> requires a supplied Picture or Video, nor how to
+    # introduce a character the source only describes in prose, so a two-character prose scene got
+    # <Subject 1> and <Subject 2> invented for it. The validator rejected them as invented labels
+    # and the repair loop could not fix what the contract offered no legal alternative to, so the
+    # user received the best invalid candidate.
+    assert len(SYSTEM_PROMPT) < 14000
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
         "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
@@ -2961,3 +2968,53 @@ def test_the_rule_covers_the_users_own_directive_phrasing():
     # It must say what to write instead, or the rule only forbids without redirecting.
     for evidence in ("what separates", "recoils", "the evidence that earned it"):
         assert evidence in prompt
+
+
+CATALAN_DOORMAN_SOURCE = (
+    "We have two subjects in this scene, a very old man, with the voice in audio 1, wearing shorts, "
+    "a pink hawaiian shirt, sunglasses, bald, and a very long white moustache and beard, and he's "
+    "wearing a huge tortoise shell on his back, and a bulky very muscled man with a very deep voice. "
+    "The old man arrives at the door of a striptease club, with huge neons. And a big very bulky man "
+    'with huge muscles is protecting the door. The old man approaches him and says in catalonian '
+    '"bon dia, què em deixeries passar?". The man first looks at the old man, then recognizes him, '
+    'moves aside and opens the door while bowing and says "Per suposat follet tortuga, passi, passi".'
+)
+
+
+def test_a_speaker_named_definitely_resolves_to_the_phrase_that_introduced_him():
+    """A cast defined up front is referred back to definitely from then on.
+
+    The scan only accepted an indefinite phrase before the speech verb, because in Ref2VA a definite
+    one usually points at an asset-bound subject. Here it points at "a very old man" two sentences
+    earlier and no asset is involved, so the speaker was lost entirely and the audio reference fell
+    through to a description of the labelling rule -- which H3 then rendered as scene content.
+    """
+    from prompt_guides import _text_only_speaker_descriptors
+
+    assert _text_only_speaker_descriptors(CATALAN_DOORMAN_SOURCE, ()) == ["the very old man"]
+
+
+def test_a_definite_speaker_does_not_resolve_to_a_different_character():
+    """Two men are introduced; resolving by head noun alone would bind the audio to the wrong one."""
+    source = (
+        "a very old man with a tortoise shell, and a bulky very muscled man with a deep voice. "
+        'The bulky man opens the door and says "passi".'
+    )
+    from prompt_guides import _text_only_speaker_descriptors
+
+    assert _text_only_speaker_descriptors(source, ()) == ["the bulky very muscled man"]
+
+
+def test_subject_definitions_must_account_for_a_character_with_no_reference_asset():
+    """The contract offered no legal way to introduce a prose-only character.
+
+    Nothing said a <Subject N> requires a supplied Picture or Video, so a two-character prose scene
+    got <Subject 1> and <Subject 2> invented for it. The validator rejects those as invented labels
+    and the repair loop cannot fix what the contract gives no alternative to, so the user received
+    the best invalid candidate.
+    """
+    prompt = " ".join(system_prompt_for_mode("ref2va", True).split())
+    assert "subject_definitions must account for every character who appears or speaks" in prompt
+    assert "only available to a character a supplied Picture or Video actually depicts" in prompt
+    assert "a stable description carrying its own (Sx) instead of a Subject label" in prompt
+    assert "Never leave a speaking character undefined because it has no asset." in prompt
