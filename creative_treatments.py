@@ -3099,6 +3099,22 @@ def _compact_profile_signature(axis: str, dimensions: Mapping[str, list[str]]) -
         if str(line).strip()
     ]
     components = (anchors or production)[:1]
+    # How characters move is the one dimension whose loss is invisible in the finished prompt yet
+    # decides what a viewer reads as the style. Supermarionation anchors on production_design, so
+    # it delivered miniature sets around an ordinary character: the lines that make a puppet a
+    # puppet -- oversized head, vertical float, hands that arrive at a position instead of flowing
+    # into it -- live only here, and set dressing cannot stand in for them.
+    performance = [
+        re.sub(
+            r"^Unless\b[^,]*,\s*", "",
+            re.sub(r"\s+", " ", str(line)).strip().rstrip(" ."),
+            flags=re.IGNORECASE,
+        )
+        for line in dimensions.get("blocking_and_performance", ())
+        if str(line).strip()
+    ]
+    if performance and performance[0] not in components:
+        components.append(performance[0])
     if summaries:
         summary = summaries[-1]
         if not re.match(r"^(?:Use|Keep|Maintain|Render|Present|Compose|Favor|Preserve|Translate)\b", summary):
@@ -3397,6 +3413,16 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
             values = dimensions.get(dimension, ())
             if values:
                 lines.append(headings[dimension] + ":")
+                if dimension == "must_not_invent":
+                    # Emitted bare, the list reads as an absolute ban and outranks the request it
+                    # was meant to serve: supermarionation forbids visible strings so the style
+                    # cannot drag in a puppet gag on its own, but a user who asks for strings was
+                    # having them removed. The bar is on the profile's own additions only.
+                    lines.append(
+                        "These bar the profile from adding anything on its own initiative. "
+                        "Anything the user, source, or a reference supplies explicitly is a fact "
+                        "of the scene and stays; describe it as seen."
+                    )
                 lines.extend(f"- {item}" for item in values)
     suppressed = style.get("suppressedTreatmentLines", ())
     if suppressed:

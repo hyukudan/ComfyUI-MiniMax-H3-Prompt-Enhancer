@@ -124,7 +124,11 @@ All enhancer nodes output calibrated `width` and `height` integer slots compatib
 - **Custom Megapixels**: Enter any float target (e.g. `0.2` MP $\rightarrow$ `592x336`, `0.3` MP $\rightarrow$ `736x416`, `0.5` MP $\rightarrow$ `944x528`, `2.0` MP $\rightarrow$ `1888x1056`) automatically rounded to the nearest multiple of 16.
 
 ### One-Click Visual Style Presets (`visual_style_preset`)
-Instant dropdown selection for 18 curated directorial styles (`live_action_cinematic`, `1970s_new_hollywood`, `anime_ultradetailed_cinematic`, `stylized_3d_animation`, `stop_motion_handcrafted`, `giallo`, `cyberpunk_noir`, etc.) without writing manual JSON schemas.
+Instant dropdown selection for every curated directorial style (`live_action_cinematic`, `1970s_new_hollywood`, `anime_ultradetailed_cinematic`, `stylized_3d_animation`, `stop_motion_handcrafted`, `supermarionation`, `giallo`, `live_action_visceral_horror`, etc.) without writing manual JSON schemas.
+
+The list is derived from the catalogue instead of maintained by hand, so the dropdown and the profiles cannot drift apart.
+
+This preset fills **one axis only**: `visualLanguage`. Genre, world aesthetic, and tone are separate axes that stack on top of it — a `film_noir` world aesthetic keeps tinting the shot in low-key chiaroscuro whichever visual language you select.
 
 ### Multilingual & Dialect Recognition
 Spoken dialogue is preserved verbatim in its natural language while all structural prose is translated into English for H3:
@@ -141,6 +145,19 @@ Binds audio tracks (`<Audio 1>`, `<Audio 2>`) directly to character identities (
 
 ### Non-Destructive Style Bible & Directing Engine
 Choose from **131+ curated profiles** (53 visual languages, 20 world aesthetics, 18 tones, 12 genres, 18 content formats) and **13 cinematography dimensions** (optics, depth of field, color grading, camera speed/amplitude). Explicit user facts in the prompt always take absolute precedence over styles.
+
+Each profile carries a `must_not_invent` list, emitted as `forbidden_inventions`. It bars the **profile** from adding those things on its own initiative; it never overrides you. `supermarionation` forbids visible strings so the style cannot drag in a puppet gag by itself — ask for strings in your prompt and you get them.
+
+### Latitude: `enhance_description` and `invent_scene`
+Three levels of how far the writer may go beyond what you typed:
+
+| level | widgets | behaviour |
+|---|---|---|
+| `conservative_grounded` | both off | adds only the minimum executable structure the H3 mode requires |
+| `enhanced_production` | `enhance_description` | resolves unspecified production decisions — composition, blocking, lighting, micro-performance |
+| `invented_production` | both on | treats the source as a premise and builds the world around it: supporting presence, props, set dressing, background life, and the sound it causes |
+
+Invention never touches what is yours. Quoted dialogue, the identity and role of every supplied reference, the requested duration, shot count and ending, and the source's level of gore stay locked at every level.
 
 ---
 

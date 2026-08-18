@@ -64,6 +64,7 @@ try:
         enhance_prompt_with_gguf_server,
         unload_cached_server,
     )
+    from .creative_treatments import VISUAL_LANGUAGE_PROFILES
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
     from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
@@ -74,6 +75,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         enhance_prompt_with_gguf_server,
         unload_cached_server,
     )
+    from creative_treatments import VISUAL_LANGUAGE_PROFILES
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
     from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
@@ -84,26 +86,13 @@ GENERATION_DURATION_INPUT = {"default": 5.0, "min": 4.0, "max": MAX_GENERATION_S
                              "tooltip": "4-150 seconds. H3 was trained around 5-15 seconds; longer generations are experimental and require much more memory."}
 FRAME_COUNT_INPUT = {"default": 0, "min": 0, "max": 3600, "step": 1,
                      "tooltip": "Leave 0 to use Duration. A nonzero exact count must follow 17 × n + 5. Above about 362 frames (~15 s) is experimental."}
-VISUAL_STYLE_PRESET_CHOICES = [
-    "none",
-    "live_action_cinematic",
-    "live_action_naturalistic",
-    "1970s_new_hollywood",
-    "live_action_gritty",
-    "giallo",
-    "storybook_symmetrical",
-    "anime_ultradetailed_cinematic",
-    "anime_shonen",
-    "anime_retro_dramatic",
-    "stylized_3d_animation",
-    "stop_motion_handcrafted",
-    "papercraft_stop_motion",
-    "pixel_art_16bit",
-    "clean_commercial",
-    "documentary_observational",
-    "home_camcorder_1990s",
-    "surveillance_found_footage",
-]
+# Derivada del catalogo, no escrita a mano: la lista fija habia divergido hasta ofrecer
+# "papercraft_stop_motion", que no existe como perfil y lanzaba ValueError al elegirlo,
+# mientras 36 perfiles reales -entre ellos supermarionation y live_action_visceral_horror-
+# no se podian seleccionar. Derivarla hace imposible que vuelvan a separarse.
+VISUAL_STYLE_PRESET_CHOICES = ["none"] + sorted(
+    name for name in VISUAL_LANGUAGE_PROFILES if name != "none"
+)
 
 H3_ASPECT_RATIO_DIMENSIONS = {
     "16:9": (1280, 720),
@@ -204,6 +193,7 @@ class MiniMaxH3PromptGuideBuilder:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -214,7 +204,7 @@ class MiniMaxH3PromptGuideBuilder:
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
-              target_megapixels=0.0, editing_intent="none"):
+              target_megapixels=0.0, editing_intent="none", invent_scene=False):
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
@@ -231,6 +221,7 @@ class MiniMaxH3PromptGuideBuilder:
                 (), merged_treatment, shot_plan_json, cinematography_json, instrumental_style,
                 acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
                 editing_intent=editing_intent,
+                invent_scene=invent_scene,
             ),
             resolved,
             treatment_warning_report(
@@ -307,6 +298,7 @@ class MiniMaxH3PromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     @classmethod
@@ -337,7 +329,8 @@ class MiniMaxH3PromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none", target_megapixels=0.0, editing_intent="none"):
+                visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
+                invent_scene=False):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
@@ -459,6 +452,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     @classmethod
@@ -479,7 +473,8 @@ class MiniMaxH3GGUFPromptEnhancer:
                 creative_treatment_json="", shot_plan_json="", cinematography_json="",
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
-                visual_style_preset="none", target_megapixels=0.0, editing_intent="none"):
+                visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
+                invent_scene=False):
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
@@ -499,6 +494,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             acoustic_space, dialogue_coverage, delivery_target, dialogue_language,
             editing_intent,
+            invent_scene,
         )
         return (
             prompt,
@@ -697,6 +693,7 @@ class MiniMaxH3PromptValidator:
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto"}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none"}),
+            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -707,7 +704,7 @@ class MiniMaxH3PromptValidator:
                  creative_treatment_json="", shot_plan_json="", cinematography_json="",
                  enhance_description=True, delivery_target="local", instrumental_description="",
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                 dialogue_language="auto", editing_intent="none"):
+                 dialogue_language="auto", editing_intent="none", invent_scene=False):
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,

@@ -556,3 +556,114 @@ N/A"""
 
     assert not report["valid"]
     assert any("pixel-art profile was contradicted" in error for error in report["errors"])
+
+
+def test_every_catalogue_profile_is_selectable_and_nothing_selectable_is_missing():
+    """The hand-written preset list had drifted from the catalogue in both directions.
+
+    It offered "papercraft_stop_motion", which is not a profile and raised ValueError the
+    moment a user picked it, while 36 real profiles — supermarionation and
+    live_action_visceral_horror among them — could not be selected at all. Deriving the list
+    is what makes the two impossible to separate again.
+    """
+    import prompt_enhancer_node
+    from creative_treatments import VISUAL_LANGUAGE_PROFILES
+
+    presets = set(prompt_enhancer_node.VISUAL_STYLE_PRESET_CHOICES)
+    catalogue = set(VISUAL_LANGUAGE_PROFILES)
+    assert "none" in presets
+    assert presets == catalogue | {"none"}
+    for expected in ("supermarionation", "live_action_visceral_horror"):
+        assert expected in presets
+    assert "papercraft_stop_motion" not in presets
+
+
+def test_every_preset_reaches_the_request_with_its_own_vocabulary():
+    """Selecting a preset must deliver that profile's wording, not just a style header."""
+    import prompt_enhancer_node
+    from creative_treatments import VISUAL_LANGUAGE_PROFILES
+    from prompt_enhancer_node import _merge_visual_style_preset
+
+    for preset in prompt_enhancer_node.VISUAL_STYLE_PRESET_CHOICES:
+        if preset == "none":
+            continue
+        request = build_user_request(
+            "A girl walks through a forest.", "t2va", 10.0, "", True,
+            creative_treatment_json=_merge_visual_style_preset("", preset),
+        )
+        assert "RESOLVED VISUAL STYLE BIBLE" in request, preset
+        profile = VISUAL_LANGUAGE_PROFILES[preset]
+        lines = [
+            item for key, value in profile.items() if key not in ("version", "tags")
+            for item in ([value] if isinstance(value, str)
+                         else list(value) if isinstance(value, (list, tuple)) else [])
+        ]
+        assert any(str(line)[:60] in request for line in lines), preset
+
+
+def test_character_performance_survives_the_compact_signature():
+    """Set dressing cannot stand in for how a character moves.
+
+    supermarionation anchors on production_design, so the signature carried miniature sets and
+    dropped blocking_and_performance entirely — the finished prompt described a normal character
+    standing in a model set, with none of the puppet artifice that is the whole point of the style.
+    """
+    from creative_treatments import VISUAL_LANGUAGE_PROFILES, _compact_profile_signature
+
+    profile = VISUAL_LANGUAGE_PROFILES["supermarionation"]
+    signature = _compact_profile_signature(
+        "visual_language", {k: list(v) for k, v in profile.items() if isinstance(v, (list, tuple))}
+    )
+    assert "miniature" in signature
+    assert "marionettes" in signature, "puppet performance dropped from the signature"
+
+    for name, prof in VISUAL_LANGUAGE_PROFILES.items():
+        blocking = [str(line) for line in prof.get("blocking_and_performance", ()) if str(line).strip()]
+        if not blocking:
+            continue
+        sig = _compact_profile_signature(
+            "visual_language", {k: list(v) for k, v in prof.items() if isinstance(v, (list, tuple))}
+        )
+        assert blocking[0].rstrip(" .")[:50] in sig, name
+
+
+def test_forbidden_inventions_do_not_outrank_an_explicit_request():
+    """A bare ban list reads as absolute and deletes what the user asked for.
+
+    supermarionation forbids visible strings so the style cannot drag a puppet gag in by itself.
+    Emitted with no framing, that same line told the writer to strip the strings from a request
+    that explicitly asked for them — the profile overruling the prompt it exists to serve.
+    """
+    from prompt_enhancer_node import _merge_visual_style_preset
+
+    request = build_user_request(
+        "A minion eats a burger, visible strings running up from his hands to a rig above.",
+        "t2va", 10.0, "", True,
+        creative_treatment_json=_merge_visual_style_preset("", "supermarionation"),
+    )
+    heading = request.index("forbidden_inventions:")
+    framing = request[heading:heading + 400]
+    assert "on its own initiative" in framing
+    assert "supplies explicitly is a fact" in framing
+    assert framing.index("on its own initiative") < framing.index("Visible strings")
+
+
+def test_invent_scene_is_not_cancelled_by_the_request_itself():
+    """The toggle used to flip a label while the request still said the opposite.
+
+    invented_production asks the writer to build the world around the premise, but the request
+    carried a blanket "do not invent new characters, plot events..." line regardless of profile.
+    Being nearer and more concrete, that line won, and the toggle changed nothing observable.
+    """
+    grounded = build_user_request("A minion eats a burger.", "t2va", 10.0, "", True,
+                                  invent_scene=False)
+    invented = build_user_request("A minion eats a burger.", "t2va", 10.0, "", True,
+                                  invent_scene=True)
+    assert "Do not invent new characters" in grounded
+    assert "Do not invent new characters" not in invented
+    # Silence, not a competing positive instruction: the invention contract already lives in the
+    # system prompt, and restating it here would be one more clause to keep in step with it.
+    # What is the user's stays locked in both.
+    for request in (grounded, invented):
+        assert "Do not invent dialogue." in request
+        assert "beyond the source" in request

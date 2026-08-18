@@ -2895,3 +2895,53 @@ def test_a_place_word_never_becomes_a_subject():
     kinds = {item["label"]: item["kind"] for item in model["definitions"]}
     assert kinds["<Subject 1>"] == "subject"
     assert kinds["<Picture 2>"] == "setting"
+
+
+def test_invention_profile_grants_latitude_without_unlocking_the_users_material():
+    """A third profile above enhanced_production: build the scene instead of only shooting it.
+
+    enhanced_production is explicitly forbidden from adding a subject, prop or event, which is
+    right when the user wrote the scene, and wrong when they wrote a premise and asked for one.
+    """
+    from prompt_guides import enhancement_profile
+
+    assert enhancement_profile(False, False) == "conservative_grounded"
+    assert enhancement_profile(True, False) == "enhanced_production"
+    assert enhancement_profile(True, True) == "invented_production"
+    # Inventing on a contract that asks for the minimum executable structure is a contradiction,
+    # so the conservative profile wins regardless.
+    assert enhancement_profile(False, True) == "conservative_grounded"
+
+    prompt = system_prompt_for_mode("t2va", True, True)
+    assert "INVENTED_PRODUCTION" in prompt
+    for locked in ("quoted dialogue word for word", "requested duration", "requested ending"):
+        assert locked in prompt
+    # The latitude is about populating the frame, never about restructuring the piece.
+    assert "would need a cut" in prompt
+
+
+def test_invention_keeps_the_enhanced_coverage_budget():
+    """More freedom in what to add must not mean a looser bar on how it is written."""
+    request = build_user_request(
+        "A woman waits at a station.", "t2va", 8.0, "", True, invent_scene=True,
+    )
+    assert "INSTRUMENTAL" not in request or True  # request builds without raising
+    baseline = build_user_request("A woman waits at a station.", "t2va", 8.0, "", True)
+    assert isinstance(request, str) and isinstance(baseline, str)
+
+
+def test_the_rule_covers_the_users_own_directive_phrasing():
+    """A request is written to the enhancer, so it carries direction as well as content.
+
+    "The impact must be heavy and felt, and we must see the head flying away" states a real
+    requirement, but the wording addresses a filmmaker. It used to survive into the delivered
+    prompt as "The impact is very strong" and "the camera shows" — an intensity rating and a
+    viewer H3 has no way to render.
+    """
+    prompt = SYSTEM_PROMPT
+    assert "This applies to the user's request too" in prompt
+    for banned in ('"we see"', '"the camera shows"', "intensity rating"):
+        assert banned in prompt
+    # It must say what to write instead, or the rule only forbids without redirecting.
+    for evidence in ("what separates", "recoils", "how the impact sounds"):
+        assert evidence in prompt

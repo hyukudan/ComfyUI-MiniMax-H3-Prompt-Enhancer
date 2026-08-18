@@ -339,6 +339,7 @@ def enhance_prompt_with_completion(
     delivery_target: str = "local",
     dialogue_language: str = "auto",
     editing_intent: str = "none",
+    invent_scene: bool = False,
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -398,6 +399,7 @@ def enhance_prompt_with_completion(
         (), creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
         acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
         editing_intent=editing_intent,
+        invent_scene=invent_scene,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -422,6 +424,7 @@ def enhance_prompt_with_completion(
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
             editing_intent=editing_intent,
+            invent_scene=invent_scene,
         )
     effective_reference_context = "\n".join(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
@@ -491,6 +494,7 @@ def enhance_prompt_with_completion(
         acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
         dialogue_language=dialogue_language,
         editing_intent=editing_intent,
+        invent_scene=invent_scene,
     )
     best_enhanced = enhanced
     best_validation = validation
@@ -572,6 +576,7 @@ def enhance_prompt_with_completion(
             instrumental_description=instrumental_description, instrumental_style=instrumental_style,
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
             editing_intent=editing_intent,
+            invent_scene=invent_scene,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -712,7 +717,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    dialogue_coverage: str = "off",
                    delivery_target: str = "local",
                    dialogue_language: str = "auto",
-                   editing_intent: str = "none") -> tuple[str, dict, dict]:
+                   editing_intent: str = "none",
+                   invent_scene: bool = False) -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -763,4 +769,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         delivery_target,
         dialogue_language,
         editing_intent,
+        invent_scene,
     )

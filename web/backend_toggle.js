@@ -3455,10 +3455,21 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "voice_performance", ["audible", "silent_mouth_acting_experimental", "none"], "audible");
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeEnumWidget(node, "visual_style_preset", [
-        "none", "live_action_cinematic", "live_action_naturalistic", "1970s_new_hollywood", "live_action_gritty",
-        "giallo", "storybook_symmetrical", "anime_ultradetailed_cinematic", "anime_shonen", "anime_retro_dramatic",
-        "stylized_3d_animation", "stop_motion_handcrafted", "papercraft_stop_motion", "pixel_art_16bit",
-        "clean_commercial", "documentary_observational", "home_camcorder_1990s", "surveillance_found_footage",
+        "none", "1970s_new_hollywood", "american_comic_pastel", "animation_2d", "anime_general",
+        "anime_retro_dramatic", "anime_retro_gag_family", "anime_shojo", "anime_shojo_pastel", "anime_shonen",
+        "anime_ultradetailed_cinematic", "cel_shaded_3d", "classic_morning_adventure_cel", "clean_commercial",
+        "documentary_observational", "game_3d_cinematic", "game_3d_nextgen", "giallo", "gouache_2d",
+        "graphic_noir", "graphic_novel", "heroic_limited_cel_tv", "home_camcorder_1990s",
+        "japanese_print_animation", "kaiju_suitmation", "live_action_1950s_studio_color",
+        "live_action_1980s_action", "live_action_1980s_television", "live_action_cinematic",
+        "live_action_classic_black_and_white", "live_action_classic_chinese_martial_arts",
+        "live_action_classic_western", "live_action_expressionist", "live_action_gritty",
+        "live_action_latin_american_telenovela", "live_action_midcentury_technicolor_epic",
+        "live_action_naturalistic", "live_action_revisionist_western", "live_action_visceral_horror",
+        "low_poly_3d", "midcentury_graphic_cel_comedy", "mockumentary_talking_head", "painterly_2d",
+        "pixel_art_16bit", "rotoscope_animation", "silent_era_1920s", "stop_motion_handcrafted",
+        "storybook_symmetrical", "stylized_3d_animation", "supermarionation", "surveillance_found_footage",
+        "tokusatsu_sentai", "watercolor_2d",
     ], "none");
     sanitizeEnumWidget(node, "editing_intent", [
         "none", "character_swap", "wardrobe_transfer", "voice_dialogue_swap",
@@ -3470,6 +3481,9 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeBooleanWidget(node, "allow_remote_endpoint", false);
     sanitizeBooleanWidget(node, "keep_server_loaded", false);
     sanitizeBooleanWidget(node, "show_advanced_controls", false);
+    // editing_intent llego sin saneo y se cargaba como 0 en workflows migrados; invent_scene
+    // nace con el suyo para no repetirlo.
+    sanitizeBooleanWidget(node, "invent_scene", false);
     for (const name of [
         "basic_prompt", "prompt", "source_prompt", "reference_context", "endpoint", "model", "api_key",
         "instrumental_description", "media_manifest", "multishot_identity_lock", "multishot_voice_lock",

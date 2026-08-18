@@ -54,6 +54,7 @@ def _appended_fields(node_class):
     return [
         *NEW_FIELDS, *caching, *delivery,
         "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent",
+        "invent_scene",
     ]
 
 
@@ -153,6 +154,11 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
+        # invent_scene is the newest append: neutral default keeps every saved workflow on the
+        # previous behaviour, which is what this test exists to guarantee.
+        if parameters[-1].name == "invent_scene":
+            assert parameters[-1].default is False
+            parameters = parameters[:-1]
         if parameters[-1].name == "editing_intent":
             assert parameters[-1].default == "none"
             parameters = parameters[:-1]
@@ -221,7 +227,7 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-7:] == ("", "none", "none", "off", "local", "auto", "none")
+    assert captured["args"][-8:] == ("", "none", "none", "off", "local", "auto", "none", False)
     assert result[-3:] == ("", 1280, 720)
 
 
@@ -248,7 +254,7 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
     assert remote_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
-    assert gguf_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
+    assert gguf_calls[0][-10:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none", False)
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
@@ -396,3 +402,19 @@ def test_frontend_places_nonpersistent_music_style_proxy_below_background_score(
         "chinese_martial_arts", "horror_intense",
     ):
         assert f'["{token}",' in source
+
+
+def test_frontend_sanitizer_accepts_every_selectable_preset():
+    """A short allow-list in the sanitizer silently resets valid choices back to "none".
+
+    The frontend validates widget values against its own copy of the list, so a preset the
+    backend accepts but the sanitizer does not know is discarded on load — the user picks a
+    style, sees it revert, and the request goes out with no visual language at all.
+    """
+    from creative_treatments import VISUAL_LANGUAGE_PROFILES
+
+    frontend = FRONTEND.read_text(encoding="utf-8")
+    start = frontend.index('sanitizeEnumWidget(node, "visual_style_preset", [')
+    block = frontend[start:frontend.index('], "none");', start)]
+    for name in VISUAL_LANGUAGE_PROFILES:
+        assert f'"{name}"' in block, f"{name} would be reset to none by the frontend"

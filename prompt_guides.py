@@ -64,7 +64,7 @@ TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multis
 AMBIENCE_FOLEY_POLICIES = ("auto", "ensure_audible", "off")
 BACKGROUND_SCORE_POLICIES = ("follow_prompt", "add_instrumental", "off")
 VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
-ENHANCEMENT_PROFILES = ("conservative_grounded", "enhanced_production")
+ENHANCEMENT_PROFILES = ("conservative_grounded", "enhanced_production", "invented_production")
 DELIVERY_TARGETS = ("local", "api_v2")
 # The official MiniMax API v2 accepts at most 7000 characters per text block.
 # Ref2VA's 350-500-word generation range is a soft baseline that expands with
@@ -1137,6 +1137,12 @@ monsters") becomes scene content once it lands in the output, and H3 renders it.
 into what is visible and audible here, drop any this scene cannot show with the supplied elements,
 and never emit a preset ID or selector label.
 
+This applies to the user's request too: it mixes what happens with how to shoot it ("we must see
+the head fly", "the impact must be heavy and very strong"). The requirement binds, the phrasing
+does not. Never carry "we see", "the camera shows", "must be" or an intensity rating into the
+output; H3 cannot render "very strong". Write the physical evidence: what separates, how far and
+where it travels, what recoils, sprays or deforms, and how the impact sounds.
+
 Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation.
 Write all structural prose, section headers, shot timeline descriptions, camera motions, lighting, atmosphere,
 actions, and soundscape strictly in English. If the user request is written in Spanish, French, German, Chinese,
@@ -1273,8 +1279,15 @@ six-section formats: those contracts describe a single generation, while this ou
 """
 
 
-def enhancement_profile(enhance_description: bool) -> str:
-    return "enhanced_production" if bool(enhance_description) else "conservative_grounded"
+def enhancement_profile(enhance_description: bool, invent_scene: bool = False) -> str:
+    """conservative < enhanced < invented, en latitud creativa creciente.
+
+    invent_scene solo tiene efecto con la mejora activa: inventar sobre un contrato que pide
+    minimo ejecutable seria contradictorio.
+    """
+    if not bool(enhance_description):
+        return "conservative_grounded"
+    return "invented_production" if bool(invent_scene) else "enhanced_production"
 
 
 EMOTIONAL_PERFORMANCE_CONTRACT = """EMOTIONAL PERFORMANCE TRANSLATION — SOURCE-GATED:
@@ -1288,7 +1301,8 @@ EMOTIONAL_PERFORMANCE_CONTRACT = """EMOTIONAL PERFORMANCE TRANSLATION — SOURCE
 - Adapt the observable cue to the selected visual language without overriding its performance grammar, identity lock, reference state, action order, or final-frame anchor. Source facts, quoted dialogue, and reference anchors outrank the explicit shot plan and timing, which outrank explicit cinematography, selected treatment, and this execution-only translation."""
 
 
-def system_prompt_for_mode(mode: str, enhance_description: bool | None = None) -> str:
+def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
+                           invent_scene: bool = False) -> str:
     """Return only the output-contract rules relevant to the resolved H3 mode."""
     if mode == "chained_multishot":
         prompt = MULTISHOT_SYSTEM_PROMPT
@@ -1300,6 +1314,18 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None) -
         prompt = common + ref_marker + ref_rules if mode == "ref2va" else common + base_marker + base_rules
     if enhance_description is None:
         return prompt
+    if enhance_description == "invented_production" or invent_scene:
+        return prompt + (
+            "\n\nENHANCEMENT PROFILE — INVENTED_PRODUCTION: The user asked you to build the scene, not just to "
+            "photograph what they wrote. Treat the source as a premise: invent the concrete world around it — "
+            "supporting subjects, props, set dressing, wardrobe, weather, secondary action, background life, and "
+            "the physically caused sound of everything you add — until the shot reads as a finished piece. Every "
+            "invention must be causally compatible with the source and with what is already on screen; do not "
+            "contradict a stated fact or reference. Four things stay locked because they are the user's, not "
+            "yours: quoted dialogue word for word, the identity and role of every supplied reference, the "
+            "requested duration and shot count, and the requested ending. Invent nothing that would need a cut, "
+            "a new location, or a time jump the source did not ask for."
+        )
     if enhance_description:
         return prompt + (
             "\n\nENHANCEMENT PROFILE — ENHANCED_PRODUCTION: Preserve locked narrative facts while resolving missing "
@@ -2868,7 +2894,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        acoustic_space: str = "none",
                        dialogue_coverage: str = "off",
                        dialogue_language: str = "auto",
-                       editing_intent: str = "none") -> str:
+                       editing_intent: str = "none",
+                       invent_scene: bool = False) -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -2886,7 +2913,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     if editing_intent not in EDITING_INTENT_CHOICES:
         raise ValueError(f"Unsupported editing intent {editing_intent!r}")
     resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
-    active_enhancement_profile = enhancement_profile(enhance_description)
+    active_enhancement_profile = enhancement_profile(enhance_description, invent_scene)
     dialogue_authoring, dialogue_authoring_language = _dialogue_authoring_request(
         basic_prompt, override_language=dialogue_language
     )
@@ -3255,8 +3282,16 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "- Preserve explicit age category, gender, character count, identity relationships, wardrobe, object subtype, "
             "and spatial/chronological relationships literally. For example, older/elderly must not become middle-aged "
             "or young, and multiple variants of one person must not become unrelated people.\n"
-            "- Do not invent new characters, plot events, branded objects, reference assets, or an ending that "
-            "changes the user's intent. "
+            # Under invented_production this blanket ban contradicted the profile that had just
+            # asked for supporting subjects and background life, and being the nearer, more concrete
+            # instruction it won: the toggle changed a label and nothing else. What stays locked is
+            # what belongs to the user -- reference identity, quoted words, the ending -- not the
+            # existence of a passer-by the profile was invited to add.
+            + (
+                "- " if active_enhancement_profile == "invented_production" else
+                "- Do not invent new characters, plot events, branded objects, reference assets, or an "
+                "ending that changes the user's intent. "
+            )
             + (
                 "Author dialogue only within the explicit dialogue-writing brief above. "
                 if dialogue_authoring and voice_performance == "audible" else
@@ -5082,7 +5117,7 @@ def _adaptive_description_budget(source_prompt: str, reference_context: str,
     )
     return {
         "kind": "adaptive_generation",
-        "softMinWords": 350 if profile_name == "enhanced_production" else None,
+        "softMinWords": 350 if profile_name in ("enhanced_production", "invented_production") else None,
         "softMaxWords": 500 + expansion,
         "baselineWords": [350, 500],
         "extraWords": expansion,
@@ -5270,7 +5305,7 @@ def _resolved_style_coverage_warnings(text: str, style: Mapping[str, Any]) -> li
 
 def _description_coverage_gaps(timeline: str, mode: str, source_prompt: str,
                                profile_name: str, shot_count: int) -> list[str]:
-    if profile_name != "enhanced_production" or not timeline.strip():
+    if profile_name not in ("enhanced_production", "invented_production") or not timeline.strip():
         return []
     words = len(re.findall(r"\b[\wÀ-ÿ'-]+\b", timeline))
     minimum = 80 + max(0, int(shot_count) - 1) * 35
@@ -5356,10 +5391,11 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     acoustic_space: str = "none",
                     dialogue_coverage: str = "off",
                     dialogue_language: str = "auto",
-                    editing_intent: str = "none") -> dict[str, Any]:
+                    editing_intent: str = "none",
+                    invent_scene: bool = False) -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest, editing_intent=editing_intent)
     profile_name = (
-        enhancement_profile(enhance_description)
+        enhancement_profile(enhance_description, invent_scene)
         if enhance_description is not None else "legacy_unprofiled"
     )
     reference_context = "\n".join(
