@@ -3066,3 +3066,49 @@ def test_the_dialogue_rule_leads_with_its_default_not_with_the_voiceover_formula
     assert default < formula, "the default must be stated before the exception's wording"
     assert "Voiceover is the exception and only the source can ask for it" in prompt
     assert "never also describe that same mouth moving" in prompt
+
+
+def test_appearance_attributes_are_derived_from_the_source_not_from_a_catalogue():
+    """The explicit-fact checks only notice what someone already thought to add.
+
+    They cover numeric age, hair colour, mobility aids and intact objects, so a bald head, a long
+    white moustache and beard, sunglasses and a tortoise shell were dropped without one complaint:
+    no rule named them. Deriving the attributes from the source needs no extending -- whatever the
+    user bothered to describe is what has to survive.
+    """
+    from prompt_guides import _omitted_appearance_attributes
+
+    source = (
+        "A very old man, bald, with a very long white moustache and beard, wearing shorts, a pink "
+        "hawaiian shirt and sunglasses, and a huge tortoise shell on his back, walks to a door."
+    )
+    dropped = _omitted_appearance_attributes(
+        source, "An elderly man in shorts and a pink shirt walks to a door and knocks.",
+    )
+    assert len(dropped) == 1
+    for attribute in ("moustache", "beard", "sunglasses", "shell", "bald"):
+        assert attribute in dropped[0], attribute
+
+    # Rephrasing around the attribute is fine; only the head noun has to survive.
+    assert _omitted_appearance_attributes(source, (
+        "A bald elderly man with a long white moustache and beard, in shorts, a pink hawaiian "
+        "shirt and sunglasses, a huge tortoise shell strapped to his back, walks to the door."
+    )) == []
+    # A source that describes nobody cannot be missing anything.
+    assert _omitted_appearance_attributes("A man walks to a door.", "A man walks to a door.") == []
+
+
+def test_a_worn_object_is_not_confused_with_the_body_part_it_sits_on():
+    """"a huge tortoise shell on his back" is a shell, not a back.
+
+    Taking the last noun of the fragment would require "back" to appear and let the shell itself
+    vanish, which is the one attribute that makes this character recognisable.
+    """
+    from prompt_guides import _omitted_appearance_attributes
+
+    dropped = _omitted_appearance_attributes(
+        "A man with a huge tortoise shell on his back walks to a door.",
+        "A man walks to a door, his back to the camera.",
+    )
+    assert dropped and "shell" in dropped[0]
+    assert "back" not in dropped[0]

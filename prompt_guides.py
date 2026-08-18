@@ -2795,6 +2795,73 @@ def _explicit_age_fact_errors(source_prompt: str, output: str) -> list[str]:
     return errors
 
 
+_APPEARANCE_INTRODUCERS = r"wearing|dressed\s+in|carrying|holding|with|in|sporting|llevando|con|vestido\s+de"
+_APPEARANCE_STOP_NOUNS = frozenset({
+    "man", "woman", "boy", "girl", "person", "people", "character", "guy", "lady", "figure",
+    "back", "front", "side", "hand", "hands", "head", "face", "left", "right", "one", "two",
+    "voice", "scene", "shot", "camera", "video", "subject", "subjects", "door", "club",
+    "hombre", "mujer", "chico", "chica", "persona", "escena", "voz", "puerta",
+})
+
+
+def _omitted_appearance_attributes(source_prompt: str, output: str) -> list[str]:
+    """Concrete appearance nouns the source attached to a character and the output dropped.
+
+    The explicit-fact checks are a catalogue -- numeric age, hair colour, mobility aid, intact
+    object -- so they only ever notice what someone already thought to add. A bald head, a long
+    white moustache and beard, a pink Hawaiian shirt and a tortoise shell went missing without a
+    single complaint, because no rule named them. Deriving the attributes from the source instead
+    needs no extending: whatever the user bothered to describe is what has to survive.
+
+    Only the head noun of each fragment is required, so the writer stays free to rephrase around
+    it, and the result is reported as a coverage gap the repair pass can close rather than a hard
+    failure.
+    """
+    source = re.sub(r"[\"“”«»„][^\"“”«»„]*[\"“”«»„]", " ", source_prompt or "")
+    text = (output or "").casefold()
+    attributes: list[str] = []
+    for fragment in re.finditer(
+        rf"\b(?:{_APPEARANCE_INTRODUCERS})\s+([^.;!?]{{0,160}})", source, flags=re.IGNORECASE,
+    ):
+        for part in re.split(r",|\band\b|\by\b", fragment.group(1), flags=re.IGNORECASE):
+            # "a huge tortoise shell on his back" is a shell, not a back: where the thing sits is
+            # not the thing, and the body part it sits on is what the head-noun rule would take.
+            part = re.split(
+                r"\b(?:on|in|at|over|under|behind|around|across|sobre|en|bajo)\s+"
+                r"(?:his|her|its|their|the|a|an|su|el|la)\b",
+                part, maxsplit=1, flags=re.IGNORECASE,
+            )[0]
+            words = re.findall(r"[\wÀ-ÿ'’-]+", part)
+            if not words:
+                continue
+            head = words[-1].casefold()
+            if len(head) < 4 or head in _APPEARANCE_STOP_NOUNS or head in _NON_SPEAKER_HEAD_NOUNS:
+                continue
+            if head not in attributes:
+                attributes.append(head)
+    # A bare appositive carries no introducer at all -- "a very old man, bald, with ..." -- and is
+    # exactly the kind of single distinctive word that goes missing without one.
+    for appositive in re.finditer(
+        rf"\b(?:{'|'.join(sorted(_APPEARANCE_STOP_NOUNS))})\s*,\s*([\wÀ-ÿ'’-]+)\s*,",
+        source, flags=re.IGNORECASE,
+    ):
+        head = appositive.group(1).casefold()
+        if len(head) >= 4 and head not in _APPEARANCE_STOP_NOUNS and head not in attributes:
+            attributes.append(head)
+    missing = [
+        attribute for attribute in attributes
+        if not re.search(rf"\b{re.escape(attribute)}(?:s|es)?\b", text)
+        and not re.search(rf"\b{re.escape(attribute.rstrip('s'))}(?:s|es)?\b", text)
+    ]
+    if not missing:
+        return []
+    return [
+        "Source appearance detail dropped: describe "
+        + ", ".join(missing[:8])
+        + " on the character the source attached them to"
+    ]
+
+
 def _explicit_source_fact_errors(source_prompt: str, output: str) -> list[str]:
     """Protect concrete source attributes and terminal consequences from silent omission."""
     source = source_prompt or ""
@@ -6375,6 +6442,9 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     coverage_gaps = _description_coverage_gaps(
         timeline, resolved, source_prompt, profile_name, len(shots),
     )
+    # A gap rather than an error: the writer can close it on the next pass, and an attribute it
+    # genuinely cannot place should not sink an otherwise valid prompt.
+    coverage_gaps.extend(_omitted_appearance_attributes(source_prompt, text))
     soft_minimum = description_budget.get("softMinWords")
     if (
         resolved == "ref2va"
