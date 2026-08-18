@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 638 Passed](https://img.shields.io/badge/tests-638%20passed-brightgreen.svg)](tests/)
+[![Tests: 727 Passed](https://img.shields.io/badge/tests-727%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -30,7 +30,7 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Audio Reference Binding** | Treated as background noise | **Cross-Modal Voice Binding** (`<Audio N>` $\rightarrow$ `<Subject N> (Sx)`) |
 | **Visual Text vs Speech** | Signs converted into dialogue | **Intelligent Separation** of signs/shirts/doors from spoken character dialogue |
 | **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16px from Aspect Ratio & `target_megapixels` (0.2–2.0+ MP) |
-| **Visual Style Presets** | Generic prompt words | **18 Direct Preset Styles** + 131+ Curated Profiles & 13-Axis Cinematography Engine |
+| **Visual Style Presets** | Generic prompt words | **53 Direct Preset Styles** + 131+ Curated Profiles & 13-Axis Cinematography Engine |
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
@@ -148,14 +148,16 @@ Choose from **131+ curated profiles** (53 visual languages, 20 world aesthetics,
 
 Each profile carries a `must_not_invent` list, emitted as `forbidden_inventions`. It bars the **profile** from adding those things on its own initiative; it never overrides you. `supermarionation` forbids visible strings so the style cannot drag in a puppet gag by itself — ask for strings in your prompt and you get them.
 
-### Latitude: `enhance_description` and `invent_scene`
-Three levels of how far the writer may go beyond what you typed:
+### Creative Latitude (`creative_latitude`)
+One dropdown for how far the writer may go beyond what you typed:
 
-| level | widgets | behaviour |
-|---|---|---|
-| `conservative_grounded` | both off | adds only the minimum executable structure the H3 mode requires |
-| `enhanced_production` | `enhance_description` | resolves unspecified production decisions — composition, blocking, lighting, micro-performance |
-| `invented_production` | both on | treats the source as a premise and builds the world around it: supporting presence, props, set dressing, background life, and the sound it causes |
+| level | behaviour |
+|---|---|
+| `conservative_grounded` | adds only the minimum executable structure the H3 mode requires |
+| `enhanced_production` *(default)* | resolves unspecified production decisions — composition, blocking, lighting, micro-performance |
+| `invented_production` | treats the source as a premise and builds the world around it: supporting presence, props, set dressing, background life, and the sound it causes |
+
+This replaces the former `enhance_description` and `invent_scene` booleans, which spanned four states for three meanings — and the spare one lied, running the most conservative profile while the UI promised an invented scene. Workflows saved with the old pair are converted on load.
 
 Invention never touches what is yours. Quoted dialogue, the identity and role of every supplied reference, the requested duration, shot count and ending, and the source's level of gore stay locked at every level.
 

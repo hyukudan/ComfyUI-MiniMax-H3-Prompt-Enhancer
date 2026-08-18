@@ -86,7 +86,7 @@ const DISPLAY_LABELS = {
     context_size: "LLM context size",
     threads: "CPU threads (0 = auto)",
     startup_timeout: "Local model startup timeout",
-    enhance_description: "Enhance description",
+    creative_latitude: "Creative latitude",
     ambience_foley_policy: "Scene sounds (ambience & foley)",
     background_score_policy: "Background score",
     instrumental_description: "Instrumental description",
@@ -2065,9 +2065,8 @@ function handleEffectiveDurationChange(node) {
 function updateCreativePanelEnhancementState(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel) return;
-    const widgetValue = node.widgets?.find((widget) => widget.name === "enhance_description")?.value;
-    const enabled = widgetValue === undefined || widgetValue === true || widgetValue === 1
-        || String(widgetValue).toLowerCase() === "true";
+    const widgetValue = node.widgets?.find((widget) => widget.name === "creative_latitude")?.value;
+    const enabled = widgetValue === undefined || widgetValue !== "conservative_grounded";
     panel.treatmentBody.classList.toggle("minimax-h3-treatment-disabled", !enabled);
     const unavailable = CREATIVE_FIELD_DEFINITIONS.flatMap(({ key, label }) => {
         const value = node.__minimaxCreativeTreatmentState?.[key];
@@ -3274,7 +3273,7 @@ function configureCreativeDirectionNode(node, nodeName = node.comfyClass ?? node
     node.__minimaxCreativeNodeName = nodeName;
     addCreativeDirectionPanel(node);
     if (!node.__minimaxCreativePanel) return;
-    wrapRefreshCallback(node, "enhance_description", updateCreativePanelEnhancementState);
+    wrapRefreshCallback(node, "creative_latitude", updateCreativePanelEnhancementState);
     wrapRefreshCallback(node, "duration_seconds", handleEffectiveDurationChange);
     wrapRefreshCallback(node, "frame_count", handleEffectiveDurationChange);
     hydrateCreativeDirectionPanel(node);
@@ -3358,6 +3357,28 @@ function addRemoteModelDiscovery(node) {
     refresh.serialize = false;
     refresh.serializeValue = () => undefined;
     refresh.label = API_MODEL_REFRESH;
+}
+
+// Two booleans became one ordered widget: enhance_description held four states for three meanings,
+// and the spare one lied -- invent on with enhance off promised an invented scene while the node
+// ran the most conservative profile there is. creative_latitude took enhance_description's exact
+// slot and invent_scene was the last widget of all, so nothing else shifted; only these two values
+// need converting. A workflow saved before the swap has a boolean where the enum now sits.
+function migrateLegacyLatitudePair(node, info) {
+    const widget = node.widgets?.find((candidate) => candidate.name === "creative_latitude");
+    if (!widget || typeof widget.value !== "boolean") return false;
+    const enhanced = widget.value;
+    const values = info?.widgets_values;
+    // invent_scene sat last, so its value is the tail entry the shorter widget list left over.
+    const persistent = (node.widgets ?? []).filter((candidate) => candidate.serialize !== false);
+    const invented = Array.isArray(values) && values.length > persistent.length
+        && values[values.length - 1] === true;
+    widget.value = !enhanced ? "conservative_grounded"
+        : invented ? "invented_production" : "enhanced_production";
+    if (Array.isArray(values) && values.length > persistent.length) {
+        info.widgets_values = values.slice(0, persistent.length);
+    }
+    return true;
 }
 
 function repairLegacyModelDiscoveryShift(node, info) {
@@ -3476,14 +3497,16 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "environment_background", "motion_transfer", "custom_editing",
     ], "none");
     sanitizeBooleanWidget(node, "use_remote_model", true);
-    sanitizeBooleanWidget(node, "enhance_description", true);
     sanitizeBooleanWidget(node, "disable_thinking", true);
     sanitizeBooleanWidget(node, "allow_remote_endpoint", false);
     sanitizeBooleanWidget(node, "keep_server_loaded", false);
     sanitizeBooleanWidget(node, "show_advanced_controls", false);
-    // editing_intent llego sin saneo y se cargaba como 0 en workflows migrados; invent_scene
-    // nace con el suyo para no repetirlo.
-    sanitizeBooleanWidget(node, "invent_scene", false);
+    // editing_intent llego sin saneo y se cargaba como 0 en workflows migrados; creative_latitude
+    // nace con el suyo para no repetirlo. Corre despues de migrateLegacyLatitudePair, que ya
+    // convirtio el booleano antiguo, asi que aqui un valor no valido es realmente invalido.
+    sanitizeEnumWidget(node, "creative_latitude", [
+        "conservative_grounded", "enhanced_production", "invented_production",
+    ], "enhanced_production");
     for (const name of [
         "basic_prompt", "prompt", "source_prompt", "reference_context", "endpoint", "model", "api_key",
         "instrumental_description", "media_manifest", "multishot_identity_lock", "multishot_voice_lock",
@@ -3741,6 +3764,7 @@ app.registerExtension({
             const result = originalConfigured?.apply(this, arguments);
             this.__minimaxWidgetMigrationComplete = false;
             addRemoteModelDiscovery(this);
+            migrateLegacyLatitudePair(this, arguments[0]);
             repairLegacyModelDiscoveryShift(this, arguments[0]);
             wrapRefreshCallback(this, "use_remote_model", refreshBackendWidgets);
             configureAudioNode(this);

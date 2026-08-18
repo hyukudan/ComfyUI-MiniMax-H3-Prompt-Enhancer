@@ -78,7 +78,7 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     monkeypatch.setattr(prompt_enhancer_node, "available_llama_servers", lambda: ["llama-server"])
     inputs = MiniMaxH3PromptEnhancer.INPUT_TYPES()["optional"]
     assert inputs["use_remote_model"][1]["default"] is True
-    assert inputs["enhance_description"][1]["default"] is True
+    assert inputs["creative_latitude"][1]["default"] == "enhanced_production"
     assert inputs["ambience_foley_policy"][0] == ["auto", "ensure_audible", "off"]
     assert inputs["background_score_policy"][0] == ["follow_prompt", "add_instrumental", "off"]
     assert inputs["instrumental_description"][1]["multiline"] is True
@@ -188,7 +188,7 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-7:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "invent_scene"]
+        assert list(optional)[-6:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent"]
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
         assert optional["editing_intent"][0] == list(prompt_enhancer_node.EDITING_INTENT_CHOICES)

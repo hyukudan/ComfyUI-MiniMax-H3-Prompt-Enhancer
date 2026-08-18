@@ -54,8 +54,15 @@ def _appended_fields(node_class):
     return [
         *NEW_FIELDS, *caching, *delivery,
         "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent",
-        "invent_scene",
     ]
+
+
+# One deliberate rename, recorded so every other drift still fails this file. Two booleans spanned
+# four states for three meanings and the spare one lied -- enhance off with invent on ran the most
+# conservative profile while the UI promised an invented scene -- so they became one ordered widget.
+# creative_latitude takes enhance_description's exact slot and invent_scene was the last widget of
+# all, which is why nothing else moved; the frontend converts the old pair on load.
+LEGACY_RENAMES = {"enhance_description": "creative_latitude"}
 
 
 def test_readme_minimal_media_manifest_example_is_valid():
@@ -77,7 +84,7 @@ def test_new_serialized_inputs_are_appended_after_every_legacy_node_input():
     }
     for name, node_class in classes.items():
         current = _input_names(node_class)
-        legacy = fixture["nodes"][name]
+        legacy = [LEGACY_RENAMES.get(field, field) for field in fixture["nodes"][name]]
         assert current[:len(legacy)] == legacy
         assert current[len(legacy):] == _appended_fields(node_class)
 
@@ -154,8 +161,12 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
             parameter for parameter in inspect.signature(callable_).parameters.values()
             if parameter.name != "self"
         ]
-        # invent_scene is the newest append: neutral default keeps every saved workflow on the
-        # previous behaviour, which is what this test exists to guarantee.
+        # creative_latitude replaced the enhance_description/invent_scene pair. It defaults to
+        # None so an API caller that still passes the old flags keeps its exact behaviour, which
+        # is what this test exists to guarantee.
+        if parameters[-1].name == "creative_latitude":
+            assert parameters[-1].default is None
+            parameters = parameters[:-1]
         if parameters[-1].name == "invent_scene":
             assert parameters[-1].default is False
             parameters = parameters[:-1]
@@ -418,3 +429,25 @@ def test_frontend_sanitizer_accepts_every_selectable_preset():
     block = frontend[start:frontend.index('], "none");', start)]
     for name in VISUAL_LANGUAGE_PROFILES:
         assert f'"{name}"' in block, f"{name} would be reset to none by the frontend"
+
+
+def test_frontend_migrates_the_legacy_latitude_pair_rather_than_dropping_it():
+    """Renaming a widget in place is only safe if the old value is converted, not reinterpreted.
+
+    A workflow saved before the swap holds a boolean where the enum now sits. Left alone it would
+    sanitise to the default, silently promoting every conservative_grounded workflow to
+    enhanced_production and demoting every invented one.
+    """
+    frontend = FRONTEND.read_text(encoding="utf-8")
+    start = frontend.index("function migrateLegacyLatitudePair")
+    body = frontend[start:frontend.index("function repairLegacyModelDiscoveryShift")]
+    assert 'typeof widget.value !== "boolean"' in body, "must only act on a pre-swap workflow"
+    for level in ("conservative_grounded", "enhanced_production", "invented_production"):
+        assert level in body
+    # It has to convert the boolean before the sanitiser sees it, or the sanitiser discards it and
+    # falls back to the default. onConfigure runs first; the sanitiser runs from onDrawForeground.
+    assert "migrateLegacyLatitudePair(this, arguments[0]);" in frontend
+    assert 'sanitizeEnumWidget(node, "creative_latitude"' in frontend
+    for dead in ('sanitizeBooleanWidget(node, "enhance_description"',
+                 'sanitizeBooleanWidget(node, "invent_scene"'):
+        assert dead not in frontend, f"{dead} outlived the widget it sanitised"

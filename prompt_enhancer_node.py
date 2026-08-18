@@ -67,7 +67,7 @@ try:
     from .creative_treatments import VISUAL_LANGUAGE_PROFILES
     from .prompt_enhancer import enhance_prompt
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from .prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     from creative_treatments import VISUAL_LANGUAGE_PROFILES
     from prompt_enhancer import enhance_prompt
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
-    from prompt_guides import ACOUSTIC_SPACE_CHOICES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -135,6 +135,41 @@ def h3_dimensions_for_aspect_ratio(aspect_ratio: str, target_megapixels: float =
     return (w_aligned, h_aligned)
 
 
+# Two booleans spanned four states for three meanings, and the spare one lied: enhance off with
+# invent on showed a UI promising an invented scene while the node silently ran the most
+# conservative profile there is. One ordered widget cannot express that state at all.
+CREATIVE_LATITUDE_CHOICES = ENHANCEMENT_PROFILES
+CREATIVE_LATITUDE_INPUT = (list(CREATIVE_LATITUDE_CHOICES), {
+    "default": "enhanced_production",
+    "tooltip": (
+        "How far beyond your text the writer may go. conservative_grounded: only the minimum "
+        "structure the H3 mode requires. enhanced_production: resolve unspecified production "
+        "decisions - composition, blocking, lighting, micro-performance. invented_production: "
+        "treat your text as a premise and build the world around it. Quoted dialogue, reference "
+        "identities, duration, shot count, ending and gore level stay locked at every level."
+    ),
+})
+
+
+def _latitude_flags(creative_latitude: str) -> tuple[bool, bool]:
+    """Translate the widget back into the two flags the guide functions still take."""
+    latitude = str(creative_latitude or "enhanced_production").strip().lower()
+    if latitude not in CREATIVE_LATITUDE_CHOICES:
+        latitude = "enhanced_production"
+    return latitude != "conservative_grounded", latitude == "invented_production"
+
+
+def _resolve_latitude(creative_latitude=None, enhance_description=None, invent_scene=None):
+    """Accept the widget, or the legacy pair still used by API callers and older workflows."""
+    if creative_latitude is not None and not isinstance(creative_latitude, bool):
+        return _latitude_flags(creative_latitude)
+    # A workflow saved before the swap holds a boolean in this slot; honour what it meant.
+    if isinstance(creative_latitude, bool):
+        enhance_description = creative_latitude if enhance_description is None else enhance_description
+    enhance = True if enhance_description is None else bool(enhance_description)
+    return enhance, enhance and bool(invent_scene)
+
+
 def _merge_visual_style_preset(creative_treatment_json: str, visual_style_preset: str = "none") -> str:
     preset = str(visual_style_preset or "none").strip().lower()
     if preset in ("none", ""):
@@ -170,7 +205,7 @@ class MiniMaxH3PromptGuideBuilder:
             "duration_seconds": ("FLOAT", dict(GENERATION_DURATION_INPUT)),
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
-            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Actively improve cinematic direction while preserving source facts and exact dialogue"}),
+            "creative_latitude": CREATIVE_LATITUDE_INPUT,
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Follow the source, add an instrumental score, or force no non-diegetic music"}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
@@ -193,7 +228,6 @@ class MiniMaxH3PromptGuideBuilder:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
-            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -204,7 +238,9 @@ class MiniMaxH3PromptGuideBuilder:
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
-              target_megapixels=0.0, editing_intent="none", invent_scene=False):
+              target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None):
+        enhance_description, invent_scene = _resolve_latitude(
+            creative_latitude, enhance_description, invent_scene)
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
@@ -264,7 +300,7 @@ class MiniMaxH3PromptEnhancer:
             "allow_remote_endpoint": ("BOOLEAN", {"default": False}),
         }, "optional": {
             "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
-            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Improve staging, cinematography, pacing, transitions, and sound without changing source facts or exact dialogue"}),
+            "creative_latitude": CREATIVE_LATITUDE_INPUT,
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
@@ -298,7 +334,6 @@ class MiniMaxH3PromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
-            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     @classmethod
@@ -330,7 +365,9 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
-                invent_scene=False):
+                invent_scene=False, creative_latitude=None):
+        enhance_description, invent_scene = _resolve_latitude(
+            creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
@@ -423,7 +460,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "startup_timeout": ("INT", {"default": DEFAULT_LOCAL_STARTUP_TIMEOUT, "min": 0, "max": 1800, "step": 10, "tooltip": "0 uses the safe 180-second default"}),
             "repair_attempts": ("INT", {"default": 2, "min": 0, "max": 4, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True}),
-            "enhance_description": ("BOOLEAN", {"default": True}),
+            "creative_latitude": CREATIVE_LATITUDE_INPUT,
             "keep_server_loaded": ("BOOLEAN", {"default": False}),
         }, "optional": {
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: ambience plus physical action sounds such as footsteps, clothing, doors, impacts, and engines."}),
@@ -452,7 +489,6 @@ class MiniMaxH3GGUFPromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
-            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     @classmethod
@@ -474,7 +510,9 @@ class MiniMaxH3GGUFPromptEnhancer:
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
-                invent_scene=False):
+                invent_scene=False, creative_latitude=None):
+        enhance_description, invent_scene = _resolve_latitude(
+            creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
@@ -685,7 +723,7 @@ class MiniMaxH3PromptValidator:
             "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False}),
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False}),
-            "enhance_description": ("BOOLEAN", {"default": True, "tooltip": "Validate enhanced-production coverage; disable for conservative-grounded coverage."}),
+            "creative_latitude": CREATIVE_LATITUDE_INPUT,
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 treats the 7000-character text-block limit as a hard error; local mode reports compatibility only."}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none"}),
@@ -693,7 +731,6 @@ class MiniMaxH3PromptValidator:
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto"}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none"}),
-            "invent_scene": ("BOOLEAN", {"default": False, "tooltip": "Build the scene instead of only photographing the request: invent supporting subjects, props, set dressing, weather, secondary action and their caused sound. Quoted dialogue, reference identities, duration and ending stay locked. Needs enhance_description ON."}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -704,7 +741,9 @@ class MiniMaxH3PromptValidator:
                  creative_treatment_json="", shot_plan_json="", cinematography_json="",
                  enhance_description=True, delivery_target="local", instrumental_description="",
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                 dialogue_language="auto", editing_intent="none", invent_scene=False):
+                 dialogue_language="auto", editing_intent="none", invent_scene=False, creative_latitude=None):
+        enhance_description, invent_scene = _resolve_latitude(
+            creative_latitude, enhance_description, invent_scene)
         report = validate_prompt(
             prompt, mode, duration_seconds, source_prompt, reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
