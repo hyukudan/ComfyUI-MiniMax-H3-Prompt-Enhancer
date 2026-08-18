@@ -1139,9 +1139,14 @@ and never emit a preset ID or selector label.
 
 This applies to the user's request too: it mixes what happens with how to shoot it ("we must see
 the head fly", "the impact must be heavy and very strong"). The requirement binds, the phrasing
-does not. Never carry "we see", "the camera shows", "must be" or an intensity rating into the
-output; H3 cannot render "very strong". Write the physical evidence: what separates, how far and
-where it travels, what recoils, sprays or deforms, and how the impact sounds.
+does not. So test every sentence you write, rather than matching it against a list of banned
+words: could a camera and a microphone have recorded exactly this, and would a second viewer
+agree it happened? A demand ("must", "we see"), a rating with nothing to measure it against
+("very strong", "highly detailed"), a claim about the effect rather than its cause ("reads as",
+"is visibly registered", "emphasizing"), and a label summarising what just happened ("after this
+violent action") all fail that test: each states your intent instead of the shot, and H3 renders
+the words. Replace each one with the evidence that earned it — what separates, how far and where
+it travels, what recoils, sprays or deforms, and how it sounds.
 
 Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation.
 Write all structural prose, section headers, shot timeline descriptions, camera motions, lighting, atmosphere,

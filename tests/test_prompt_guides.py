@@ -2597,7 +2597,13 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     # delivered prompt, because the rule they all depended on was never stated anywhere; each was
     # locally consistent, so nothing caught it. Stating it once buys back per-block repetition and
     # is the invariant test_no_verbatim_echo_contracts.py now enforces.
-    assert len(SYSTEM_PROMPT) < 12500
+    #
+    # Reviewed 2026-08-18: raised 12500 -> 13100 to state that rule as a test the writer applies
+    # instead of a list of banned phrases. Enumerating "we see"/"must be"/"the camera shows" only
+    # caught the wordings already observed, so each new one -- "is visibly registered", "after this
+    # violent action" -- leaked until someone read an output and added it. A criterion any sentence
+    # can be checked against does not need extending, so this length should now stay put.
+    assert len(SYSTEM_PROMPT) < 13100
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
         "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
@@ -2938,10 +2944,20 @@ def test_the_rule_covers_the_users_own_directive_phrasing():
     prompt as "The impact is very strong" and "the camera shows" — an intensity rating and a
     viewer H3 has no way to render.
     """
-    prompt = SYSTEM_PROMPT
+    # Line wrapping is incidental to the rule, so match against unwrapped text.
+    prompt = " ".join(SYSTEM_PROMPT.split())
     assert "This applies to the user's request too" in prompt
-    for banned in ('"we see"', '"the camera shows"', "intensity rating"):
-        assert banned in prompt
+    # A criterion, not a blocklist. Enumerating the wordings already seen only ever caught those:
+    # "is visibly registered" and "after this violent action" leaked until someone read an output
+    # and extended the list. A test the writer applies to each sentence needs no extending.
+    assert "could a camera and a microphone have recorded" in prompt
+    assert "would a second viewer agree it happened" in prompt
+    assert "rather than matching it against a list of banned" in prompt
+    # Each failing category is illustrated, so the criterion is anchored rather than abstract.
+    for category in ("A demand", "a rating with nothing to measure it against",
+                     "a claim about the effect rather than its cause",
+                     "a label summarising what just happened"):
+        assert category in prompt
     # It must say what to write instead, or the rule only forbids without redirecting.
-    for evidence in ("what separates", "recoils", "how the impact sounds"):
+    for evidence in ("what separates", "recoils", "the evidence that earned it"):
         assert evidence in prompt
