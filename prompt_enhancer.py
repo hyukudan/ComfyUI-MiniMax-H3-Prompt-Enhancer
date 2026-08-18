@@ -18,12 +18,12 @@ try:
     from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -340,6 +340,7 @@ def enhance_prompt_with_completion(
     dialogue_language: str = "auto",
     editing_intent: str = "none",
     invent_scene: bool = False,
+    lora_trigger_words: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
     basic_prompt = str(basic_prompt).strip()
@@ -582,6 +583,9 @@ def enhance_prompt_with_completion(
             best_enhanced = enhanced
             best_validation = validation
     enhanced = best_enhanced
+    # After validation on purpose: a trigger token is not English prose, so it must not be seen by
+    # a check that expects prose nor rewritten by a repair pass.
+    enhanced = append_lora_trigger_words(enhanced, lora_trigger_words, resolved_mode)
     validation = best_validation
     shots_package = build_shots_package(
         enhanced, resolved_mode, explicit_shot_plan, bool(validation.get("qualityValid")),
@@ -718,7 +722,8 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    delivery_target: str = "local",
                    dialogue_language: str = "auto",
                    editing_intent: str = "none",
-                   invent_scene: bool = False) -> tuple[str, dict, dict]:
+                   invent_scene: bool = False,
+                   lora_trigger_words: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
@@ -770,4 +775,5 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_language,
         editing_intent,
         invent_scene,
+        lora_trigger_words,
     )

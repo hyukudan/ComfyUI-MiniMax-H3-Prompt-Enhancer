@@ -20,6 +20,7 @@ SETTING_LOCK_PLACEHOLDER = "Location, lighting and continuity every chained prom
 SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dialogue and visible text…"
 VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":1,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
+LORA_TRIGGER_PLACEHOLDER = "Trigger tokens for any LoRA in the graph, e.g. g0r3_style, ultrarealistic_v2…"
 SHOT_PLAN_PLACEHOLDER = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"..."}]}'
 CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":1,"colorPalette":"none","cameraMotion":"none"}'
 ALWAYS_RE_ENHANCE_INPUT = {"default": False,
@@ -206,6 +207,7 @@ class MiniMaxH3PromptGuideBuilder:
             "reference_context": ("STRING", {"multiline": True, "default": "", "placeholder": REFERENCE_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional plain-language notes describing referenced pictures, videos, audio, identities, or roles. Usually needed only for Ref2VA."}),
         }, "optional": {
             "creative_latitude": CREATIVE_LATITUDE_INPUT,
+
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Follow the source, add an instrumental score, or force no non-diegetic music"}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
@@ -228,6 +230,7 @@ class MiniMaxH3PromptGuideBuilder:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -238,7 +241,8 @@ class MiniMaxH3PromptGuideBuilder:
               show_advanced_controls=False, creative_treatment_json="", shot_plan_json="",
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
-              target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None):
+              target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None,
+              lora_trigger_words=""):
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         if not str(basic_prompt).strip():
@@ -301,6 +305,7 @@ class MiniMaxH3PromptEnhancer:
         }, "optional": {
             "use_remote_model": ("BOOLEAN", {"default": True, "tooltip": "Use endpoint/model when enabled; use the selected local GGUF when disabled"}),
             "creative_latitude": CREATIVE_LATITUDE_INPUT,
+
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: rain, wind, room tone, footsteps, clothing, doors, impacts, engines, breathing, and similar physical sounds."}),
             "background_score_policy": (["follow_prompt", "add_instrumental", "off"], {"default": "follow_prompt", "tooltip": "Background score: follow the prompt, add instrumental music, or force it off"}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "placeholder": INSTRUMENTAL_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Describe concrete instrumentation, tempo, rhythm, and dynamics; mood words are translated into audible parameters."}),
@@ -334,6 +339,7 @@ class MiniMaxH3PromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
 
     @classmethod
@@ -365,7 +371,8 @@ class MiniMaxH3PromptEnhancer:
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
-                invent_scene=False, creative_latitude=None):
+                invent_scene=False, creative_latitude=None,
+              lora_trigger_words=""):
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
@@ -392,7 +399,8 @@ class MiniMaxH3PromptEnhancer:
                                 creative_treatment_json, shot_plan_json, cinematography_json,
                                 instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
                                 dialogue_language, editing_intent)
-            prompt, validation, manifest = enhance_prompt(*remote_args)
+            prompt, validation, manifest = enhance_prompt(
+                *remote_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
             local_args = (
@@ -415,7 +423,8 @@ class MiniMaxH3PromptEnhancer:
                                creative_treatment_json, shot_plan_json, cinematography_json,
                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
                                dialogue_language, editing_intent)
-            prompt, validation, manifest = enhance_prompt_with_gguf_server(*local_args)
+            prompt, validation, manifest = enhance_prompt_with_gguf_server(
+                *local_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words)
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
@@ -461,6 +470,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "repair_attempts": ("INT", {"default": 2, "min": 0, "max": 4, "step": 1}),
             "disable_thinking": ("BOOLEAN", {"default": True}),
             "creative_latitude": CREATIVE_LATITUDE_INPUT,
+
             "keep_server_loaded": ("BOOLEAN", {"default": False}),
         }, "optional": {
             "ambience_foley_policy": (["auto", "ensure_audible", "off"], {"default": "auto", "tooltip": "Scene sounds other than speech or music: ambience plus physical action sounds such as footsteps, clothing, doors, impacts, and engines."}),
@@ -489,6 +499,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
             "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
+            "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
 
     @classmethod
@@ -510,7 +521,8 @@ class MiniMaxH3GGUFPromptEnhancer:
                 instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
-                invent_scene=False, creative_latitude=None):
+                invent_scene=False, creative_latitude=None,
+              lora_trigger_words=""):
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
@@ -532,7 +544,8 @@ class MiniMaxH3GGUFPromptEnhancer:
             creative_treatment_json, shot_plan_json, cinematography_json, instrumental_style,
             acoustic_space, dialogue_coverage, delivery_target, dialogue_language,
             editing_intent,
-            invent_scene,
+            invent_scene=invent_scene,
+            lora_trigger_words=lora_trigger_words,
         )
         return (
             prompt,
@@ -724,6 +737,7 @@ class MiniMaxH3PromptValidator:
             "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False}),
             "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False}),
             "creative_latitude": CREATIVE_LATITUDE_INPUT,
+
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 treats the 7000-character text-block limit as a hard error; local mode reports compatibility only."}),
             "instrumental_description": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none"}),
@@ -731,6 +745,7 @@ class MiniMaxH3PromptValidator:
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off"}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto"}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none"}),
+            "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
 
     def validate(self, prompt, mode, duration_seconds, source_prompt, reference_context,
@@ -741,7 +756,8 @@ class MiniMaxH3PromptValidator:
                  creative_treatment_json="", shot_plan_json="", cinematography_json="",
                  enhance_description=True, delivery_target="local", instrumental_description="",
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
-                 dialogue_language="auto", editing_intent="none", invent_scene=False, creative_latitude=None):
+                 dialogue_language="auto", editing_intent="none", invent_scene=False, creative_latitude=None,
+              lora_trigger_words=""):
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         report = validate_prompt(

@@ -54,6 +54,7 @@ def _appended_fields(node_class):
     return [
         *NEW_FIELDS, *caching, *delivery,
         "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent",
+        "lora_trigger_words",
     ]
 
 
@@ -164,6 +165,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
         # creative_latitude replaced the enhance_description/invent_scene pair. It defaults to
         # None so an API caller that still passes the old flags keeps its exact behaviour, which
         # is what this test exists to guarantee.
+        if parameters[-1].name == "lora_trigger_words":
+            assert parameters[-1].default == ""
+            parameters = parameters[:-1]
         if parameters[-1].name == "creative_latitude":
             assert parameters[-1].default is None
             parameters = parameters[:-1]
@@ -210,7 +214,7 @@ def test_legacy_guide_builder_positional_call_still_uses_neutral_behavior():
 def test_legacy_main_node_positional_call_still_reaches_remote_backend(monkeypatch):
     captured = {}
 
-    def fake_remote(*args):
+    def fake_remote(*args, **kwargs):
         captured["args"] = args
         return "prompt", VALIDATION, {"provider": "test"}
 
@@ -227,7 +231,8 @@ def test_legacy_main_node_positional_call_still_reaches_remote_backend(monkeypat
 def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monkeypatch):
     captured = {}
 
-    def fake_gguf(*args):
+    def fake_gguf(*args, **kwargs):
+        captured["kwargs"] = kwargs
         captured["args"] = args
         return "prompt", VALIDATION, {"provider": "test"}
 
@@ -238,7 +243,10 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     )
     assert result[0] == "prompt"
     assert captured["args"][15:18] == (True, False, True)
-    assert captured["args"][-8:] == ("", "none", "none", "off", "local", "auto", "none", False)
+    # The tail travels by keyword now, so the positional block ends where it always did.
+    assert captured["args"][-7:] == ("", "none", "none", "off", "local", "auto", "none")
+    assert captured["kwargs"]["invent_scene"] is False
+    assert captured["kwargs"]["lora_trigger_words"] == ""
     assert result[-3:] == ("", 1280, 720)
 
 
@@ -248,12 +256,12 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
     monkeypatch.setattr(
         prompt_enhancer_node,
         "enhance_prompt",
-        lambda *args: (remote_calls.append(args) or ("prompt", VALIDATION, {"provider": "test"})),
+        lambda *args, **kwargs: (remote_calls.append(args) or ("prompt", VALIDATION, {"provider": "test"})),
     )
     monkeypatch.setattr(
         prompt_enhancer_node,
         "enhance_prompt_with_gguf_server",
-        lambda *args: (gguf_calls.append(args) or ("prompt", VALIDATION, {"provider": "test"})),
+        lambda *args, **kwargs: (gguf_calls.append(args) or ("prompt", VALIDATION, {"provider": "test"})),
     )
     MiniMaxH3PromptEnhancer().enhance(
         "idea", "t2va", 5.0, "", "http://127.0.0.1:1234/v1", "model", "", 0.2,
@@ -265,7 +273,8 @@ def test_main_and_specialized_nodes_forward_appended_fields_without_positional_s
         creative_treatment_json=CREATIVE, shot_plan_json=SHOTS,
     )
     assert remote_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
-    assert gguf_calls[0][-10:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none", False)
+    # invent_scene left the positional block, so both backends now end at the same field.
+    assert gguf_calls[0][-9:] == (CREATIVE, SHOTS, "", "none", "none", "off", "local", "auto", "none")
 
 
 def test_guide_builder_forwards_both_new_fields_to_the_request_contract():

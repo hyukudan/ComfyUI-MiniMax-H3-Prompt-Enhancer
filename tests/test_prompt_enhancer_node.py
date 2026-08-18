@@ -31,7 +31,7 @@ def test_guide_builder_can_feed_an_existing_llm_node():
 def test_main_enhancer_preserves_remote_defaults_and_appends_duration(monkeypatch):
     captured = {}
 
-    def fake_remote(*args):
+    def fake_remote(*args, **kwargs):
         captured["args"] = args
         return "remote prompt", VALIDATION, {"provider": "remote"}
 
@@ -51,7 +51,7 @@ def test_main_enhancer_uses_dropdown_gguf_when_remote_is_disabled(monkeypatch, t
     server = tmp_path / "llama-server.exe"
     captured = {}
 
-    def fake_gguf(*args):
+    def fake_gguf(*args, **kwargs):
         captured["args"] = args
         return "local prompt", VALIDATION, {"provider": "managed_llama_server"}
 
@@ -59,7 +59,7 @@ def test_main_enhancer_uses_dropdown_gguf_when_remote_is_disabled(monkeypatch, t
     monkeypatch.setattr(
         prompt_enhancer_node,
         "enhance_prompt",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("remote backend must not run")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("remote backend must not run")),
     )
     result = MiniMaxH3PromptEnhancer().enhance(
         "idea", "t2va", 6.0, "", "ignored endpoint", "ignored model", "", 0.2,
@@ -126,7 +126,7 @@ def test_main_enhancer_allows_stale_hidden_dynamic_combo_values():
 def test_zero_filled_local_runtime_widgets_migrate_to_safe_defaults(monkeypatch):
     captured = {}
 
-    def fake_gguf(*args):
+    def fake_gguf(*args, **kwargs):
         captured["args"] = args
         return "local prompt", VALIDATION, {"provider": "managed_llama_server"}
 
@@ -188,7 +188,7 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-6:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent"]
+        assert list(optional)[-7:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
         assert optional["editing_intent"][0] == list(prompt_enhancer_node.EDITING_INTENT_CHOICES)
@@ -205,7 +205,7 @@ def test_api_key_widget_documents_the_environment_variable_fallback():
 def test_enhance_accepts_the_caching_flag_without_changing_the_result(monkeypatch):
     monkeypatch.setattr(
         prompt_enhancer_node, "enhance_prompt",
-        lambda *_args: ("remote prompt", VALIDATION, {"provider": "remote"}),
+        lambda *_args, **_kwargs: ("remote prompt", VALIDATION, {"provider": "remote"}),
     )
     result = MiniMaxH3PromptEnhancer().enhance(
         "idea", "t2va", 7.5, "", "http://127.0.0.1:1234/v1", "model", "", 0.2,

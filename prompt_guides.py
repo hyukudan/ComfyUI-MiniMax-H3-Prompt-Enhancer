@@ -1181,9 +1181,11 @@ Shared timeline rules:
 - Give each actual vocal source a stable (S1), (S2), ... ID. At a speaker's first appearance, establish a stable
   vocal identity outside <d> from source-supported context such as character type, age, gender, on- or off-screen
   presence, pitch, timbre, speaking rate, or accent. Put only the exact spoken words and a language tag
-  inside <d>[Language] ...</d>. For voiceover say "says in an off-screen voiceover" and state that the visible
-  character's lips remain completely closed. Never convert visible dialogue into voiceover unless the source
-  explicitly asks for voiceover or narration. Treat a quoted thought or internal monologue as audible voiceover: use
+  inside <d>[Language] ...</d>. Dialogue is spoken on screen by default: the speaker is visible and its mouth
+  moves with the words. Voiceover is the exception and only the source can ask for it; never on your own
+  initiative. When it does ask, say "says in an off-screen voiceover" and state that the visible character's
+  lips remain completely closed, and then never also describe that same mouth moving, which contradicts it in
+  the same breath. Treat a quoted thought or internal monologue as audible voiceover: use
   the exact phrase "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker,
   describe it as an internal monologue outside the tag, and state that the character's
   lips remain completely closed. When one line of dialogue or lyrics crosses a cut, keep the full line in a
@@ -4089,6 +4091,15 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
     canonical_boundary = "After the final tagged line, no character speaks any additional words."
     if matches and not dialogue_authoring and canonical_boundary not in value:
         end = matches[-1].end()
+        # A tagged line is routinely mid-sentence -- "S2 says <d>...</d>, his deep voice resonating
+        # against the backdrop." -- so anchoring the boundary to the tag cuts that sentence in two
+        # and its second half travels to H3 as a stray fragment. Anchor it to the end of the
+        # sentence the tag sits in instead.
+        tail = value[end:]
+        if not re.match(r"\s*(?:$|\n)", tail) and not value[:end].rstrip().endswith((".", "!", "?")):
+            terminator = re.search(r"[.!?](?=\s|$)", tail)
+            if terminator:
+                end += terminator.end()
         value = (
             value[:end]
             + " " + canonical_boundary
@@ -4542,6 +4553,29 @@ def _section_body(text: str, section: str) -> str:
         text,
     )
     return match.group(1) if match else ""
+
+
+def append_lora_trigger_words(text: str, trigger_words: str, mode: str = "t2va") -> str:
+    """Append LoRA trigger tokens verbatim to the end of the description block.
+
+    These are not prose and must not be treated as such: a trigger is an exact token the LoRA was
+    trained on, so "g0r3_style" has to survive character for character. Routing it through the LLM
+    would translate it into fluent English like everything else, and it would fail the rule that
+    every sentence name something a camera could record -- correctly, because a token is not
+    something a camera can record. So this runs after validation, where the tokens can neither be
+    rewritten by a repair pass nor confuse a check that expects English.
+
+    They go inside the description body rather than after the final section: a trailing line is
+    parsed as part of non_diegetic_music and breaks the contract.
+    """
+    triggers = " ".join(str(trigger_words or "").split()).strip(" ,")
+    if not triggers:
+        return text
+    section = "detailed_description" if str(mode) == "ref2va" else "integrated_multimodal_description"
+    body = _section_body(text, section)
+    if not body.strip():
+        return text
+    return _replace_section_body(text, section, body.rstrip() + "\n" + triggers)
 
 
 def normalize_multishot_output(text: str, required_locks: tuple[str, ...] = ()) -> str:

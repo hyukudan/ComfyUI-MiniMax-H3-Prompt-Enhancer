@@ -2610,7 +2610,12 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     # <Subject 1> and <Subject 2> invented for it. The validator rejected them as invented labels
     # and the repair loop could not fix what the contract offered no legal alternative to, so the
     # user received the best invalid candidate.
-    assert len(SYSTEM_PROMPT) < 14000
+    #
+    # Reviewed 2026-08-18: raised 14000 -> 14400 to lead the dialogue rule with its default. The
+    # voiceover formula was stated before the prohibition on using it, so a model reached for the
+    # formula and wrote both at once -- "says in an off-screen voiceover" alongside "his lips
+    # moving in sync" -- for a source that only ever asked for people talking on camera.
+    assert len(SYSTEM_PROMPT) < 14400
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
         "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
@@ -3018,3 +3023,46 @@ def test_subject_definitions_must_account_for_a_character_with_no_reference_asse
     assert "only available to a character a supplied Picture or Video actually depicts" in prompt
     assert "a stable description carrying its own (Sx) instead of a Subject label" in prompt
     assert "Never leave a speaking character undefined because it has no asset." in prompt
+
+
+def test_the_closing_boundary_does_not_cut_the_sentence_the_tag_sits_in():
+    """The boundary was anchored to the tag, but a tagged line is routinely mid-sentence.
+
+    "S2 says <d>...</d>, his deep voice resonating against the backdrop." became "...</d>, After
+    the final tagged line, no character speaks any additional words. his deep voice resonating
+    against the backdrop.", and that orphaned half-sentence travels to H3 as scene text.
+    """
+    from prompt_guides import _finalize_audible_dialogue
+
+    boundary = "After the final tagged line, no character speaks any additional words."
+    source = 'The man says "passi, passi".'
+    mid = _finalize_audible_dialogue(
+        "S2 (S2) says <d>[Catalan] passi, passi</d>, his deep voice resonating against the "
+        "backdrop. The camera settles.", source,
+    )
+    assert "backdrop. " + boundary in mid
+    assert mid.count(boundary) == 1
+    # A tag that already ends its sentence keeps the boundary exactly where it was.
+    ended = _finalize_audible_dialogue(
+        "S2 (S2) says <d>[Catalan] passi, passi</d>. The camera settles.", source,
+    )
+    assert "</d>. " + boundary in ended
+    # Nothing follows the tag at all: there is no sentence to run to.
+    trailing = _finalize_audible_dialogue("S2 (S2) says <d>[Catalan] passi, passi</d>", source)
+    assert trailing.rstrip().endswith(boundary)
+
+
+def test_the_dialogue_rule_leads_with_its_default_not_with_the_voiceover_formula():
+    """Stating the formula before the prohibition invited the formula.
+
+    A source whose characters simply talk on camera came back with "says in an off-screen
+    voiceover" and "his lips moving in sync with the pixelated animation frames" in one sentence:
+    the model took the recipe it had been handed and then also described the mouth it had just
+    declared closed.
+    """
+    prompt = " ".join(SYSTEM_PROMPT.split())
+    default = prompt.index("Dialogue is spoken on screen by default")
+    formula = prompt.index('say "says in an off-screen voiceover"')
+    assert default < formula, "the default must be stated before the exception's wording"
+    assert "Voiceover is the exception and only the source can ask for it" in prompt
+    assert "never also describe that same mouth moving" in prompt
