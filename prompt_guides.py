@@ -1343,11 +1343,14 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
         )
     if enhance_description:
         return prompt + (
-            "\n\nENHANCEMENT PROFILE — ENHANCED_PRODUCTION: Preserve locked narrative facts while resolving missing "
-            "non-narrative production decisions. Choose concrete composition, blocking, screen direction, camera, "
-            "focus, source-consistent lighting, material response, micro-performance, and physically caused sound "
-            "when they make the requested action more legible. Do not add a new subject, goal, plot beat, branded "
-            "object, reference role, salient event, dialogue, or endpoint."
+            "\n\nENHANCEMENT PROFILE — ENHANCED_PRODUCTION: Decide how the supplied elements look, move and sound; "
+            "never add another one. Composition, blocking, screen direction, camera, focus, source-consistent "
+            "lighting, material response, micro-performance and physically caused sound are yours to choose when "
+            "they make the requested action more legible. The inventory is not yours: introduce no object, surface, "
+            "structure, weather, creature or background feature the source did not put there, beyond what its own "
+            "setting unavoidably contains — a room has a floor and a street has a road surface, but neither "
+            "acquires a steam grate. Add no new subject, goal, plot beat, branded object, reference role, salient "
+            "event, dialogue, or endpoint. Building the world around the request is the next profile up, not this one."
         )
     return prompt + (
         "\n\nENHANCEMENT PROFILE — CONSERVATIVE_GROUNDED: Do not preserve source terseness when the selected H3 "

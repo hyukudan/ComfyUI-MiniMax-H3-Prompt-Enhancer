@@ -3112,3 +3112,22 @@ def test_a_worn_object_is_not_confused_with_the_body_part_it_sits_on():
     )
     assert dropped and "shell" in dropped[0]
     assert "back" not in dropped[0]
+
+
+def test_enhanced_production_may_choose_how_things_look_but_not_what_exists():
+    """The middle level enumerated what not to add, so anything unenumerated was fair game.
+
+    A knock-on-a-door request came back with "steam rising faintly from a street grate": not a
+    subject, not branded, not a plot beat, not a salient event, so the prohibition never reached
+    it. That blurs the line with the profile above, whose whole purpose is furnishing the world.
+    """
+    enhanced = " ".join(system_prompt_for_mode("t2va", True, False).split())
+    invented = " ".join(system_prompt_for_mode("t2va", True, True).split())
+
+    assert "Decide how the supplied elements look, move and sound; never add another one" in enhanced
+    assert "The inventory is not yours" in enhanced
+    assert "no object, surface, structure, weather, creature or background feature" in enhanced
+    # The boundary is named, so the writer knows where the behaviour it wants actually lives.
+    assert "Building the world around the request is the next profile up, not this one." in enhanced
+    assert "ENHANCED_PRODUCTION" not in invented
+    assert "invent the concrete world around it" in invented
