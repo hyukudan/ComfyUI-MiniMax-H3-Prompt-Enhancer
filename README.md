@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 727 Passed](https://img.shields.io/badge/tests-727%20passed-brightgreen.svg)](tests/)
+[![Tests: 764 Passed](https://img.shields.io/badge/tests-764%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -26,11 +26,11 @@ This node pack transforms simple natural language ideas and multimodal reference
 |---|---|---|
 | **H3 Prompt Contracts** | Single unstructured block | **Strict 6-Block Anatomy** (Ref2VA) & **3-Block Structure** (T2VA/I2VA/FL2VA/L2VA) |
 | **Dialogue Fidelity** | Translates or paraphrases quotes | **100% Verbatim Spoken Dialogue** in `<d>[Language] ...</d>` blocks |
-| **Multilingual & Dialects** | Generic or broken `[Original language]` | **18+ Canonical Languages & Dialects** (Castilian, Québécois, Flemish, etc.) |
+| **Multilingual & Dialects** | Generic or broken `[Original language]` | **17 Canonical Languages + 88 Dialect Aliases** (Castilian, Québécois, Flemish, etc.) |
 | **Audio Reference Binding** | Treated as background noise | **Cross-Modal Voice Binding** (`<Audio N>` $\rightarrow$ `<Subject N> (Sx)`) |
 | **Visual Text vs Speech** | Signs converted into dialogue | **Intelligent Separation** of signs/shirts/doors from spoken character dialogue |
 | **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16px from Aspect Ratio & `target_megapixels` (0.2–2.0+ MP) |
-| **Visual Style Presets** | Generic prompt words | **53 Direct Preset Styles** + 131+ Curated Profiles & 13-Axis Cinematography Engine |
+| **Visual Style Presets** | Generic prompt words | **52 Direct Preset Styles** + 116 Curated Profiles & 13-Axis Cinematography Engine |
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
@@ -45,7 +45,7 @@ Explore the specialized guides in [`docs/`](docs/):
 |---|---|
 | 📜 [**Prompt Contracts & Modes**](docs/prompt_contracts.md) | Full specifications for T2VA, Ref2VA, I2VA, FL2VA, L2VA, Chained Multishot, Frame Grid Math ($17 \times n + 5$), and Megapixel Scaling. |
 | 🎙️ [**Dialogue & Audio Architecture**](docs/dialogue_and_audio.md) | Multilingual engine, dialect recognition, audio reference binding (`<Audio N>`), and acoustic space policies. |
-| 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 53 Visual Languages, 20 World Aesthetics, 18 Tones, 12 Genres, 18 Content Formats, and 13 Cinematography Axes. |
+| 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 52 Visual Languages, 19 World Aesthetics, 17 Tones, 11 Genres, 17 Content Formats, and 13 Cinematography Axes. |
 | 🖼️ [**Media References & Manifests**](docs/media_references_and_manifests.md) | Plain-text reference context vs structured JSON manifests, subject mapping, and retention analysis. |
 | ⚙️ [**Architecture, GGUF & Memory**](docs/architecture_and_gguf.md) | Standalone `llama-server` architecture, local GGUF discovery, memory reclaim policies, and troubleshooting. |
 
@@ -135,7 +135,7 @@ Spoken dialogue is preserved verbatim in its natural language while all structur
 ```text
 The woman (S1) says in Spanish from Spain: <d>[Spanish] Hola, cariño, ¿quieres un baile privado?</d>.
 ```
-Supports 18+ canonical languages and dozens of regional dialects (Castilian, Québécois, Flemish, Austrian German, Brazilian Portuguese, Cantonese, etc.).
+Supports 17 canonical languages and 88 regional dialect aliases (Castilian, Québécois, Flemish, Austrian German, Brazilian Portuguese, Cantonese, etc.).
 
 ### Cross-Modal Audio Reference Binding
 Binds audio tracks (`<Audio 1>`, `<Audio 2>`) directly to character identities (`(S1)`, `(S2)`):
@@ -144,7 +144,7 @@ Binds audio tracks (`<Audio 1>`, `<Audio 2>`) directly to character identities (
 ```
 
 ### Non-Destructive Style Bible & Directing Engine
-Choose from **131+ curated profiles** (53 visual languages, 20 world aesthetics, 18 tones, 12 genres, 18 content formats) and **13 cinematography dimensions** (optics, depth of field, color grading, camera speed/amplitude). Explicit user facts in the prompt always take absolute precedence over styles.
+Choose from **116 curated profiles** (52 visual languages, 19 world aesthetics, 17 tones, 11 genres, 17 content formats) and **13 cinematography dimensions** (optics, depth of field, color grading, camera speed/amplitude). Explicit user facts in the prompt always take absolute precedence over styles.
 
 Each profile carries a `must_not_invent` list, emitted as `forbidden_inventions`. It bars the **profile** from adding those things on its own initiative; it never overrides you. `supermarionation` forbids visible strings so the style cannot drag in a puppet gag by itself — ask for strings in your prompt and you get them.
 
@@ -169,24 +169,24 @@ Invention never touches what is yours. Quoted dialogue, the identity and role of
 Type delivery shorthand next to a line and it is resolved into the prose form H3 actually documents. A palette of one-click buttons sits under `basic_prompt`.
 
 ```text
-La mujer se gira 😠 "No me toques"
-El hombre responde 🤫 "Por favor… escúchame ⏸️ un momento"
+The woman turns away 😠 "Don't touch me"
+The man answers 🤫 "Please… just listen ⏸️ for a second"
 ```
 
 becomes, per line:
 
 ```text
-- "No me toques" → in a hard, angry voice
-- "Por favor… escúchame… un momento" → whispers; a held beat of silence at that point
+- "Don't touch me" → in a hard, angry voice
+- "Please… just listen… for a second" → whispers; a held beat of silence at that point
 ```
 
 **Verified on a real generation.** Two emoji in, one T2VA render out:
 
 ```text
-in   She says 😠 "No me toques". He answers 🤫 "Por favor, escúchame".
+in   She says 😠 "Don't touch me". He answers 🤫 "Please, listen to me".
 
-out  The woman (S1) speaks with a hard, angry voice while saying <d>[Spanish] No me toques</d>.
-     The man (S2) replies with a whispered tone, stating <d>[Spanish] Por favor, escúchame</d>.
+out  The woman (S1) speaks with a hard, angry voice while saying <d>[English] Don't touch me</d>.
+     The man (S2) replies with a whispered tone, stating <d>[English] Please, listen to me</d>.
 ```
 
 Delivery landed outside `<d>`, each mark stayed on its own speaker, the Spanish survived verbatim inside the tag, and no emoji reached the model.
@@ -216,8 +216,8 @@ The prose column follows the axes the guide names for a speaker — pitch, timbr
 **Each mark also drives the face, not just the voice.** H3 renders picture and sound together, so a voice-only instruction can hand you an angry line delivered by a neutral face. Every mark therefore carries a visible cue as well:
 
 ```text
-- "Fuera de mi casa" → shouts; visible: jaw set, brows drawn hard down
-- "No me dejes"      → in a low, unsteady voice, close to tears; visible: eyes wet and blinking slowly, mouth unsteady
+- "Get out of my house" → shouts; visible: jaw setting, brows driving hard down as the line breaks out
+- "Don't leave me"     → in a low, unsteady voice, close to tears; visible: eyes filling, blink slowing, mouth going unsteady
 ```
 
 Cues are written as observable behaviour rather than emotion labels, and as a small arc — an opening state, a change, a settled state — because that is the shape the emotional-performance translation asks for and a single frozen state under-seeds it. They stay short and relational on purpose: the same contract rejects muscle lists, pseudo-biometric precision and stacked simultaneous instructions.
