@@ -169,7 +169,11 @@ function buildPalette(node) {
             const height = root.scrollHeight || 0;
             if (Math.abs(height - lastHeight) < 2) return;
             lastHeight = height;
-            node.setSize?.(node.computeSize?.() ?? node.size);
+            // Grow only, and only downwards. computeSize() returns the node's MINIMUM, so feeding
+            // it back into setSize collapsed a 400x2234 node to 249x1083 on first load and threw
+            // away every manual resize afterwards.
+            const required = node.computeSize?.()?.[1] ?? 0;
+            if (required > node.size[1]) node.size[1] = required;
             node.setDirtyCanvas?.(true, true);
         });
         observer.observe(root);
