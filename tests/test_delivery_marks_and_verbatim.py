@@ -110,16 +110,16 @@ def test_expression_changes_between_two_lines_from_the_same_speaker():
         'She says \U0001f620 "Vete" and then \U0001f622 "por favor".'
     )
     first, second = _lines_of(contract)
-    assert "hard, angry voice" in first and "jaw tightening" in first
+    assert "hard, low voice" in first and "jaw tightening" in first
     assert "close to tears" in second and "eyes filling" in second
     assert "angry" not in second
 
 
 def test_mark_after_the_quote_still_belongs_to_it():
     contract = guides._delivery_marks_contract('He whispers "Ven aqui" \U0001f92b. She nods.')
-    assert _lines_of(contract) == [
-        '- "Ven aqui" → whispers; visible: head tipping closer, lips barely parting, shoulders drawn in and held'
-    ]
+    line = _lines_of(contract)[0]
+    assert line.startswith('- "Ven aqui" → whispers,')
+    assert "visible: head tipping closer" in line
 
 
 def test_emoji_beside_a_line_attaches_to_that_line_not_the_next():
@@ -132,27 +132,56 @@ def test_emoji_beside_a_line_attaches_to_that_line_not_the_next():
 
 
 def test_emoji_resolves_to_a_documented_verb_where_one_exists():
-    for emoji, expected in (("\U0001f92b", "whispers"), ("\U0001f621", "shouts"), ("\U0001f3a4", "sings")):
-        assert guides.DELIVERY_EMOJI[emoji] == (expected, "verb")
+    # The colour that follows is direction; the verb has to come FIRST so it can serve as the
+    # attribution verb the guide asks for, rather than a second one being invented beside it.
+    for emoji, verb in (("\U0001f92b", "whispers"), ("\U0001f621", "shouts"), ("\U0001f3a4", "sings")):
+        prose, kind = guides.DELIVERY_EMOJI[emoji]
+        assert kind == "verb"
+        assert prose.startswith(verb), prose
     # The official voiceover phrasing is fixed wording, not a paraphrase.
-    assert guides.DELIVERY_EMOJI["\U0001f4e2"][0] == "says in an off-screen voiceover"
+    assert guides.DELIVERY_EMOJI["\U0001f4e2"][0].startswith("says in an off-screen voiceover")
 
 
-def test_every_mark_carries_a_visible_cue_except_the_off_screen_voiceover():
+def test_every_mark_names_more_than_one_vocal_axis():
+    """A bare verb or a lone adjective is a label, not direction.
+
+    The guide asks a speaker to be established by pitch, timbre, speaking rate and accent, so
+    each mark should reach at least two of those rather than stopping at "shouts".
+    """
+    for emoji, (prose, kind) in guides.DELIVERY_EMOJI.items():
+        if kind == "pause":
+            continue
+        assert prose.count(",") >= 1, f"{emoji} reads as a bare label: {prose!r}"
+        assert len(prose.split()) >= 5, f"{emoji} is too thin to act on: {prose!r}"
+
+
+def test_every_mark_carries_a_visible_cue():
     # H3 renders picture and sound together, so a voice-only instruction leaves the face blank
-    # while the line is delivered. The one exception is deliberate: the official contract requires
-    # a voiceover speaker's lips to stay closed, so giving it a face would contradict the spec.
+    # while the line is delivered.
     missing = [e for e in guides.DELIVERY_EMOJI if e not in guides.DELIVERY_FACE]
-    assert missing == ["\U0001f4e2"]
+    assert missing == []
 
 
-def test_visible_cue_is_attached_per_line_and_withheld_from_voiceover():
+def test_the_voiceover_cue_states_the_lips_stay_closed():
+    """Its cue is the opposite of an expression, and the spec demands it.
+
+    Leaving the voiceover marks with no visible instruction at all was half right — they carry no
+    emotion — but it left the model free to animate the mouth under an off-screen voice.
+    """
+    for emoji in ("\U0001f4e2", "\U0001f399️"):
+        assert "lips staying closed" in guides.DELIVERY_FACE[emoji], emoji
+        assert guides.DELIVERY_EMOJI[emoji][0].startswith("says in an off-screen voiceover")
+
+
+def test_visible_cue_is_attached_per_line():
     contract = guides._delivery_marks_contract(
         'A: \U0001f621 "Fuera de mi casa"\nB: \U0001f4e2 "Nunca volvi"'
     )
-    assert '- "Fuera de mi casa" → shouts; visible: jaw setting' in contract
+    assert '"Fuera de mi casa" → shouts,' in contract
+    assert "jaw setting" in contract
     voiceover_line = [line for line in contract.splitlines() if "Nunca volvi" in line][0]
-    assert "visible:" not in voiceover_line
+    assert "lips staying closed" in voiceover_line
+    assert "jaw setting" not in voiceover_line
     # The gate matters as much as the cue: without this the emotional-performance contract is
     # source-gated and a cautious writer treats a voice descriptor as audio-only.
     assert "the user establishing that emotion" in contract
@@ -162,7 +191,7 @@ def test_emoji_never_survives_into_the_spoken_words_or_the_echo():
     source = 'She says, "Ven aquí \U0001f92b ahora"'
     cleaned, marks = guides.extract_delivery_marks('Ven aquí \U0001f92b ahora')
     assert "\U0001f92b" not in cleaned
-    assert marks == ["whispers"]
+    assert marks and marks[0].startswith("whispers")
     request = guides.build_user_request(source, "t2va", 5.0)
     assert "\U0001f92b" not in request
 

@@ -1142,7 +1142,7 @@ H3 has no settings: it reads the finished prompt as a description of what the ca
 microphone hears, so that is all it may contain. Every block below is direction addressed to you.
 Execute it, never reproduce it. Wording aimed at a filmmaker ("use patience", "do not invent
 monsters") becomes scene content once it lands in the output, and H3 renders it. Convert each block
-into what is visible and audible here, drop any this scene cannot show with the supplied elements,
+into what is visible and audible here, drop anything this scene cannot show with the supplied elements,
 and never emit a preset ID or selector label.
 
 This applies to the user's request too: it mixes what happens with how to shoot it ("we must see
@@ -1186,14 +1186,11 @@ Shared timeline rules:
   "the shot transitions to", "the shot changes to", or "the shot switches to", and use cross-dissolve, fade, or
   wipe only when the user asks. A cut must add new subject, space, state, viewpoint, or time information; prefer
   camera movement over a cut that reveals none.
-- Give each actual vocal source a stable (S1), (S2), ... ID. At a speaker's first appearance, establish a stable
-  vocal identity outside <d> from source-supported context such as character type, age, gender, on- or off-screen
-  presence, pitch, timbre, speaking rate, or accent. Put only the exact spoken words and a language tag
+- Give each actual vocal source a stable (S1), (S2), ... ID. Put only the exact spoken words and a language tag
   inside <d>[Language] ...</d>. Dialogue is spoken on screen by default: the speaker is visible and its mouth
   moves with the words. Voiceover is the exception and only the source can ask for it; never on your own
   initiative. When it does ask, say "says in an off-screen voiceover" and state that the visible character's
-  lips remain completely closed, and then never also describe that same mouth moving, which contradicts it in
-  the same breath. Treat a quoted thought or internal monologue as audible voiceover: use
+  lips remain completely closed; a voiceover speaker's mouth is described at most once, as closed. Treat a quoted thought or internal monologue as audible voiceover: use
   the exact phrase "says in an off-screen voiceover", preserve it in <d>, identify its thinker as a speaker,
   describe it as an internal monologue outside the tag, and state that the character's
   lips remain completely closed. When one line of dialogue or lyrics crosses a cut, keep the full line in a
@@ -1202,17 +1199,11 @@ Shared timeline rules:
   "continues seamlessly across the cut", "continues uninterrupted into the next shot",
   "carries over from the previous shot", or "remains audible across the transition".
   Use <cutoff> only when speech is truncated by the end of the video.
-- For visible audible dialogue, keep the identity, stable speaker ID, explicit vocal action, delivery, and matching
-  <d> block in one sentence. Natural official forms include says, replies, asks, shouts, whispers, sings, and group
-  speech with compound IDs such as (S1,S2). Explains and narrates are also valid when they name the requested
-  informational delivery. Put only language plus exact words inside <d>; keep all action and
-  delivery outside it. Do not use vague "speaks" or "delivers the line" cues that imply unspecified extra words.
 - Name every off-screen vocal source explicitly. If the referenced character owns the voiceover, write
   "<Subject N> (Sx) says in an off-screen voiceover" and reuse that same Sx for the character's later visible
   dialogue. Otherwise write "An off-screen narrator (Sx)". Never use an unresolved phrase such as "the voice in off".
-- Every positive speaking/talking/saying/asking/booming/finishing-speech cue must be in the same sentence as its corresponding
-  <d> block. Outside those tagged sentences, describe gaze, gesture, expression, and silence without implying continued
-  or additional speech. A source-provided short quoted line is spoken once in its assigned shot. When dialogue
+- Mention speech only in the sentence that carries its <d> block. Elsewhere describe gaze, gesture, expression and
+  silence, without implying continued or additional speech. A source-provided short quoted line is spoken once in its assigned shot. When dialogue
   authoring was explicitly requested, distribute distinct concrete lines among the corresponding timeline beats;
   do not collapse them all into the opening/final shot, repeat a line as filler, or insert a no-more-speech closure
   before a later authored line.
@@ -1220,7 +1211,7 @@ Shared timeline rules:
   mouth acting and voice-off modes must omit <d>, speaker IDs, lexical dialogue, narration, and voiceover entirely.
 - When the request continues a previous take, every transient that was still in progress starts mid-motion at its
   incoming state and speed and is never already completed at the first frame; it may finish only later inside the shot.
-- Put visible text in straight English double quotes exactly as supplied.
+- Put visible on-screen text, in its original language, inside straight double quotes (") exactly as supplied; never translate it.
 - Positional source references are immutable bindings: image/imagen/picture N always means <Picture N>, video N
   means <Video N>, and audio N means <Audio N>. They name user-provided assets, never generated shots or moments.
   Preserve the referenced person's identity or object's exact visible design wherever it appears. Never invent a
@@ -1245,13 +1236,21 @@ Shared timeline rules:
 Base-mode output has exactly these three sections in order:
 integrated_multimodal_description, overall_soundscape, non_diegetic_music.
 Each section name must be followed by a literal colon, for example integrated_multimodal_description:.
-T2VA begins directly with the sections. I2VA begins with the exact first-frame alignment sentence supplied in the
-request, establishes the referenced style, subjects, composition, and scene anchors, then follows first-frame anchor
-to action onset, continuous development, and visible result or reaction. FL2VA begins with the exact first/last
-alignment sentence supplied in the request and normally uses one continuous shot that moves through observable
-intermediate changes, progressively narrows the differences, and visibly reaches the last-frame anchor. L2VA begins
-with the exact last-frame alignment sentence supplied in the request and moves from a plausible preceding state
-through an explicit transition path to gradual convergence and a visible final-frame landing.
+MODE OPENING RULE:
+
+OUTPUT SKELETON — match this shape exactly. The content is illustrative; the structure is mandatory:
+
+integrated_multimodal_description: Cinematic realistic style. A medium shot frames a woman in a red raincoat on a
+rain-slick pier, facing the camera. The woman in her thirties, with a low, tired voice (S1) says: <d>[Spanish] Ya no
+hace falta que vengas.</d> The camera pushes in with small amplitude at slow speed. [Shot 2] At 00:04.500, the shot
+cuts to a close-up of her hand lowering the phone; water drips from the sleeve onto the wooden planks.
+overall_soundscape: Steady rain on wood and water, a distant gull, and the soft knock of the phone against the
+railing as her hand drops.
+non_diegetic_music: N/A
+
+That single skeleton fixes the section names and their colons, the first shot carrying no timestamp while later ones
+do, the MM:SS.mmm cut format, a complete dialogue sentence holding identity, stable ID, vocal action and <d> together,
+and the literal N/A for an absent section.
 
 Ref2VA output has exactly these six sections in order:
 subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.
@@ -1324,9 +1323,29 @@ EMOTIONAL_PERFORMANCE_CONTRACT = """EMOTIONAL PERFORMANCE TRANSLATION — SOURCE
 - Use partial, asymmetric, overlapping, or conflicting reactions only when the source supports restraint, ambivalence, concealment, mixed emotion, or an attempted social mask. State which reactions coexist; do not manufacture contradiction merely to make acting look complex.
 - Interrupt or suppress a gesture only when the source explicitly implies hesitation, resistance, concealment, an aborted action, or a struggle not to react. Suppression does not authorize the suppressed action or its sound; for example, trying not to cry does not by itself authorize sobbing. Otherwise complete every requested action and preserve its resulting state.
 - Fit performance to the available duration and authorized framing. Micro-expression detail belongs only where the face is readable; in wider framing, express the same established beat through gaze direction, breath, posture, weight shift, or hand tension. Never add a cut, push-in, close-up, camera move, or lighting change merely to expose it when the shot plan, reference anchor, or cinematography does not permit that choice.
-- Use timing only when it clarifies a meaningful transition and fits inside the containing shot, expressed as an approximate duration or ordered phase rather than a false absolute timestamp. Avoid millimeter or centimeter measurements, pseudo-biometric precision, exhaustive muscle lists, and stacked simultaneous instructions. Prefer relational descriptions such as one mouth corner, a briefly held breath, a blink delayed until after the line, or a source-supported gesture that begins and then stops.
+- Use approximate durations or ordered phases, never exact timestamps or measurements, and keep the beat inside its shot. Prefer relational descriptions: one mouth corner, a briefly held breath, a blink delayed until after the line, a gesture that begins and then stops.
 - Around dialogue, preserve every word and its assigned timing. Acting may precede, overlap, or follow the line only where causally compatible, and must not obstruct required mouth or eye visibility or imply extra speech. Put any vocal action in the same sentence as its <d> block; outside that sentence prepare or react through breath, gaze, posture, or hands without standalone speaking, talking, or saying cues.
-- Adapt the observable cue to the selected visual language without overriding its performance grammar, identity lock, reference state, action order, or final-frame anchor. Source facts, quoted dialogue, and reference anchors outrank the explicit shot plan and timing, which outrank explicit cinematography, selected treatment, and this execution-only translation."""
+- Adapt the cue to the selected visual language without overriding identity locks, reference state, action order or the final-frame anchor. Precedence: source facts and quoted dialogue first, then the shot plan, then cinematography, treatment and this translation."""
+
+
+MODE_OPENING_RULES = {
+    "t2va": "Begin directly with the sections.",
+    "i2va": (
+        "Begin with the exact first-frame alignment sentence supplied in the request, copied word for word. Establish "
+        "the referenced style, subjects, composition, and scene anchors, then follow first-frame anchor to action "
+        "onset, continuous development, and visible result or reaction."
+    ),
+    "fl2va": (
+        "Begin with the exact first/last alignment sentence supplied in the request, copied word for word. Normally "
+        "use one continuous shot that moves through observable intermediate changes, progressively narrows the "
+        "differences, and visibly reaches the last-frame anchor."
+    ),
+    "l2va": (
+        "Begin with the exact last-frame alignment sentence supplied in the request, copied word for word. Move from "
+        "a plausible preceding state through an explicit transition path to gradual convergence and a visible "
+        "final-frame landing."
+    ),
+}
 
 
 def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
@@ -1339,7 +1358,15 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
         ref_marker = "\nRef2VA output has exactly these six sections in order:"
         common, mode_rules = SYSTEM_PROMPT.split(base_marker, 1)
         base_rules, ref_rules = mode_rules.split(ref_marker, 1)
-        prompt = common + ref_marker + ref_rules if mode == "ref2va" else common + base_marker + base_rules
+        if mode == "ref2va":
+            prompt = common + ref_marker + ref_rules
+        else:
+            # Only the active mode's opening rule. All four used to ship together, so three
+            # irrelevant paragraphs sat at the end of the prompt where a small model's attention is
+            # highest, diluting the one rule that actually applies -- and each of them carries a
+            # verbatim-copy requirement that must not be missed.
+            base_rules = base_rules.replace("MODE OPENING RULE:", "MODE OPENING RULE: " + MODE_OPENING_RULES.get(mode, MODE_OPENING_RULES["t2va"]), 1)
+            prompt = common + base_marker + base_rules
     if enhance_description is None:
         return prompt
     if enhance_description == "verbatim_source":
@@ -3074,24 +3101,35 @@ _DELIVERY_MARK_RE = re.compile(r"\[([^\[\]]{1,24})\]")
 # "says in an off-screen voiceover") the emoji maps to that verb, because a documented verb is
 # safer than an invented adverb. The rest map to the axes the guide names for a speaker: pitch,
 # timbre, speaking rate, accent -- phrased like its own examples ("a quiet, breathy voice").
+# Each entry names more than one of the axes the guide asks for on a speaker -- pitch, timbre,
+# speaking rate -- because a bare verb or a lone adjective is a label, not direction. The verb-
+# backed entries still LEAD with the documented verb so it can be used as the attribution verb;
+# the colour follows it.
 DELIVERY_EMOJI = {
-    "🤫": ("whispers", "verb"),
-    "😡": ("shouts", "verb"),
-    "❓": ("asks", "verb"),
-    "🎤": ("sings", "verb"),
-    "📢": ("says in an off-screen voiceover", "verb"),
-    "💬": ("says", "verb"),
-    "😠": ("in a hard, angry voice", "prose"),
-    "😢": ("in a low, unsteady voice, close to tears", "prose"),
-    "😭": ("through tears", "prose"),
-    "😨": ("in a thin, frightened voice", "prose"),
-    "😀": ("in a bright, warm voice", "prose"),
-    "😂": ("through laughter", "prose"),
-    "😏": ("in a flat, sardonic tone", "prose"),
-    "😐": ("in a cold, level voice", "prose"),
-    "🥱": ("in a slow, weary voice", "prose"),
-    "⚡": ("quickly, in an urgent voice", "prose"),
-    "🫢": ("in a hushed, breathy voice", "prose"),
+    "🤫": ("whispers, breath-light and close, words slowed enough to stay intelligible", "verb"),
+    "😡": ("shouts, chest-deep and hard-edged, the pace driving forward", "verb"),
+    "❓": ("asks, pitch lifting through the last words, unhurried", "verb"),
+    "🎤": ("sings, pitch sustained and supported, phrasing shaped by the breath", "verb"),
+    "📢": ("says in an off-screen voiceover, level and close, evenly paced", "verb"),
+    # 🎙️ reads as "voiceover" far more naturally than 📢, which most people reach for to mean
+    # "announces" or "shouts". Both map to the same documented phrase.
+    "🎙": ("says in an off-screen voiceover, level and close, evenly paced", "verb"),
+    "🎙️": ("says in an off-screen voiceover, level and close, evenly paced", "verb"),
+    "💬": ("says, even in pitch, at an easy conversational pace", "verb"),
+    "😠": ("in a hard, low voice, clipped and held back", "prose"),
+    "😢": ("in a low, unsteady voice, close to tears, the pace faltering", "prose"),
+    "😭": ("through tears, the voice breaking and catching between words", "prose"),
+    "😨": ("in a thin, high, frightened voice, the words tumbling out", "prose"),
+    "😀": ("in a bright, warm voice, lifted in pitch and easy", "prose"),
+    "😂": ("through laughter, the words breaking apart as the breath goes", "prose"),
+    "😏": ("in a flat, sardonic tone, pitched low and unhurried", "prose"),
+    "😐": ("in a cold, level voice, flat in pitch and evenly paced", "prose"),
+    "🥱": ("in a slow, weary voice, pitch dropping, the words trailing", "prose"),
+    "⚡": ("quickly, in an urgent voice, pitch raised and clipped, pressing forward", "prose"),
+    "🫢": ("in a hushed, conspiratorial voice, pitched low, the words quick and close", "prose"),
+    "😲": ("in a stunned voice, pitch jumping then hollow, the words coming late", "prose"),
+    "🥺": ("in a small, pleading voice, pitch high and wavering, the pace hesitant", "prose"),
+    "🥰": ("in a soft, warm voice, low and unhurried, close to a murmur", "prose"),
     "⏸": ("__pause__", "pause"),
     "⏸️": ("__pause__", "pause"),
 }
@@ -3102,15 +3140,18 @@ _DELIVERY_EMOJI_RE = re.compile("|".join(re.escape(e) for e in sorted(DELIVERY_E
 # behaviour rather than an emotion label because that is what the guide asks for and what the
 # performance contract translates into acting.
 #
-# Every mark carries one except 📢: that is an off-screen voiceover, and the official contract
-# requires the on-screen character's lips to stay closed, so handing it a face would contradict the
-# spec. The neutral marks still get a cue rather than nothing, because "no instruction" is what
-# leaves a face blank while a line is delivered.
+# Every mark carries a visible cue, including 📢 -- but its cue is the opposite of an expression.
+# The spec requires stating that the on-screen character's lips remain closed during a voiceover,
+# and saying nothing left the model free to animate the mouth anyway. The neutral marks get a cue
+# too, because "no instruction" is what leaves a face blank while a line is delivered.
 # Written as a small arc -- opening state, a change, a settled state -- because that is the shape
 # the emotional-performance contract asks for, and a single frozen state under-seeds it. Kept
 # relational and short on purpose: the same contract rejects muscle lists, pseudo-biometric
 # precision and stacked simultaneous instructions.
 DELIVERY_FACE = {
+    "📢": "lips staying closed, expression continuing the scene's action while the voice runs over it",
+    "🎙": "lips staying closed, expression continuing the scene's action while the voice runs over it",
+    "🎙️": "lips staying closed, expression continuing the scene's action while the voice runs over it",
     "💬": "gaze settling on the listener, face composed and staying present through the line",
     "🎤": "chest lifting, mouth opening fully on the sustained vowels, jaw loosening between phrases",
     "⏸": "gaze holding, breath suspended, mouth still until the line resumes",
@@ -3123,12 +3164,15 @@ DELIVERY_FACE = {
     "😭": "face crumpling, breath breaking, eyes streaming and staying wet",
     "😨": "eyes widening, shoulders drawing up, breath catching and held shallow",
     "😀": "eyes creasing, smile opening and staying warm through the line",
-    "😂": "head tipping back, eyes screwing shut, shoulders shaking then easing",
+    "😂": "smile breaking wide, eyes creasing nearly shut, shoulders shaking with the laugh then easing",
     "😏": "one mouth corner lifting, eyelids lowering, the look held",
     "😐": "face still, gaze level and unblinking, nothing moving but the mouth",
     "🥱": "eyelids growing heavy, head tilting down, jaw slackening",
-    "⚡": "eyes darting, breath shortening, words pushed out fast",
-    "🫢": "chin tucking, breath held shallow, voice kept low and close",
+    "⚡": "eyes darting, body leaning in, breath shortening between words",
+    "🫢": "chin tucking, eyes flicking aside to check who might hear, breath held shallow",
+    "😲": "eyes going wide, lips parting, the whole face freezing a beat before the line lands",
+    "🥺": "brows knitting upward, eyes searching the listener's face and staying there",
+    "🥰": "gaze softening and holding, a small unguarded smile settling in",
 }
 
 
@@ -3173,6 +3217,66 @@ def extract_delivery_marks(text: str) -> tuple[str, list[str]]:
     return cleaned, requested
 
 
+def _speaker_id_numbering_errors(prompt: str) -> list[str]:
+    """Speaker IDs must run S1, S2, S3 without gaps.
+
+    A writer that jumps to (S4) with no (S3) has renumbered someone mid-scene, which is exactly
+    what the stable-ID rule exists to prevent: H3 keys voice continuity off the ID, so a renumbered
+    character can change voice between lines. The existing rule only caught a missing ID, not a
+    wrong one, so this failure passed validation.
+    """
+    numbers = sorted({
+        int(n) for group in re.findall(r"\(S(\d+(?:\s*,\s*S\d+)*)\)", prompt or "")
+        for n in re.findall(r"\d+", group)
+    })
+    if not numbers:
+        return []
+    expected = list(range(1, len(numbers) + 1))
+    if numbers == expected:
+        return []
+    missing = [n for n in expected if n not in numbers]
+    return [
+        "Speaker IDs must be numbered from S1 with no gaps, in order of first vocal appearance; "
+        f"found {', '.join(f'S{n}' for n in numbers)}"
+        + (f" with no S{', S'.join(str(n) for n in missing)}" if missing else "")
+    ]
+
+
+# Strictly adjacent on purpose. A window-based version read "the platform", "the quiet" and "the
+# same" as characters and failed valid prompts; a false error blocks good output, which is worse
+# than missing a real clash. This under-detects and never fires on scenery.
+_SPEAKER_NOUN_RE = re.compile(r"\b(?:the|a|an) ([a-z][a-z-]{2,20})\s*\(S\d", re.IGNORECASE)
+
+
+def _shared_speaker_id_errors(prompt: str) -> list[str]:
+    """One ID must not cover two different characters.
+
+    Tightening the numbering rule produced the opposite failure: every line came back as (S1),
+    which has no gaps and so passed the numbering check while merging two people into one voice.
+    Only explicit "the <noun>" attributions are compared; pronouns are skipped because the same
+    character is legitimately "he" on a later line.
+    """
+    owners: dict[str, set[str]] = {}
+    for sentence in re.split(r"(?<=[.!?])\s+", prompt or ""):
+        ids = re.findall(r"\(S(\d+)\)", sentence)
+        if len(set(ids)) != 1:
+            continue
+        speaker = ids[0]
+        for noun in _SPEAKER_NOUN_RE.findall(sentence):
+            lowered = noun.casefold()
+            if lowered in ("camera", "shot", "room", "table", "scene", "frame", "line", "sound"):
+                continue
+            owners.setdefault(speaker, set()).add(lowered)
+    clashes = sorted(
+        (speaker, sorted(nouns)) for speaker, nouns in owners.items() if len(nouns) > 1
+    )
+    return [
+        f"Speaker (S{speaker}) is attributed to more than one character ({', '.join(nouns)}); "
+        "each character needs its own ID or they share a voice"
+        for speaker, nouns in clashes
+    ]
+
+
 def _leaked_delivery_shorthand_errors(prompt: str) -> list[str]:
     """Catch authoring shorthand that survived into the finished H3 prompt.
 
@@ -3202,6 +3306,34 @@ def _leaked_delivery_shorthand_errors(prompt: str) -> list[str]:
             + ". Express delivery as prose in the attribution sentence outside <d>."
         )
     return errors
+
+
+_ATTRIBUTION_NOUN_RE = re.compile(r"\b(?:the|a|an)\s+([a-z][a-z-]{2,20})\b", re.IGNORECASE)
+_ATTRIBUTION_STOPWORDS = frozenset({
+    "camera", "shot", "room", "table", "scene", "frame", "line", "sound", "light", "lights",
+    "door", "window", "floor", "wall", "air", "moment", "same", "other", "first", "last",
+})
+
+
+def _quote_speaker_label(source_prompt: str, match: re.Match[str]) -> str:
+    """Who says this line, taken from the attribution the user already wrote.
+
+    Naming the speaker inside each contract item binds the cue to a person in the data itself,
+    which holds better than a rule forbidding cue bleed after the fact: the writer was reading the
+    whole list while composing one line and dressed the listener in the speaker's face.
+    """
+    text = source_prompt or ""
+    line_start = text[:match.start()].rfind("\n") + 1
+    previous_quote = max(
+        (m.end() for m in _SOURCE_QUOTED_RE.finditer(text[:match.start()])), default=line_start
+    )
+    window = text[max(line_start, previous_quote):match.start()]
+    # First noun, not last: the attribution reads "The detective slams the table and shouts", so the
+    # speaker leads and the props follow.
+    for candidate in _ATTRIBUTION_NOUN_RE.findall(window):
+        if candidate.casefold() not in _ATTRIBUTION_STOPWORDS:
+            return candidate.lower()
+    return ""
 
 
 def _emoji_owned_by_quote(source_prompt: str, match: re.Match[str]) -> list[str]:
@@ -3283,8 +3415,11 @@ def _delivery_marks_contract(source_prompt: str) -> str:
         faces = list(dict.fromkeys(
             DELIVERY_FACE[emoji] for emoji in emoji_here if emoji in DELIVERY_FACE
         ))
-        visible = f'; visible: {", ".join(faces)}' if faces else ""
-        lines.append(f'- "{cleaned}" → {"; ".join(unique)}{visible}')
+        speaker = _quote_speaker_label(source_prompt, match)
+        who = f"{speaker.upper()}, " if speaker else ""
+        visible_owner = f"visible on the {speaker}" if speaker else "visible"
+        visible = f'; {visible_owner}: {", ".join(faces)}' if faces else ""
+        lines.append(f'- {who}"{cleaned}" → {"; ".join(unique)}{visible}')
     for _language, quote in re.findall(
         r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
     ):
@@ -3306,8 +3441,12 @@ def _delivery_marks_contract(source_prompt: str) -> str:
         "speak it aloud. Express each one as ordinary English prose in the attribution sentence OUTSIDE its <d> "
         "block, beside the speaker ID and vocal action, exactly as the official examples do (\"The young woman with "
         "a quiet, breathy voice (S1) says: <d>[English] …</d>\"). Where the shorthand already resolves to an official "
-        "vocal verb, use that verb as the attribution verb rather than adding a second one. Inside <d> keep only the "
-        "language tag and the spoken words. Requested delivery, per line:\n"
+        "vocal verb, that verb IS the attribution verb — one vocal verb per line:\n"
+        '  Wrong: "(S1) shouts, chest-deep, and shouts: <d>…</d>"\n'
+        '  Right: "(S1) shouts, chest-deep and hard-edged: <d>…</d>"\n'
+        "Inside <d> keep only the language tag and the spoken words. Each item below belongs to ONE speaker: write "
+        "its visible cue in that speaker's own sentence, beside that speaker's <d> block. The listener reacts "
+        "through their own behaviour, never by wearing the speaker's cue.\n"
         + "\n".join(lines)
         + "\nA mark is the user establishing that emotion, so the emotional-performance translation applies and is "
         "not an invention of yours: carry each one into the visible performance as well as the voice, so the face "
@@ -3495,10 +3634,17 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "sounds. With description enhancement, add only coherent physically motivated non-vocal sounds."
         ),
         "ensure_audible": (
-            "AMBIENCE AND FOLEY POLICY — REQUIRED: Create a coherent non-vocal soundscape across the duration using "
-            "room tone, environmental ambience, physically motivated foley, impacts with concrete material resonance "
-            "(solid wood, metallic ring, glass shatter, surface friction), movement, and appropriate non-verbal human sounds. "
-            "Do not invent intelligible background speech."
+            # Every sound is sourced from the scene now. The old wording ordered a soundscape into
+            # existence and illustrated it with events -- glass shatter, metallic ring -- which a
+            # small model reads as a shopping list and duly supplies, inventing the objects that
+            # would make them. The acoustic-space policy already had this anti-invention clause;
+            # foley, the one most able to fabricate, did not.
+            "AMBIENCE AND FOLEY POLICY — REQUIRED: Make the soundscape audible across the duration, sourcing every "
+            "sound from something the scene already contains: room tone and environment as described, foley from the "
+            "actions and materials actually shown, and non-verbal human sounds the characters actually produce — "
+            "breath, effort, cloth, footsteps. Name the material of each contact sound, such as wood, metal, fabric "
+            "or stone. Do not add a sound event, object, weather, or intelligible background speech the scene does "
+            "not contain; if little is happening, a quiet room tone is the correct answer."
         ),
         "off": (
             "AMBIENCE AND FOLEY POLICY — OFF: Generate no ambience, room tone, environmental noise, foley, impacts, "
@@ -3526,7 +3672,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "DIEGETIC ACOUSTIC SPACE — AUTHORITATIVE OVER EVERY TREATMENT SOUND SUGGESTION: Render the diegetic "
             "sound that the ambience/foley and voice policies already permit inside the selected acoustic space. It "
             "changes how existing sounds are heard; it may not add a sound source, room, location, weather, event, "
-            "or dialogue, and it never re-enables a disabled audio layer.\n"
+            "or dialogue, and it never re-enables a disabled audio layer. The non-diegetic score is never placed in "
+            "this space and never appears in overall_soundscape: the characters cannot hear it, so a reverberant room "
+            "cannot act on it.\n"
             f"Selected acoustic space: {acoustic_space}.\n"
             + ACOUSTIC_SPACE_CONTRACTS[acoustic_space]
             + "\nACOUSTIC SPACE OUTPUT: Write the resulting reflections, decay, distance, localization, and "
@@ -3789,7 +3937,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "treatment disabled, but apply explicit cinematography, shot-plan, reference, and audio controls literally."
         )
     dialogue_contracts = _source_dialogue_contracts(basic_prompt, override_language=dialogue_language)
-    if dialogue_contracts and voice_performance == "audible":
+    # Authoring counts as much as quoting. The speaker table, the two-speaker example and the
+    # numbering rules matter MORE when the writer invents the lines than when it copies them, yet
+    # the branch was keyed on quotes in the source, so invented dialogue never saw any of it.
+    if (dialogue_contracts or dialogue_authoring) and voice_performance == "audible":
         dialogue_totals = Counter(
             (language, _dialogue_lexical_key(quote), internal)
             for language, quote, internal in dialogue_contracts
@@ -3816,15 +3967,40 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "speaks additional words."
         )
         parts.append(
-            "VOICE POLICY — AUDIBLE (official): Assign stable speaker IDs and copy each block exactly once into the "
-            "timeline. Do not omit, translate, censor, duplicate, or move it to soundscape. Every affirmative vocal "
-            "cue must be in the same sentence as its matching <d> block. For visible dialogue, use a short natural "
-            "official vocal sentence with identity, stable ID, action/delivery, and <d>; says, replies, asks, shouts, "
-            "whispers, sings, booms, and compound group IDs are valid. Never use vague 'speaks' or 'delivers the line' cues."
+            "VOICE POLICY — AUDIBLE (official):\n"
+            "STEP 1 — SPEAKER TABLE, before writing any dialogue. List every character who vocalizes, in order of "
+            "their first vocal line, and give each a DIFFERENT ID: first speaker (S1), second different speaker (S2), "
+            "third (S3). A character keeps that one ID for the whole video; a character who never vocalizes gets no "
+            "ID. H3 keys voice continuity to the ID, so two characters sharing an ID would share one voice.\n"
+            "Correct two-speaker shape — (S1) and (S2) are DIFFERENT people, each keeping its ID on later lines:\n"
+            "  The first character (S1) asks in a cold, level voice: <d>[English] ...</d>\n"
+            "  The second character (S2) replies in a thin, frightened voice: <d>[English] ...</d>\n"
+            "  The first character (S1) shouts: <d>[English] ...</d>\n"
+            "Wrong: giving the second character (S1). Wrong: renumbering someone who already spoke. "
+            "Wrong: a <d> block with no ID.\n"
+            "On a speaker's FIRST tagged line the attribution sentence must also establish who they are — character "
+            "type, approximate age, gender, on or off screen — and their voice: pitch, timbre, speaking rate, accent. "
+            "Later lines by that character need only the ID and the vocal verb.\n"
+            "STEP 2 — WRITE. Copy each <d> block exactly once into the timeline. Do not omit, translate, censor, "
+            "duplicate, or move it to soundscape. Each block sits in one sentence with its speaker's identity, its ID "
+            "from the table, and one vocal verb: says, replies, asks, shouts, whispers, sings, booms; compound group "
+            "IDs are valid. Never use vague 'speaks' or 'delivers the line' cues."
             + authored_dialogue_note +
-            " Never spread one short line across shots. Repeated identical blocks listed below are intentional "
-            "separate utterances at their distinct source beats, not duplicates; keep their recurring source on the "
-            "same stable speaker ID:\n" + "\n".join(dialogue_lines)
+            " Never spread one short line across shots."
+            # Only claim there are repeats when there are. The note used to head a list of every
+            # line, so with no duplicates at all it told the model to expect them.
+            + (
+                " Repeated identical blocks below are intentional separate utterances at their distinct source "
+                "beats, not duplicates; keep their recurring source on the same stable speaker ID."
+                if any(count > 1 for count in dialogue_totals.values()) else ""
+            )
+            + (
+                "\nSpeak exactly these blocks:\n" + "\n".join(dialogue_lines) if dialogue_lines
+                # Authored dialogue has no source quotes to list, and an empty heading reads as
+                # "say nothing".
+                else "\nThere are no immutable source quotes here: every <d> block you write comes from the "
+                     "authoring brief above, and each one still takes its speaker's ID from the table."
+            )
         )
         delivery_request = _delivery_marks_contract(basic_prompt)
         if delivery_request:
@@ -3836,7 +4012,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                 "godlike voice (S1) with an explicit vocal action such as 'booms' in the same sentence as its <d> "
                 "block. Reuse S1 every time; never rename it as an echo, sound, phrase, or unseen unresolved source."
             )
-    elif dialogue_contracts and voice_performance == "silent_mouth_acting_experimental":
+    elif voice_performance == "silent_mouth_acting_experimental":
         profiles = []
         for language, quote, internal in dialogue_contracts:
             word_count = len(re.findall(r"\b[\wÀ-ÿ'-]+\b", quote))
@@ -3853,7 +4029,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "delivery. For internal or off-screen speech, keep lips closed and retain only the acting beat. Exact "
             "phonetic lip sync and guaranteed silence are not documented H3 capabilities.\n" + "\n".join(profiles)
         )
-    elif dialogue_contracts:
+    elif voice_performance == "none":
+        # Keyed on the requested mode, not on whether the source happened to contain quotes: a
+        # silent request with no quotes used to reach the writer with nothing forbidding speech,
+        # while an audible one must never be handed this prohibition.
         parts.append(
             "VOICE POLICY — NONE: Omit all dialogue words, <d> blocks, speaker IDs, narration, voiceover, singing, "
             "whispering, intelligible background speech, and speech-like mouth performance. Preserve only the visual "
@@ -4950,7 +5129,10 @@ def append_lora_trigger_words(text: str, trigger_words: str, mode: str = "t2va")
     parsed as part of non_diegetic_music and breaks the contract.
     """
     triggers = " ".join(str(trigger_words or "").split()).strip(" ,")
-    if not triggers:
+    # Every other axis in this node spells "absent" as none, so a user typing it here means the
+    # same. Taken literally it was appended as a trigger token and surfaced as a stray "none" line
+    # at the end of the description, which H3 then had to interpret as content.
+    if triggers.casefold() in ("", "none", "n/a", "na", "null", "-"):
         return text
     section = "detailed_description" if str(mode) == "ref2va" else "integrated_multimodal_description"
     body = _section_body(text, section)
@@ -6020,6 +6202,8 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     errors: list[str] = list(configuration_errors)
     warnings: list[str] = []
     errors.extend(_leaked_delivery_shorthand_errors(prompt))
+    errors.extend(_speaker_id_numbering_errors(prompt))
+    errors.extend(_shared_speaker_id_errors(prompt))
     parsed_manifest = parse_media_manifest(media_manifest)
     errors.extend(parsed_manifest["errors"])
     warnings.extend(parsed_manifest["warnings"])

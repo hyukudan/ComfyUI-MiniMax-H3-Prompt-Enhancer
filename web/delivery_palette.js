@@ -9,9 +9,6 @@
 import { app } from "/scripts/app.js";
 
 const PROMPT_WIDGET = "basic_prompt";
-const MIN_PALETTE_HEIGHT = 58;
-const PALETTE_PADDING = 8;
-const PALETTE_WIDGET = "minimax_h3_delivery_palette";
 const TARGET_NODES = new Set([
     "MiniMaxH3PromptEnhancer",
     "MiniMaxH3GGUFPromptEnhancer",
@@ -21,24 +18,35 @@ const TARGET_NODES = new Set([
 // tier "verb" marks the ones the official guide spells out as vocal verbs, which is why they are
 // listed first: a documented verb is a safer instruction than an invented adverb.
 const DELIVERY_EMOJI = [
-    { emoji: "💬", tier: "verb", label: "says — neutral" },
-    { emoji: "🤫", tier: "verb", label: "whispers" },
-    { emoji: "😡", tier: "verb", label: "shouts" },
-    { emoji: "❓", tier: "verb", label: "asks" },
-    { emoji: "🎤", tier: "verb", label: "sings" },
-    { emoji: "📢", tier: "verb", label: "off-screen voiceover" },
-    { emoji: "😠", tier: "prose", label: "hard, angry voice" },
-    { emoji: "😢", tier: "prose", label: "low, unsteady, close to tears" },
-    { emoji: "😭", tier: "prose", label: "through tears" },
-    { emoji: "😨", tier: "prose", label: "thin, frightened voice" },
-    { emoji: "😀", tier: "prose", label: "bright, warm voice" },
-    { emoji: "😂", tier: "prose", label: "through laughter" },
-    { emoji: "😏", tier: "prose", label: "flat, sardonic tone" },
-    { emoji: "😐", tier: "prose", label: "cold, level voice" },
-    { emoji: "🥱", tier: "prose", label: "slow, weary voice" },
-    { emoji: "⚡", tier: "prose", label: "quick, urgent voice" },
-    { emoji: "🫢", tier: "prose", label: "hushed, breathy voice" },
-    { emoji: "⏸️", tier: "pause", label: "pause (our convention: H3 documents none)" },
+    // Row 1, always visible: the marks that resolve to a verb the H3 skill documents, plus the
+    // pause. These carry a text label because an emoji alone sends you hunting through tooltips,
+    // and because a 1px green border — the old way of marking them as the safest — was invisible
+    // against a dark canvas.
+    { emoji: "💬", tier: "verb", label: "says — neutral", text: "says" },
+    { emoji: "🤫", tier: "verb", label: "whispers", text: "whisper" },
+    { emoji: "😡", tier: "verb", label: "shouts", text: "shout" },
+    { emoji: "❓", tier: "verb", label: "asks", text: "ask" },
+    { emoji: "🎤", tier: "verb", label: "sings", text: "sing" },
+    { emoji: "🎙️", tier: "verb", label: "off-screen voiceover (lips stay closed)", text: "V.O." },
+    { emoji: "⏸️", tier: "pause", label: "pause (our convention: H3 documents none)", text: "pause" },
+    // Row 2, collapsed behind "+ tone": fourteen faces that read as one yellow wall at 20px, so
+    // they are grouped by family and kept out of the way until asked for.
+    { emoji: "😠", tier: "prose", group: "hard", label: "hard, angry voice" },
+    { emoji: "😲", tier: "prose", group: "hard", label: "stunned, words coming late" },
+    { emoji: "😨", tier: "prose", group: "hard", label: "thin, frightened voice" },
+    { emoji: "😢", tier: "prose", group: "soft", label: "low, unsteady, close to tears" },
+    { emoji: "😭", tier: "prose", group: "soft", label: "through tears" },
+    { emoji: "🥺", tier: "prose", group: "soft", label: "pleading, high and wavering" },
+    { emoji: "🥰", tier: "prose", group: "soft", label: "tender, low and unhurried" },
+    { emoji: "😀", tier: "prose", group: "warm", label: "bright, warm voice" },
+    { emoji: "😂", tier: "prose", group: "warm", label: "through laughter" },
+    { emoji: "😏", tier: "prose", group: "cool", label: "flat, sardonic tone" },
+    { emoji: "😐", tier: "prose", group: "cool", label: "cold, level voice" },
+    { emoji: "🥱", tier: "prose", group: "cool", label: "slow, weary voice" },
+    { emoji: "⚡", tier: "prose", group: "urgent", label: "quick, urgent, pitch raised" },
+    { emoji: "🫢", tier: "prose", group: "urgent", label: "hushed, conspiratorial" },
+    // 📢 stays mapped in the backend for anything already typed, but is off the palette: people
+    // reach for it meaning "announces", and 🎙️ reads as voiceover without the ambiguity.
 ];
 
 function promptTextarea(node) {
@@ -87,122 +95,159 @@ function insert(node, token) {
     const caret = start + injected.length;
     textarea.setSelectionRange(caret, caret);
     textarea.focus();
-    // The Vue-backed widget syncs from input events, so the value would otherwise revert on redraw.
+    // The Vue-backed widget syncs from this input event and fires widget.callback itself; calling
+    // it here as well ran every extension-wrapped callback twice.
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    widget.callback?.(textarea.value);
 }
 
-function placePaletteUnderPrompt(node) {
-    // addDOMWidget appends, which on a node with ~47 inputs strands the palette at the very bottom,
-    // nowhere near the box it types into. Other extensions on these nodes also reorder and hide
-    // widgets on refresh, so the position is re-asserted rather than set once at build time.
-    const widget = node.__minimaxDeliveryPalette?.widget;
-    const widgets = node.widgets;
-    if (!widget || !widgets) return;
-    const promptIndex = widgets.findIndex((item) => item.name === PROMPT_WIDGET);
-    const paletteIndex = widgets.indexOf(widget);
-    if (promptIndex === -1 || paletteIndex === -1) return;
-    if (paletteIndex === promptIndex + 1) return;
-    widgets.splice(paletteIndex, 1);
-    const target = widgets.findIndex((item) => item.name === PROMPT_WIDGET) + 1;
-    widgets.splice(target, 0, widget);
-    node.setDirtyCanvas?.(true, true);
-}
-
-function buildPalette(node) {
-    if (node.__minimaxDeliveryPalette) return;
-    if (typeof node.addDOMWidget !== "function") return;
-    if (!node.widgets?.some((item) => item.name === PROMPT_WIDGET)) return;
-
-    const root = document.createElement("div");
-    root.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:2px 4px;";
-
-    const caption = document.createElement("div");
-    caption.textContent = "Delivery — click to insert beside a quoted line";
-    caption.style.cssText = "font-size:10px;opacity:0.65;";
-    root.appendChild(caption);
-
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;flex-wrap:wrap;gap:3px;";
-    for (const { emoji, tier, label } of DELIVERY_EMOJI) {
-        const button = document.createElement("button");
-        button.textContent = emoji;
-        button.title = tier === "verb" ? `${label}  (official H3 verb)` : label;
-        button.style.cssText =
-            "font-size:15px;line-height:1;padding:3px 5px;cursor:pointer;border-radius:4px;" +
-            "background:var(--comfy-input-bg,#222);color:inherit;border:1px solid " +
-            (tier === "verb" ? "rgba(120,200,120,0.55)" : "rgba(255,255,255,0.14)") + ";";
-        button.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            insert(node, emoji);
-        });
-        // Without this the canvas swallows the press and starts dragging the node instead.
-        button.addEventListener("pointerdown", (event) => event.stopPropagation());
-        row.appendChild(button);
+function makeButton(node, mark) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.title = mark.tier === "verb" ? `${mark.label}  (official H3 verb)` : mark.label;
+    button.setAttribute("aria-label", mark.label);
+    button.textContent = mark.emoji;
+    if (mark.text) {
+        const caption = document.createElement("span");
+        caption.textContent = mark.text;
+        caption.style.cssText = "font-size:11px;color:#cfe9d6;";
+        button.appendChild(caption);
     }
-    root.appendChild(row);
-
-    const widget = node.addDOMWidget(PALETTE_WIDGET, "minimaxH3DeliveryPalette", root, {
-        serialize: false,
-        hideOnZoom: false,
+    // Green marks a documented H3 vocal verb. The pause is neither verb nor emotion -- and is our
+    // own convention, not a documented one -- so it must not borrow the reliability signal.
+    const accent = mark.tier === "verb"
+        ? "background:rgba(74,222,128,0.10);border:2px solid #4ade80;"
+        : "background:#2a2a2e;border:1px solid #3a3a40;";
+    button.style.cssText =
+        // 32px minimum: the old buttons were ~26px, below a comfortable pointer target.
+        "min-height:32px;min-width:32px;display:inline-flex;align-items:center;gap:4px;" +
+        "padding:2px 8px;border-radius:6px;color:#ddd;font-size:14px;line-height:1;cursor:pointer;" +
+        accent;
+    button.addEventListener("focus", () => {
+        // ComfyUI resets the default outline, so focus would otherwise be invisible.
+        button.style.outline = "2px solid #7ab8ff";
+        button.style.outlineOffset = "1px";
     });
-    if (widget) {
-        // Measured, not hardcoded: the buttons wrap, so the row count depends on node width. A
-        // fixed height let the second row overlap the widgets underneath as soon as it existed.
-        widget.computeSize = (width) => {
-            const measured = root.scrollHeight || root.offsetHeight || 0;
-            return [width ?? 0, Math.max(MIN_PALETTE_HEIGHT, measured + PALETTE_PADDING)];
-        };
-        // Never persist: this is chrome, and a serialized DOM widget shifts every widget index
-        // after it when an old workflow is loaded.
-        widget.serialize = false;
-    }
-    node.__minimaxDeliveryPalette = { root, widget };
-    placePaletteUnderPrompt(node);
+    button.addEventListener("blur", () => { button.style.outline = "none"; });
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        insert(node, mark.emoji);
+    });
+    // Without this the canvas swallows the press and starts dragging the node instead.
+    button.addEventListener("pointerdown", (event) => event.stopPropagation());
+    return button;
+}
 
-    // The button row rewraps whenever the node is resized, so the height has to be re-measured
-    // rather than computed once. Without this the node keeps the height of the old row count.
-    if (typeof ResizeObserver === "function") {
-        let lastHeight = 0;
-        const observer = new ResizeObserver(() => {
-            const height = root.scrollHeight || 0;
-            if (Math.abs(height - lastHeight) < 2) return;
-            lastHeight = height;
-            // Grow only, and only downwards. computeSize() returns the node's MINIMUM, so feeding
-            // it back into setSize collapsed a 400x2234 node to 249x1083 on first load and threw
-            // away every manual resize afterwards.
-            const required = node.computeSize?.()?.[1] ?? 0;
-            if (required > node.size[1]) node.size[1] = required;
-            node.setDirtyCanvas?.(true, true);
-        });
-        observer.observe(root);
-        node.__minimaxDeliveryPalette.observer = observer;
+function separator() {
+    const line = document.createElement("span");
+    line.style.cssText = "width:1px;height:20px;background:#444;margin:0 2px;";
+    return line;
+}
+
+function buildPaletteRoot(node) {
+    const root = document.createElement("div");
+    root.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:4px 2px 0;flex:0 0 auto;";
+
+    const primary = document.createElement("div");
+    primary.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;align-items:center;";
+    primary.setAttribute("role", "toolbar");
+    primary.setAttribute("aria-label", "Vocal delivery");
+    for (const mark of DELIVERY_EMOJI.filter((m) => m.tier !== "prose")) {
+        primary.appendChild(makeButton(node, mark));
     }
+
+    const tones = document.createElement("div");
+    tones.style.cssText = "display:none;flex-wrap:wrap;gap:4px;align-items:center;";
+    tones.setAttribute("role", "toolbar");
+    tones.setAttribute("aria-label", "Emotional tone");
+    let previousGroup = null;
+    for (const mark of DELIVERY_EMOJI.filter((m) => m.tier === "prose")) {
+        if (previousGroup && mark.group !== previousGroup) tones.appendChild(separator());
+        previousGroup = mark.group;
+        tones.appendChild(makeButton(node, mark));
+    }
+
+    // Built by hand rather than through makeButton: that helper wires a click handler that inserts
+    // its mark, and this button inserts nothing.
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = "+ tone";
+    toggle.title = "Show the emotional tone marks";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.style.cssText =
+        "min-height:32px;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:12px;" +
+        "background:#2a2a2e;border:1px dashed #55555c;color:#bbb;";
+    toggle.addEventListener("focus", () => {
+        toggle.style.outline = "2px solid #7ab8ff";
+        toggle.style.outlineOffset = "1px";
+    });
+    toggle.addEventListener("blur", () => { toggle.style.outline = "none"; });
+    toggle.addEventListener("pointerdown", (event) => event.stopPropagation());
+    toggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const open = tones.style.display === "none";
+        tones.style.display = open ? "flex" : "none";
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.textContent = open ? "− tone" : "+ tone";
+        toggle.title = open ? "Hide the emotional tone marks" : "Show the emotional tone marks";
+    });
+    primary.appendChild(separator());
+    primary.appendChild(toggle);
+
+    root.append(primary, tones);
+    return root;
+}
+
+// Mounted INSIDE the prompt widget's own wrapper, below the textarea, rather than as a sibling
+// widget. The frontend positions and sizes that wrapper every frame, so the palette inherits both
+// for free. As a sibling it needed four separate repairs: a splice to sit next to the prompt on a
+// 47-input node, a measured computeSize once the buttons wrapped onto two rows and overlapped the
+// widgets below, a ResizeObserver because the row count changes with node width, and a grow-only
+// guard after feeding computeSize() back into setSize() collapsed the node and discarded manual
+// resizes. Living in the wrapper removes all four, and the observer leak with them.
+// Idempotent: safe to call from any hook, and re-mounts if a frontend re-render evicts it.
+function mountPalette(node) {
+    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    const textarea = promptTextarea(node);
+    if (!widget || !textarea) return false;
+
+    const wrapper = [widget.element, widget.inputEl].find(
+        (element) => element && element !== textarea && element.contains(textarea),
+    ) ?? textarea.parentElement;
+    if (!wrapper) return false;
+
+    node.__minimaxDeliveryPalette ??= { root: buildPaletteRoot(node) };
+    const root = node.__minimaxDeliveryPalette.root;
+    if (root.parentElement === wrapper) return true;
+
+    // Stack vertically and let the textarea absorb whatever height the buttons leave.
+    wrapper.style.display = "flex";
+    wrapper.style.flexDirection = "column";
+    textarea.style.flex = "1 1 auto";
+    textarea.style.minHeight = "0";
+    wrapper.appendChild(root);
+    return true;
 }
 
 app.registerExtension({
     name: "MiniMaxH3PromptEnhancer.DeliveryPalette",
     beforeRegisterNodeDef(nodeType, nodeData) {
         if (!TARGET_NODES.has(nodeData.name)) return;
-        const originalCreated = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function () {
-            const result = originalCreated?.apply(this, arguments);
-            // The prompt widget is built by the base implementation, so defer until it exists.
-            setTimeout(() => {
-                buildPalette(this);
-                placePaletteUnderPrompt(this);
-            }, 0);
-            return result;
+        const hook = (name) => {
+            const original = nodeType.prototype[name];
+            nodeType.prototype[name] = function () {
+                const result = original?.apply(this, arguments);
+                // The prompt widget's DOM is built lazily, so retry briefly until it exists.
+                let attempts = 0;
+                const attempt = () => {
+                    if (!mountPalette(this) && ++attempts < 10) setTimeout(attempt, 100);
+                };
+                setTimeout(attempt, 0);
+                return result;
+            };
         };
-        const originalConfigured = nodeType.prototype.onConfigure;
-        nodeType.prototype.onConfigure = function () {
-            const result = originalConfigured?.apply(this, arguments);
-            setTimeout(() => {
-                buildPalette(this);
-                placePaletteUnderPrompt(this);
-            }, 0);
-            return result;
-        };
+        hook("onNodeCreated");
+        hook("onConfigure");
     },
 });

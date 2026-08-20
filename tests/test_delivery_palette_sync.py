@@ -32,8 +32,27 @@ def test_declared_tier_matches_the_backend_classification():
         assert backend_kind == tier, f"{emoji} is {tier} in the palette but {backend_kind} in Python"
 
 
+def _bare(emoji):
+    """Drop the variation selector: 🎙 and 🎙️ are the same mark, aliased for robustness."""
+    return emoji.replace("️", "")
+
+
+# Still resolved by the backend so anything already typed keeps working, but off the palette:
+# people reach for 📢 meaning "announces" or "shouts", and 🎙️ reads as voiceover unambiguously.
+RETIRED_FROM_PALETTE = {"\U0001f4e2"}
+
+
 def test_palette_offers_every_documented_verb():
     # The verb-backed marks are the safest ones, so none of them should be missing from the UI.
-    palette = {emoji for emoji, _tier in _palette_entries()}
-    verbs = {emoji for emoji, (_prose, kind) in guides.DELIVERY_EMOJI.items() if kind == "verb"}
+    palette = {_bare(emoji) for emoji, _tier in _palette_entries()}
+    verbs = {
+        _bare(emoji) for emoji, (_prose, kind) in guides.DELIVERY_EMOJI.items()
+        if kind == "verb" and emoji not in RETIRED_FROM_PALETTE
+    }
     assert verbs <= palette
+
+
+def test_retired_marks_still_resolve_for_prompts_already_written():
+    for emoji in RETIRED_FROM_PALETTE:
+        assert emoji in guides.DELIVERY_EMOJI
+        assert emoji in guides.DELIVERY_FACE

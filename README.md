@@ -195,21 +195,22 @@ Delivery landed outside `<d>`, each mark stayed on its own speaker, the Spanish 
 
 Marks bind to a line by proximity, so two speakers each keep their own delivery instead of sharing a pooled list. Bracket aliases (`[enfadada]`, `[susurro]`, `[pausa]`, ~30 in Spanish and English) work the same way, and official H3 brackets (`[Shot 2]`, `[English]`, `[unclear]`) are never touched.
 
-Emoji backed by a **documented vocal verb** are marked with a green border in the palette, because a verb the guide spells out is a safer instruction than an invented adverb:
+The palette shows the marks in two tiers. Always visible: the seven that resolve to a **documented vocal verb**, each with a text label, because a verb the guide spells out is a safer instruction than an invented adverb — and because a 1px green border alone turned out to be invisible on a dark canvas:
 
-| | verb | | prose |
+| | resolves to | | resolves to |
 |---|---|---|---|
-| 💬 | `says` | 😠 | hard, angry voice |
-| 🤫 | `whispers` | 😢 | low, unsteady, close to tears |
-| 😡 | `shouts` | 😭 | through tears |
-| ❓ | `asks` | 😨 | thin, frightened voice |
-| 🎤 | `sings` | 😀 | bright, warm voice |
-| 📢 | `says in an off-screen voiceover` | 😂 | through laughter |
-| | | 😏 | flat, sardonic tone |
-| | | 😐 | cold, level voice |
-| | | 🥱 | slow, weary voice |
-| | | ⚡ | quick, urgent voice |
-| | | 🫢 | hushed, breathy voice |
+| 💬 `says` | neutral, even pitch | ❓ `ask` | pitch lifting through the last words |
+| 🤫 `whisper` | breath-light and close | 🎤 `sing` | pitch sustained and supported |
+| 😡 `shout` | chest-deep, hard-edged | 🎙️ `V.O.` | off-screen voiceover, lips stay closed |
+| ⏸️ `pause` | our own convention | | |
+
+Behind a **`+ tone`** toggle, grouped by family, sit fourteen emotional marks — fourteen yellow faces read as one wall at 20px, so they stay out of the way until asked for:
+
+| | | | | | |
+|---|---|---|---|---|---|
+| 😠 hard, low | 😲 stunned | 😨 thin, frightened | 😢 close to tears | 😭 through tears | 🥺 pleading |
+| 🥰 tender | 😀 bright, warm | 😂 through laughter | 😏 flat, sardonic | 😐 cold, level | 🥱 slow, weary |
+| ⚡ quick, urgent | 🫢 hushed, conspiratorial | | | | |
 
 The prose column follows the axes the guide names for a speaker — pitch, timbre, speaking rate, accent — phrased like its own examples (*"The young woman with a quiet, breathy voice (S1) says:"*).
 

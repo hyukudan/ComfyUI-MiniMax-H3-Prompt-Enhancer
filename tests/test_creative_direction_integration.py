@@ -72,8 +72,13 @@ def test_neutral_controls_preserve_the_current_user_request_byte_for_byte():
         shot_plan_json=json.dumps({"schemaVersion": 1, "timingMode": "auto", "shots": []}),
     )
     assert legacy_call == explicit_neutral
+    # The hash guards that neutral controls change nothing, not that the request is frozen for
+    # ever. Updated 2026-08-20 for deliberate edits: the emotional-performance contract lost a
+    # sentence that banned stacked instructions while stacking six of its own, and a seven-link
+    # precedence chain; and the voice-policy branches are now keyed on the requested performance
+    # mode rather than on whether the source happened to contain quotation marks.
     assert hashlib.sha256(legacy_call.encode("utf-8")).hexdigest() == (
-        "cdef0e581daae21b36c161b4440191e95fa4a054566b1e1a25dfeb61965a17b0"
+        "75298fc6eec289ef14c90f9ad60e4c90ae489d1d5c5ab1e2ce9b8ad2d8285d5e"
     )
 
 

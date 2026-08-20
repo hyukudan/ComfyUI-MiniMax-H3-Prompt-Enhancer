@@ -844,7 +844,10 @@ def test_enhancement_translates_only_source_authorized_emotion_into_observable_a
     assert "partial, asymmetric, overlapping, or conflicting reactions" in enhanced
     assert "only when the source explicitly implies hesitation" in enhanced
     assert "Never add a cut, push-in, close-up, camera move, or lighting change" in enhanced
-    assert "Avoid millimeter or centimeter measurements" in enhanced
+    # Pinned as a rule, not a phrasing. The old sentence banned "stacked simultaneous
+    # instructions" while itself stacking six, and its examples did the work anyway.
+    assert "never exact timestamps or measurements" in enhanced
+    assert "one mouth corner, a briefly held breath" in enhanced
     assert "preserve every word and its assigned timing" in enhanced
     assert '<d>[English] I am fine.</d>' in enhanced
 
@@ -2046,11 +2049,27 @@ def test_system_prompt_uses_official_cutoff_semantics_not_intentional_truncation
     assert "only for intentionally truncated speech" not in base
 
 
-def test_system_prompt_establishes_first_appearance_speaker_identity_outside_the_tag():
+def test_first_appearance_speaker_identity_is_established_once_in_the_user_request():
+    """The rule moved rather than went away.
+
+    The system prompt legislated speaker introduction while the voice policy in the user request
+    legislated it too, and the system prompt itself declares the user request authoritative on
+    exactly this. Two sources for one decision is what a small model resolves by mixing them. The
+    system prompt now carries only the format mechanics -- the ID and the tag syntax.
+    """
     base = system_prompt_for_mode("t2va")
-    assert "At a speaker's first appearance, establish a stable" in base
-    assert "vocal identity outside <d> from source-supported context" in base
-    assert "pitch, timbre, speaking rate, or accent" in base
+    assert "Give each actual vocal source a stable (S1), (S2), ... ID" in base
+    assert "pitch, timbre, speaking rate, or accent" not in base
+
+    # Present on every base-mode path that can produce dialogue: quoted source, authored dialogue,
+    # and Ref2VA. Multishot runs a different system prompt entirely.
+    for prompt, mode, extra in (
+        ('A woman says "hola".', "t2va", {}),
+        ("Two people argue about money, write their dialogue.", "t2va", {}),
+        ('A woman says "hola".', "ref2va", {"reference_context": "Picture 1 supplies the identity"}),
+    ):
+        request = build_user_request(prompt, mode, 8.0, **extra)
+        assert "pitch, timbre, speaking rate, accent" in request, (mode, prompt)
 
 
 def test_system_prompt_uses_the_official_completely_closed_lips_wording():
@@ -2615,7 +2634,14 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
     # voiceover formula was stated before the prohibition on using it, so a model reached for the
     # formula and wrote both at once -- "says in an off-screen voiceover" alongside "his lips
     # moving in sync" -- for a source that only ever asked for people talking on camera.
-    assert len(SYSTEM_PROMPT) < 14400
+    #
+    # Reviewed 2026-08-20: raised 14400 -> 15200 for the OUTPUT SKELETON. Eleven thousand
+    # characters of rules carried no example of a finished prompt, so every format the validator
+    # can reject -- section names and their colons, the first shot carrying no timestamp, the
+    # MM:SS.mmm cut, a dialogue sentence holding identity, ID, vocal action and <d> together --
+    # existed only as prose. A small model imitates a shape far better than it follows a rule, and
+    # one rejected output costs a whole repair round, which is dearer than these characters.
+    assert len(SYSTEM_PROMPT) < 15200
     creative = json.dumps({
         "schemaVersion": 1, "genre": "sports_competition", "visualLanguage": "anime_shojo_pastel",
         "worldAesthetic": "analog_1980s", "tone": "pulp_heightened",
@@ -3065,7 +3091,10 @@ def test_the_dialogue_rule_leads_with_its_default_not_with_the_voiceover_formula
     formula = prompt.index('say "says in an off-screen voiceover"')
     assert default < formula, "the default must be stated before the exception's wording"
     assert "Voiceover is the exception and only the source can ask for it" in prompt
-    assert "never also describe that same mouth moving" in prompt
+    # Pinned as a rule, not as a phrasing: the original wording carried a clause explaining that
+    # the two statements contradict each other, which is direction aimed at the writer and can
+    # surface in the output the writer is producing.
+    assert "described at most once, as closed" in prompt
 
 
 def test_appearance_attributes_are_derived_from_the_source_not_from_a_catalogue():
