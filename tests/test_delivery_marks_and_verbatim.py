@@ -80,6 +80,26 @@ def test_emoji_resolves_to_a_documented_verb_where_one_exists():
     assert guides.DELIVERY_EMOJI["\U0001f4e2"][0] == "says in an off-screen voiceover"
 
 
+def test_every_mark_carries_a_visible_cue_except_the_off_screen_voiceover():
+    # H3 renders picture and sound together, so a voice-only instruction leaves the face blank
+    # while the line is delivered. The one exception is deliberate: the official contract requires
+    # a voiceover speaker's lips to stay closed, so giving it a face would contradict the spec.
+    missing = [e for e in guides.DELIVERY_EMOJI if e not in guides.DELIVERY_FACE]
+    assert missing == ["\U0001f4e2"]
+
+
+def test_visible_cue_is_attached_per_line_and_withheld_from_voiceover():
+    contract = guides._delivery_marks_contract(
+        'A: \U0001f621 "Fuera de mi casa"\nB: \U0001f4e2 "Nunca volvi"'
+    )
+    assert '- "Fuera de mi casa" → shouts; visible: jaw set, brows drawn hard down' in contract
+    voiceover_line = [line for line in contract.splitlines() if "Nunca volvi" in line][0]
+    assert "visible:" not in voiceover_line
+    # The gate matters as much as the cue: without this the emotional-performance contract is
+    # source-gated and a cautious writer treats a voice descriptor as audio-only.
+    assert "the user establishing that emotion" in contract
+
+
 def test_emoji_never_survives_into_the_spoken_words_or_the_echo():
     source = 'She says, "Ven aquí \U0001f92b ahora"'
     cleaned, marks = guides.extract_delivery_marks('Ven aquí \U0001f92b ahora')

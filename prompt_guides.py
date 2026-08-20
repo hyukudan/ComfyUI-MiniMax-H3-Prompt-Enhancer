@@ -3097,6 +3097,36 @@ DELIVERY_EMOJI = {
 }
 _DELIVERY_EMOJI_RE = re.compile("|".join(re.escape(e) for e in sorted(DELIVERY_EMOJI, key=len, reverse=True)))
 
+# H3 renders picture and sound together, so a voice-only instruction can produce an angry line
+# delivered by a neutral face. These are the visible half of the same mark, written as observable
+# behaviour rather than an emotion label because that is what the guide asks for and what the
+# performance contract translates into acting.
+#
+# Every mark carries one except 📢: that is an off-screen voiceover, and the official contract
+# requires the on-screen character's lips to stay closed, so handing it a face would contradict the
+# spec. The neutral marks still get a cue rather than nothing, because "no instruction" is what
+# leaves a face blank while a line is delivered.
+DELIVERY_FACE = {
+    "💬": "gaze on the listener, face composed and present",
+    "🎤": "chest lifted, mouth opening fully on the sustained vowels",
+    "⏸": "gaze holding, breath suspended, no mouth movement",
+    "⏸️": "gaze holding, breath suspended, no mouth movement",
+    "🤫": "head tipped closer, lips barely parting",
+    "😡": "jaw set, brows drawn hard down",
+    "❓": "brows lifted, gaze held on the listener",
+    "😠": "jaw tight, brows low, mouth pressed thin",
+    "😢": "eyes wet and blinking slowly, mouth unsteady",
+    "😭": "face crumpling, eyes streaming",
+    "😨": "eyes wide, shoulders drawn up",
+    "😀": "eyes creasing, open smile",
+    "😂": "head tipping back, eyes screwed shut",
+    "😏": "one mouth corner raised, eyelids lowered",
+    "😐": "face still, gaze level and unblinking",
+    "🥱": "eyelids heavy, head tilting down",
+    "⚡": "eyes darting, breath shortened",
+    "🫢": "chin tucked, breath held shallow",
+}
+
 
 def extract_delivery_marks(text: str) -> tuple[str, list[str]]:
     """Strip authoring delivery marks from spoken text and report what they asked for.
@@ -3170,14 +3200,26 @@ def _leaked_delivery_shorthand_errors(prompt: str) -> list[str]:
     return errors
 
 
-def _quote_adjacent_emoji(source_prompt: str, match: re.Match[str]) -> list[str]:
-    """Collect the delivery emoji that belong to one quoted line.
+def _quote_window(source_prompt: str, match: re.Match[str]) -> str:
+    """The stretch of text a quoted line owns, for attaching marks by proximity.
 
-    A user drops the emoji beside the line, not inside it, so attachment is by proximity: the
-    same-line run of text immediately before the quote, and the short tail after it. Bounding the
-    lookbehind at the line start and at any earlier quote stops one line's emoji from being
-    claimed by the next.
+    A user drops the mark beside the line, not inside it. Bounding the lookbehind at the line start
+    and at any earlier quote stops one line's marks from being claimed by the next.
     """
+    text = source_prompt or ""
+    prefix = text[:match.start()]
+    line_start = prefix.rfind("\n") + 1
+    previous_quote = max(
+        (m.end() for m in _SOURCE_QUOTED_RE.finditer(text[:match.start()])), default=line_start
+    )
+    before = text[max(line_start, previous_quote):match.start()]
+    after_stop = text.find("\n", match.end())
+    after = text[match.end():after_stop if after_stop != -1 else match.end() + 40][:40]
+    return before + match.group(0) + after
+
+
+def _quote_adjacent_emoji(source_prompt: str, match: re.Match[str]) -> list[str]:
+    """Resolve the delivery emoji that belong to one quoted line into their prose form."""
     text = source_prompt or ""
     prefix = text[:match.start()]
     line_start = prefix.rfind("\n") + 1
@@ -3225,12 +3267,17 @@ def _delivery_marks_contract(source_prompt: str) -> str:
     any_pause = False
     for match in _SOURCE_QUOTED_RE.finditer(source_prompt or ""):
         cleaned, marks = extract_delivery_marks(_extract_quote_string(match))
+        emoji_here = _DELIVERY_EMOJI_RE.findall(_quote_window(source_prompt, match))
         marks = marks + _quote_adjacent_emoji(source_prompt, match)
         if not marks:
             continue
         any_pause = any_pause or "…" in cleaned
         unique = list(dict.fromkeys(marks))
-        lines.append(f'- "{cleaned}" → {"; ".join(unique)}')
+        faces = list(dict.fromkeys(
+            DELIVERY_FACE[emoji] for emoji in emoji_here if emoji in DELIVERY_FACE
+        ))
+        visible = f'; visible: {", ".join(faces)}' if faces else ""
+        lines.append(f'- "{cleaned}" → {"; ".join(unique)}{visible}')
     for _language, quote in re.findall(
         r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
     ):
@@ -3255,6 +3302,12 @@ def _delivery_marks_contract(source_prompt: str) -> str:
         "vocal verb, use that verb as the attribution verb rather than adding a second one. Inside <d> keep only the "
         "language tag and the spoken words. Requested delivery, per line:\n"
         + "\n".join(lines)
+        + "\nA mark is the user establishing that emotion, so the emotional-performance translation applies and is "
+        "not an invention of yours: carry each one into the visible performance as well as the voice, so the face "
+        "does not stay neutral while the line is delivered. Any 'visible:' cue above is the intended acting, to be "
+        "written as observable behaviour in the description. Honour the framing you already have — where the face is "
+        "not readable, express the same beat through posture, breath, gaze direction or hands, and never add a cut, "
+        "push-in or close-up merely to expose it."
         + pause_note
     )
 

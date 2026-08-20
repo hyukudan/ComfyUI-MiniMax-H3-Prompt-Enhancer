@@ -213,6 +213,21 @@ Emoji backed by a **documented vocal verb** are marked with a green border in th
 
 The prose column follows the axes the guide names for a speaker — pitch, timbre, speaking rate, accent — phrased like its own examples (*"The young woman with a quiet, breathy voice (S1) says:"*).
 
+**Each mark also drives the face, not just the voice.** H3 renders picture and sound together, so a voice-only instruction can hand you an angry line delivered by a neutral face. Every mark therefore carries a visible cue as well:
+
+```text
+- "Fuera de mi casa" → shouts; visible: jaw set, brows drawn hard down
+- "No me dejes"      → in a low, unsteady voice, close to tears; visible: eyes wet and blinking slowly, mouth unsteady
+```
+
+Cues are written as observable behaviour rather than emotion labels, which is both what the guide asks for and what the node's emotional-performance translation turns into acting.
+
+The contract also states that a mark **is the user establishing that emotion**. This matters more than it looks: the emotional-performance translation is source-gated — it only fires when the source already establishes an emotion — so a bare voice descriptor is ambiguous and a cautious writer treats it as audio-only. Saying it outright also keeps the acting legitimate under `verbatim_source`, where the writer is otherwise forbidden to add anything.
+
+Framing still wins. Where the face is not readable the same beat is carried by posture, breath, gaze or hands, and the writer may not add a cut, push-in or close-up merely to expose it.
+
+📢 is the one mark with **no** visible cue, deliberately: it is an off-screen voiceover, and the official contract requires the on-screen character's lips to stay closed. A face would contradict the spec. A test pins that exception so it does not get "fixed" later.
+
 ⏸️ **is our own convention, not a documented one.** The official guides contain no pause mechanism whatsoever; the only temporal lever they define is shot timestamps. It is rendered as an ellipsis inside the quote, leaning on the rule that punctuation must be preserved verbatim. Worth A/B testing before relying on it.
 
 The validator fails a finished prompt that still contains any shorthand, naming the leaked mark. Previously a stray bracket surfaced only indirectly as "invented dialogue" — pointing at the wrong cause — and a stray emoji was not caught at all.
