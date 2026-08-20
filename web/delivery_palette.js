@@ -40,31 +40,54 @@ const DELIVERY_EMOJI = [
 ];
 
 function promptTextarea(node) {
+    // The multiline widget is not itself a textarea: element and inputEl are both DIV wrappers
+    // with the real control nested inside. Requiring a textarea at the top level made every click
+    // a silent no-op, so search downward and only then give up.
     const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
     if (!widget) return null;
-    const element = widget.element ?? widget.inputEl;
-    return element && element.tagName === "TEXTAREA" ? element : null;
+    for (const candidate of [widget.element, widget.inputEl]) {
+        if (!candidate) continue;
+        if (candidate.tagName === "TEXTAREA") return candidate;
+        const nested = candidate.querySelector?.("textarea");
+        if (nested) return nested;
+    }
+    return null;
+}
+
+// Padding matters: marks bind to a line by proximity on the Python side, so a bare token glued to
+// the previous word would read as part of it.
+function padded(token, before, after) {
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const tail = after && !/^\s/.test(after) ? " " : "";
+    return `${lead}${token}${tail}`;
 }
 
 function insert(node, token) {
-    const textarea = promptTextarea(node);
-    if (!textarea) return;
     const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    if (!widget) return;
+    const textarea = promptTextarea(node);
+    if (!textarea) {
+        // Still better than doing nothing: append to the widget value so the mark is at least
+        // usable, even on a frontend whose DOM we cannot walk.
+        const current = String(widget.value ?? "");
+        widget.value = current + padded(token, current, "");
+        widget.callback?.(widget.value);
+        node.setDirtyCanvas?.(true, true);
+        return;
+    }
     const start = textarea.selectionStart ?? textarea.value.length;
     const end = textarea.selectionEnd ?? start;
     const before = textarea.value.slice(0, start);
     const after = textarea.value.slice(end);
-    // Emoji attach to a line by proximity on the Python side, so a bare token would glue itself to
-    // the previous word and read as part of it. Pad only where padding is missing.
-    const lead = before && !/\s$/.test(before) ? " " : "";
-    const tail = after && !/^\s/.test(after) ? " " : "";
-    const injected = `${lead}${token}${tail}`;
+    const injected = padded(token, before, after);
     textarea.value = `${before}${injected}${after}`;
-    if (widget) widget.value = textarea.value;
+    widget.value = textarea.value;
     const caret = start + injected.length;
     textarea.setSelectionRange(caret, caret);
     textarea.focus();
+    // The Vue-backed widget syncs from input events, so the value would otherwise revert on redraw.
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    widget.callback?.(textarea.value);
 }
 
 function placePaletteUnderPrompt(node) {
