@@ -1,0 +1,24 @@
+name: Publish to Comfy Registry
+
+# The registry copy went stale because publishing was a manual step on one machine, and the
+# credential that machine held is gone. Tying it to the version in pyproject.toml means a release
+# is published by the same commit that declares it, from anywhere.
+on:
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish
+        uses: Comfy-Org/publish-node-action@v1
+        with:
+          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
