@@ -35,6 +35,29 @@ def test_legacy_callers_are_unaffected():
     assert node._resolved_latitude_name(None, False, False) == "conservative_grounded"
 
 
+def test_every_backend_accepts_creative_latitude_with_the_same_tail():
+    """Both bugs this pins were shipped, and only one of them crashed.
+
+    The GGUF backend never got the parameter, so selecting a local model raised
+    TypeError. Worse, its inner call passed the tail positionally, so once
+    creative_latitude was inserted before lora_trigger_words the triggers began
+    arriving as the latitude and were dropped in silence.
+    """
+    import inspect
+
+    import gguf_server
+    import prompt_enhancer
+
+    tail = ["editing_intent", "invent_scene", "creative_latitude", "lora_trigger_words"]
+    for function in (
+        gguf_server.enhance_prompt_with_gguf_server,
+        prompt_enhancer.enhance_prompt,
+        prompt_enhancer.enhance_prompt_with_completion,
+    ):
+        names = [p.name for p in inspect.signature(function).parameters.values()]
+        assert names[-4:] == tail, function.__name__
+
+
 def test_emotion_mark_leaves_the_spoken_words_and_is_reported():
     cleaned, marks = guides.extract_delivery_marks("No me toques [enfadada] y vete")
     assert cleaned == "No me toques y vete"

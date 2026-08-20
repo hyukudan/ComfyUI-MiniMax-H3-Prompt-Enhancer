@@ -297,6 +297,7 @@ def enhance_prompt_with_gguf_server(
     dialogue_language: str = "auto",
     editing_intent: str = "none",
     invent_scene: bool = False,
+    creative_latitude: str | None = None,
     lora_trigger_words: str = "",
 ) -> tuple[str, dict, dict]:
     """Run enhancement through a private llama-server, optionally caching the process."""
@@ -405,7 +406,11 @@ def enhance_prompt_with_gguf_server(
                 dialogue_language,
                 editing_intent,
                 invent_scene,
-                lora_trigger_words,
+                # Keyword, not positional: this tail is exactly where an inserted parameter
+                # silently shifts every argument after it, which is how lora_trigger_words
+                # started arriving as creative_latitude.
+                creative_latitude=creative_latitude,
+                lora_trigger_words=lora_trigger_words,
             )
         finally:
             if not bool(keep_server_loaded):
