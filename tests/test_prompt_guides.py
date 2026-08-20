@@ -2990,12 +2990,14 @@ def test_the_rule_covers_the_users_own_directive_phrasing():
     # and extended the list. A test the writer applies to each sentence needs no extending.
     assert "could a camera and a microphone have recorded" in prompt
     assert "would a second viewer agree it happened" in prompt
-    assert "rather than matching it against a list of banned" in prompt
-    # Each failing category is illustrated, so the criterion is anchored rather than abstract.
-    for category in ("A demand", "a rating with nothing to measure it against",
-                     "a claim about the effect rather than its cause",
-                     "a label summarising what just happened"):
-        assert category in prompt
+    # The criterion is anchored by one worked transformation instead of four failing categories.
+    # Naming the categories meant quoting their wordings, and a prompt that quotes the phrasing it
+    # forbids gives a small model those exact tokens to imitate -- the same surface-token effect
+    # that made every speaker come back as (S1) when the ID rule was hardened by repetition.
+    assert "The blow snaps the helmet free" in prompt
+    assert "Write only sentences of the second kind" in prompt
+    for leaked in ('"very strong"', '"highly detailed"', '"reads as"', '"is visibly registered"'):
+        assert leaked not in prompt, leaked
     # It must say what to write instead, or the rule only forbids without redirecting.
     for evidence in ("what separates", "recoils", "the evidence that earned it"):
         assert evidence in prompt

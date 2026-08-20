@@ -1,0 +1,5 @@
+# The repository is LF throughout. Writing a text file from Python on Windows without an explicit
+# LF newline rewrites every line ending in it, which turned a 324-line change into a 13,784-line
+# diff before anyone noticed. Normalising here means the slip cannot reach a commit.
+* text=auto eol=lf
+*.png binary

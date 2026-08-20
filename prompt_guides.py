@@ -1147,14 +1147,15 @@ and never emit a preset ID or selector label.
 
 This applies to the user's request too: it mixes what happens with how to shoot it ("we must see
 the head fly", "the impact must be heavy and very strong"). The requirement binds, the phrasing
-does not. So test every sentence you write, rather than matching it against a list of banned
-words: could a camera and a microphone have recorded exactly this, and would a second viewer
-agree it happened? A demand ("must", "we see"), a rating with nothing to measure it against
-("very strong", "highly detailed"), a claim about the effect rather than its cause ("reads as",
-"is visibly registered", "emphasizing"), and a label summarising what just happened ("after this
-violent action") all fail that test: each states your intent instead of the shot, and H3 renders
-the words. Replace each one with the evidence that earned it — what separates, how far and where
-it travels, what recoils, sprays or deforms, and how it sounds.
+does not. So test every sentence you write: could a camera and a microphone have
+recorded exactly this, and would a second viewer agree it happened? A sentence passes when it names the evidence that earned it:
+what separates, how far and where it travels, what recoils, sprays or deforms, and how it sounds.
+The same beat, before and after:
+  Direction: "The impact must be very strong; we see the head fly."
+  Description: "The blow snaps the helmet free; it arcs over the railing, bounces twice on the
+  concrete, and rolls to a stop against the far wall with a hollow metallic clatter."
+Write only sentences of the second kind. H3 renders the words you give it, so a statement of your
+intent is rendered as words rather than as the shot.
 
 Return only the finished prompt, without Markdown fences, commentary, preamble, or a trailing explanation.
 Write all structural prose, section headers, shot timeline descriptions, camera motions, lighting, atmosphere,
@@ -1270,6 +1271,10 @@ audio reference. Join multiple task types with the exact separator " + ". A vide
 after that prefix with "The target video is an edited version of <Video 1>." The summary reuses only already defined
 labels and introduces no new one. retention_analysis uses only the documented visual markers fully_preserved, partially_preserved,
 attribute_transfer, weak_reference and audio markers fully_copy, partially_copy, reference, weak_reference.
+Give every defined label exactly one line, and start that line with the label itself, its marker after a colon:
+  <Picture 1>: fully_preserved — the face, hair and jacket carry over unchanged.
+  <Audio 1>: reference — timbre, pace and accent only; none of its words are spoken.
+A line that does not begin with its label, or that carries no marker after a colon, is rejected.
 When verbal content belongs only to a copied soundtrack or BGM, attribute its <d> block to <Audio N> without
 inventing a speaker ID. A concrete person, narrator, or independent vocal source uses a stable (Sx); an Audio
 reference bound to that speaker reuses the same ID. Timbre-, rhythm-, or delivery-only references never import words.
@@ -1284,8 +1289,16 @@ MULTISHOT_SYSTEM_PROMPT = """You turn a user request into a chain of autonomous 
 
 Return only valid JSON in this exact shape: {"prompts":["shot prompt 1","shot prompt 2"]}. Do not use Markdown,
 comments, section headers, [Shot N] markers, or timestamps inside a segment. Each array item is sent through a
-separate H3 conditioning pass, so write it as fluent standalone English prose and never rely on words such as
-"same", "as before", or "continues" without restating the concrete information they replace.
+separate H3 conditioning pass, so write it as fluent standalone English prose that restates every concrete fact it
+depends on: the next pass cannot see the previous one, so a back-reference resolves to nothing.
+
+A two-segment example — short here, but note that the identity and setting are restated in full rather than
+referred back to:
+{"prompts":["Cinematic realistic style. A woman in her thirties with a dark bob and a grey wool coat stands at a
+rain-slick bus shelter at night, watching the empty road. She pulls the coat tighter as a bus hisses past without
+stopping.","Cinematic realistic style. The same woman in her thirties with a dark bob and a grey wool coat now
+walks away from the rain-slick bus shelter along the empty road, shoulders hunched, her reflection breaking in the
+puddles she steps through."]}
 
 Repeat the stable identity, wardrobe, environment, visual style, and voice description verbatim in every segment
 where they remain applicable. Prefer six to eight concrete identity attributes when the source provides enough
