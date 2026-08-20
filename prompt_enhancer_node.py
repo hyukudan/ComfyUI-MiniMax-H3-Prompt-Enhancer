@@ -143,7 +143,9 @@ CREATIVE_LATITUDE_CHOICES = ENHANCEMENT_PROFILES
 CREATIVE_LATITUDE_INPUT = (list(CREATIVE_LATITUDE_CHOICES), {
     "default": "enhanced_production",
     "tooltip": (
-        "How far beyond your text the writer may go. conservative_grounded: only the minimum "
+        "How far beyond your text the writer may go. verbatim_source: none - keep your wording, "
+        "facts and terseness as written; only reformat into H3 sections, apply the selected style "
+        "and translate delivery marks. conservative_grounded: only the minimum "
         "structure the H3 mode requires. enhanced_production: resolve unspecified production "
         "decisions - composition, blocking, lighting, micro-performance. invented_production: "
         "treat your text as a premise and build the world around it. Quoted dialogue, reference "
@@ -152,12 +154,30 @@ CREATIVE_LATITUDE_INPUT = (list(CREATIVE_LATITUDE_CHOICES), {
 })
 
 
-def _latitude_flags(creative_latitude: str) -> tuple[bool, bool]:
-    """Translate the widget back into the two flags the guide functions still take."""
+def _normalize_latitude(creative_latitude) -> str:
     latitude = str(creative_latitude or "enhanced_production").strip().lower()
-    if latitude not in CREATIVE_LATITUDE_CHOICES:
-        latitude = "enhanced_production"
-    return latitude != "conservative_grounded", latitude == "invented_production"
+    return latitude if latitude in CREATIVE_LATITUDE_CHOICES else "enhanced_production"
+
+
+def _latitude_flags(creative_latitude: str) -> tuple[bool, bool]:
+    """Translate the widget back into the two flags the guide functions still take.
+
+    The pair cannot express verbatim_source, which is why the resolved name is threaded
+    separately to system_prompt_for_mode. Collapsing it here would silently downgrade the
+    strictest profile to the second strictest.
+    """
+    latitude = _normalize_latitude(creative_latitude)
+    return latitude not in ("conservative_grounded", "verbatim_source"), latitude == "invented_production"
+
+
+def _resolved_latitude_name(creative_latitude=None, enhance_description=None, invent_scene=None) -> str:
+    """The profile name to hand the guides, including the one the legacy pair cannot encode."""
+    if creative_latitude is not None and not isinstance(creative_latitude, bool):
+        return _normalize_latitude(creative_latitude)
+    enhance, invent = _resolve_latitude(creative_latitude, enhance_description, invent_scene)
+    if not enhance:
+        return "conservative_grounded"
+    return "invented_production" if invent else "enhanced_production"
 
 
 def _resolve_latitude(creative_latitude=None, enhance_description=None, invent_scene=None):
@@ -243,6 +263,7 @@ class MiniMaxH3PromptGuideBuilder:
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
               target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None,
               lora_trigger_words=""):
+        latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         if not str(basic_prompt).strip():
@@ -251,7 +272,8 @@ class MiniMaxH3PromptGuideBuilder:
         merged_treatment = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         return (
-            system_prompt_for_mode(resolved, bool(enhance_description)),
+            system_prompt_for_mode(resolved, latitude_name if latitude_name == "verbatim_source"
+                                   else bool(enhance_description), invent_scene),
             build_user_request(
                 basic_prompt, resolved, duration_seconds, reference_context, enhance_description,
                 ambience_foley_policy, background_score_policy, voice_performance,
@@ -373,6 +395,7 @@ class MiniMaxH3PromptEnhancer:
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
               lora_trigger_words=""):
+        latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
@@ -400,7 +423,8 @@ class MiniMaxH3PromptEnhancer:
                                 instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
                                 dialogue_language, editing_intent)
             prompt, validation, manifest = enhance_prompt(
-                *remote_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words)
+                *remote_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words,
+                creative_latitude=latitude_name)
         else:
             context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
             local_args = (
@@ -424,7 +448,8 @@ class MiniMaxH3PromptEnhancer:
                                instrumental_style, acoustic_space, dialogue_coverage, delivery_target,
                                dialogue_language, editing_intent)
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
-                *local_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words)
+                *local_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words,
+                creative_latitude=latitude_name)
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),
@@ -523,6 +548,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
               lora_trigger_words=""):
+        latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
@@ -758,6 +784,7 @@ class MiniMaxH3PromptValidator:
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                  dialogue_language="auto", editing_intent="none", invent_scene=False, creative_latitude=None,
               lora_trigger_words=""):
+        latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         report = validate_prompt(

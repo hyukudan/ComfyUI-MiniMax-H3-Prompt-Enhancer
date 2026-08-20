@@ -64,7 +64,7 @@ TASK_MODES = ("auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multis
 AMBIENCE_FOLEY_POLICIES = ("auto", "ensure_audible", "off")
 BACKGROUND_SCORE_POLICIES = ("follow_prompt", "add_instrumental", "off")
 VOICE_PERFORMANCES = ("audible", "silent_mouth_acting_experimental", "none")
-ENHANCEMENT_PROFILES = ("conservative_grounded", "enhanced_production", "invented_production")
+ENHANCEMENT_PROFILES = ("verbatim_source", "conservative_grounded", "enhanced_production", "invented_production")
 DELIVERY_TARGETS = ("local", "api_v2")
 # The official MiniMax API v2 accepts at most 7000 characters per text block.
 # Ref2VA's 350-500-word generation range is a soft baseline that expands with
@@ -466,6 +466,14 @@ _INTERNAL_MONOLOGUE_CUE_RE = re.compile(
 _SPEECH_CUE_RE = re.compile(
     r"\b(?:say|says|said|saying|state|states|stated|stating|ask|asks|asked|asking|shout|shouts|shouted|shouting|"
     r"reply|replies|replied|replying|respond|responds|responded|responding|finish(?:es|ed|ing)?\s+with|sing|sings|sang|singing|chant|chants|chanted|chanting|"
+    # "He answers" is about as ordinary as dialogue writing gets, yet it was absent: the quote went
+    # undetected as source dialogue and then failed validation as *invented* dialogue, blaming the
+    # writer for a line the user had typed. A cue only counts next to a quoted string, so these
+    # unambiguously vocal verbs cannot fire on ordinary prose.
+    r"answer|answers|answered|answering|murmur|murmurs|murmured|murmuring|mutter|mutters|muttered|muttering|"
+    r"mumble|mumbles|mumbled|mumbling|yell|yells|yelled|yelling|scream|screams|screamed|screaming|"
+    r"insist|insists|insisted|insisting|plead|pleads|pleaded|pleading|beg|begs|begged|begging|"
+    r"contesta|contestas|responde\s+a|"
     r"call|calls|called|calling|exclaim|exclaims|exclaimed|exclaiming|whisper|whispers|whispered|whispering|speak|speaks|spoke|spoken|speaking|"
     r"explain|explains|explained|explaining|narrate|narrates|narrated|narrating|describe|describes|described|describing|comment|comments|commented|commenting|"
     r"tell|tells|told|telling|hear|hears|heard|hearing|is\s+heard|are\s+heard|was\s+heard|were\s+heard|sound|sounds|sounding|sounded|boom|booms|boomed|booming|voice|voices|"
@@ -1295,11 +1303,16 @@ six-section formats: those contracts describe a single generation, while this ou
 
 
 def enhancement_profile(enhance_description: bool, invent_scene: bool = False) -> str:
-    """conservative < enhanced < invented, en latitud creativa creciente.
+    """verbatim < conservative < enhanced < invented, en latitud creativa creciente.
 
     invent_scene solo tiene efecto con la mejora activa: inventar sobre un contrato que pide
     minimo ejecutable seria contradictorio.
+
+    verbatim_source no es alcanzable desde el par de booleanos heredado: el par solo distingue
+    tres estados. Se selecciona por nombre desde creative_latitude.
     """
+    if isinstance(enhance_description, str) and enhance_description in ENHANCEMENT_PROFILES:
+        return enhance_description
     if not bool(enhance_description):
         return "conservative_grounded"
     return "invented_production" if bool(invent_scene) else "enhanced_production"
@@ -1329,6 +1342,19 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
         prompt = common + ref_marker + ref_rules if mode == "ref2va" else common + base_marker + base_rules
     if enhance_description is None:
         return prompt
+    if enhance_description == "verbatim_source":
+        return prompt + (
+            "\n\nENHANCEMENT PROFILE — VERBATIM_SOURCE: The user's description is finished writing. Reproduce its "
+            "wording, facts, order of events, and level of detail as written; this is the one profile where source "
+            "terseness is deliberate and must survive. Do not add a subject, object, prop, surface, weather, "
+            "creature, background feature, event, plot beat, camera move, lighting change, ending, or sound source "
+            "that the source did not state, and do not resolve an unspecified production decision — leave it "
+            "unspecified. Your entire job is mechanical: place the user's own words into the required H3 section "
+            "format, apply any explicitly selected visual style or treatment, translate any delivery marks into the "
+            "official prose form demanded by the dialogue contract, and nothing else. If the H3 mode structurally "
+            "requires a field the source never supplied, keep it to the shortest neutral phrasing that satisfies "
+            "the format rather than inventing content to fill it."
+        )
     if enhance_description == "invented_production" or invent_scene:
         return prompt + (
             "\n\nENHANCEMENT PROFILE — INVENTED_PRODUCTION: The user asked you to build the scene, not just to "
@@ -3021,6 +3047,218 @@ def _source_fidelity_contract(source_prompt: str) -> str:
     )
 
 
+# H3 has no emotion-tag syntax. Its published skill (MiniMax-AI/MiniMax-H3,
+# .claude/skills/h3-prompt-writing) puts delivery in plain prose in the attribution sentence,
+# OUTSIDE <d>, and allows only the language tag plus the exact words inside it. So these marks are
+# an authoring convenience that must be RESOLVED here and never reach the model: [whispering] and
+# friends are ElevenLabs/Bark syntax that H3 would read as words to speak.
+DELIVERY_MARK_ALIASES = {
+    "angry": "angrily", "enfadado": "angrily", "enfadada": "angrily", "furioso": "furiously",
+    "sad": "sadly", "triste": "sadly", "happy": "happily", "alegre": "happily",
+    "whisper": "in a whisper", "susurro": "in a whisper", "susurrando": "in a whisper",
+    "shout": "shouting", "grito": "shouting", "gritando": "shouting",
+    "afraid": "in a frightened voice", "miedo": "in a frightened voice",
+    "calm": "calmly", "tranquilo": "calmly", "cold": "coldly", "frio": "coldly", "frío": "coldly",
+    "tired": "wearily", "cansado": "wearily", "urgent": "urgently", "urgente": "urgently",
+    "sarcastic": "sarcastically", "sarcastico": "sarcastically", "sarcástico": "sarcastically",
+    "soft": "softly", "suave": "softly", "firm": "firmly", "firme": "firmly",
+    "trembling": "in a trembling voice", "temblando": "in a trembling voice",
+    "laughing": "through laughter", "riendo": "through laughter",
+    "crying": "through tears", "llorando": "through tears",
+}
+DELIVERY_PAUSE_MARKS = {"pause", "pausa", "beat", "silence", "silencio"}
+_DELIVERY_MARK_RE = re.compile(r"\[([^\[\]]{1,24})\]")
+
+# Emoji are the same shorthand in a friendlier skin, so they resolve to the same prose. Where the
+# H3 skill documents a speech verb (says/shouts/whispers/asks/sings/booms and the exact phrase
+# "says in an off-screen voiceover") the emoji maps to that verb, because a documented verb is
+# safer than an invented adverb. The rest map to the axes the guide names for a speaker: pitch,
+# timbre, speaking rate, accent -- phrased like its own examples ("a quiet, breathy voice").
+DELIVERY_EMOJI = {
+    "🤫": ("whispers", "verb"),
+    "😡": ("shouts", "verb"),
+    "❓": ("asks", "verb"),
+    "🎤": ("sings", "verb"),
+    "📢": ("says in an off-screen voiceover", "verb"),
+    "💬": ("says", "verb"),
+    "😠": ("in a hard, angry voice", "prose"),
+    "😢": ("in a low, unsteady voice, close to tears", "prose"),
+    "😭": ("through tears", "prose"),
+    "😨": ("in a thin, frightened voice", "prose"),
+    "😀": ("in a bright, warm voice", "prose"),
+    "😂": ("through laughter", "prose"),
+    "😏": ("in a flat, sardonic tone", "prose"),
+    "😐": ("in a cold, level voice", "prose"),
+    "🥱": ("in a slow, weary voice", "prose"),
+    "⚡": ("quickly, in an urgent voice", "prose"),
+    "🫢": ("in a hushed, breathy voice", "prose"),
+    "⏸": ("__pause__", "pause"),
+    "⏸️": ("__pause__", "pause"),
+}
+_DELIVERY_EMOJI_RE = re.compile("|".join(re.escape(e) for e in sorted(DELIVERY_EMOJI, key=len, reverse=True)))
+
+
+def extract_delivery_marks(text: str) -> tuple[str, list[str]]:
+    """Strip authoring delivery marks from spoken text and report what they asked for.
+
+    The words a user typed are a contract elsewhere in this module, so the mark cannot survive
+    inside the quote: it would be spoken aloud. A pause becomes an ellipsis because the H3 skill
+    requires punctuation inside <d> to be preserved verbatim and documents no pause mechanism at
+    all -- that substitution is our own convention, not a published one.
+    """
+    if not text or ("[" not in text and not _DELIVERY_EMOJI_RE.search(text)):
+        return text, []
+    requested: list[str] = []
+
+    # An emoji typed inside the quote is shorthand too, and would otherwise be spoken aloud.
+    def resolve_emoji(match: re.Match[str]) -> str:
+        prose, kind = DELIVERY_EMOJI[match.group(0)]
+        if kind == "pause":
+            requested.append("a held beat of silence at that point")
+            return "…"
+        requested.append(prose)
+        return ""
+
+    text = _DELIVERY_EMOJI_RE.sub(resolve_emoji, text)
+
+    def resolve(match: re.Match[str]) -> str:
+        raw = match.group(1).strip()
+        key = raw.casefold()
+        if key in DELIVERY_PAUSE_MARKS:
+            requested.append("a held beat of silence at that point")
+            return "…"
+        if key in DELIVERY_MARK_ALIASES:
+            requested.append(DELIVERY_MARK_ALIASES[key])
+            return ""
+        # An unknown bracket may be legitimate H3 markup ([Shot 2], [English], [unclear]); leave it.
+        return match.group(0)
+
+    cleaned = _DELIVERY_MARK_RE.sub(resolve, text)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:!?…])", r"\1", cleaned).strip()
+    return cleaned, requested
+
+
+def _leaked_delivery_shorthand_errors(prompt: str) -> list[str]:
+    """Catch authoring shorthand that survived into the finished H3 prompt.
+
+    The delivery contract tells the writer to resolve every mark into prose, but nothing verified
+    it. A leaked emoji is the worse case: H3 has no tag syntax, so it is simply spoken or drawn,
+    and no other rule here looks for one. A leaked bracket is usually caught only indirectly, as
+    "invented dialogue", which hides the real cause.
+    """
+    found_emoji = sorted(set(_DELIVERY_EMOJI_RE.findall(prompt or "")))
+    errors = []
+    if found_emoji:
+        errors.append(
+            "Delivery shorthand leaked into the output: "
+            + " ".join(found_emoji)
+            + ". H3 has no emoji or tag syntax; express delivery as prose outside <d>."
+        )
+    leaked_marks = sorted({
+        match.group(0)
+        for match in _DELIVERY_MARK_RE.finditer(prompt or "")
+        if match.group(1).strip().casefold() in DELIVERY_MARK_ALIASES
+        or match.group(1).strip().casefold() in DELIVERY_PAUSE_MARKS
+    })
+    if leaked_marks:
+        errors.append(
+            "Delivery shorthand leaked into the output: "
+            + " ".join(leaked_marks)
+            + ". Express delivery as prose in the attribution sentence outside <d>."
+        )
+    return errors
+
+
+def _quote_adjacent_emoji(source_prompt: str, match: re.Match[str]) -> list[str]:
+    """Collect the delivery emoji that belong to one quoted line.
+
+    A user drops the emoji beside the line, not inside it, so attachment is by proximity: the
+    same-line run of text immediately before the quote, and the short tail after it. Bounding the
+    lookbehind at the line start and at any earlier quote stops one line's emoji from being
+    claimed by the next.
+    """
+    text = source_prompt or ""
+    prefix = text[:match.start()]
+    line_start = prefix.rfind("\n") + 1
+    previous_quote = max(
+        (m.end() for m in _SOURCE_QUOTED_RE.finditer(text[:match.start()])), default=line_start
+    )
+    before = text[max(line_start, previous_quote):match.start()]
+    after_stop = text.find("\n", match.end())
+    after = text[match.end():after_stop if after_stop != -1 else match.end() + 40][:40]
+    found: list[str] = []
+    for window in (before, after):
+        found.extend(_DELIVERY_EMOJI_RE.findall(window))
+    resolved = []
+    for emoji in found:
+        prose, kind = DELIVERY_EMOJI[emoji]
+        resolved.append("a held beat of silence at that point" if kind == "pause" else prose)
+    return resolved
+
+
+def _strip_delivery_emoji(source_prompt: str) -> str:
+    """Remove resolved emoji from the echoed source so the model never sees the shorthand."""
+    cleaned = _DELIVERY_EMOJI_RE.sub("", source_prompt or "")
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
+
+
+def _strip_delivery_marks_from_quotes(source_prompt: str) -> str:
+    """Resolve delivery marks inside quoted speech only, leaving the prose around it untouched."""
+    if not source_prompt or "[" not in source_prompt:
+        return source_prompt
+
+    def replace(match: re.Match[str]) -> str:
+        quote = _extract_quote_string(match)
+        cleaned, marks = extract_delivery_marks(quote)
+        return match.group(0).replace(quote, cleaned) if marks else match.group(0)
+
+    return _SOURCE_QUOTED_RE.sub(replace, source_prompt)
+
+
+def _delivery_marks_contract(source_prompt: str) -> str:
+    """Turn the delivery marks a user typed into the prose form the H3 skill actually documents."""
+    # Per line, not pooled: with two speakers a pooled list makes the model guess which delivery
+    # belongs to which line, and it guesses wrong.
+    lines: list[str] = []
+    any_pause = False
+    for match in _SOURCE_QUOTED_RE.finditer(source_prompt or ""):
+        cleaned, marks = extract_delivery_marks(_extract_quote_string(match))
+        marks = marks + _quote_adjacent_emoji(source_prompt, match)
+        if not marks:
+            continue
+        any_pause = any_pause or "…" in cleaned
+        unique = list(dict.fromkeys(marks))
+        lines.append(f'- "{cleaned}" → {"; ".join(unique)}')
+    for _language, quote in re.findall(
+        r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
+    ):
+        cleaned, marks = extract_delivery_marks(quote)
+        if not marks:
+            continue
+        any_pause = any_pause or "…" in cleaned
+        lines.append(f'- "{cleaned}" → {"; ".join(dict.fromkeys(marks))}')
+    if not lines:
+        return ""
+    pause_note = (
+        "\nA requested beat of silence is already written as an ellipsis inside the quoted words; preserve that "
+        "punctuation verbatim and do not turn it into extra spoken words, a cut, or a new shot."
+        if any_pause else ""
+    )
+    return (
+        "DELIVERY MARKS — RESOLVE, NEVER EMIT: The source dialogue carried delivery shorthand (brackets or emoji). "
+        "It is authoring convenience, not H3 syntax, and must not survive into the output in any form: H3 would "
+        "speak it aloud. Express each one as ordinary English prose in the attribution sentence OUTSIDE its <d> "
+        "block, beside the speaker ID and vocal action, exactly as the official examples do (\"The young woman with "
+        "a quiet, breathy voice (S1) says: <d>[English] …</d>\"). Where the shorthand already resolves to an official "
+        "vocal verb, use that verb as the attribution verb rather than adding a second one. Inside <d> keep only the "
+        "language tag and the spoken words. Requested delivery, per line:\n"
+        + "\n".join(lines)
+        + pause_note
+    )
+
+
 def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        reference_context: str = "", enhance_description: bool = True,
                        ambience_foley_policy: str = "auto",
@@ -3100,7 +3338,12 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         f"TARGET DURATION: {effective_duration:.3f} seconds",
         f"TARGET FRAME COUNT: {int(frame_count)}" if int(frame_count or 0) else "TARGET FRAME COUNT: automatic",
         f"TARGET ASPECT RATIO: {aspect_ratio}",
-        "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n" + basic_prompt.strip(),
+        # Delivery marks are resolved out of the echo too. This block orders the model to preserve
+        # the exact quoted content, so showing it "[enfadada]" would order it to keep a bracket the
+        # delivery contract simultaneously forbids -- and the mark's meaning is already carried by
+        # that contract in the prose form H3 documents.
+        "BASIC USER PROMPT (authoritative; preserve its intent and exact quoted content):\n"
+        + _strip_delivery_emoji(_strip_delivery_marks_from_quotes(basic_prompt.strip())),
     ]
     if aspect_ratio != "auto":
         parts.append(
@@ -3336,6 +3579,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                 "assigned item using a stable vocal source and <d>[Language] exact words</d>. Author no additional "
                 "speech unless the explicit dialogue-authoring contract permits it."
             )
+            delivery_request = _delivery_marks_contract(basic_prompt)
+            if delivery_request:
+                parts.append(delivery_request)
         elif voice_performance == "silent_mouth_acting_experimental":
             profiles = []
             for language, quote, internal in dialogue_contracts:
@@ -3520,6 +3766,9 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "separate utterances at their distinct source beats, not duplicates; keep their recurring source on the "
             "same stable speaker ID:\n" + "\n".join(dialogue_lines)
         )
+        delivery_request = _delivery_marks_contract(basic_prompt)
+        if delivery_request:
+            parts.append(delivery_request)
         repeated_dialogue = any(count > 1 for count in dialogue_totals.values())
         if repeated_dialogue and re.search(r"\b(?:god|godlike|divine|deity|dios|divina?)\b", basic_prompt, re.IGNORECASE):
             parts.append(
@@ -3836,7 +4085,9 @@ def _source_dialogue_contracts(source_prompt: str, override_language: str = "aut
         prefix = (source_prompt or "")[:match.start()]
         boundary = max(prefix.rfind(mark) for mark in ".!?;\n")
         cue_window = prefix[boundary + 1:]
-        quote_text = _extract_quote_string(match)
+        # Delivery marks are stripped before the quote becomes a verbatim contract: leaving them in
+        # would make the validator demand that "[enfadada]" be spoken.
+        quote_text, _marks = extract_delivery_marks(_extract_quote_string(match))
         trailing_window = (source_prompt or "")[match.end():match.end() + 60]
         repeated_previous = bool(
             contracts
@@ -3863,7 +4114,7 @@ def _source_dialogue_contracts(source_prompt: str, override_language: str = "aut
         r"<d>\s*\[([^\]]+)\]\s*(.*?)\s*</d>", source_prompt or "", flags=re.DOTALL | re.IGNORECASE,
     ):
         lang = _LANGUAGE_ALIASES.get(language.strip().casefold(), language.strip().capitalize())
-        contracts.append((lang, quote.strip(), False))
+        contracts.append((lang, extract_delivery_marks(quote.strip())[0], False))
 
     # "Again" commonly repeats a short quoted cue without restating its
     # language. Carry an explicit language across identical occurrences while
@@ -5708,6 +5959,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     text = str(prompt).strip()
     errors: list[str] = list(configuration_errors)
     warnings: list[str] = []
+    errors.extend(_leaked_delivery_shorthand_errors(prompt))
     parsed_manifest = parse_media_manifest(media_manifest)
     errors.extend(parsed_manifest["errors"])
     warnings.extend(parsed_manifest["warnings"])

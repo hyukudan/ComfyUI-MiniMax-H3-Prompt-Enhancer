@@ -340,6 +340,10 @@ def enhance_prompt_with_completion(
     dialogue_language: str = "auto",
     editing_intent: str = "none",
     invent_scene: bool = False,
+    # verbatim_source cannot ride on enhance_description because bool("verbatim_source") is
+    # True, which would hand the strictest profile the widest latitude. Sits before
+    # lora_trigger_words to keep the append-only trailing order the compatibility test pins.
+    creative_latitude: str | None = None,
     lora_trigger_words: str = "",
 ) -> tuple[str, dict, dict]:
     """Apply the common MiniMax guide, normalization, validation, and repair loop."""
@@ -431,7 +435,10 @@ def enhance_prompt_with_completion(
         part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
     )
     base_messages = [
-        {"role": "system", "content": system_prompt_for_mode(resolved_mode, bool(enhance_description))},
+        {"role": "system", "content": system_prompt_for_mode(
+            resolved_mode,
+            "verbatim_source" if creative_latitude == "verbatim_source" else bool(enhance_description),
+            invent_scene)},
         {"role": "user", "content": user_request},
     ]
     messages = list(base_messages)
@@ -723,6 +730,7 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
                    dialogue_language: str = "auto",
                    editing_intent: str = "none",
                    invent_scene: bool = False,
+                   creative_latitude: str | None = None,
                    lora_trigger_words: str = "") -> tuple[str, dict, dict]:
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
@@ -775,5 +783,6 @@ def enhance_prompt(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_language,
         editing_intent,
         invent_scene,
-        lora_trigger_words,
+        creative_latitude=creative_latitude,
+        lora_trigger_words=lora_trigger_words,
     )

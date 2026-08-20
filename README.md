@@ -153,13 +153,83 @@ One dropdown for how far the writer may go beyond what you typed:
 
 | level | behaviour |
 |---|---|
+| `verbatim_source` | **none** — keeps your wording, facts, order and terseness exactly as written. Only reformats into the H3 sections, applies the selected style, and resolves delivery marks |
 | `conservative_grounded` | adds only the minimum executable structure the H3 mode requires |
 | `enhanced_production` *(default)* | resolves unspecified production decisions — composition, blocking, lighting, micro-performance |
 | `invented_production` | treats the source as a premise and builds the world around it: supporting presence, props, set dressing, background life, and the sound it causes |
 
 This replaces the former `enhance_description` and `invent_scene` booleans, which spanned four states for three meanings — and the spare one lied, running the most conservative profile while the UI promised an invented scene. Workflows saved with the old pair are converted on load.
 
+`verbatim_source` is not the same as `conservative_grounded`: the conservative profile is *required* to expand ("do not preserve source terseness when the mode requires structure"), while the verbatim one is required not to. Reach for it when the description is already finished writing.
+
 Invention never touches what is yours. Quoted dialogue, the identity and role of every supplied reference, the requested duration, shot count and ending, and the source's level of gore stay locked at every level.
+
+### Dialogue Delivery Marks & Emoji Palette
+
+Type delivery shorthand next to a line and it is resolved into the prose form H3 actually documents. A palette of one-click buttons sits under `basic_prompt`.
+
+```text
+La mujer se gira 😠 "No me toques"
+El hombre responde 🤫 "Por favor… escúchame ⏸️ un momento"
+```
+
+becomes, per line:
+
+```text
+- "No me toques" → in a hard, angry voice
+- "Por favor… escúchame… un momento" → whispers; a held beat of silence at that point
+```
+
+**Verified on a real generation.** Two emoji in, one T2VA render out:
+
+```text
+in   She says 😠 "No me toques". He answers 🤫 "Por favor, escúchame".
+
+out  The woman (S1) speaks with a hard, angry voice while saying <d>[Spanish] No me toques</d>.
+     The man (S2) replies with a whispered tone, stating <d>[Spanish] Por favor, escúchame</d>.
+```
+
+Delivery landed outside `<d>`, each mark stayed on its own speaker, the Spanish survived verbatim inside the tag, and no emoji reached the model.
+
+**Why translation rather than pass-through.** H3 has no emotion-tag syntax at all. Its published skill (`MiniMax-AI/MiniMax-H3`, `.claude/skills/h3-prompt-writing`) puts the speaker's delivery in plain prose *outside* `<d>` and allows only the language tag plus the exact words inside it. `[whispering]`, `(laughs)`, `*sighs*` and `<break time="1s">` are ElevenLabs/Bark syntax — H3 would read them as words to speak. So every mark is resolved here and stripped from the spoken words, the dialogue contract, and the echoed prompt.
+
+Marks bind to a line by proximity, so two speakers each keep their own delivery instead of sharing a pooled list. Bracket aliases (`[enfadada]`, `[susurro]`, `[pausa]`, ~30 in Spanish and English) work the same way, and official H3 brackets (`[Shot 2]`, `[English]`, `[unclear]`) are never touched.
+
+Emoji backed by a **documented vocal verb** are marked with a green border in the palette, because a verb the guide spells out is a safer instruction than an invented adverb:
+
+| | verb | | prose |
+|---|---|---|---|
+| 💬 | `says` | 😠 | hard, angry voice |
+| 🤫 | `whispers` | 😢 | low, unsteady, close to tears |
+| 😡 | `shouts` | 😭 | through tears |
+| ❓ | `asks` | 😨 | thin, frightened voice |
+| 🎤 | `sings` | 😀 | bright, warm voice |
+| 📢 | `says in an off-screen voiceover` | 😂 | through laughter |
+| | | 😏 | flat, sardonic tone |
+| | | 😐 | cold, level voice |
+| | | 🥱 | slow, weary voice |
+| | | ⚡ | quick, urgent voice |
+| | | 🫢 | hushed, breathy voice |
+
+The prose column follows the axes the guide names for a speaker — pitch, timbre, speaking rate, accent — phrased like its own examples (*"The young woman with a quiet, breathy voice (S1) says:"*).
+
+⏸️ **is our own convention, not a documented one.** The official guides contain no pause mechanism whatsoever; the only temporal lever they define is shot timestamps. It is rendered as an ellipsis inside the quote, leaning on the rule that punctuation must be preserved verbatim. Worth A/B testing before relying on it.
+
+The validator fails a finished prompt that still contains any shorthand, naming the leaked mark. Previously a stray bracket surfaced only indirectly as "invented dialogue" — pointing at the wrong cause — and a stray emoji was not caught at all.
+
+### LoRA Trigger Words (`lora_trigger_words`)
+
+Type the trigger tokens for any LoRA in the graph — `g0r3_style, ultrarealistic_v2` — and they are appended to the finished prompt **verbatim**.
+
+They deliberately never pass through the LLM. A trigger is an exact token the LoRA was trained on, so `g0r3_style` has to survive character for character; sent through the writer it would be translated into fluent English like everything else. It would also fail the rule that every sentence name something a camera could record — correctly, because a token is not something a camera can record.
+
+So the tokens are injected **after validation**, where a repair pass can no longer rewrite them and no English-expecting check can trip over them. They land inside the description body (`integrated_multimodal_description`, or `detailed_description` in Ref2VA) rather than after the last section, because a trailing line gets parsed as part of `non_diegetic_music` and breaks the three-field contract.
+
+### Speech-Cue Recognition
+
+Source dialogue is detected from quoted text next to a speech cue. That cue list now covers the ordinary verbs writers actually reach for — `answers`, `murmurs`, `mutters`, `mumbles`, `yells`, `screams`, `insists`, `pleads`, `begs` — alongside `says`, `replies`, `asks`, `shouts`, `whispers`, `sings` and their Spanish equivalents.
+
+`answers` was missing, which had a nasty shape: the user's own line went undetected as source dialogue and validation then rejected it as **invented** dialogue, blaming the writer for text the user had typed. A cue only counts immediately beside a quoted string, so these verbs cannot fire on ordinary prose — *He repeats the gesture and picks up "the red book"* is still not dialogue.
 
 ---
 

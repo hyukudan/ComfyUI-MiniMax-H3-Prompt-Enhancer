@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// One-click delivery shorthand under basic_prompt.
+//
+// H3 has no emotion-tag syntax: its published skill puts delivery in prose OUTSIDE <d> and allows
+// only the language tag plus the exact words inside it. So these emoji never reach the model --
+// prompt_guides.py resolves each one into the documented prose form and strips it from both the
+// spoken words and the echoed prompt. The palette is purely an authoring affordance; the meaning
+// lives in DELIVERY_EMOJI on the Python side, and the two lists must stay in step.
+import { app } from "/scripts/app.js";
+
+const PROMPT_WIDGET = "basic_prompt";
+const PALETTE_WIDGET = "minimax_h3_delivery_palette";
+const TARGET_NODES = new Set([
+    "MiniMaxH3PromptEnhancer",
+    "MiniMaxH3GGUFPromptEnhancer",
+    "MiniMaxH3PromptGuideBuilder",
+]);
+
+// tier "verb" marks the ones the official guide spells out as vocal verbs, which is why they are
+// listed first: a documented verb is a safer instruction than an invented adverb.
+const DELIVERY_EMOJI = [
+    { emoji: "💬", tier: "verb", label: "says — neutral" },
+    { emoji: "🤫", tier: "verb", label: "whispers" },
+    { emoji: "😡", tier: "verb", label: "shouts" },
+    { emoji: "❓", tier: "verb", label: "asks" },
+    { emoji: "🎤", tier: "verb", label: "sings" },
+    { emoji: "📢", tier: "verb", label: "off-screen voiceover" },
+    { emoji: "😠", tier: "prose", label: "hard, angry voice" },
+    { emoji: "😢", tier: "prose", label: "low, unsteady, close to tears" },
+    { emoji: "😭", tier: "prose", label: "through tears" },
+    { emoji: "😨", tier: "prose", label: "thin, frightened voice" },
+    { emoji: "😀", tier: "prose", label: "bright, warm voice" },
+    { emoji: "😂", tier: "prose", label: "through laughter" },
+    { emoji: "😏", tier: "prose", label: "flat, sardonic tone" },
+    { emoji: "😐", tier: "prose", label: "cold, level voice" },
+    { emoji: "🥱", tier: "prose", label: "slow, weary voice" },
+    { emoji: "⚡", tier: "prose", label: "quick, urgent voice" },
+    { emoji: "🫢", tier: "prose", label: "hushed, breathy voice" },
+    { emoji: "⏸️", tier: "pause", label: "pause (our convention: H3 documents none)" },
+];
+
+function promptTextarea(node) {
+    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    if (!widget) return null;
+    const element = widget.element ?? widget.inputEl;
+    return element && element.tagName === "TEXTAREA" ? element : null;
+}
+
+function insert(node, token) {
+    const textarea = promptTextarea(node);
+    if (!textarea) return;
+    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    // Emoji attach to a line by proximity on the Python side, so a bare token would glue itself to
+    // the previous word and read as part of it. Pad only where padding is missing.
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const tail = after && !/^\s/.test(after) ? " " : "";
+    const injected = `${lead}${token}${tail}`;
+    textarea.value = `${before}${injected}${after}`;
+    if (widget) widget.value = textarea.value;
+    const caret = start + injected.length;
+    textarea.setSelectionRange(caret, caret);
+    textarea.focus();
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function placePaletteUnderPrompt(node) {
+    // addDOMWidget appends, which on a node with ~47 inputs strands the palette at the very bottom,
+    // nowhere near the box it types into. Other extensions on these nodes also reorder and hide
+    // widgets on refresh, so the position is re-asserted rather than set once at build time.
+    const widget = node.__minimaxDeliveryPalette?.widget;
+    const widgets = node.widgets;
+    if (!widget || !widgets) return;
+    const promptIndex = widgets.findIndex((item) => item.name === PROMPT_WIDGET);
+    const paletteIndex = widgets.indexOf(widget);
+    if (promptIndex === -1 || paletteIndex === -1) return;
+    if (paletteIndex === promptIndex + 1) return;
+    widgets.splice(paletteIndex, 1);
+    const target = widgets.findIndex((item) => item.name === PROMPT_WIDGET) + 1;
+    widgets.splice(target, 0, widget);
+    node.setDirtyCanvas?.(true, true);
+}
+
+function buildPalette(node) {
+    if (node.__minimaxDeliveryPalette) return;
+    if (typeof node.addDOMWidget !== "function") return;
+    if (!node.widgets?.some((item) => item.name === PROMPT_WIDGET)) return;
+
+    const root = document.createElement("div");
+    root.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:2px 4px;";
+
+    const caption = document.createElement("div");
+    caption.textContent = "Delivery — click to insert beside a quoted line";
+    caption.style.cssText = "font-size:10px;opacity:0.65;";
+    root.appendChild(caption);
+
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;flex-wrap:wrap;gap:3px;";
+    for (const { emoji, tier, label } of DELIVERY_EMOJI) {
+        const button = document.createElement("button");
+        button.textContent = emoji;
+        button.title = tier === "verb" ? `${label}  (official H3 verb)` : label;
+        button.style.cssText =
+            "font-size:15px;line-height:1;padding:3px 5px;cursor:pointer;border-radius:4px;" +
+            "background:var(--comfy-input-bg,#222);color:inherit;border:1px solid " +
+            (tier === "verb" ? "rgba(120,200,120,0.55)" : "rgba(255,255,255,0.14)") + ";";
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            insert(node, emoji);
+        });
+        // Without this the canvas swallows the press and starts dragging the node instead.
+        button.addEventListener("pointerdown", (event) => event.stopPropagation());
+        row.appendChild(button);
+    }
+    root.appendChild(row);
+
+    const widget = node.addDOMWidget(PALETTE_WIDGET, "minimaxH3DeliveryPalette", root, {
+        serialize: false,
+        hideOnZoom: false,
+    });
+    if (widget) {
+        widget.computeSize = () => [0, 58];
+        // Never persist: this is chrome, and a serialized DOM widget shifts every widget index
+        // after it when an old workflow is loaded.
+        widget.serialize = false;
+    }
+    node.__minimaxDeliveryPalette = { root, widget };
+    placePaletteUnderPrompt(node);
+}
+
+app.registerExtension({
+    name: "MiniMaxH3PromptEnhancer.DeliveryPalette",
+    beforeRegisterNodeDef(nodeType, nodeData) {
+        if (!TARGET_NODES.has(nodeData.name)) return;
+        const originalCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const result = originalCreated?.apply(this, arguments);
+            // The prompt widget is built by the base implementation, so defer until it exists.
+            setTimeout(() => {
+                buildPalette(this);
+                placePaletteUnderPrompt(this);
+            }, 0);
+            return result;
+        };
+        const originalConfigured = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const result = originalConfigured?.apply(this, arguments);
+            setTimeout(() => {
+                buildPalette(this);
+                placePaletteUnderPrompt(this);
+            }, 0);
+            return result;
+        };
+    },
+});
