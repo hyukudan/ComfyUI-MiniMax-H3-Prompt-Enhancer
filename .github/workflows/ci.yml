@@ -25,7 +25,9 @@ jobs:
         run: python -m pip install --upgrade pytest ruff
       - name: Run Ruff
         run: python -m ruff check .
+      # Globbed rather than named one by one: the palette shipped while this step still checked
+      # only backend_toggle.js, so a syntax error in the new file would have reached users.
       - name: Check frontend syntax
-        run: node --check web/backend_toggle.js
+        run: for file in web/*.js; do node --check "$file"; done
       - name: Run tests
         run: python -m pytest -q
