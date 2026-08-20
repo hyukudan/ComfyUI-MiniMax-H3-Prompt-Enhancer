@@ -220,7 +220,24 @@ The prose column follows the axes the guide names for a speaker — pitch, timbr
 - "No me dejes"      → in a low, unsteady voice, close to tears; visible: eyes wet and blinking slowly, mouth unsteady
 ```
 
-Cues are written as observable behaviour rather than emotion labels, which is both what the guide asks for and what the node's emotional-performance translation turns into acting.
+Cues are written as observable behaviour rather than emotion labels, and as a small arc — an opening state, a change, a settled state — because that is the shape the emotional-performance translation asks for and a single frozen state under-seeds it. They stay short and relational on purpose: the same contract rejects muscle lists, pseudo-biometric precision and stacked simultaneous instructions.
+
+Marks bind to the **nearest quote**, which is what makes multi-speaker lines work:
+
+```text
+The detective asks 😐 "Where were you on Tuesday night".
+The suspect answers 😨 "I was home, I swear".
+The detective slams the table and shouts 😡 "You are lying to me".
+```
+```text
+- "Where were you on Tuesday night" → in a cold, level voice; visible: face still, gaze level and unblinking…
+- "I was home, I swear"             → in a thin, frightened voice; visible: eyes widening, shoulders drawing up…
+- "You are lying to me"             → shouts; visible: jaw setting, brows driving hard down as the line breaks out…
+```
+
+Two speakers on one line is the ordinary case, and distance is the only rule that handles every arrangement — mark before the quote, after it, several on a line, or one speaker changing emotion between two consecutive lines. Window-based attachment did not: the text between two quotes is the *second* speaker's attribution, so a trailing window read into it and handed the first speaker both marks.
+
+**Cost.** The whole block is ~460 tokens, about 1.4% of the default 32k local context. For comparison a single visual-language profile costs 450–1400, and stacking every treatment axis with the heaviest profile of each reaches 47% of the context including the reply. Delivery marks are among the cheapest things in the prompt.
 
 The contract also states that a mark **is the user establishing that emotion**. This matters more than it looks: the emotional-performance translation is source-gated — it only fires when the source already establishes an emotion — so a bare voice descriptor is ambiguous and a cautious writer treats it as audio-only. Saying it outright also keeps the acting legitimate under `verbatim_source`, where the writer is otherwise forbidden to add anything.
 

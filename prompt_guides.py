@@ -3106,25 +3106,29 @@ _DELIVERY_EMOJI_RE = re.compile("|".join(re.escape(e) for e in sorted(DELIVERY_E
 # requires the on-screen character's lips to stay closed, so handing it a face would contradict the
 # spec. The neutral marks still get a cue rather than nothing, because "no instruction" is what
 # leaves a face blank while a line is delivered.
+# Written as a small arc -- opening state, a change, a settled state -- because that is the shape
+# the emotional-performance contract asks for, and a single frozen state under-seeds it. Kept
+# relational and short on purpose: the same contract rejects muscle lists, pseudo-biometric
+# precision and stacked simultaneous instructions.
 DELIVERY_FACE = {
-    "💬": "gaze on the listener, face composed and present",
-    "🎤": "chest lifted, mouth opening fully on the sustained vowels",
-    "⏸": "gaze holding, breath suspended, no mouth movement",
-    "⏸️": "gaze holding, breath suspended, no mouth movement",
-    "🤫": "head tipped closer, lips barely parting",
-    "😡": "jaw set, brows drawn hard down",
-    "❓": "brows lifted, gaze held on the listener",
-    "😠": "jaw tight, brows low, mouth pressed thin",
-    "😢": "eyes wet and blinking slowly, mouth unsteady",
-    "😭": "face crumpling, eyes streaming",
-    "😨": "eyes wide, shoulders drawn up",
-    "😀": "eyes creasing, open smile",
-    "😂": "head tipping back, eyes screwed shut",
-    "😏": "one mouth corner raised, eyelids lowered",
-    "😐": "face still, gaze level and unblinking",
-    "🥱": "eyelids heavy, head tilting down",
-    "⚡": "eyes darting, breath shortened",
-    "🫢": "chin tucked, breath held shallow",
+    "💬": "gaze settling on the listener, face composed and staying present through the line",
+    "🎤": "chest lifting, mouth opening fully on the sustained vowels, jaw loosening between phrases",
+    "⏸": "gaze holding, breath suspended, mouth still until the line resumes",
+    "⏸️": "gaze holding, breath suspended, mouth still until the line resumes",
+    "🤫": "head tipping closer, lips barely parting, shoulders drawn in and held",
+    "😡": "jaw setting, brows driving hard down as the line breaks out, held after it",
+    "❓": "brows lifting, gaze fixing on the listener and staying there for the answer",
+    "😠": "jaw tightening, brows lowering, mouth pressing thin and staying pressed",
+    "😢": "eyes filling, blink slowing, mouth going unsteady and not recovering",
+    "😭": "face crumpling, breath breaking, eyes streaming and staying wet",
+    "😨": "eyes widening, shoulders drawing up, breath catching and held shallow",
+    "😀": "eyes creasing, smile opening and staying warm through the line",
+    "😂": "head tipping back, eyes screwing shut, shoulders shaking then easing",
+    "😏": "one mouth corner lifting, eyelids lowering, the look held",
+    "😐": "face still, gaze level and unblinking, nothing moving but the mouth",
+    "🥱": "eyelids growing heavy, head tilting down, jaw slackening",
+    "⚡": "eyes darting, breath shortening, words pushed out fast",
+    "🫢": "chin tucking, breath held shallow, voice kept low and close",
 }
 
 
@@ -3200,38 +3204,41 @@ def _leaked_delivery_shorthand_errors(prompt: str) -> list[str]:
     return errors
 
 
-def _quote_window(source_prompt: str, match: re.Match[str]) -> str:
-    """The stretch of text a quoted line owns, for attaching marks by proximity.
+def _emoji_owned_by_quote(source_prompt: str, match: re.Match[str]) -> list[str]:
+    """The delivery emoji belonging to one quoted line, assigned by nearest quote.
 
-    A user drops the mark beside the line, not inside it. Bounding the lookbehind at the line start
-    and at any earlier quote stops one line's marks from being claimed by the next.
+    Window-based attachment kept mis-assigning, because the text between two quotes is the second
+    speaker's attribution -- "She says 😡 "...". He answers 😢 "..."" -- and a trailing window
+    reads straight into it. Distance settles every arrangement symmetrically: beside, before,
+    after, several on one line, or several lines for one speaker. An emoji inside the quote is
+    already handled by extract_delivery_marks and is nearest to its own quote anyway.
     """
     text = source_prompt or ""
-    prefix = text[:match.start()]
-    line_start = prefix.rfind("\n") + 1
-    previous_quote = max(
-        (m.end() for m in _SOURCE_QUOTED_RE.finditer(text[:match.start()])), default=line_start
-    )
-    before = text[max(line_start, previous_quote):match.start()]
-    after_stop = text.find("\n", match.end())
-    after = text[match.end():after_stop if after_stop != -1 else match.end() + 40][:40]
-    return before + match.group(0) + after
+    quotes = [(m.start(), m.end()) for m in _SOURCE_QUOTED_RE.finditer(text)]
+    if not quotes:
+        return []
+    mine = (match.start(), match.end())
+
+    def distance(position: int, span: tuple[int, int]) -> int:
+        start, end = span
+        if start <= position < end:
+            return 0
+        return start - position if position < start else position - end
+
+    owned = []
+    for found in _DELIVERY_EMOJI_RE.finditer(text):
+        position = found.start()
+        # Ties go to the earlier quote only if it is genuinely no further away; a mark sitting in
+        # the gap is closer to the line it introduces.
+        nearest = min(quotes, key=lambda span: (distance(position, span), span[0]))
+        if nearest == mine:
+            owned.append(found.group(0))
+    return owned
 
 
 def _quote_adjacent_emoji(source_prompt: str, match: re.Match[str]) -> list[str]:
     """Resolve the delivery emoji that belong to one quoted line into their prose form."""
-    text = source_prompt or ""
-    prefix = text[:match.start()]
-    line_start = prefix.rfind("\n") + 1
-    previous_quote = max(
-        (m.end() for m in _SOURCE_QUOTED_RE.finditer(text[:match.start()])), default=line_start
-    )
-    before = text[max(line_start, previous_quote):match.start()]
-    after_stop = text.find("\n", match.end())
-    after = text[match.end():after_stop if after_stop != -1 else match.end() + 40][:40]
-    found: list[str] = []
-    for window in (before, after):
-        found.extend(_DELIVERY_EMOJI_RE.findall(window))
+    found: list[str] = _emoji_owned_by_quote(source_prompt, match)
     resolved = []
     for emoji in found:
         prose, kind = DELIVERY_EMOJI[emoji]
@@ -3267,7 +3274,7 @@ def _delivery_marks_contract(source_prompt: str) -> str:
     any_pause = False
     for match in _SOURCE_QUOTED_RE.finditer(source_prompt or ""):
         cleaned, marks = extract_delivery_marks(_extract_quote_string(match))
-        emoji_here = _DELIVERY_EMOJI_RE.findall(_quote_window(source_prompt, match))
+        emoji_here = _emoji_owned_by_quote(source_prompt, match)
         marks = marks + _quote_adjacent_emoji(source_prompt, match)
         if not marks:
             continue

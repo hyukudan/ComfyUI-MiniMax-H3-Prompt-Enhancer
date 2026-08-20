@@ -9,6 +9,8 @@
 import { app } from "/scripts/app.js";
 
 const PROMPT_WIDGET = "basic_prompt";
+const MIN_PALETTE_HEIGHT = 58;
+const PALETTE_PADDING = 8;
 const PALETTE_WIDGET = "minimax_h3_delivery_palette";
 const TARGET_NODES = new Set([
     "MiniMaxH3PromptEnhancer",
@@ -146,13 +148,33 @@ function buildPalette(node) {
         hideOnZoom: false,
     });
     if (widget) {
-        widget.computeSize = () => [0, 58];
+        // Measured, not hardcoded: the buttons wrap, so the row count depends on node width. A
+        // fixed height let the second row overlap the widgets underneath as soon as it existed.
+        widget.computeSize = (width) => {
+            const measured = root.scrollHeight || root.offsetHeight || 0;
+            return [width ?? 0, Math.max(MIN_PALETTE_HEIGHT, measured + PALETTE_PADDING)];
+        };
         // Never persist: this is chrome, and a serialized DOM widget shifts every widget index
         // after it when an old workflow is loaded.
         widget.serialize = false;
     }
     node.__minimaxDeliveryPalette = { root, widget };
     placePaletteUnderPrompt(node);
+
+    // The button row rewraps whenever the node is resized, so the height has to be re-measured
+    // rather than computed once. Without this the node keeps the height of the old row count.
+    if (typeof ResizeObserver === "function") {
+        let lastHeight = 0;
+        const observer = new ResizeObserver(() => {
+            const height = root.scrollHeight || 0;
+            if (Math.abs(height - lastHeight) < 2) return;
+            lastHeight = height;
+            node.setSize?.(node.computeSize?.() ?? node.size);
+            node.setDirtyCanvas?.(true, true);
+        });
+        observer.observe(root);
+        node.__minimaxDeliveryPalette.observer = observer;
+    }
 }
 
 app.registerExtension({

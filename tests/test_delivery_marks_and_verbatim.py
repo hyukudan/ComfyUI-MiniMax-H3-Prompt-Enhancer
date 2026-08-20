@@ -64,6 +64,41 @@ def test_marks_do_not_survive_into_the_verbatim_dialogue_contract():
     assert "…" in quote
 
 
+def _lines_of(contract):
+    return [line for line in contract.splitlines() if line.startswith('- "')]
+
+
+def test_two_speakers_on_one_line_keep_their_own_marks():
+    # Found by reading a real generated prompt: the woman was given the man's tears as well as her
+    # own anger. Window-based attachment read past the sentence into "He answers 😢", which is the
+    # *second* speaker's attribution, so the first quote claimed both marks.
+    contract = guides._delivery_marks_contract(
+        'Close-up. She says \U0001f621 "Fuera de mi casa". He answers \U0001f622 "No me dejes".'
+    )
+    angry, sad = _lines_of(contract)
+    assert "shouts" in angry and "jaw setting" in angry
+    assert "tears" not in angry and "eyes filling" not in angry
+    assert "tears" in sad and "eyes filling" in sad
+    assert "shouts" not in sad
+
+
+def test_expression_changes_between_two_lines_from_the_same_speaker():
+    contract = guides._delivery_marks_contract(
+        'She says \U0001f620 "Vete" and then \U0001f622 "por favor".'
+    )
+    first, second = _lines_of(contract)
+    assert "hard, angry voice" in first and "jaw tightening" in first
+    assert "close to tears" in second and "eyes filling" in second
+    assert "angry" not in second
+
+
+def test_mark_after_the_quote_still_belongs_to_it():
+    contract = guides._delivery_marks_contract('He whispers "Ven aqui" \U0001f92b. She nods.')
+    assert _lines_of(contract) == [
+        '- "Ven aqui" → whispers; visible: head tipping closer, lips barely parting, shoulders drawn in and held'
+    ]
+
+
 def test_emoji_beside_a_line_attaches_to_that_line_not_the_next():
     source = 'A: \U0001f621 "Fuera de mi casa"\nB: \U0001f622 "No me dejes"'
     contract = guides._delivery_marks_contract(source)
@@ -92,7 +127,7 @@ def test_visible_cue_is_attached_per_line_and_withheld_from_voiceover():
     contract = guides._delivery_marks_contract(
         'A: \U0001f621 "Fuera de mi casa"\nB: \U0001f4e2 "Nunca volvi"'
     )
-    assert '- "Fuera de mi casa" → shouts; visible: jaw set, brows drawn hard down' in contract
+    assert '- "Fuera de mi casa" → shouts; visible: jaw setting' in contract
     voiceover_line = [line for line in contract.splitlines() if "Nunca volvi" in line][0]
     assert "visible:" not in voiceover_line
     # The gate matters as much as the cue: without this the emotional-performance contract is
