@@ -822,9 +822,9 @@ def test_description_enhancement_toggle_changes_direction_not_source_contract():
     conservative = build_user_request(source, "t2va", 5.0, enhance_description=False)
     assert "ACTIVE DIRECTORIAL ENHANCEMENT" in enhanced
     assert "meaningful change of viewpoint" in enhanced
-    assert "Give important actions a causal envelope" in enhanced
-    assert "BASE DESCRIPTION DEPTH — USEFUL DENSITY, NO WORD-COUNT TARGET" in enhanced
-    assert "do not force it to 350-500 words" in enhanced
+    assert "CONSEQUENTIAL ACTION CHAIN" in enhanced
+    assert "BASE DESCRIPTION DEPTH — RESOLVE EVERY CONSEQUENTIAL ACTION" in enhanced
+    assert "350-500 English words as a working baseline" in enhanced
     assert "CONSERVATIVE FORMAT ADAPTATION" in conservative
     assert "DESCRIPTION DEPTH" not in conservative
     assert '<d>[English] Do not move.</d>' in enhanced
@@ -2677,7 +2677,10 @@ def test_system_prompt_and_worst_case_user_request_stay_inside_their_token_budge
         (("English", "I am leaving now."),), creative, shot_plan, cinematography, "chinese_martial_arts",
         "large_reverberant_interior", "on",
     )
-    assert len(request) < 35000
+    # Reviewed 2026-08-21: 35000 -> 40000 for the CONSEQUENTIAL ACTION CHAIN. The causal-envelope
+    # bullet and the physical-interaction taxonomy were folded into one canonical chain contract
+    # that also serves conservative_grounded; the measurement moved 31689 -> ~36400.
+    assert len(request) < 40000
 
 
 _CONTINUATION_SOURCE = (

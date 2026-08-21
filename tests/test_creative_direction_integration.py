@@ -73,12 +73,16 @@ def test_neutral_controls_preserve_the_current_user_request_byte_for_byte():
     )
     assert legacy_call == explicit_neutral
     # The hash guards that neutral controls change nothing, not that the request is frozen for
-    # ever. Updated 2026-08-20 for deliberate edits: the emotional-performance contract lost a
-    # sentence that banned stacked instructions while stacking six of its own, and a seven-link
-    # precedence chain; and the voice-policy branches are now keyed on the requested performance
-    # mode rather than on whether the source happened to contain quotation marks.
+    # ever. Updated 2026-08-21: the CONSEQUENTIAL ACTION CHAIN became the single canonical action
+    # taxonomy, replacing the five-phase causal envelope and the physical-interaction phase list
+    # that competed with it, and base-mode depth now treats 350-500 words as a baseline when the
+    # clip contains a consequential action instead of discouraging that range. Refined the same day:
+    # the invention limit banned "a wound", which contradicted the chain; the audio clause forbids a
+    # silent contact; the contact link now resolves each layer; and EMOTIONAL_PERFORMANCE_CONTRACT is
+    # gated on an actual performance cue instead of being appended to every enhanced request. The old
+    # clause now forbids leaving the contact silent.
     assert hashlib.sha256(legacy_call.encode("utf-8")).hexdigest() == (
-        "75298fc6eec289ef14c90f9ad60e4c90ae489d1d5c5ab1e2ce9b8ad2d8285d5e"
+        "14463fe63fc63fcb30ec47047d19cc011d253b05312c4117352665a78fdeece1"
     )
 
 

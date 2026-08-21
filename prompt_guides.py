@@ -72,6 +72,48 @@ DELIVERY_TARGETS = ("local", "api_v2")
 _API_V2_TEXT_BLOCK_CHARACTER_LIMIT = 7000
 _API_V2_TEXT_BLOCK_SOFT_PRESSURE = 6300
 _BASE_DESCRIPTION_WORD_WARNING_LIMIT = 600
+
+# A consequential action changes the state of a body, object or surface: a strike, a shot, a
+# collision, a fall, a cut, a break. Naming only the intent leaves the travel and the contact
+# unresolved, and the renderer improvises that middle. Trivial motion is excluded on purpose:
+# forcing a chain onto someone opening a door inflates the prompt without helping the render.
+ACTION_CHAIN_CONTRACT = (
+    "CONSEQUENTIAL ACTION CHAIN \u2014 RESOLVE THE MIDDLE, NOT ONLY THE INTENT:\n"
+    "A consequential action is a strike, cut, shot, throw, collision, fall, or break: something changes "
+    "state. Ordinary motion (walking, turning, sitting, gesturing, opening a door) never qualifies \u2014 "
+    "one clause and move on.\n"
+    "Write each consequential action as one continuous causal chain in playback order, fitted to its "
+    "shot's duration and framing. These four are content checkpoints, not output labels: deliver them as "
+    "flowing prose with temporal connectives, never as a numbered list or inline timestamps.\n"
+    "1. PREPARATION \u2014 stance, grip, load, where the tool starts.\n"
+    "2. EXECUTION \u2014 the travel's path, direction and speed, plus the mechanism's own visible response: "
+    "recoil, muzzle flash, blade arc, follow-through.\n"
+    "3. CONTACT \u2014 name the exact spot on the target, then what EACH layer does, outermost first, with a "
+    "material-specific verb: cloth splits, tears or parts along the edge; plate dents, buckles or "
+    "deflects; glass stars; liquid sprays; and only then the body \u2014 skin parts, the point sinks to a "
+    "stated depth, bone cracks, mass is shoved. FORBIDDEN as the only contact wording: 'slices through', "
+    "'penetrates', 'impacts', 'strikes', 'pierces the layers' with no material named and no stated "
+    "result. Naming the surface without saying what happens to it is the commonest way a contact reads "
+    "as fake.\n"
+    "4. CONSEQUENCE \u2014 the target's reaction and new posture, what separated or deformed, where the tool "
+    "ends (buried to half its length, lodged, withdrawn, fallen), what remains visible after.\n"
+    "Calibration pair \u2014 copy the specificity, not the content. Weak: 'the blade slices through his "
+    "protective layers.' Strong: 'the point punches into the quilted jacket below the left collarbone, "
+    "the padded cotton splitting and folding inward around the steel, and sinks a hand's width into the "
+    "chest.'\n"
+    "SOUND: give each link that makes sound its audible counterpart at the same beat. The contact is the "
+    "loudest event in its shot \u2014 the soundscape must carry the mechanism and the impact against the "
+    "named material, never only ambience and aftermath.\n"
+    "LIMITS: full chains only for the actions the request is about \u2014 rarely more than two or three per "
+    "clip; a secondary consequential action gets one compressed sentence covering travel, contact and "
+    "result. The test is causation, not intensity: whatever the requested action causes \u2014 the wound at "
+    "the entry point, bleeding from it, flash, report, fracture \u2014 belongs in the description however "
+    "graphic; suppressing a caused consequence leaves the chain unresolved, which is the failure this "
+    "contract exists to prevent. What the action does not cause stays out. How much surrounding world "
+    "you may invent is decided by the enhancement profile, not here. When the source names no target, "
+    "land the contact on something already in frame."
+)
+
 DIALOGUE_COVERAGE_CHOICES = ("off", "on")
 DIALOGUE_COVERAGE_CONTRACT = (
     "Keep each speaking character's mouth and eyes unobstructed and in focus for the full duration of their line, "
@@ -3729,7 +3771,21 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "Resolve only genuine omissions needed for coherence. It remains strictly instrumental, with no "
             "singing, lyrics, or vocal samples:\n" + requested_instrumental
         )
-    if bool(enhance_description):
+    # The contract opens with "apply only when the source establishes an emotion", but it was
+    # appended unconditionally, so a pure action prompt paid 2.7k characters that told it nothing.
+    # The cue list is deliberately broad, quotation marks included, because dialogue implies
+    # performance: a false positive costs nothing, a false negative loses the contract.
+    _emotion_cued = bool(re.search(
+        r"[\"\u201c\u201d\u00ab']|\b(cry|cries|crying|tear|sob|smil|laugh|grin|frown|scowl|weep|tremb|fear|"
+        r"afraid|terrif|angry|anger|furio|rage|sad|griev|mourn|joy|happy|nervous|anxio|hesitat|reluctan|"
+        r"suppress|conceal|emotion|expression|react|llora|sonr[i\u00ed]|r[i\u00ed]e|miedo|ira|furia|triste|"
+        r"duda|vacila|nervios|emoci[o\u00f3]n|expresi[o\u00f3]n|"
+        # Non-verbal performance carries no emotion word but is exactly what the contract governs.
+        r"nod|nods|nodding|shake[sn]? her head|shake[sn]? his head|shakes? their head|sigh|gasp|"
+        r"glance|stare|gaze|look[s]? away|shrug|flinch|wince|swallow|blink|breath|pause[sd]?|"
+        r"asiente|niega con la cabeza|suspir|mirada|encoge|parpade)\w*\b",
+        basic_prompt, re.IGNORECASE))
+    if bool(enhance_description) and _emotion_cued:
         # Keep this after source, reference, shot-plan, cinematography and audio authority have been
         # established, but before the chained early return so every output mode receives it once.
         parts.append(EMOTIONAL_PERFORMANCE_CONTRACT)
@@ -3867,19 +3923,10 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "orientation, eyelines, and relevant prop states. Across cuts preserve screen direction, handed contact, "
             "object possession, pose continuity, and states such as open/closed or intact/changed unless the requested "
             "action visibly changes them.\n"
-            "- When the source contains physical interaction, describe the actor, limb or manipulated object, point of "
-            "contact, physically readable response, and resulting state. Complete requested actions and let their "
-            "visible results register before the final frame unless the source explicitly requests interruption.\n"
+            "- Complete requested actions and let their visible results register before the final frame "
+            "unless the source explicitly requests interruption.\n"
             "- Prefer observable geometry, materials, position, movement, and cause-and-effect over generic cinematic "
             "adjectives or unrelated background activity.\n"
-            "- Spend descriptive detail in this order: source-supported subject and prop identity; readable spatial "
-            "layout; the opening state; action mechanics and contact; visible material response; reaction and final "
-            "state; then camera, focus, lighting, and atmosphere that make those facts easier to read. Describe scale, "
-            "surface, rigidity, weight, reflection, deformation, particles, or weather only when already implied by "
-            "the source or when they clarify an existing object's behavior.\n"
-            "- Give important actions a causal envelope: preparation, onset, contact or turning point, immediate "
-            "response, and settling consequence, fitted to the available duration. Synchronize permitted diegetic "
-            "sound to the visible cause and resulting space without adding a new source or event.\n"
             "- Make causal beats and important reveals easy to follow. Allocate enough screen time for each requested "
             "action and spoken line.\n"
             "- Treat repeated action/trigger/transformation cycles as a state ladder. For every cycle, preserve the "
@@ -3931,10 +3978,13 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             )
         else:
             parts.append(
-                "BASE DESCRIPTION DEPTH — USEFUL DENSITY, NO WORD-COUNT TARGET: Make "
+                "BASE DESCRIPTION DEPTH — RESOLVE EVERY CONSEQUENTIAL ACTION: Make "
                 "integrated_multimodal_description detailed enough to stage every requested beat and its visible "
-                "result, but do not force it to 350-500 words and do not aim to fill the 7000-character API ceiling. "
-                "A simple single action may remain compact; use more detail only when duration, interaction, dialogue, "
+                "result. Base mode has no documented word target, but under-description is the more common "
+                "failure: an unresolved physical action is improvised at render time and reads as wrong. Treat "
+                "350-500 English words as a working baseline whenever the clip contains a consequential action, "
+                "and do not aim to fill the 7000-character API ceiling. Keep trivial motion compact. "
+                "Use more detail when duration, interaction, dialogue, "
                 "continuity, or transformation creates more information to resolve. Remove any sentence that does not "
                 "clarify an authoritative fact, spatial relationship, causal beat, material response, performance, "
                 "camera decision, or permitted sound."
@@ -3949,6 +3999,12 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
             "styling, set dressing, new props, new events, new light sources, or new sound sources. Keep creative "
             "treatment disabled, but apply explicit cinematography, shot-plan, reference, and audio controls literally."
         )
+    # Applies from conservative_grounded upwards. verbatim_source is excluded on purpose:
+    # reproducing the user's own wording untouched is that profile's entire purpose, and
+    # expanding an action into four links would contradict it.
+    if enhance_description != "verbatim_source":
+        parts.append(ACTION_CHAIN_CONTRACT)
+
     dialogue_contracts = _source_dialogue_contracts(basic_prompt, override_language=dialogue_language)
     # Authoring counts as much as quoting. The speaker table, the two-speaker example and the
     # numbering rules matter MORE when the writer invents the lines than when it copies them, yet
@@ -4149,6 +4205,13 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
         dialogue_scope_check,
         "use numeric cut times only in later [Shot N] headers",
     ]
+    if enhance_description != "verbatim_source":
+        # Last thing the model reads, and the requirement it drifted from first: a 4B keeps the
+        # chain's structure but slides back to generic contact verbs unless reminded here.
+        final_checks.append(
+            "at every physical contact, name each layer's material and the specific verb of "
+            "what it does"
+        )
     if explicit_shot_plan["provided"]:
         final_checks.insert(0, f"use exactly {explicit_shot_plan['shotCount']} shots in the supplied order")
         if explicit_shot_plan["timingMode"] == "exact":
