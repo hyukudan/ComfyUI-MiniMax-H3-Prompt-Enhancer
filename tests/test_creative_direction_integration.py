@@ -14,7 +14,7 @@ from prompt_guides import build_user_request, treatment_warning_report, validate
 
 
 TWO_SHOT_PROMPT = """integrated_multimodal_description:
-[Shot 1] Live-action, cinematic, a woman approaches the driver's door of a parked car.
+[Shot 1] Hand-authored 2D action-anime line art and stable cel-shaded value groups depict a woman approaching the driver's door of a parked car.
 [Shot 2] At 00:04.000, she opens that door, sits behind the wheel, and closes it.
 
 overall_soundscape:

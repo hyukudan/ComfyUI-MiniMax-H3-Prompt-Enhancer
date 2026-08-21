@@ -12,7 +12,12 @@ from creative_treatments import (
     resolve_visual_style,
 )
 from prompt_enhancer import enhance_prompt_with_completion
-from prompt_guides import build_user_request, normalize_visual_style_signature, validate_prompt
+from prompt_guides import (
+    build_user_request,
+    normalize_visual_medium_anchor,
+    normalize_visual_style_signature,
+    validate_prompt,
+)
 
 
 ANIME_JSON = json.dumps({
@@ -556,6 +561,110 @@ N/A"""
 
     assert not report["valid"]
     assert any("pixel-art profile was contradicted" in error for error in report["errors"])
+
+
+def test_anime_validator_rejects_realistic_skeleton_leak_and_requests_repair():
+    leaked = """integrated_multimodal_description:
+[Shot 1] Cinematic realistic style. An elderly woman in a red coat walks slowly, then stops.
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        leaked, "t2va", 5.0, SOURCE,
+        creative_treatment_json=ANIME_JSON,
+        enhance_description=True,
+    )
+
+    assert not report["valid"]
+    assert any("anime visual language was contradicted" in error for error in report["errors"])
+
+
+def test_anime_music_cannot_satisfy_an_unrealized_visual_language():
+    visually_neutral = """integrated_multimodal_description:
+[Shot 1] An elderly woman in a red coat walks slowly, then stops.
+
+overall_soundscape:
+Quiet room tone.
+
+non_diegetic_music:
+A bright anime opening theme plays at a fast tempo."""
+    report = validate_prompt(
+        visually_neutral, "t2va", 5.0, SOURCE,
+        creative_treatment_json=ANIME_JSON,
+        enhance_description=True,
+    )
+
+    assert not report["valid"]
+    assert any("not observably realized in the visual description" in error for error in report["errors"])
+
+
+def test_observable_anime_medium_anchor_satisfies_visual_language():
+    visible_anime = BASE_OUTPUT.replace(
+        "[Shot 1] ",
+        "[Shot 1] Hand-authored 2D anime line art and stable cel-shaded value groups depict ",
+    )
+    report = validate_prompt(
+        visible_anime, "t2va", 5.0, SOURCE,
+        creative_treatment_json=ANIME_JSON,
+        enhance_description=True,
+    )
+
+    assert not any("not observably realized in the visual description" in error for error in report["errors"])
+
+
+def test_missing_visual_medium_is_deterministically_anchored_before_delivery():
+    treatment = compose_creative_treatment(visual_language="stop_motion_handcrafted")
+    anchored = normalize_visual_medium_anchor(BASE_OUTPUT, "t2va", treatment, SOURCE)
+
+    assert "handcrafted stop-motion animation" in anchored
+    assert anchored.index("handcrafted stop-motion animation") < anchored.index("elderly woman")
+
+
+def test_supermarionation_gets_an_unmistakable_puppet_and_miniature_anchor():
+    treatment = compose_creative_treatment(visual_language="supermarionation")
+    anchored = normalize_visual_medium_anchor(BASE_OUTPUT, "t2va", treatment, SOURCE)
+
+    assert "1960s Supermarionation craft" in anchored
+    assert "visibly artificial marionette" in anchored
+    assert "glossy sculpted head" in anchored
+    assert "practical miniature" in anchored
+
+
+def test_explicit_source_medium_outranks_incompatible_selector_anchor():
+    treatment = compose_creative_treatment(visual_language="stop_motion_handcrafted")
+    source = "A 1990s anime scene shows an elderly woman walking."
+    anchored = normalize_visual_medium_anchor(BASE_OUTPUT, "t2va", treatment, source)
+
+    assert anchored == BASE_OUTPUT
+
+
+def test_anime_validator_preserves_explicitly_requested_live_action_hybrid():
+    hybrid_source = "Render the scene as a live-action and anime hybrid. No music."
+    hybrid = """integrated_multimodal_description:
+[Shot 1] A live-action and hand-authored 2D anime hybrid shows an elderly woman walking, then stopping.
+
+overall_soundscape:
+N/A
+
+non_diegetic_music:
+N/A"""
+    report = validate_prompt(
+        hybrid, "t2va", 5.0, hybrid_source,
+        creative_treatment_json=ANIME_JSON,
+        enhance_description=True,
+    )
+
+    assert not any("anime visual language was contradicted" in error for error in report["errors"])
+
+
+def test_system_examples_do_not_hardcode_a_realistic_visual_style():
+    from prompt_guides import MULTISHOT_SYSTEM_PROMPT, SYSTEM_PROMPT
+
+    assert "Cinematic realistic style" not in SYSTEM_PROMPT
+    assert "Cinematic realistic style" not in MULTISHOT_SYSTEM_PROMPT
 
 
 def test_every_catalogue_profile_is_selectable_and_nothing_selectable_is_missing():

@@ -18,12 +18,12 @@ try:
     from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
     from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
 
 
 def _api_root(endpoint: str) -> str:
@@ -464,6 +464,9 @@ def enhance_prompt_with_completion(
                 basic_prompt + "\n" + effective_reference_context,
             )
             value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+            value = normalize_visual_medium_anchor(
+                value, resolved_mode, creative_treatment, basic_prompt,
+            )
             value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
             value = normalize_instrumental_style_signature(
                 value, resolved_mode, background_score_policy, instrumental_style,
@@ -483,6 +486,9 @@ def enhance_prompt_with_completion(
             basic_prompt + "\n" + effective_reference_context,
         )
         value = normalize_visual_style_signature(value, resolved_mode, resolved_visual_style)
+        value = normalize_visual_medium_anchor(
+            value, resolved_mode, creative_treatment, basic_prompt,
+        )
         value = normalize_content_format_signature(value, resolved_mode, resolved_content_format)
         value = normalize_instrumental_style_signature(
             value, resolved_mode, background_score_policy, instrumental_style,

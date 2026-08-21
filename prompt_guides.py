@@ -1283,7 +1283,7 @@ MODE OPENING RULE:
 
 OUTPUT SKELETON — match this shape exactly. The content is illustrative; the structure is mandatory:
 
-integrated_multimodal_description: Cinematic realistic style. A medium shot frames a woman in a red raincoat on a
+integrated_multimodal_description: A medium shot frames a woman in a red raincoat on a
 rain-slick pier, facing the camera. The woman in her thirties, with a low, tired voice (S1) says: <d>[Spanish] Ya no
 hace falta que vengas.</d> The camera pushes in with small amplitude at slow speed. [Shot 2] At 00:04.500, the shot
 cuts to a close-up of her hand lowering the phone; water drips from the sleeve onto the wooden planks.
@@ -1336,9 +1336,9 @@ depends on: the next pass cannot see the previous one, so a back-reference resol
 
 A two-segment example — short here, but note that the identity and setting are restated in full rather than
 referred back to:
-{"prompts":["Cinematic realistic style. A woman in her thirties with a dark bob and a grey wool coat stands at a
+{"prompts":["A woman in her thirties with a dark bob and a grey wool coat stands at a
 rain-slick bus shelter at night, watching the empty road. She pulls the coat tighter as a bus hisses past without
-stopping.","Cinematic realistic style. The same woman in her thirties with a dark bob and a grey wool coat now
+stopping.","The same woman in her thirties with a dark bob and a grey wool coat now
 walks away from the rain-slick bus shelter along the empty road, shoulders hunched, her reflection breaking in the
 puddles she steps through."]}
 
@@ -5736,7 +5736,9 @@ def _cinematography_literal_adherence_errors(
     ]
 
 
-def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[str, Any]) -> list[str]:
+def _creative_literal_adherence_errors(
+    output_prompt: str, treatment: Mapping[str, Any], source_prompt: str = "",
+) -> list[str]:
     """Prevent internal profile identifiers from leaking into the H3-facing prose."""
     leaked = []
     for profile_id in treatment.get("profileIds", ()):
@@ -5752,6 +5754,34 @@ def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[st
             "the final H3 prompt must not name selector IDs or control metadata."
         )
     selected = {str(profile_id) for profile_id in treatment.get("profileIds", ())}
+    selected_visual_languages = {
+        profile_id.partition(":")[2]
+        for profile_id in selected
+        if profile_id.startswith("visual_language:")
+    }
+    if any(profile.startswith("anime_") for profile in selected_visual_languages):
+        incompatible = []
+        for pattern in (
+            r"\bcinematic\s+realistic\s+style\b",
+            r"\brealistic\s+cinematic\s+style\b",
+            r"\bphotorealistic\b",
+            r"\blive[- ]action\b",
+            r"\bphotographed\s+live[- ]action\b",
+        ):
+            # Source facts outrank the treatment. Only repair photographic language that the
+            # writer introduced on its own; an explicitly requested hybrid remains authoritative.
+            if _positive_pattern_matches(source_prompt, pattern):
+                continue
+            incompatible.extend(
+                match.group(0) for match in _positive_pattern_matches(output_prompt, pattern)
+            )
+        if incompatible:
+            errors.append(
+                "The selected anime visual language was contradicted by realistic, photographic, or live-action "
+                f"rendering language ({list(dict.fromkeys(incompatible))!r}). Rewrite the visible scene as "
+                "unmistakably non-photorealistic hand-authored 2D anime with stable line art, cel-shaded value "
+                "groups, authored animation spacing, and painted background layers."
+            )
     if "visual_language:anime_retro_gag_family" in selected:
         required = {
             "round head/cheek construction": r"\b(?:circular|round(?:ed)?|softly[- ]squared)\s+(?:head|face|cheek)s?\b|\brounded\s+cheeks?\b",
@@ -5794,6 +5824,198 @@ def _creative_literal_adherence_errors(output_prompt: str, treatment: Mapping[st
                 "nearest-neighbor clusters, discrete palette ramps, and stepped grid-aligned motion."
             )
     return errors
+
+
+_VISUAL_MEDIUM_ANCHORS = {
+    "anime": (
+        r"\b(?:2d\s+)?anime\b",
+        r"\bcel(?:[- ](?:shad(?:ed|ing)|animation)|\s+(?:fills?|shadows?|value groups?))\b",
+        r"\bhand[- ](?:drawn|authored)\s+2d\b",
+    ),
+    "graphic_illustration": (
+        r"\bgraphic[- ]novel\b",
+        r"\bhand[- ]illustrated\s+2d\b",
+        r"\b(?:ink|illustrated)\s+contours?\b",
+    ),
+    "stop_motion": (
+        r"\bstop[- ]motion\b",
+        r"\bhandcrafted\s+(?:miniature|puppet|set|animation)\b",
+        r"\bframe[- ]by[- ]frame\s+(?:puppet|animation|pose|movement)\b",
+        r"\breplacement[- ](?:style\s+)?animation\b",
+    ),
+    "supermarionation": (
+        r"\bsupermarionation\b",
+        r"\b(?:visibly\s+)?artificial\s+(?:marionette|puppet)\b",
+        r"\bmarionette\s+(?:character|figure|performance|craft)\b",
+        r"\bstring[- ]operated\s+puppet\b",
+    ),
+    "live_action": (
+        r"\blive[- ]action\b",
+        r"\bphotographed\s+(?:cinematic\s+)?reality\b",
+        r"\bphotographed\s+(?:cinematic\s+)?performance\b",
+    ),
+    "pixel_art": (
+        r"\bpixel[- ]art\b",
+        r"\binteger\s+pixel\s+grid\b",
+        r"\bnearest[- ]neighbor\s+(?:pixel\s+)?clusters?\b",
+    ),
+    "watercolor": (r"\bwatercolou?r\b",),
+    "gouache": (r"\bgouache\b",),
+}
+
+
+_VISUAL_MEDIUM_SENTENCES = {
+    "anime": (
+        "The entire visible scene is hand-authored 2D anime, with stable line art, cel-shaded "
+        "value groups, authored animation spacing, and painted background layers."
+    ),
+    "graphic_illustration": (
+        "The entire visible scene is hand-illustrated 2D graphic-novel art, with controlled ink "
+        "contours, shaped shadow masses, and stable drawn surfaces."
+    ),
+    "stop_motion": (
+        "The entire visible scene is handcrafted stop-motion animation, with tactile miniature "
+        "construction and deliberate frame-by-frame pose increments."
+    ),
+    "supermarionation": (
+        "The entire visible scene uses 1960s Supermarionation craft: the man is a visibly artificial "
+        "marionette with a glossy sculpted head, jointed hands, restrained vertical float, and controlled "
+        "head-tilt performance, staged in a practical miniature refrigerator and apartment set."
+    ),
+    "live_action": (
+        "The entire scene is photographed cinematic live action, with physically real materials, "
+        "natural skin, optical depth, and continuous human motion."
+    ),
+    "pixel_art": (
+        "The entire visible scene is native 16-bit-style pixel art on one fixed integer pixel grid, "
+        "with hard nearest-neighbor clusters, discrete palette ramps, and stepped motion."
+    ),
+    "watercolor": (
+        "The entire visible scene is hand-painted 2D watercolor animation, with visible paper tooth, "
+        "transparent pigment blooms, stable painted forms, and economical authored motion."
+    ),
+    "gouache": (
+        "The entire visible scene is hand-painted 2D gouache animation, with opaque matte color, "
+        "visible brush edges, stable painted forms, and deliberate authored motion."
+    ),
+}
+
+
+def _visual_medium_family(visual_language: str) -> str:
+    selected = str(visual_language or "none")
+    if selected.startswith("anime_"):
+        return "anime"
+    if selected in {"graphic_novel", "graphic_noir"}:
+        return "graphic_illustration"
+    if selected == "stop_motion_handcrafted":
+        return "stop_motion"
+    if selected == "supermarionation":
+        return "supermarionation"
+    if selected.startswith("live_action_"):
+        return "live_action"
+    if selected == "pixel_art_16bit":
+        return "pixel_art"
+    if selected == "watercolor_2d":
+        return "watercolor"
+    if selected == "gouache_2d":
+        return "gouache"
+    return ""
+
+
+_SOURCE_VISUAL_MEDIUM_PATTERNS = {
+    "anime": (
+        r"\banime\s+(?:scene|style|look|visuals?|animation)\b",
+        r"\b(?:2d|90s|1990s|retro|sunrise|shonen|shojo)\s+anime\b",
+        r"\bcel(?:[- ]shaded|\s+animation)\b",
+    ),
+    "graphic_illustration": (r"\bgraphic[- ]novel(?:\s+(?:style|look|art))?\b",),
+    "stop_motion": (r"\bstop[- ]motion\b",),
+    "supermarionation": (r"\bsupermarionation\b", r"\bmarionette[- ]show\b"),
+    "live_action": (r"\blive[- ]action\b", r"\bphotorealistic\b"),
+    "pixel_art": (r"\bpixel[- ]art\b", r"\b16[- ]bit\s+(?:style|art|graphics)\b"),
+    "watercolor": (r"\bwatercolou?r(?:\s+(?:style|look|animation|art))?\b",),
+    "gouache": (r"\bgouache(?:\s+(?:style|look|animation|art))?\b",),
+}
+
+
+def _source_visual_medium_families(source_prompt: str) -> set[str]:
+    return {
+        family
+        for family, patterns in _SOURCE_VISUAL_MEDIUM_PATTERNS.items()
+        if any(re.search(pattern, source_prompt or "", re.IGNORECASE) for pattern in patterns)
+    }
+
+
+def _selected_medium_is_subordinate_to_source(
+    treatment: Mapping[str, Any], source_prompt: str,
+) -> bool:
+    selected_family = _visual_medium_family(str(treatment.get("visualLanguage", "none")))
+    source_families = _source_visual_medium_families(source_prompt)
+    return bool(selected_family and source_families and selected_family not in source_families)
+
+
+def normalize_visual_medium_anchor(
+    text: str, mode: str, treatment: Mapping[str, Any], source_prompt: str = "",
+) -> str:
+    """Guarantee the selected rendering medium without copying the full style contract."""
+    value = str(text)
+    if not treatment.get("applied") or _selected_medium_is_subordinate_to_source(treatment, source_prompt):
+        return value
+    family = _visual_medium_family(str(treatment.get("visualLanguage", "none")))
+    patterns = _VISUAL_MEDIUM_ANCHORS.get(family, ())
+    sentence = _VISUAL_MEDIUM_SENTENCES.get(family, "")
+    if not patterns or not sentence:
+        return value
+
+    def anchored(body: str) -> str:
+        if any(re.search(pattern, body or "", re.IGNORECASE) for pattern in patterns):
+            return body
+        marker = re.match(r"(\s*\[Shot\s+1\]\s*)", body or "", re.IGNORECASE)
+        if marker:
+            return body[:marker.end()] + sentence + " " + body[marker.end():]
+        return sentence + " " + body.lstrip()
+
+    if mode == "chained_multishot":
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        prompts = data.get("prompts") if isinstance(data, dict) else None
+        if not isinstance(prompts, list):
+            return value
+        data["prompts"] = [anchored(item) if isinstance(item, str) else item for item in prompts]
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+    section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
+    body = _section_body(value, section)
+    if not body:
+        return value
+    return _replace_section_body(value, section, anchored(body))
+
+
+def _visual_medium_adherence_errors(
+    visual_text: str, treatment: Mapping[str, Any], *, item_label: str = "", source_prompt: str = "",
+) -> list[str]:
+    """Require one observable medium anchor, separately from music and sound wording.
+
+    Full catalogue coverage remains advisory. The selected rendering medium itself is a much
+    smaller, binary contract: if anime music is the only use of ``anime``, the visual selector
+    did not land and a repair attempt is useful.
+    """
+    selected = str(treatment.get("visualLanguage", "none"))
+    family = _visual_medium_family(selected)
+    if _selected_medium_is_subordinate_to_source(treatment, source_prompt):
+        return []
+    patterns = _VISUAL_MEDIUM_ANCHORS.get(family, ())
+    if not patterns or any(re.search(pattern, visual_text or "", re.IGNORECASE) for pattern in patterns):
+        return []
+    prefix = f"{item_label}: " if item_label else ""
+    readable = family.replace("_", " ")
+    return [
+        f"{prefix}Selected visualLanguage={selected} is not observably realized in the visual description. "
+        f"Rewrite the scene so its subjects, surfaces, lighting, and motion explicitly read as {readable}; "
+        "a mention in non-diegetic music or sound does not satisfy the visual medium."
+    ]
 
 
 def _continuation_opening_window(timeline: str) -> str:
@@ -6210,7 +6432,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
             source_prompt, prompt, selected_cinematography,
         ))
         report["errors"].extend(_creative_literal_adherence_errors(
-            prompt, selected_creative_treatment,
+            prompt, selected_creative_treatment, source_prompt,
         ))
         report["errors"].extend(title_screen_style_adherence_errors(
             prompt, selected_creative_treatment, source_prompt,
@@ -6222,6 +6444,14 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         except (json.JSONDecodeError, AttributeError):
             prompt_items = []
         prompt_items = [item for item in prompt_items if isinstance(item, str)]
+        report["errors"].extend(
+            error
+            for index, item in enumerate(prompt_items, 1)
+            for error in _visual_medium_adherence_errors(
+                item, selected_creative_treatment, item_label=f"Multishot item {index}",
+                source_prompt=source_prompt,
+            )
+        )
         report["errors"].extend(_shot_plan_semantic_errors(prompt_items, explicit_shot_plan))
         api_compatible = all(len(item) <= _API_V2_TEXT_BLOCK_CHARACTER_LIMIT for item in prompt_items)
         for index, item in enumerate(prompt_items, 1):
@@ -6300,13 +6530,16 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     errors.extend(_cinematography_literal_adherence_errors(
         source_prompt, text, selected_cinematography,
     ))
-    errors.extend(_creative_literal_adherence_errors(text, selected_creative_treatment))
+    errors.extend(_creative_literal_adherence_errors(text, selected_creative_treatment, source_prompt))
     errors.extend(title_screen_style_adherence_errors(
         text, selected_creative_treatment, source_prompt,
     ))
 
     timeline_section = "detailed_description" if resolved == "ref2va" else "integrated_multimodal_description"
     timeline = _section_body(text, timeline_section)
+    errors.extend(_visual_medium_adherence_errors(
+        timeline, selected_creative_treatment, source_prompt=source_prompt,
+    ))
     api_compatible = len(text) <= _API_V2_TEXT_BLOCK_CHARACTER_LIMIT
     if len(text) > _API_V2_TEXT_BLOCK_CHARACTER_LIMIT:
         budget_message = (
