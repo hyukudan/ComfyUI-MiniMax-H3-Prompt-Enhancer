@@ -260,6 +260,49 @@ Framing still wins. Where the face is not readable the same beat is carried by p
 
 The validator fails a finished prompt that still contains any shorthand, naming the leaked mark. Previously a stray bracket surfaced only indirectly as "invented dialogue" — pointing at the wrong cause — and a stray emoji was not caught at all.
 
+### Physical Action and Its Consequences
+
+H3 improvises whatever a prompt leaves unresolved, and an action named only by its verb is mostly
+unresolved. *"A samurai attacks with a katana"* renders as impossible anatomy and a contact that
+never lands, because nothing says how the blade travels or what it reaches.
+
+Any action that changes the state of a body, object or surface — a strike, cut, shot, throw,
+collision, fall or break — is written as a continuous causal chain in playback order:
+
+| | |
+|---|---|
+| **Preparation** | stance, grip, load, where the tool starts in frame |
+| **Execution** | the travel's path, direction and speed, plus the mechanism's own response: recoil, muzzle flash, blade arc |
+| **Contact** | the exact spot, then what **each layer** does, outermost first — cloth splits or parts along the edge, plate dents or deflects, glass stars — and only then the body |
+| **Consequence** | the reaction and new posture, what deformed, where the tool ends, what stays visible |
+
+The contact link is the one that decides whether a shot reads as physical. Naming the surface
+without saying what happens to it — *"the blade slices through his protective layers"* — is the
+commonest way a strike looks fake. The contract asks instead for *"the point punches into the
+quilted jacket below the left collarbone, the padded cotton splitting and folding inward around
+the steel, and sinks a hand's width into the chest"*.
+
+Sound follows the same chain: the contact is the loudest event in its shot, so the mechanism and
+the impact against the named material are placed at that beat, not only the ambience and the
+aftermath.
+
+**What it will and will not add.** The test is causation, not intensity. Everything the requested
+action causes belongs in the description however graphic it is — the wound at the entry point,
+bleeding from it, the flash, the report — because suppressing a caused consequence is what leaves
+the chain unresolved in the first place. What the action does not cause stays out. How much
+surrounding world may be invented is not decided here at all; that belongs to
+[`creative_latitude`](#creative-latitude-creative_latitude), which is why `verbatim_source` never
+receives this contract.
+
+Ordinary motion is deliberately exempt: walking, turning, sitting, gesturing or opening a door get
+one clause and move on. Full chains are reserved for the two or three actions the request is
+actually about; a secondary one is compressed into a single sentence.
+
+**Budget.** ComfyUI does not truncate an H3 prompt, so the local path has no length ceiling; the
+7000-character limit applies only when `delivery_target` is `api_v2`. Descriptions grew with this
+contract, so `max_tokens` now defaults to 8192 — if a saved workflow still carries a 16384 context
+the node refuses to run and reports the exact minimum it needs.
+
 ### LoRA Trigger Words (`lora_trigger_words`)
 
 Type the trigger tokens for any LoRA in the graph — `g0r3_style, ultrarealistic_v2` — and they are appended to the finished prompt **verbatim**.
