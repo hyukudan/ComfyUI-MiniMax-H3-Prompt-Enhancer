@@ -571,6 +571,9 @@ class MiniMaxH3GGUFPromptEnhancer:
             acoustic_space, dialogue_coverage, delivery_target, dialogue_language,
             editing_intent,
             invent_scene=invent_scene,
+            # Without this the local backend sees only bool(enhance_description) and
+            # verbatim_source degrades into ordinary enhancement.
+            creative_latitude=latitude_name,
             lora_trigger_words=lora_trigger_words,
         )
         return (
@@ -784,7 +787,9 @@ class MiniMaxH3PromptValidator:
                  instrumental_style="none", acoustic_space="none", dialogue_coverage="off",
                  dialogue_language="auto", editing_intent="none", invent_scene=False, creative_latitude=None,
               lora_trigger_words=""):
-        latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
+        # validate_prompt does not take the profile, so it is resolved only for its side effect
+        # on enhance_description below.
+        _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         report = validate_prompt(

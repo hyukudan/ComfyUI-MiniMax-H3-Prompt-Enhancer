@@ -7,7 +7,6 @@ the next profile added either updates the README or fails the build.
 """
 
 import pathlib
-import re
 
 import content_formats
 import creative_treatments
