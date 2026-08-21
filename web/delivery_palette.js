@@ -146,7 +146,7 @@ function separator() {
 
 function buildPaletteRoot(node) {
     const root = document.createElement("div");
-    root.style.cssText = "display:flex;flex-direction:column;gap:4px;padding:4px 2px 0;flex:0 0 auto;";
+    root.style.cssText = "position:relative;display:flex;flex-direction:column;gap:4px;padding:4px 2px 0;flex:0 0 auto;";
 
     const primary = document.createElement("div");
     primary.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;align-items:center;";
@@ -156,8 +156,16 @@ function buildPaletteRoot(node) {
         primary.appendChild(makeButton(node, mark));
     }
 
+    // Parented to document.body, not to the palette. The prompt widget's wrapper is
+    // overflow:hidden and the palette already sits flush against its bottom edge, so anything
+    // expanding inside it is clipped away -- which is what happened to this panel and to the
+    // second button row before it. position:fixed against the viewport escapes that entirely.
     const tones = document.createElement("div");
-    tones.style.cssText = "display:none;flex-wrap:wrap;gap:4px;align-items:center;";
+    tones.style.cssText =
+        "display:none;position:fixed;z-index:2000;flex-wrap:wrap;gap:4px;align-items:center;" +
+        "max-width:340px;padding:6px;border-radius:8px;background:#1e1e22;" +
+        "border:1px solid #3a3a40;box-shadow:0 6px 20px rgba(0,0,0,0.55);";
+    document.body.appendChild(tones);
     tones.setAttribute("role", "toolbar");
     tones.setAttribute("aria-label", "Emotional tone");
     let previousGroup = null;
@@ -187,6 +195,18 @@ function buildPaletteRoot(node) {
         event.preventDefault();
         event.stopPropagation();
         const open = tones.style.display === "none";
+        if (open) {
+            // Viewport coordinates, since the panel hangs off document.body. Flip above the
+            // button when there is no room below.
+            const anchor = toggle.getBoundingClientRect();
+            tones.style.visibility = "hidden";
+            tones.style.display = "flex";
+            const height = tones.getBoundingClientRect().height;
+            tones.style.left = `${Math.min(anchor.left, window.innerWidth - 356)}px`;
+            const below = anchor.bottom + 4;
+            tones.style.top = `${below + height > window.innerHeight ? anchor.top - height - 4 : below}px`;
+            tones.style.visibility = "visible";
+        }
         tones.style.display = open ? "flex" : "none";
         toggle.setAttribute("aria-expanded", String(open));
         toggle.textContent = open ? "− tone" : "+ tone";
@@ -195,7 +215,22 @@ function buildPaletteRoot(node) {
     primary.appendChild(separator());
     primary.appendChild(toggle);
 
-    root.append(primary, tones);
+    const closeTones = () => {
+        if (tones.style.display === "none") return;
+        tones.style.display = "none";
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.textContent = "+ tone";
+    };
+    // Picking a tone is the end of the interaction, so the panel gets out of the way by itself.
+    tones.addEventListener("click", (event) => {
+        if (event.target.closest("button")) closeTones();
+    });
+    // And a click anywhere else dismisses it, the way any floating panel is expected to behave.
+    document.addEventListener("pointerdown", (event) => {
+        if (!root.contains(event.target)) closeTones();
+    });
+
+    root.appendChild(primary);
     return root;
 }
 
@@ -224,6 +259,10 @@ function mountPalette(node) {
     // Stack vertically and let the textarea absorb whatever height the buttons leave.
     wrapper.style.display = "flex";
     wrapper.style.flexDirection = "column";
+    // The wrapper ships as overflow:hidden and the palette sits flush against its bottom edge, so
+    // a button row that wrapped onto a second line was simply cut off. The textarea keeps its own
+    // scrolling; this only stops the wrapper from clipping its children.
+    wrapper.style.overflow = "visible";
     textarea.style.flex = "1 1 auto";
     textarea.style.minHeight = "0";
     wrapper.appendChild(root);

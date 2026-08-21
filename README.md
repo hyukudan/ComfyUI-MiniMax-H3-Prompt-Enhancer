@@ -223,6 +223,16 @@ The prose column follows the axes the guide names for a speaker — pitch, timbr
 
 Cues are written as observable behaviour rather than emotion labels, and as a small arc — an opening state, a change, a settled state — because that is the shape the emotional-performance translation asks for and a single frozen state under-seeds it. They stay short and relational on purpose: the same contract rejects muscle lists, pseudo-biometric precision and stacked simultaneous instructions.
 
+### Writing Source Dialogue So the Node Can Help
+
+Two habits get noticeably better results, because the node reads your source rather than guessing.
+
+**Name the speaker before the line.** The delivery contract binds each mark to a person by reading the attribution you already wrote, so `The detective asks 😐 "..."` produces `DETECTIVE, "..." → ...; visible on the detective: ...`. Written as `Someone asks 😐 "..."`, the mark still resolves but arrives unattached, and with two speakers on screen the writer has to guess who wears it.
+
+**Keep the quotation marks.** Everything downstream keys off quoted text: it is what makes a line a verbatim contract the writer may not paraphrase, what the validator checks the output against, and what the marks attach to. A line described rather than quoted — *she tells him to leave* — is treated as direction, not dialogue, and may be rewritten.
+
+If you want the writer to invent the dialogue instead, say so plainly (*"write their dialogue"*). That path is detected and gets the full speaker contract, with the marks applying to whatever it writes.
+
 Marks bind to the **nearest quote**, which is what makes multi-speaker lines work:
 
 ```text
