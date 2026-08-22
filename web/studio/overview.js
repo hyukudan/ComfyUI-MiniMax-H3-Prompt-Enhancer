@@ -1,7 +1,7 @@
 import { createEmptyState } from "./components/empty_state.js";
 import { createSourcePill, createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
 import { localPreflight } from "./preflight.js";
-import { createProjectBundle, parseProjectBundle } from "./project_bundle.js";
+import { createProjectBundle, parseProjectBundle, summarizeProjectBundle } from "./project_bundle.js";
 import { applyStarterExample, STARTER_EXAMPLES } from "./starter_examples.js";
 
 function safeDocument(read) {
@@ -24,6 +24,20 @@ function diagnosticCounts(report) {
 
 export function sourceToolAttention(sources) {
     return Object.values(sources ?? {}).filter((source) => ["malformed", "future"].includes(source?.kind)).length;
+}
+
+export function alignmentGuidance(mode) {
+    const normalized = String(mode ?? "").toLowerCase();
+    if (normalized === "i2va") {
+        return "Opening alignment · Match the opening frame to the connected start image.";
+    }
+    if (normalized === "fl2va") {
+        return "Opening + ending alignment · Match both boundary frames to the connected first and last images.";
+    }
+    if (normalized === "l2va") {
+        return "Ending alignment · Match the final frame to the connected end image.";
+    }
+    return null;
 }
 
 export function overviewModel(controller) {
@@ -54,7 +68,7 @@ export function overviewModel(controller) {
     const report = controller.diagnostics?.() ?? { diagnostics: [], stale: false };
     return {
         blank: shot.kind === "blank" && project.kind === "blank" && camera.kind === "blank",
-        mode: projectValue?.mode ?? "auto",
+        mode: controller.mode?.() ?? projectValue?.mode ?? "auto",
         shots: shots.length,
         subjects: projectValue?.subjects?.length ?? 0,
         environments: projectValue?.environments?.length ?? 0,
@@ -81,6 +95,9 @@ function projectTransfer(controller, model) {
     textarea.setAttribute("aria-label", "Prompt Studio v2 package");
     const feedback = document.createElement("p");
     feedback.className = "minimax-h3-source-feedback";
+    const preview = document.createElement("ul");
+    preview.className = "minimax-h3-project-transfer-preview";
+    preview.hidden = true;
     const actions = document.createElement("div");
     actions.className = "minimax-h3-studio-toolbar";
     const copy = document.createElement("button");
@@ -109,26 +126,49 @@ function projectTransfer(controller, model) {
     const apply = document.createElement("button");
     apply.type = "button";
     apply.className = "minimax-h3-button minimax-h3-button-primary";
-    apply.textContent = "Import v2 package";
+    apply.textContent = "Preview import";
+    let pending = null;
     apply.addEventListener("click", () => {
+        if (pending) {
+            const result = controller.replaceProjectBundleAtomically?.(pending.documents)
+                ?? { ok: false, message: "Atomic project import is unavailable in this node." };
+            if (!result.ok) {
+                feedback.textContent = result.rolledBack === false ? `${result.message} Reopen the workflow before editing further.` : `${result.message} No project changes were kept.`;
+                feedback.dataset.valid = "false";
+                return;
+            }
+            feedback.textContent = "Imported all previewed documents as one transaction.";
+            feedback.dataset.valid = "true";
+            pending = null; preview.hidden = true; apply.textContent = "Preview import";
+            return;
+        }
         const parsed = parseProjectBundle(textarea.value);
         if (!parsed.ok) {
             feedback.textContent = parsed.message;
             feedback.dataset.valid = "false";
             return;
         }
-        const handlers = {
-            shotPlan: (value) => controller.replaceShotRaw?.(JSON.stringify(value)),
-            mediaProject: (value) => controller.replaceProjectRaw?.(JSON.stringify(value)),
-            creativeTreatment: (value) => controller.replaceStructuredRaw?.("creative_treatment_json", JSON.stringify(value)),
-            cinematography: (value) => controller.replaceStructuredRaw?.("cinematography_json", JSON.stringify(value)),
-        };
-        feedback.textContent = "Importing validated v2 documents…";
+        pending = parsed;
+        preview.replaceChildren(...summarizeProjectBundle(parsed.documents, {
+            shotPlan: model.sources.shot, mediaProject: model.sources.project,
+            creativeTreatment: model.sources.creative, cinematography: model.sources.camera,
+        }).map((item) => {
+            const row = document.createElement("li");
+            row.textContent = `${item.change}: ${item.label} · ${item.detail}`;
+            return row;
+        }));
+        preview.hidden = false;
+        apply.textContent = "Apply previewed package";
+        feedback.textContent = "Review every replacement above, then apply. Nothing has changed yet.";
         feedback.dataset.valid = "true";
-        for (const [key, value] of Object.entries(parsed.documents)) handlers[key]?.(value);
     });
     actions.append(copy, apply);
-    body.append(help, textarea, actions, feedback);
+    textarea.addEventListener("input", () => {
+        if (!pending) return;
+        pending = null; preview.hidden = true; apply.textContent = "Preview import";
+        feedback.textContent = "Package changed. Preview it again before applying.";
+    });
+    body.append(help, textarea, preview, actions, feedback);
     details.append(summary, body);
     return details;
 }
@@ -407,6 +447,15 @@ export function renderOverview(container, controller, { navigate = () => {}, ope
     copy.textContent = "Your prompt remains the narrative source. Prompt Studio adds reusable structure, continuity and camera intent.";
     intro.append(title, copy);
     container.appendChild(intro);
+
+    const alignment = alignmentGuidance(model.mode);
+    if (alignment) {
+        const guidance = document.createElement("div");
+        guidance.className = "minimax-h3-studio-status";
+        guidance.dataset.kind = "guidance";
+        guidance.textContent = alignment;
+        container.appendChild(guidance);
+    }
 
     if (model.blank) {
         const actions = document.createElement("div");

@@ -2,7 +2,13 @@
 // One-click delivery shorthand under basic_prompt. Tokens stay unchanged; Python resolves them to
 // plain H3 prose and strips them from both spoken words and the echoed prompt.
 import { app } from "/scripts/app.js";
-import { deliveryStatus, insertDeliveryToken, rovingIndex } from "./delivery_palette_model.js";
+import {
+    clearDeliveryMarksOnLine,
+    deliveryStatus,
+    editDeliveryMark,
+    rovingIndex,
+    updateRecentDeliveryMarks,
+} from "./delivery_palette_model.js";
 
 const PROMPT_WIDGET = "basic_prompt";
 const TARGET_NODES = new Set([
@@ -38,6 +44,8 @@ const DELIVERY_EMOJI = [
 ];
 
 const DELIVERY_TOKENS = DELIVERY_EMOJI.map(({ emoji }) => emoji);
+const DELIVERY_VERBS = DELIVERY_EMOJI.filter(({ tier }) => tier === "verb");
+const RECENT_STORAGE_KEY = "minimax_h3_delivery_recent_v1";
 let paletteSequence = 0;
 
 function promptWidget(node) {
@@ -63,39 +71,92 @@ function setStatus(state, value, confirmation = "") {
     state.status.textContent = next.text;
 }
 
-function existingVerbOnLine(value, caret, incoming) {
-    const start = value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
-    const end = value.indexOf("\n", caret);
-    const line = value.slice(start, end < 0 ? value.length : end);
-    return DELIVERY_EMOJI.some((mark) => mark.tier === "verb" && mark.emoji !== incoming && line.includes(mark.emoji));
+function markForToken(token) {
+    return DELIVERY_EMOJI.find(({ emoji }) => emoji === token);
 }
 
-function insert(node, state, mark) {
+function readRecentMarks() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(RECENT_STORAGE_KEY) ?? "[]");
+        return Array.isArray(parsed)
+            ? parsed.filter((token) => markForToken(token)?.tier === "prose").slice(0, 3)
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeRecentMarks(tokens) {
+    try {
+        localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(tokens));
+    } catch {
+        // Browser storage is an optional convenience; authoring must still work when unavailable.
+    }
+}
+
+function currentLine(value, caret) {
+    const source = String(value ?? "");
+    const cursor = Math.max(0, Math.min(source.length, Number(caret) || 0));
+    const start = source.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+    const newline = source.indexOf("\n", cursor);
+    return source.slice(start, newline < 0 ? source.length : newline);
+}
+
+function resultMessage(result, mark) {
+    if (result.action === "removed") return `Removed ${mark.label} from this line.`;
+    if (result.action === "replaced") {
+        return `Replaced ${markForToken(result.oldToken)?.label ?? "the previous Delivery verb"} with ${mark.label} on this line.`;
+    }
+    if (result.action === "cleaned") return `Kept ${mark.label} and removed the conflicting Delivery mark on this line.`;
+    if (result.action === "unchanged") return `${mark.label} is already set on this line.`;
+    return `${mark.emoji} ${mark.label} added — will be written as prose, not shown in the final prompt.`;
+}
+
+function commitTextareaResult(node, state, textarea, result, confirmation) {
     const widget = promptWidget(node);
     if (!widget) return;
-    const textarea = promptTextarea(node);
-    if (!textarea) {
-        const current = String(widget.value ?? "");
-        const result = insertDeliveryToken(current, current.length, current.length, mark.emoji);
-        widget.value = result.value;
-        node.setDirtyCanvas?.(true, true);
-        setStatus(state, result.value, "Added at the end of the prompt.");
-        return;
-    }
-    const start = textarea.selectionStart ?? textarea.value.length;
-    const end = textarea.selectionEnd ?? start;
-    const alreadyHasVerb = mark.tier === "verb" && existingVerbOnLine(textarea.value, start, mark.emoji);
-    const result = insertDeliveryToken(textarea.value, start, end, mark.emoji);
     textarea.value = result.value;
     widget.value = result.value;
     textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
     textarea.focus();
     state.suppressNextInputStatus = true;
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    const confirmation = alreadyHasVerb
-        ? "This line already has a Delivery verb. Keep one verb per line."
-        : `${mark.emoji} ${mark.label} added — will be written as prose, not shown in the final prompt.`;
     setStatus(state, result.value, confirmation);
+    state.syncPressed?.();
+}
+
+function applyMark(node, state, mark) {
+    const widget = promptWidget(node);
+    if (!widget) return;
+    const textarea = promptTextarea(node);
+    const source = textarea?.value ?? String(widget.value ?? "");
+    const start = textarea?.selectionStart ?? source.length;
+    const end = textarea?.selectionEnd ?? start;
+    const result = editDeliveryMark(source, start, end, mark, DELIVERY_VERBS);
+    if (textarea) commitTextareaResult(node, state, textarea, result, resultMessage(result, mark));
+    else {
+        widget.value = result.value;
+        node.setDirtyCanvas?.(true, true);
+        setStatus(state, result.value, result.action === "added" ? "Added at the end of the prompt." : resultMessage(result, mark));
+    }
+    if (mark.tier === "prose" && result.action === "added") state.rememberRecent?.(mark.emoji);
+}
+
+function clearCurrentLine(node, state) {
+    const widget = promptWidget(node);
+    const textarea = promptTextarea(node);
+    if (!widget || !textarea) return;
+    const result = clearDeliveryMarksOnLine(
+        textarea.value,
+        textarea.selectionStart ?? textarea.value.length,
+        textarea.selectionEnd ?? textarea.selectionStart ?? textarea.value.length,
+        DELIVERY_TOKENS,
+    );
+    const message = result.count
+        ? `Cleared ${result.count} ${result.count === 1 ? "mark" : "marks"} from this line.`
+        : "This line has no Delivery or Voice color marks.";
+    if (result.count) commitTextareaResult(node, state, textarea, result, message);
+    else setStatus(state, textarea.value, message);
 }
 
 function focusRing(button) {
@@ -107,29 +168,40 @@ function focusRing(button) {
     button.addEventListener("pointerdown", (event) => event.stopPropagation());
 }
 
-function markButton(node, state, mark, compact = false) {
+function markButton(node, state, mark, compact = false, recent = false) {
     const button = document.createElement("button");
     button.type = "button";
     button.title = mark.title ?? mark.label;
-    button.setAttribute("aria-label", mark.label);
+    button.setAttribute("aria-label", recent ? `Recent: ${mark.label}` : mark.label);
+    button.setAttribute("aria-pressed", "false");
+    button.dataset.deliveryToken = mark.emoji;
     button.style.cssText =
         "min-height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;" +
         `padding:3px ${compact ? "7px" : "8px"};border-radius:6px;color:#ddd;font-size:13px;line-height:1.15;cursor:pointer;` +
-        (mark.tier === "verb"
-            ? "background:rgba(74,222,128,.10);border:2px solid var(--h3-success, #4ade80);"
-            : "background:var(--h3-surface, #2a2a2e);border:1px solid #3a3a40;");
+        (mark.segment === "channel"
+            ? "background:var(--h3-surface, #2a2a2e);border:1px solid #5b6470;"
+            : mark.segment === "timing"
+                ? "background:var(--h3-surface, #2a2a2e);border:1px dashed #6a6254;"
+                : "background:var(--h3-surface, #2a2a2e);border:1px solid #50545c;");
+    const restingBackground = button.style.background;
+    button.addEventListener("pointerenter", () => { button.style.background = "#343740"; });
+    button.addEventListener("pointerleave", () => { button.style.background = restingBackground; });
     const emoji = document.createElement("span");
     emoji.setAttribute("aria-hidden", "true");
     emoji.textContent = mark.emoji;
     const label = document.createElement("span");
     label.textContent = mark.text ?? mark.label;
-    label.style.cssText = `font-size:${compact ? "11px" : "12px"};color:${mark.tier === "verb" ? "#cfe9d6" : "#ddd"};`;
+    label.style.cssText = `font-size:${compact ? "11px" : "12px"};color:#ddd;`;
     button.append(emoji, label);
+    if (recent) label.style.display = "none";
+    const controls = state.markButtons.get(mark.emoji) ?? [];
+    controls.push(button);
+    state.markButtons.set(mark.emoji, controls);
     focusRing(button);
     button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        insert(node, state, mark);
+        applyMark(node, state, mark);
     });
     return button;
 }
@@ -177,7 +249,26 @@ function buildPaletteRoot(node) {
     status.setAttribute("aria-live", "polite");
     status.setAttribute("aria-atomic", "true");
     status.style.cssText = "min-height:14px;margin:0;font-size:10px;line-height:1.3;color:#aeb5bf;";
-    const state = { root, status, cleanup, timers: new Set() };
+    const state = {
+        root,
+        status,
+        cleanup,
+        timers: new Set(),
+        markButtons: new Map(),
+        recent: readRecentMarks(),
+    };
+    state.syncPressed = () => {
+        const textarea = promptTextarea(node);
+        const line = currentLine(textarea?.value ?? promptWidget(node)?.value, textarea?.selectionStart ?? 0);
+        for (const [token, controls] of state.markButtons) {
+            const selected = line.includes(token);
+            for (const control of controls) {
+                control.setAttribute("aria-pressed", String(selected));
+                control.dataset.selected = String(selected);
+                control.style.boxShadow = selected ? "inset 0 0 0 2px var(--h3-focus, #7ab8ff)" : "none";
+            }
+        }
+    };
 
     const delivery = DELIVERY_EMOJI.filter((mark) => mark.segment === "delivery").map((mark) => markButton(node, state, mark, true));
     const channel = DELIVERY_EMOJI.filter((mark) => mark.segment === "channel").map((mark) => markButton(node, state, mark, true));
@@ -229,9 +320,16 @@ function buildPaletteRoot(node) {
         library.appendChild(family);
     }
     installRoving(voiceButtons, 2);
-    const footer = document.createElement("p");
-    footer.textContent = "Combines with any Delivery verb. One or two colors read best.";
-    footer.style.cssText = "margin:9px 0 0;padding-top:8px;border-top:1px solid #3a3a40;font-size:10px;color:#aaa;";
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:flex;flex-direction:column;align-items:stretch;gap:8px;margin:9px 0 0;padding-top:8px;border-top:1px solid #3a3a40;font-size:10px;color:#aaa;";
+    const footerCopy = document.createElement("span");
+    footerCopy.textContent = "Combines with any Delivery verb. One or two colors read best.";
+    const clearLine = document.createElement("button");
+    clearLine.type = "button";
+    clearLine.textContent = "Clear marks on this line";
+    clearLine.style.cssText = "min-height:30px;align-self:flex-end;padding:3px 9px;border:1px solid #50545c;border-radius:5px;background:#292b30;color:#ddd;cursor:pointer;";
+    focusRing(clearLine);
+    footer.append(footerCopy, clearLine);
     dialog.append(dialogHeader, library, footer);
 
     const toggle = document.createElement("button");
@@ -244,6 +342,39 @@ function buildPaletteRoot(node) {
     toggle.style.cssText = "min-height:32px;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;background:#2a2a2e;border:1px dashed #666;color:#ddd;";
     focusRing(toggle);
     primary.appendChild(toggle);
+
+    const recent = document.createElement("div");
+    recent.setAttribute("role", "group");
+    recent.setAttribute("aria-label", "Recent Voice colors");
+    recent.style.cssText = "display:flex;gap:4px;align-items:center;";
+    state.syncRecentVisibility = () => {
+        recent.hidden = !recent.childElementCount || root.getBoundingClientRect().width < 420;
+    };
+    const renderRecent = () => {
+        for (const control of recent.querySelectorAll("button[data-delivery-token]")) {
+            const controls = state.markButtons.get(control.dataset.deliveryToken) ?? [];
+            state.markButtons.set(control.dataset.deliveryToken, controls.filter((candidate) => candidate !== control));
+        }
+        recent.replaceChildren();
+        for (const token of state.recent) {
+            const mark = markForToken(token);
+            if (mark) recent.appendChild(markButton(node, state, mark, true, true));
+        }
+        state.syncRecentVisibility();
+        state.syncPressed();
+    };
+    state.rememberRecent = (token) => {
+        state.recent = updateRecentDeliveryMarks(state.recent, token);
+        writeRecentMarks(state.recent);
+        renderRecent();
+    };
+    primary.appendChild(recent);
+    renderRecent();
+    if (typeof ResizeObserver === "function") {
+        const observer = new ResizeObserver(() => state.syncRecentVisibility());
+        observer.observe(root);
+        cleanup.push(() => observer.disconnect());
+    }
 
     const positionDialog = () => {
         const anchor = toggle.getBoundingClientRect();
@@ -268,6 +399,7 @@ function buildPaletteRoot(node) {
         if (restoreFocus) toggle.focus();
     };
     const openDialog = () => {
+        closeHelp(false);
         positionDialog();
         toggle.setAttribute("aria-expanded", "true");
         voiceButtons[0]?.focus();
@@ -280,6 +412,10 @@ function buildPaletteRoot(node) {
     });
     close.addEventListener("click", () => closeDialog(true));
     voiceButtons.forEach((button) => button.addEventListener("click", () => closeDialog(false)));
+    clearLine.addEventListener("click", () => {
+        clearCurrentLine(node, state);
+        closeDialog(false);
+    });
     dialog.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
             event.preventDefault();
@@ -287,7 +423,7 @@ function buildPaletteRoot(node) {
             return;
         }
         if (event.key !== "Tab") return;
-        const focusable = [close, ...voiceButtons];
+        const focusable = [close, ...voiceButtons, clearLine];
         const current = focusable.indexOf(document.activeElement);
         const next = event.shiftKey
             ? (current <= 0 ? focusable.length - 1 : current - 1)
@@ -311,21 +447,81 @@ function buildPaletteRoot(node) {
         () => dialog.remove(),
     );
 
-    const help = document.createElement("details");
-    help.style.cssText = "font-size:10px;color:#aaa;";
-    const helpSummary = document.createElement("summary");
-    helpSummary.textContent = "Marks resolve to plain prose — they never appear in the final prompt.";
-    helpSummary.style.cursor = "pointer";
+    const helpButton = document.createElement("button");
+    helpButton.type = "button";
+    helpButton.textContent = "How marks work";
+    helpButton.title = "Delivery marks are converted to prose and removed from the final prompt";
+    helpButton.setAttribute("aria-haspopup", "dialog");
+    helpButton.setAttribute("aria-expanded", "false");
+    helpButton.style.cssText = "min-height:32px;padding:3px 8px;border:0;background:transparent;color:#aeb5bf;text-decoration:underline;text-underline-offset:2px;cursor:pointer;";
+    focusRing(helpButton);
+    primary.appendChild(helpButton);
+    const help = document.createElement("div");
+    help.id = `minimax-h3-delivery-help-${paletteSequence}`;
+    help.hidden = true;
+    help.tabIndex = -1;
+    help.setAttribute("role", "dialog");
+    help.setAttribute("aria-label", "How Delivery marks work");
+    help.style.cssText = "display:none;position:fixed;z-index:2001;width:min(300px,calc(100vw - 16px));padding:10px;border:1px solid #50545c;border-radius:8px;background:var(--h3-surface-raised,#24262b);box-shadow:0 6px 18px rgba(0,0,0,.5);color:#ddd;font-size:11px;line-height:1.4;";
+    const helpLead = document.createElement("strong");
+    helpLead.textContent = "Marks resolve to plain prose — they never appear in the final prompt.";
     const helpBody = document.createElement("p");
-    helpBody.textContent = "Place a mark next to the line it belongs to — beside or inside the quotes. One delivery verb per line; colors combine freely.";
-    helpBody.style.cssText = "margin:4px 0 0;line-height:1.35;";
-    help.append(helpSummary, helpBody);
-    root.append(heading, primary, help, status);
+    helpBody.textContent = "Place a mark next to the line it belongs to — beside or inside the quotes. One delivery verb per line; colors combine freely. Voice colors also guide visible performance.";
+    helpBody.style.cssText = "margin:6px 0 0;";
+    help.append(helpLead, helpBody);
+    document.body.appendChild(help);
+    helpButton.setAttribute("aria-controls", help.id);
+    const closeHelp = (restoreFocus = false) => {
+        if (help.hidden) return;
+        help.hidden = true;
+        help.style.display = "none";
+        helpButton.setAttribute("aria-expanded", "false");
+        if (restoreFocus) helpButton.focus();
+    };
+    const openHelp = () => {
+        closeDialog(false);
+        const anchor = helpButton.getBoundingClientRect();
+        help.hidden = false;
+        help.style.display = "block";
+        help.style.visibility = "hidden";
+        const rect = help.getBoundingClientRect();
+        help.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - rect.width - 8))}px`;
+        help.style.top = `${anchor.bottom + rect.height + 4 > window.innerHeight ? Math.max(8, anchor.top - rect.height - 4) : anchor.bottom + 4}px`;
+        help.style.visibility = "visible";
+        helpButton.setAttribute("aria-expanded", "true");
+        help.focus();
+    };
+    helpButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (help.hidden) openHelp(); else closeHelp(true);
+    });
+    help.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeHelp(true);
+        }
+    });
+    const outsideHelp = (event) => {
+        if (!helpButton.contains(event.target) && !help.contains(event.target)) closeHelp(false);
+    };
+    const viewportDismissHelp = () => closeHelp(help.contains(document.activeElement));
+    document.addEventListener("pointerdown", outsideHelp);
+    window.addEventListener("scroll", viewportDismissHelp, true);
+    window.addEventListener("resize", viewportDismissHelp);
+    cleanup.push(
+        () => document.removeEventListener("pointerdown", outsideHelp),
+        () => window.removeEventListener("scroll", viewportDismissHelp, true),
+        () => window.removeEventListener("resize", viewportDismissHelp),
+        () => help.remove(),
+    );
+    root.append(heading, primary, status);
 
     const textarea = promptTextarea(node);
     if (textarea) {
         let debounce = null;
         const input = () => {
+            state.syncPressed();
             if (state.suppressNextInputStatus) {
                 state.suppressNextInputStatus = false;
                 return;
@@ -333,10 +529,14 @@ function buildPaletteRoot(node) {
             clearTimeout(debounce);
             debounce = setTimeout(() => setStatus(state, textarea.value), 180);
         };
+        const caretChanged = () => state.syncPressed();
         textarea.addEventListener("input", input);
+        for (const eventName of ["click", "keyup", "select", "focus"]) textarea.addEventListener(eventName, caretChanged);
+        state.syncPressed();
         cleanup.push(() => {
             clearTimeout(debounce);
             textarea.removeEventListener("input", input);
+            for (const eventName of ["click", "keyup", "select", "focus"]) textarea.removeEventListener(eventName, caretChanged);
         });
     }
     state.destroy = () => {

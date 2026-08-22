@@ -49,7 +49,7 @@ export function localPreflight({ shotDocument, projectDocument } = {}) {
             items.push(issue("warning", "shots", "Full presence is enabled, but at least one subject has no presence state.", label));
         }
         for (const beat of shot?.actionBeats ?? []) {
-            if (!nonEmpty(beat?.action) && !nonEmpty(beat?.dialogue)) {
+            if (!nonEmpty(beat?.action) && !nonEmpty(beat?.dialogue?.text)) {
                 items.push(issue("warning", "shots", "An action beat is empty and will add no direction.", label));
                 break;
             }

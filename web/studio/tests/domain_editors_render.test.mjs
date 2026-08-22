@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { renderEnvironmentsTab } from "../tab_environments.js";
 import { renderCameraTab } from "../tab_camera.js";
+import { renderCoachTab } from "../tab_coach.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
 import { createWidgetStore } from "../widget_store.js";
@@ -171,6 +172,25 @@ test("Camera mounts the selected shot planner and precise controls without hydra
     for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
         assert.match(container.textContent, new RegExp(label));
     }
+    assert.match(container.textContent, /Structured camera summary/);
+    assert.doesNotMatch(container.textContent, /What will reach the prompt/);
+});
+
+test("Review renders successful checked families only after a clean execution", () => {
+    const clean = new TestElement("section");
+    renderCoachTab(clean, { diagnostics: () => ({
+        schemaVersion: 1,
+        stale: false,
+        summary: { errors: 0, warnings: 0, advice: 0, valid: true, qualityValid: true },
+        diagnostics: [],
+    }) });
+    assert.match(clean.textContent, /Review passed/);
+    assert.match(clean.textContent, /Checked: contract structure.*dialogue\/audio.*style/);
+
+    const untouched = new TestElement("section");
+    renderCoachTab(untouched, { diagnostics: () => ({ diagnostics: [], stale: false }) });
+    assert.match(untouched.textContent, /Review has not run yet/);
+    assert.doesNotMatch(untouched.textContent, /Review passed/);
 });
 
 test("Shots renders legacy boolean/null as an untouched empty plan and first edit writes v2", () => {

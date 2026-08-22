@@ -2963,6 +2963,9 @@ function createStudioController(node) {
     const controller = {
         shotUiState: { selectedId: null, plan: null },
         projectUiState: { sourceRaw: null, project: null },
+        mode() {
+            return String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto");
+        },
         resolvedDiagnosticFingerprints: new Set(),
         shotDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
@@ -3081,6 +3084,55 @@ function createStudioController(node) {
             hydrateCreativeDirectionPanel(node);
             refreshStudioDrawer(node.id);
             return true;
+        },
+        replaceProjectBundleAtomically(documents) {
+            const targets = {
+                shotPlan: SHOT_PLAN_WIDGET,
+                mediaProject: "media_manifest",
+                creativeTreatment: CREATIVE_TREATMENT_WIDGET,
+                cinematography: CINEMATOGRAPHY_WIDGET,
+            };
+            const entries = Object.entries(documents ?? {}).map(([key, value]) => ({
+                key, name: targets[key], raw: JSON.stringify(value),
+                widget: node.widgets?.find((candidate) => candidate.name === targets[key]),
+            }));
+            if (!entries.length || entries.some((entry) => !entry.name || !entry.widget)) {
+                return { ok: false, rolledBack: true, message: "One or more target storage widgets are unavailable." };
+            }
+            const snapshots = entries.map((entry) => ({ ...entry, raw: entry.widget.value }));
+            const assign = (entry, raw) => {
+                entry.widget.value = raw;
+                const input = widgetTextElement(entry.widget);
+                if (input) input.value = raw;
+                entry.widget.callback?.(raw);
+            };
+            try {
+                node.__minimaxWritingCreativeStorage = true;
+                for (const entry of entries) assign(entry, entry.raw);
+                for (const entry of entries) structuredWidgetStore(node, entry.name)?.hydrate(entry.raw);
+            } catch (error) {
+                const rollbackErrors = [];
+                for (const snapshot of [...snapshots].reverse()) {
+                    try {
+                        assign(snapshot, snapshot.raw);
+                        structuredWidgetStore(node, snapshot.name)?.hydrate(snapshot.raw);
+                    } catch { rollbackErrors.push(snapshot.key); }
+                }
+                return {
+                    ok: false,
+                    rolledBack: rollbackErrors.length === 0,
+                    message: rollbackErrors.length ? `Import failed; rollback also failed for ${rollbackErrors.join(", ")}.` : String(error?.message ?? "Import failed."),
+                };
+            } finally {
+                node.__minimaxWritingCreativeStorage = false;
+                for (const entry of entries) if (STUDIO_JSON_STORAGE_WIDGETS.has(entry.name)) hideJsonStorageWidget(entry.widget);
+            }
+            hydrateCreativeDirectionPanel(node);
+            if (node.__minimaxDiagnostics) node.__minimaxDiagnostics.stale = true;
+            node.graph?.setDirtyCanvas?.(true, true);
+            node.setDirtyCanvas?.(true, true);
+            refreshStudioDrawer(node.id);
+            return { ok: true, rolledBack: false };
         },
         lookNames() {
             return sortedLookNames(readLookPresets());

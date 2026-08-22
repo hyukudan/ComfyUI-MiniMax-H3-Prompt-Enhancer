@@ -11,7 +11,7 @@ import {
     renderCameraLookTab,
     visualLanguagePopoverGeometry,
 } from "../tab_camera_look.js";
-import { diagnosticLocationLabel, groupDiagnosticsBySeverity } from "../tab_coach.js";
+import { diagnosticLocationLabel, groupDiagnosticsBySeverity, reviewReportState } from "../tab_coach.js";
 import { bindingSuggestion, renderReferencesTab } from "../tab_references.js";
 
 class FakeElement {
@@ -223,6 +223,18 @@ test("camera provenance rows and Review grouping expose usable locations", () =>
     assert.equal(diagnosticLocationLabel({ generationId: "g2", shotId: "s3", field: "camera" }), "g2 · Shot s3 · camera");
 });
 
+test("Review distinguishes an untouched panel from a completed clean run", () => {
+    assert.equal(reviewReportState({ diagnostics: [], stale: false }), "not-run");
+    assert.equal(reviewReportState({
+        schemaVersion: 1,
+        stale: false,
+        summary: { errors: 0, warnings: 0, advice: 0, valid: true, qualityValid: true },
+        diagnostics: [],
+    }), "clean");
+    assert.equal(reviewReportState({ schemaVersion: 1, stale: true, diagnostics: [] }), "stale-clean");
+    assert.equal(reviewReportState({ schemaVersion: 1, diagnostics: [{ severity: "warning" }] }), "findings");
+});
+
 test("Visual language search matches labels, tokens and catalog groups", () => {
     const choices = [
         ["none", "No preference"],
@@ -245,7 +257,8 @@ test("Look renders hierarchical visual-language navigation, global search and cl
     const previousDocument = globalThis.document;
     const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
     globalThis.document = { createElement: (tagName) => new FakeElement(tagName), activeElement: null };
-    let creativeValue = "anime_shonen";
+    const creativeValues = { visualLanguage: "anime_shonen", tone: "future_mood" };
+    let creativeCommits = 0;
     let importedPayload = "";
     let clipboardValue = "";
     Object.defineProperty(globalThis, "navigator", {
@@ -258,12 +271,17 @@ test("Look renders hierarchical visual-language navigation, global search and cl
     const controller = {
         creativeDocument: () => ({ kind: "v2", value: { schemaVersion: 2 } }),
         cinematographyDocument: () => ({ kind: "v2", value: { schemaVersion: 2 } }),
-        creativeFields: () => [["visualLanguage", "Visual language", [
-            ["none", "No preference"], ["anime_shonen", "Kinetic action anime"], ["watercolor_2d", "Watercolor 2D animation"],
-        ]]],
+        creativeFields: () => [
+            ["visualLanguage", "Visual language", [
+                ["none", "No preference"], ["anime_shonen", "Kinetic action anime"], ["watercolor_2d", "Watercolor 2D animation"],
+            ]],
+            ["tone", "Mood (tone)", [
+                ["none", "No preference"], ["epic", "Epic"], ["clinical", "Clinical"], ["pulp_heightened", "Heightened (pulp)"],
+            ]],
+        ],
         visualLanguageGroups: () => [["Animation", [["anime_shonen", "Kinetic action anime"], ["watercolor_2d", "Watercolor 2D animation"]]]],
-        creativeValue: () => creativeValue,
-        commitCreative: (_key, value) => { creativeValue = value; return true; },
+        creativeValue: (key) => creativeValues[key] ?? "none",
+        commitCreative: (key, value) => { creativeCommits += 1; creativeValues[key] = value; return true; },
         cameraFields: () => [],
         cameraValue: () => "none",
         lookNames: () => ["Cinema"],
@@ -298,9 +316,27 @@ test("Look renders hierarchical visual-language navigation, global search and cl
         const matchingOption = controlled.querySelectorAll("[role='option']")[0];
         assert.equal(matchingOption.dataset.value, "watercolor_2d");
         await matchingOption.dispatch("click");
-        assert.equal(creativeValue, "watercolor_2d");
+        assert.equal(creativeValues.visualLanguage, "watercolor_2d");
         assert.equal(descendants(container).filter((element) => element.className === "minimax-h3-visual-preview-notice").length, 1);
         assert.equal(descendants(container).filter((element) => element.textContent === "No sample installed").length, 0);
+
+        const moodTrigger = descendants(container).find((element) => element.className.includes("minimax-h3-mood-trigger"));
+        assert.match(moodTrigger.textContent, /Unavailable — future_mood/);
+        assert.equal(creativeCommits, 1, "the earlier explicit Visual Language choice is the only commit so far");
+        await moodTrigger.dispatch("click");
+        const moodSearch = descendants(container).find((element) => element.placeholder === "Search moods…");
+        moodSearch.value = "pulp";
+        await moodSearch.dispatch("input");
+        const moodList = descendants(container).find((element) => element.id === moodTrigger["aria-controls"]);
+        const moodOption = moodList.querySelectorAll("[role='option']")[0];
+        assert.equal(moodOption.dataset.value, "pulp_heightened");
+        assert.match(descendants(moodOption).find((element) => element.tagName === "SMALL").textContent, /without camp/i);
+        assert.equal(creativeValues.tone, "future_mood", "opening and searching preserve the unknown stored token");
+        assert.equal(creativeCommits, 1, "opening and searching do not write Mood");
+        await moodOption.dispatch("click");
+        assert.equal(creativeValues.tone, "pulp_heightened");
+        assert.equal(creativeCommits, 2, "only an explicit Mood selection commits");
+        assert.ok(descendants(container).some((element) => /Mood shapes staging/.test(element.textContent)));
 
         const exportButton = descendants(container).find((element) => element.textContent === "Export JSON");
         await exportButton.dispatch("click");

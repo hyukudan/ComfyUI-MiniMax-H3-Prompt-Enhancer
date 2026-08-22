@@ -92,6 +92,8 @@ The toolbar below `basic_prompt` separates five **Delivery** verbs from the **V.
 
 Put a mark beside or inside the quoted line it belongs to, keep one Delivery verb per line, and combine Voice colors when useful. If marks are present without quoted dialogue, the UI shows a non-blocking warning because those marks cannot be attached and will be dropped. This line-level Voice color is separate from the scene-wide **Mood (tone)** in Look.
 
+Resting chips are neutral. A pressed outline reflects the marks actually present on the caret's line: choosing a different Delivery verb replaces the old one, choosing the same Voice color toggles it off, and pause remains repeatable. **Clear marks on this line** is scoped to the active line. Up to three recently added Voice colors return as compact shortcuts on wider nodes. The **How marks work** control opens fixed-position help, so reading the explanation never changes the prompt layout or moves the controls below it.
+
 Every audible speaking character receives a stable speaker identifier: `(S1)`, `(S2)`, `(S3)`...
 
 1. **Visible Dialogue**: The character ID, vocal verb, delivery description, and `<d>` tag reside in the same sentence:

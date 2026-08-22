@@ -3,6 +3,7 @@ import {
     visualLanguagePreview,
     visualLanguageSearchText,
 } from "./visual_language_catalog.js";
+import { MOOD_GUARDRAIL, moodChoiceGroups } from "./mood_catalog.js";
 
 const CAMERA_GROUPS = [
     ["Image", ["colorPalette", "exposureContrast", "imageTexture", "lensEffects"]],
@@ -34,6 +35,7 @@ const CAMERA_FIELD_ASPECT = {
 };
 
 let visualLanguageId = 0;
+let moodId = 0;
 const VISUAL_LANGUAGE_POPOVER_TOKENS = Object.freeze([
     "--h3-accent", "--h3-border", "--h3-border-strong", "--h3-button-text", "--h3-font",
     "--h3-input-bg", "--h3-radius-md", "--h3-space-1", "--h3-space-2", "--h3-surface",
@@ -152,6 +154,8 @@ export function renderCameraLookTab(container, controller) {
                         controller.visualLanguageGroups?.() ?? [],
                         (value) => controller.commitCreative(key, value),
                     )
+                    : key === "tone"
+                        ? moodField(label, controller.creativeValue(key), choices, (value) => controller.commitCreative(key, value))
                     : choiceField(label, controller.creativeValue(key), choices, (value) => controller.commitCreative(key, value)));
             }
             return grid;
@@ -848,6 +852,254 @@ function visualLanguageField(label, value, choices, groups, commit) {
     });
     searchRow.append(icon, search, clear);
     popover.append(searchRow, navigation, searchStatus, list, previewNotice);
+    wrapper.append(trigger, popover);
+    field.append(caption, wrapper);
+    renderOptions();
+    return field;
+}
+
+function moodField(label, value, choices, commit) {
+    const field = document.createElement("div");
+    field.className = "minimax-h3-studio-field minimax-h3-mood-field";
+    field.title = "Scene-wide mood: staging, camera, light, performance, mix. For how a spoken line sounds, use Delivery under the prompt.";
+    const caption = document.createElement("span");
+    const instanceId = ++moodId;
+    caption.id = `minimax-h3-mood-label-${instanceId}`;
+    caption.textContent = label;
+    const wrapper = document.createElement("div");
+    wrapper.className = "minimax-h3-searchable-select minimax-h3-mood-select";
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "minimax-h3-searchable-select-trigger minimax-h3-mood-trigger";
+    trigger.setAttribute("role", "combobox");
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-labelledby", caption.id);
+
+    const popover = document.createElement("div");
+    popover.className = "minimax-h3-searchable-select-popover minimax-h3-mood-popover";
+    popover.hidden = true;
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "Choose scene-wide mood");
+    const searchRow = document.createElement("div");
+    searchRow.className = "minimax-h3-select-search";
+    const searchIcon = document.createElement("span");
+    searchIcon.className = "minimax-h3-select-search-icon";
+    searchIcon.textContent = "⌕";
+    searchIcon.setAttribute("aria-hidden", "true");
+    const search = document.createElement("input");
+    search.type = "search";
+    search.autocomplete = "off";
+    search.spellcheck = false;
+    search.placeholder = "Search moods…";
+    search.setAttribute("aria-label", "Search moods");
+    const clear = button("×", () => {
+        search.value = "";
+        renderOptions();
+        search.focus();
+    });
+    clear.className = "minimax-h3-select-search-clear";
+    clear.setAttribute("aria-label", "Clear mood search");
+    searchRow.append(searchIcon, search, clear);
+
+    const searchStatus = document.createElement("p");
+    searchStatus.className = "minimax-h3-select-search-status";
+    searchStatus.setAttribute("role", "status");
+    searchStatus.setAttribute("aria-live", "polite");
+    const list = document.createElement("div");
+    list.id = `minimax-h3-mood-options-${instanceId}`;
+    list.className = "minimax-h3-searchable-select-options minimax-h3-mood-options";
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-labelledby", caption.id);
+    trigger.setAttribute("aria-controls", list.id);
+    search.setAttribute("aria-controls", list.id);
+    const guardrail = document.createElement("p");
+    guardrail.className = "minimax-h3-mood-guardrail";
+    guardrail.textContent = MOOD_GUARDRAIL;
+    let selectedValue = value;
+    let globalListenersActive = false;
+    let removalObserver = null;
+
+    const navigableOptions = () => [...list.querySelectorAll("button")];
+    const focusOption = (index) => {
+        const options = navigableOptions();
+        if (options.length) options[(index + options.length) % options.length].focus();
+    };
+    const wireOptionKeys = (control) => {
+        control.addEventListener("keydown", (event) => {
+            const options = navigableOptions();
+            const index = options.indexOf(control);
+            if (event.key === "ArrowDown") { event.preventDefault(); focusOption(index + 1); }
+            else if (event.key === "ArrowUp") { event.preventDefault(); focusOption(index - 1); }
+            else if (event.key === "Home") { event.preventDefault(); focusOption(0); }
+            else if (event.key === "End") { event.preventDefault(); focusOption(options.length - 1); }
+            else if (event.key === "Escape") { event.preventDefault(); close(); trigger.focus(); }
+        });
+    };
+    const positionPopover = () => {
+        if (popover.hidden || typeof trigger.getBoundingClientRect !== "function" || typeof window === "undefined") return;
+        if (trigger.isConnected === false) { close(); return; }
+        const viewport = window.visualViewport;
+        const geometry = visualLanguagePopoverGeometry(
+            trigger.getBoundingClientRect(),
+            viewport?.width ?? window.innerWidth,
+            viewport?.height ?? window.innerHeight,
+        );
+        Object.assign(popover.style, {
+            width: `${geometry.width}px`,
+            maxHeight: `${geometry.maxHeight}px`,
+            left: `${geometry.left}px`,
+            top: geometry.top === null ? "auto" : `${geometry.top}px`,
+            bottom: geometry.bottom === null ? "auto" : `${geometry.bottom}px`,
+        });
+        popover.dataset.placement = geometry.placement;
+    };
+    const outsidePointer = (event) => {
+        if (!popover.contains(event.target) && !trigger.contains(event.target)) close();
+    };
+    const outsideFocus = (event) => {
+        if (!popover.contains(event.target) && !trigger.contains(event.target)) close();
+    };
+    const detachGlobalListeners = () => {
+        if (!globalListenersActive || typeof window === "undefined") return;
+        document.removeEventListener?.("pointerdown", outsidePointer, true);
+        document.removeEventListener?.("focusin", outsideFocus, true);
+        window.removeEventListener?.("resize", positionPopover);
+        window.removeEventListener?.("scroll", positionPopover, true);
+        window.visualViewport?.removeEventListener?.("resize", positionPopover);
+        window.visualViewport?.removeEventListener?.("scroll", positionPopover);
+        globalListenersActive = false;
+        removalObserver?.disconnect();
+        removalObserver = null;
+    };
+    const close = () => {
+        popover.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        detachGlobalListeners();
+        if (popover.parentElement && popover.parentElement !== wrapper) wrapper.appendChild(popover);
+        delete popover.dataset.portal;
+    };
+    const attachGlobalListeners = () => {
+        if (globalListenersActive || typeof window === "undefined") return;
+        document.addEventListener?.("pointerdown", outsidePointer, true);
+        document.addEventListener?.("focusin", outsideFocus, true);
+        window.addEventListener?.("resize", positionPopover);
+        window.addEventListener?.("scroll", positionPopover, true);
+        window.visualViewport?.addEventListener?.("resize", positionPopover);
+        window.visualViewport?.addEventListener?.("scroll", positionPopover);
+        globalListenersActive = true;
+        if (typeof MutationObserver !== "undefined" && document.body) {
+            removalObserver = new MutationObserver(() => {
+                if (trigger.isConnected === false) close();
+            });
+            removalObserver.observe(document.body, { childList: true, subtree: true });
+        }
+    };
+    const choose = (token) => {
+        if (commit(token) === false) return;
+        selectedValue = token;
+        renderOptions();
+        close();
+        trigger.focus();
+    };
+    const renderOptions = () => {
+        const groups = moodChoiceGroups(choices, selectedValue, search.value);
+        const labels = new Map(choices ?? []);
+        trigger.textContent = `${labels.get(selectedValue) ?? `Unavailable — ${selectedValue}`}  ▾`;
+        list.replaceChildren();
+        let count = 0;
+        for (const { group, choices: entries } of groups) {
+            const groupElement = document.createElement("div");
+            groupElement.className = "minimax-h3-mood-group";
+            groupElement.setAttribute("role", "group");
+            groupElement.setAttribute("aria-label", group || "Mood preference");
+            if (group) {
+                const heading = document.createElement("div");
+                heading.className = "minimax-h3-mood-group-heading";
+                heading.textContent = group;
+                heading.setAttribute("role", "presentation");
+                groupElement.appendChild(heading);
+            }
+            for (const entry of entries) {
+                count += 1;
+                const option = button(entry.label, () => choose(entry.token));
+                option.className = "minimax-h3-mood-option";
+                option.dataset.value = entry.token;
+                option.setAttribute("role", "option");
+                option.setAttribute("aria-selected", entry.token === selectedValue ? "true" : "false");
+                const name = document.createElement("strong");
+                name.textContent = entry.label;
+                const description = document.createElement("small");
+                description.textContent = entry.description;
+                option.replaceChildren(name, description);
+                wireOptionKeys(option);
+                groupElement.appendChild(option);
+            }
+            list.appendChild(groupElement);
+        }
+        searchStatus.textContent = count ? `${count} mood${count === 1 ? "" : "s"}` : "No matching moods.";
+        searchStatus.dataset.visible = "true";
+        clear.disabled = !search.value;
+    };
+    const open = () => {
+        popover.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        search.value = "";
+        renderOptions();
+        if (document.body?.appendChild && popover.parentElement !== document.body) {
+            if (typeof getComputedStyle === "function") {
+                const tokenSource = field.closest?.(".minimax-h3-studio") ?? field;
+                const sourceStyle = getComputedStyle(tokenSource);
+                for (const token of VISUAL_LANGUAGE_POPOVER_TOKENS) {
+                    const tokenValue = sourceStyle.getPropertyValue(token).trim();
+                    if (tokenValue) popover.style.setProperty(token, tokenValue);
+                }
+            }
+            document.body.appendChild(popover);
+            popover.dataset.portal = "true";
+            positionPopover();
+            attachGlobalListeners();
+        }
+        search.focus();
+    };
+    trigger.addEventListener("click", () => popover.hidden ? open() : close());
+    trigger.addEventListener("keydown", (event) => {
+        if (["ArrowDown", "Enter", " "].includes(event.key) && popover.hidden) {
+            event.preventDefault();
+            open();
+        } else if (event.key === "Escape" && !popover.hidden) {
+            event.preventDefault();
+            close();
+        }
+    });
+    search.addEventListener("input", renderOptions);
+    search.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "Enter") {
+            event.preventDefault();
+            focusOption(0);
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            focusOption(-1);
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            if (search.value) {
+                search.value = "";
+                renderOptions();
+            } else {
+                close();
+                trigger.focus();
+            }
+        }
+    });
+    popover.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !event.defaultPrevented) {
+            event.preventDefault();
+            close();
+            trigger.focus();
+        }
+    });
+
+    popover.append(searchRow, searchStatus, list, guardrail);
     wrapper.append(trigger, popover);
     field.append(caption, wrapper);
     renderOptions();

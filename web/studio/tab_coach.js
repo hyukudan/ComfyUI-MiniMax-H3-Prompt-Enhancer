@@ -30,6 +30,14 @@ export function diagnosticLocationLabel(location = {}) {
     return parts.join(" · ") || "Project configuration";
 }
 
+export function reviewReportState(report) {
+    if (report?.diagnostics?.length) return "findings";
+    if (report?.stale) return "stale-clean";
+    return report && (report.schemaVersion !== undefined || report.summary !== undefined)
+        ? "clean"
+        : "not-run";
+}
+
 function button(label, action) {
     const control = document.createElement("button");
     control.type = "button";
@@ -142,9 +150,21 @@ export function renderCoachTab(container, controller) {
     if (!report?.diagnostics?.length) {
         const empty = document.createElement("div");
         empty.className = "minimax-h3-empty-state";
-        empty.textContent = report?.stale
-            ? "The previous review had no findings. Run the node again to confirm the edited project."
-            : "Run the node to populate contract checks and Prompt Coach tips. Advice never blocks generation.";
+        const state = reviewReportState(report);
+        empty.dataset.kind = state;
+        if (state === "clean") {
+            const success = document.createElement("strong");
+            success.textContent = "Review passed";
+            const copy = document.createElement("p");
+            copy.textContent = "The last run completed with no findings.";
+            const families = document.createElement("small");
+            families.textContent = "Checked: contract structure, timing, references, dialogue/audio, camera, continuity, appearance and style.";
+            empty.append(success, copy, families);
+        } else {
+            empty.textContent = state === "stale-clean"
+                ? "The previous review had no findings. Run the node again to confirm the edited project."
+                : "Review has not run yet. Run the node to check the contract and receive Prompt Coach tips; advice never blocks generation.";
+        }
         container.appendChild(empty);
         return;
     }

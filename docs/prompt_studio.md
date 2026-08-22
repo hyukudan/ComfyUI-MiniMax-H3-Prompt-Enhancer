@@ -159,7 +159,7 @@ These checks are intentionally bounded and do not replace backend validation. **
 
 ### Project v2 transfer
 
-**Overview > Import & source tools > Project v2 transfer** copies or imports one validated portable JSON package containing any current native-v2 shot plan, media project, creative treatment, and cinematography documents. All included documents are validated for the supported schema version before any import handler runs. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
+**Overview > Import & source tools > Project v2 transfer** copies or imports one portable JSON package containing any current native-v2 shot plan, media project, creative treatment, and cinematography documents. Import validates nested arrays, identifiers, field types, limits, and supported schema versions, then shows a replacement preview with document counts. Applying the preview is atomic at the node-controller boundary: all target storage widgets are available before writing, and exact raw snapshots are restored if a widget callback or hydration step fails. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
 
 Start and End are temporal phases, not competing owners. An omitted End field inherits Start and is not serialized redundantly.
 
@@ -230,6 +230,8 @@ The normative schema is [`schemas/shot_plan_v2.schema.json`](schemas/shot_plan_v
 ### `creative_treatment_json` v2
 
 Creative Treatment v2 is the canonical editable document for content format, genre, visual language, world aesthetic, scene-wide **Mood (tone)**, and title-screen style. Mood affects staging, camera, light, performance, and mix; line-level speech remains under **Delivery** and **Voice color** below the Basic prompt. The stored key remains `tone`. The normative schema is [`schemas/creative_treatment_v2.schema.json`](schemas/creative_treatment_v2.schema.json).
+
+The Mood control is searchable and grouped by creative intent. Every option includes a short description that distinguishes nearby choices and states its anti-invention boundary; a persistent footer clarifies that Mood never adds facts, dialogue, or music. Search indexes the label, stored token, group, and description, so both **pulp** and **heightened** find the same `pulp_heightened` option. Unknown future values display as **Unavailable — token** and remain byte-preserved until deliberately replaced.
 
 Legacy v1 remains accepted by the runtime so saved workflows continue to generate, but the Studio does not migrate it during hydration or an unrelated edit. It stays read-only until the user invokes the explicit import action, which validates the source and writes one v2 value.
 

@@ -741,6 +741,49 @@ export function ensureStudioStyles() {
             font-size: 9.5px;
             line-height: 1.35;
         }
+        .minimax-h3-mood-options { gap: var(--h3-space-1); }
+        .minimax-h3-mood-group { display: grid; min-width: 0; gap: 2px; }
+        .minimax-h3-mood-group-heading {
+            position: sticky;
+            z-index: 1;
+            top: 0;
+            border-bottom: 1px solid var(--h3-border);
+            padding: 8px 7px 4px;
+            background: var(--h3-input-bg);
+            color: var(--h3-text-muted);
+            font-size: 10px;
+            font-weight: 750;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .minimax-h3-mood-option {
+            display: grid;
+            min-width: 0;
+            min-height: 48px;
+            align-content: center;
+            gap: 2px;
+            border: 1px solid transparent !important;
+            padding: 6px 8px !important;
+            background: transparent !important;
+            color: var(--h3-button-text) !important;
+            text-align: left;
+        }
+        .minimax-h3-mood-option strong { min-width: 0; overflow-wrap: anywhere; font-size: 11.5px; }
+        .minimax-h3-mood-option small { color: var(--h3-text-muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+        .minimax-h3-mood-option:hover,
+        .minimax-h3-mood-option:focus-visible,
+        .minimax-h3-mood-option[aria-selected="true"] {
+            border-color: color-mix(in srgb, var(--h3-accent) 48%, var(--h3-border)) !important;
+            background: color-mix(in srgb, var(--h3-accent) 12%, transparent) !important;
+        }
+        .minimax-h3-mood-guardrail {
+            margin: var(--h3-space-1) 0 0;
+            border-top: 1px solid var(--h3-border);
+            padding-top: var(--h3-space-2);
+            color: var(--h3-text-muted);
+            font-size: 10px;
+            line-height: 1.4;
+        }
         .minimax-h3-select-search-icon {
             position: absolute;
             z-index: 1;

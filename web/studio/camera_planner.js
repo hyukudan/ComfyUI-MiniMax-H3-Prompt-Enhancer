@@ -362,6 +362,6 @@ export function renderVisualCameraPlanner(container, shot, commit, rerender) {
     );
     phaseDetails.appendChild(phases);
     const preview = element("output", "minimax-h3-camera-preview"); preview.setAttribute("aria-live", "polite");
-    preview.append(element("strong", "", "What will reach the prompt"), element("span", "", cameraInstructionPreview(shot)));
+    preview.append(element("strong", "", "Structured camera summary"), element("span", "", cameraInstructionPreview(shot)));
     root.append(phaseDetails, preview); container.appendChild(root);
 }

@@ -55,6 +55,20 @@ test("complete presence and empty beats are non-blocking local notes", () => {
     assert.equal(result.warnings, 2);
 });
 
+test("dialogue-only beats read the structured dialogue text", () => {
+    const result = localPreflight({
+        shotDocument: documentState({ shots: [{
+            id: "s1", generationId: "g1", action: "Ana listens.",
+            actionBeats: [{ dialogue: { text: "We leave now.", delivery: "whispers" } }],
+        }] }),
+        projectDocument: documentState({
+            subjects: [], assets: [], generations: [{ id: "g1", bindings: [] }],
+        }),
+    });
+    assert.equal(result.status, "ready");
+    assert.equal(result.items.some((item) => item.message.includes("action beat is empty")), false);
+});
+
 test("malformed and future sources are blocking without reading their values", () => {
     const result = localPreflight({
         shotDocument: { kind: "future", value: { shots: [{ action: "ignored" }] } },

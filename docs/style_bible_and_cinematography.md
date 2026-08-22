@@ -114,6 +114,8 @@ Mood is scene-wide: it shapes staging, camera, light, performance, and mix witho
 
 `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic`, `none`.
 
+In Prompt Studio, Mood is a searchable combobox grouped by meaning: **Energy & scale**, **Warmth & play**, **Closeness & feeling**, **Weight & unease**, and **Restraint & precision**. Each result carries a short guardrail description; the footer repeats that Mood never adds facts, dialogue, or music. The stored key and tokens remain unchanged, including `pulp_heightened`, whose UI label is **Heightened (pulp)**. Unknown future tokens remain visible and untouched until the user explicitly chooses another value.
+
 ---
 
 ## Narrative Genre Catalog (12 Profiles)
@@ -124,7 +126,7 @@ Mood is scene-wide: it shapes staging, camera, light, performance, and mix witho
 
 ## Content Format Catalog (18 Profiles)
 
-`film_cinematic_scene`, `character_performance_dialogue`, `action_combat_sequence`, `suspense_revelation`, `world_building_exploration`, `product_commercial_spot`, `brand_mood_anthem`, `documentary_scene`, `mockumentary_verite`, `social_hook_vertical`, `music_video_narrative`, `film_trailer_teaser`, `anime_opening_credits`, `title_sequence`, `procedural_how_to`, `music_driven_visual_sequence`, `seamless_loop`, `none`.
+`narrative_animation_short`, `opening_title_sequence`, `brand_promo`, `co_op_game_intro`, `handdrawn_live_fusion`, `minimalist_product_ad`, `lyric_music_video`, `progressive_metaphor_explainer`, `mechanism_explainer`, `general_educational_explainer`, `product_demo_tutorial`, `procedural_how_to`, `cinematic_teaser`, `interview_mini_profile`, `performance_music_video`, `music_driven_visual_sequence`, `seamless_loop`, `none`.
 
 ---
 

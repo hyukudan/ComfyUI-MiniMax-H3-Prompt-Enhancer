@@ -10,7 +10,7 @@ import {
     STUDIO_SECTIONS,
     writeStudioPrefs,
 } from "../drawer.js";
-import { overviewModel, sourceToolAttention } from "../overview.js";
+import { alignmentGuidance, overviewModel, sourceToolAttention } from "../overview.js";
 import { validateStructuredRaw } from "../components/source_state.js";
 import { STUDIO_UI_LEGACY_STORAGE_KEY, STUDIO_UI_STORAGE_KEY } from "../tokens.js";
 
@@ -131,6 +131,21 @@ test("Overview derives pipeline, library, continuity and diagnostic health", () 
     assert.deepEqual(model.generations.map((item) => [item.shots, item.bindings]), [[1, 1], [1, 2]]);
     assert.deepEqual(model.diagnostics, { errors: 1, warnings: 0, tips: 1 });
     assert.equal(model.stale, true);
+});
+
+test("Overview uses the live node mode for contextual boundary alignment", () => {
+    const model = overviewModel({
+        mode: () => "fl2va",
+        shotDocument: blankDocument,
+        projectDocument: () => ({ kind: "v2", value: { mode: "auto", generations: [] } }),
+        cinematographyDocument: blankDocument,
+        diagnostics: () => ({ diagnostics: [] }),
+    });
+    assert.equal(model.mode, "fl2va");
+    assert.match(alignmentGuidance(model.mode), /opening \+ ending alignment/i);
+    assert.match(alignmentGuidance("i2va"), /opening frame/i);
+    assert.match(alignmentGuidance("l2va"), /final frame/i);
+    assert.equal(alignmentGuidance("t2va"), null);
 });
 
 test("Overview treats legacy Project data as preserved read-only source", () => {

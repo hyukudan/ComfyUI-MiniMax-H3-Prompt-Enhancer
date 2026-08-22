@@ -29,6 +29,9 @@ def test_voice_color_dialog_has_keyboard_and_lifecycle_contracts():
     assert 'document.removeEventListener("pointerdown", outside)' in SOURCE
     assert 'nodeType.prototype.onRemoved' in SOURCE
     assert 'state.destroy?.()' in SOURCE
+    assert 'clearLine.textContent = "Clear marks on this line"' in SOURCE
+    assert "editDeliveryMark(" in SOURCE
+    assert "clearDeliveryMarksOnLine(" in SOURCE
 
 
 def test_voice_color_is_labelled_and_responsive_at_narrow_widths():
@@ -46,3 +49,27 @@ def test_delivery_feedback_explains_prose_and_warns_about_unquoted_lines():
     assert 'status.setAttribute("role", "status")' in SOURCE
     assert 'status.setAttribute("aria-live", "polite")' in SOURCE
     assert "will be written as prose, not shown in the final prompt" in SOURCE
+
+
+def test_resting_chips_are_neutral_and_only_real_line_marks_look_selected():
+    assert "var(--h3-success" not in SOURCE
+    assert "rgba(74,222,128" not in SOURCE
+    assert "rgba(122,184,255" not in SOURCE
+    assert "rgba(244,195,106" not in SOURCE
+    assert 'button.setAttribute("aria-pressed", "false")' in SOURCE
+    assert 'control.setAttribute("aria-pressed", String(selected))' in SOURCE
+    assert 'line.includes(token)' in SOURCE
+    assert 'button.addEventListener("pointerenter"' in SOURCE
+    assert 'button.addEventListener("pointerleave"' in SOURCE
+    assert 'mark.segment === "channel"' in SOURCE
+    assert 'mark.segment === "timing"' in SOURCE
+
+
+def test_help_and_recent_are_progressive_without_flow_expansion():
+    assert 'document.createElement("details")' not in SOURCE
+    assert 'helpButton.textContent = "How marks work"' in SOURCE
+    assert 'help.setAttribute("role", "dialog")' in SOURCE
+    assert 'position:fixed' in SOURCE
+    assert 'RECENT_STORAGE_KEY = "minimax_h3_delivery_recent_v1"' in SOURCE
+    assert "updateRecentDeliveryMarks(" in SOURCE
+    assert 'root.getBoundingClientRect().width < 420' in SOURCE
