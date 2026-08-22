@@ -64,6 +64,7 @@
         "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "during_dialogue", "after_dialogue", "before_cut"]},
         "coordinateSpace": {"enum": ["subject", "scene"]},
         "pathShape": {"enum": ["straight", "smooth", "arc_left", "arc_right"]},
+        "anchorTarget": {"$ref": "#/$defs/target"},
         "waypoints": {
           "type": "array", "minItems": 2, "maxItems": 6,
           "items": {"$ref": "#/$defs/cameraWaypoint"}
@@ -86,8 +87,15 @@
         "z": {"type": "number", "minimum": -1, "maximum": 1},
         "framing": {"enum": ["extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide", "extreme_wide"]},
         "angle": {"enum": ["eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye"]},
-        "hold": {"type": "boolean"}
-      }
+        "hold": {"type": "boolean"},
+        "aimMode": {"enum": ["anchor", "travel", "custom"]},
+        "panDegrees": {"type": "number", "minimum": -180, "maximum": 180},
+        "tiltDegrees": {"type": "number", "minimum": -90, "maximum": 90}
+      },
+      "allOf": [{
+        "if": {"anyOf": [{"required": ["panDegrees"]}, {"required": ["tiltDegrees"]}]},
+        "then": {"required": ["aimMode"], "properties": {"aimMode": {"const": "custom"}}}
+      }]
     },
     "subjectPresence": {
       "type": "object", "additionalProperties": false, "required": ["subjectId", "presence"],

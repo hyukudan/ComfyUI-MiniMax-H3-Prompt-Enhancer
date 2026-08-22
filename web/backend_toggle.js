@@ -615,6 +615,27 @@ function ensureFieldTitleStyles() {
             flex-direction: column;
             gap: 3px;
         }
+        .minimax-h3-resolution-mode {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow: hidden;
+            border: 1px solid var(--border-color, #666);
+            border-radius: 4px;
+        }
+        .minimax-h3-resolution-mode button {
+            min-height: 29px;
+            border: 0;
+            border-radius: 0;
+            background: var(--comfy-input-bg, #222);
+            color: var(--input-text, #ddd);
+            cursor: pointer;
+        }
+        .minimax-h3-resolution-mode button + button { border-left: 1px solid var(--border-color, #666); }
+        .minimax-h3-resolution-mode button[aria-pressed="true"] {
+            background: color-mix(in srgb, var(--p-button-primary-background, #4b84ff) 32%, var(--comfy-input-bg, #222));
+            color: var(--input-text, #fff);
+            font-weight: 700;
+        }
         .minimax-h3-resolution-subfield > span,
         .minimax-h3-resolution-effective-label {
             color: var(--descrip-text, #aaa);
@@ -1861,12 +1882,21 @@ function createResolutionBudgetControl(node) {
     const field = createPanelElement("div", "minimax-h3-setting-field minimax-h3-wide minimax-h3-resolution-budget");
     field.appendChild(createPanelElement("span", "", "Resolution budget"));
     const controls = createPanelElement("div", "minimax-h3-resolution-controls");
-    const modeField = createPanelElement("label", "minimax-h3-resolution-subfield");
+    const modeField = createPanelElement("div", "minimax-h3-resolution-subfield");
     modeField.appendChild(createPanelElement("span", "", "Sizing"));
-    const mode = createPanelElement("select", "");
-    addSelectOptions(mode, [["auto", "Auto"], ["custom", "Custom"]]);
+    const mode = createPanelElement("div", "minimax-h3-resolution-mode");
+    mode.setAttribute("role", "group");
     mode.setAttribute("aria-label", "Resolution budget mode");
-    mode.title = "Auto follows the standard H3 dimensions for the selected aspect ratio. Custom targets a megapixel budget.";
+    const modeButtons = Object.fromEntries([["auto", "Auto"], ["custom", "Custom"]].map(([value, label]) => {
+        const button = createPanelElement("button", "", label);
+        button.type = "button";
+        button.dataset.mode = value;
+        button.title = value === "auto"
+            ? "Use the standard H3 dimensions for the selected aspect ratio."
+            : "Set a target megapixel budget.";
+        mode.appendChild(button);
+        return [value, button];
+    }));
     modeField.appendChild(mode);
     const customField = createPanelElement("label", "minimax-h3-resolution-subfield");
     customField.appendChild(createPanelElement("span", "", "Custom budget (MP)"));
@@ -1899,7 +1929,9 @@ function createResolutionBudgetControl(node) {
         const budget = Number(widget.value);
         const automatic = !Number.isFinite(budget) || budget <= 0;
         committedMode = automatic ? "auto" : "custom";
-        mode.value = automatic ? "auto" : "custom";
+        for (const [value, button] of Object.entries(modeButtons)) {
+            button.setAttribute("aria-pressed", String(value === committedMode));
+        }
         custom.disabled = automatic;
         customField.dataset.mode = automatic ? "auto" : "custom";
         if (!automatic) {
@@ -1910,8 +1942,7 @@ function createResolutionBudgetControl(node) {
         }
         effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), automatic ? 0 : budget));
     };
-    const commitMode = () => {
-        const requestedMode = mode.value;
+    const commitMode = (requestedMode) => {
         if (requestedMode === committedMode) return;
         committedMode = requestedMode;
         if (requestedMode === "auto") {
@@ -1929,11 +1960,9 @@ function createResolutionBudgetControl(node) {
             custom.select();
         });
     };
-    // Native selects normally emit both events, while some ComfyUI browser
-    // shells only forward input.  Listen to both and deduplicate so Custom
-    // cannot visually snap back to Auto before the canonical widget updates.
-    mode.addEventListener("input", commitMode);
-    mode.addEventListener("change", commitMode);
+    for (const [value, button] of Object.entries(modeButtons)) {
+        button.addEventListener("click", () => commitMode(value));
+    }
     const commitCustomBudget = ({ clamp = false } = {}) => {
         const minimum = Number(custom.min) || 0.05;
         const maximum = Number(custom.max) || 8;

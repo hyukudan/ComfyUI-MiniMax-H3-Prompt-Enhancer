@@ -9,6 +9,7 @@ a conflict.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -49,9 +50,12 @@ MOTION_TYPES = {
 }
 PATH_KEYS = {
     "motionType", "amplitude", "speed", "easing", "timing",
-    "coordinateSpace", "pathShape", "waypoints",
+    "coordinateSpace", "pathShape", "anchorTarget", "waypoints",
 }
-WAYPOINT_KEYS = {"id", "at", "x", "y", "z", "framing", "angle", "hold"}
+WAYPOINT_KEYS = {
+    "id", "at", "x", "y", "z", "framing", "angle", "hold",
+    "aimMode", "panDegrees", "tiltDegrees",
+}
 
 
 def _short_text(value: Any, path: str) -> str:
@@ -214,6 +218,17 @@ def normalize_camera_waypoints(value: Any, path: str) -> list[dict[str, Any]]:
                 raise ValueError(f"{item_path}.hold must be boolean")
             if raw["hold"]:
                 normalized["hold"] = True
+        if "aimMode" in raw:
+            if raw["aimMode"] not in {"anchor", "travel", "custom"}:
+                raise ValueError(f"{item_path}.aimMode must be anchor, travel, or custom")
+            normalized["aimMode"] = raw["aimMode"]
+        for key, minimum, maximum in (
+            ("panDegrees", -180.0, 180.0), ("tiltDegrees", -90.0, 90.0),
+        ):
+            if key in raw:
+                normalized[key] = _finite_number(raw[key], f"{item_path}.{key}", minimum, maximum)
+        if any(key in normalized for key in ("panDegrees", "tiltDegrees")) and normalized.get("aimMode") != "custom":
+            raise ValueError(f"{item_path} panDegrees/tiltDegrees require aimMode 'custom'")
         result.append(normalized)
     if result[0]["at"] != 0.0 or result[-1]["at"] != 1.0:
         raise ValueError(f"{path} must start at 0 and end at 1")
@@ -250,10 +265,12 @@ def normalize_camera_path(value: Any, path: str) -> dict[str, Any]:
         if raw["pathShape"] not in {"straight", "smooth", "arc_left", "arc_right"}:
             raise ValueError(f"{path}.pathShape must be straight, smooth, arc_left, or arc_right")
         result["pathShape"] = raw["pathShape"]
+    if "anchorTarget" in raw:
+        result["anchorTarget"] = normalize_target(raw["anchorTarget"], f"{path}.anchorTarget")
     if "waypoints" in raw:
         result["waypoints"] = normalize_camera_waypoints(raw["waypoints"], f"{path}.waypoints")
     if motion == "static" and any(
-        key in result for key in ("amplitude", "speed", "easing", "coordinateSpace", "pathShape", "waypoints")
+        key in result for key in ("amplitude", "speed", "easing", "coordinateSpace", "pathShape", "anchorTarget", "waypoints")
     ):
         raise ValueError(f"{path} cannot set movement properties when motionType is 'static'")
     if "waypoints" in result and "coordinateSpace" not in result:
@@ -297,21 +314,68 @@ def camera_path_sentence(path: Mapping[str, Any]) -> str:
     if waypoints:
         space = str(path.get("coordinateSpace", "subject")).replace("_", " ")
         shape = str(path.get("pathShape", "smooth")).replace("_", " ")
+        anchor = path.get("anchorTarget")
+        if isinstance(anchor, Mapping):
+            if anchor.get("kind") == "text":
+                anchor_text = f"the declared anchor {anchor.get('text')}"
+            else:
+                anchor_id = str(anchor.get("id", ""))
+                subject_number = re.fullmatch(r"subject\.(\d+)", anchor_id)
+                anchor_text = (
+                    f"<Subject {subject_number.group(1)}>"
+                    if anchor.get("kind") == "subject" and subject_number
+                    else f"{anchor.get('kind')} '{anchor_id}'"
+                )
+        elif space == "subject":
+            anchor_text = "the shot's active subject group"
+        else:
+            anchor_text = "the scene origin"
         positions = []
         for index, point in enumerate(waypoints):
             progress = round(float(point["at"]) * 100)
+            x = float(point["x"])
+            y = float(point["y"])
+            z = float(point["z"])
+            spatial = []
+            if x <= -0.2:
+                spatial.append(f"to the left of {anchor_text}")
+            elif x >= 0.2:
+                spatial.append(f"to the right of {anchor_text}")
+            if y <= -0.2:
+                spatial.append("below the anchor")
+            elif y >= 0.2:
+                spatial.append("above the anchor")
+            # The Studio grid presents negative depth on the far side of its
+            # origin and positive depth on the near side.  Preserve that
+            # visible authoring convention in prose instead of asking the LLM
+            # to infer meaning from an implementation coordinate.
+            if z <= -0.2:
+                spatial.append(f"behind {anchor_text}")
+            elif z >= 0.2:
+                spatial.append(f"in front of {anchor_text}")
             position = (
-                f"{progress}% at relative position "
-                f"x={float(point['x']):.2f}, y={float(point['y']):.2f}, z={float(point['z']):.2f}"
+                f"{progress}% at "
+                + (", ".join(spatial) if spatial else f"the level position beside {anchor_text}")
             )
             details = [str(point[key]).replace("_", " ") for key in ("framing", "angle") if key in point]
             if details:
                 position += " (" + ", ".join(details) + ")"
             if point.get("hold"):
                 position += " with a brief hold"
+            aim_mode = point.get("aimMode")
+            if aim_mode == "anchor":
+                position += f", keeping the camera aimed at {anchor_text}"
+            elif aim_mode == "travel":
+                position += ", aiming along the direction of travel"
+            elif aim_mode == "custom":
+                pan = float(point.get("panDegrees", 0.0))
+                tilt = float(point.get("tiltDegrees", 0.0))
+                pan_text = "straight ahead" if pan == 0 else f"{abs(pan):g} degrees {'right' if pan > 0 else 'left'}"
+                tilt_text = "level" if tilt == 0 else f"{abs(tilt):g} degrees {'up' if tilt > 0 else 'down'}"
+                position += f", with custom aim {pan_text} and {tilt_text} relative to {anchor_text}"
             positions.append(position)
         text += (
-            f" along a {shape} path in {space}-relative space, passing "
+            f" along a {shape} path in {space}-relative space anchored to {anchor_text}, passing "
             + "; then ".join(positions)
         )
     return text + "."

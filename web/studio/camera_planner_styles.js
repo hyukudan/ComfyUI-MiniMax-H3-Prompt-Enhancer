@@ -147,6 +147,7 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-empty-art { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid var(--h3-accent); border-radius: 18px; color: var(--h3-accent); font-size: 30px; background: color-mix(in srgb, var(--h3-accent) 12%, var(--h3-surface)); }
         .minimax-h3-spatial-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; }
         .minimax-h3-spatial-toolbar select { width: auto; min-width: 118px; flex: 1 1 118px; }
+        .minimax-h3-spatial-anchor-warning { flex: 1 0 100%; color: var(--h3-warning, #f3c969); font-size: 10px; line-height: 1.35; }
         .minimax-h3-spatial-segments { display: inline-flex; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); }
         .minimax-h3-spatial-segments button { min-height: 32px; border: 0 !important; border-radius: 0 !important; padding: 5px 10px; }
         .minimax-h3-spatial-segments button[aria-pressed="true"] { color: var(--h3-text); background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; }
@@ -183,6 +184,10 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-slider > span { display: flex; justify-content: space-between; gap: 8px; color: var(--h3-text-muted); font-size: 10.5px; }
         .minimax-h3-spatial-slider output { color: var(--h3-text); font-family: var(--h3-mono); }
         .minimax-h3-spatial-slider input { width: 100%; min-width: 0; accent-color: var(--h3-accent); }
+        .minimax-h3-spatial-aim { display: grid; min-width: 0; gap: 4px; }
+        .minimax-h3-spatial-aim > span { color: var(--h3-text-muted); font-size: 10.5px; }
+        .minimax-h3-spatial-aim select { width: 100%; min-width: 0; }
+        .minimax-h3-spatial-camera-glyph { transform-box: fill-box; transform-origin: center; }
         .minimax-h3-spatial-inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
         .minimax-h3-spatial-note { margin: 0; color: var(--h3-text-muted); font-size: 9.5px; text-align: right; }
         .minimax-h3-camera-preset-disclosure { margin: 0 var(--h3-space-3); overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-surface) 88%, transparent); }

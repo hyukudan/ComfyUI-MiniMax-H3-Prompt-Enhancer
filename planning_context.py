@@ -105,6 +105,13 @@ def _target_refs(frame: Mapping[str, Any]) -> list[tuple[str, str, str]]:
     return found
 
 
+def _path_target_refs(path: Mapping[str, Any]) -> list[tuple[str, str, str]]:
+    target = path.get("anchorTarget")
+    if isinstance(target, Mapping) and target.get("kind") != "text":
+        return [(str(target.get("kind", "")), str(target.get("id", "")), "anchorTarget")]
+    return []
+
+
 def _appearance_source_roots(subject: Mapping[str, Any], state_id: str) -> list[dict[str, str]]:
     states = {state["id"]: state for state in subject["appearanceStates"]}
     roots: list[dict[str, str]] = []
@@ -199,6 +206,13 @@ def _generation_entities(
                     environment_ids.add(resource_id)
                 elif kind == "asset":
                     asset_ids.add(resource_id)
+        for kind, resource_id, _field in _path_target_refs(shot.get("cameraPath", {})):
+            if kind == "subject":
+                subject_ids.add(resource_id)
+            elif kind == "environment":
+                environment_ids.add(resource_id)
+            elif kind == "asset":
+                asset_ids.add(resource_id)
     return subject_ids, environment_ids, asset_ids, view_ids
 
 
@@ -495,6 +509,12 @@ def _validate_shots_and_resolve_state(
                     shot, shot_index, subjects, environments, assets, presence,
                     active_environment_id, active_asset_ids,
                 )
+        for kind, target_id, target_field in _path_target_refs(shot.get("cameraPath", {})):
+            _validate_target(
+                collector, kind, target_id, f"cameraPath.{target_field}", generation_id,
+                shot, shot_index, subjects, environments, assets, presence,
+                active_environment_id, active_asset_ids,
+            )
 
         after = {
             "subjects": dict(subject_states), "environments": dict(environment_states),

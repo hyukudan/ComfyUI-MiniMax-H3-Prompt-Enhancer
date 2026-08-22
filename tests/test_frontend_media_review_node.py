@@ -41,9 +41,9 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
     assert "Target megapixels (0 = auto)" not in source
     assert "Target Megapixels (0.0 = auto)" not in source
     assert "function createResolutionBudgetControl" in source
-    assert 'mode.addEventListener("input", commitMode)' in source
-    assert 'mode.addEventListener("change", commitMode)' in source
-    assert 'addSelectOptions(mode, [["auto", "Auto"], ["custom", "Custom"]])' in source
+    assert 'class="minimax-h3-resolution-mode"' not in source
+    assert 'createPanelElement("div", "minimax-h3-resolution-mode")' in source
+    assert 'button.addEventListener("click", () => commitMode(value))' in source
     assert "custom.disabled = automatic" in source
     assert 'custom.addEventListener("input"' in source
     assert 'custom.focus()' in source

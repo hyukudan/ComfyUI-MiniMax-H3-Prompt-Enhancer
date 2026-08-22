@@ -67,7 +67,7 @@ export function renderCameraTab(container, controller) {
     );
 
     const workspace = element("div", "minimax-h3-camera-workspace");
-    renderVisualCameraPlanner(workspace, shot, commit, rerender);
+    renderVisualCameraPlanner(workspace, shot, project, commit, rerender);
 
     const preciseCamera = element("details", "minimax-h3-camera-advanced");
     preciseCamera.appendChild(element("summary", "", "Precise camera controls"));

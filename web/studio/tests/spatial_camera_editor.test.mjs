@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 
 import {
     addSpatialWaypoint,
+    cameraIconRotation,
     defaultSpatialWaypoints,
     interpolateSpatialWaypoint,
     normalizeSpatialWaypoints,
     projectCameraPoint,
+    redistributeSpatialWaypointTiming,
     spatialPathD,
     unprojectCameraPoint,
 } from "../spatial_camera_editor.js";
@@ -17,6 +19,17 @@ test("spatial camera defaults are a valid normalized two-point timeline", () => 
     assert.equal(points[0].at, 0);
     assert.equal(points.at(-1).at, 1);
     assert.ok(points.every((point) => [point.x, point.y, point.z].every((value) => value >= -1 && value <= 1)));
+});
+
+test("camera icons distinguish anchor, travel and custom aim", () => {
+    const points = [
+        { id: "a", at: 0, x: -.8, y: 0, z: .5, aimMode: "anchor" },
+        { id: "b", at: .5, x: 0, y: 0, z: 0, aimMode: "travel" },
+        { id: "c", at: 1, x: .8, y: 0, z: 0, aimMode: "custom", panDegrees: 135 },
+    ];
+    assert.notEqual(cameraIconRotation(points, 0, "top"), 0);
+    assert.equal(cameraIconRotation(points, 1, "top"), 0);
+    assert.equal(cameraIconRotation(points, 2, "top"), 135);
 });
 
 test("playback interpolation follows waypoint timing instead of point index", () => {
@@ -45,6 +58,24 @@ test("adding a waypoint interpolates position and timing without exceeding six",
     assert.equal(points[1].at, .5);
     while (points.length < 6) points = addSpatialWaypoint(points, 0);
     assert.equal(addSpatialWaypoint(points, 0).length, 6);
+});
+
+test("adding from the final camera inserts into the preceding span instead of creating a 99-to-100-percent leg", () => {
+    const points = [
+        { id: "a", at: 0, x: -1, y: 0, z: 1 },
+        { id: "b", at: 1, x: 1, y: 0, z: -1 },
+    ];
+    const added = addSpatialWaypoint(points, 1);
+    assert.deepEqual(added.map((point) => point.at), [0, .5, 1]);
+    assert.equal(added[1].x, 0);
+    assert.equal(added[1].z, 0);
+});
+
+test("compressed legacy waypoint timing can be repaired explicitly", () => {
+    const repaired = redistributeSpatialWaypointTiming([
+        { id: "a", at: 0 }, { id: "b", at: .99 }, { id: "c", at: 1 },
+    ]);
+    assert.deepEqual(repaired.map((point) => point.at), [0, .5, 1]);
 });
 
 test("normalization clamps coordinates and preserves fixed timeline ends", () => {

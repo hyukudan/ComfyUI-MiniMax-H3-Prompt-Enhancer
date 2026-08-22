@@ -4,6 +4,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const VIEW_STATE = new Map();
 const SHAPES = [["smooth", "Smooth"], ["straight", "Straight"], ["arc_left", "Arc left"], ["arc_right", "Arc right"]];
 const SPACES = [["subject", "Around subject"], ["scene", "In scene"]];
+const AIM_MODES = [["", "Aim: Unspecified"], ["anchor", "Keep anchor in frame"], ["travel", "Follow direction of travel"], ["custom", "Custom direction"]];
 
 function clamp(value, minimum = -1, maximum = 1) {
     return Math.max(minimum, Math.min(maximum, Number(value)));
@@ -20,8 +21,8 @@ function svgNode(tag, attributes = {}, text = "") {
 
 export function defaultSpatialWaypoints() {
     return [
-        { id: "cam1", at: 0, x: -0.72, y: 0.08, z: 0.62, framing: "wide" },
-        { id: "cam2", at: 1, x: 0.42, y: 0.04, z: -0.38, framing: "medium" },
+        { id: "cam1", at: 0, x: -0.72, y: 0.08, z: 0.62, framing: "wide", aimMode: "anchor" },
+        { id: "cam2", at: 1, x: 0.42, y: 0.04, z: -0.38, framing: "medium", aimMode: "anchor" },
     ];
 }
 
@@ -60,6 +61,22 @@ export function spatialPathD(waypoints, view = "perspective", shape = "smooth") 
     return result;
 }
 
+export function cameraIconRotation(waypoints, index, view = "perspective") {
+    const point = waypoints[index];
+    if (!point) return 0;
+    const projected = waypoints.map((item) => projectCameraPoint(item, view));
+    const here = projected[index];
+    let target;
+    if (point.aimMode === "anchor") target = { x: 180, y: 122 };
+    else if (point.aimMode === "travel") target = projected[index + 1] ?? projected[index - 1];
+    else if (point.aimMode === "custom") return Number(point.panDegrees ?? 0);
+    if (!target) return 0;
+    const reverse = point.aimMode === "travel" && !projected[index + 1];
+    const dx = reverse ? here.x - target.x : target.x - here.x;
+    const dy = reverse ? here.y - target.y : target.y - here.y;
+    return round(Math.atan2(dy, dx) * 180 / Math.PI);
+}
+
 export function interpolateSpatialWaypoint(waypoints, progress) {
     const points = normalizeSpatialWaypoints(waypoints);
     const at = clamp(progress, 0, 1);
@@ -77,10 +94,16 @@ export function interpolateSpatialWaypoint(waypoints, progress) {
 
 export function addSpatialWaypoint(waypoints, selectedIndex = 0) {
     if (waypoints.length >= 6) return waypoints;
-    const left = waypoints[selectedIndex] ?? waypoints[waypoints.length - 2];
-    const right = waypoints[selectedIndex + 1] ?? waypoints[waypoints.length - 1];
+    const leftIndex = Math.min(Math.max(0, selectedIndex), waypoints.length - 2);
+    const left = waypoints[leftIndex];
+    const right = waypoints[leftIndex + 1];
     const next = { id: `cam${Date.now().toString(36)}`, at: round((left.at + right.at) / 2), x: round((left.x + right.x) / 2), y: round((left.y + right.y) / 2), z: round((left.z + right.z) / 2) };
     return [...waypoints, next].sort((a, b) => a.at - b.at);
+}
+
+export function redistributeSpatialWaypointTiming(waypoints) {
+    const last = Math.max(1, waypoints.length - 1);
+    return waypoints.map((point, index) => ({ ...point, at: round(index / last) }));
 }
 
 function grid(svg, view) {
@@ -119,7 +142,7 @@ function ensurePath(shot) {
     return shot.cameraPath;
 }
 
-export function renderSpatialCameraEditor(container, shot, commit, rerender) {
+export function renderSpatialCameraEditor(container, shot, project, commit, rerender) {
     const path = shot.cameraPath;
     const root = element("section", "minimax-h3-spatial-editor");
     if (!path?.waypoints) {
@@ -145,8 +168,31 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
     const shape = selectInput(path.pathShape ?? "smooth", SHAPES, { ariaLabel: "Path shape" });
     shape.addEventListener("change", () => { path.pathShape = shape.value; commit(); rerender(); });
     const space = selectInput(path.coordinateSpace ?? "subject", SPACES, { ariaLabel: "Coordinate space" });
-    space.addEventListener("change", () => { path.coordinateSpace = space.value; commit(); rerender(); });
+    space.addEventListener("change", () => {
+        path.coordinateSpace = space.value;
+        if (space.value !== "subject") delete path.anchorTarget;
+        commit(); rerender();
+    });
     toolbar.append(viewSwitch, shape, space);
+    if ((path.coordinateSpace ?? "subject") === "subject") {
+        const declared = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
+        const subjects = (project?.subjects ?? []).filter((subject) => !declared.size || declared.has(subject.id));
+        const anchor = selectInput(
+            path.anchorTarget?.kind === "subject" ? path.anchorTarget.id : "",
+            [["", subjects.length > 1 ? "Anchor: Choose subject…" : `Anchor: ${subjects[0]?.name || "shot subject"}`], ...subjects.map((subject) => [subject.id, `Anchor: ${subject.name || subject.id}`])],
+            { ariaLabel: "Camera path subject anchor" },
+        );
+        anchor.addEventListener("change", () => {
+            if (anchor.value) path.anchorTarget = { kind: "subject", id: anchor.value };
+            else delete path.anchorTarget;
+            commit(); rerender();
+        });
+        toolbar.appendChild(anchor);
+        if (subjects.length > 1 && !path.anchorTarget?.id) {
+            const examples = subjects.slice(0, 2).map((subject) => subject.name || subject.id).join(" or ");
+            toolbar.appendChild(element("span", "minimax-h3-spatial-anchor-warning", `Choose ${examples} as the anchor so “behind” and camera aim are unambiguous.`));
+        }
+    }
 
     const canvas = element("div", "minimax-h3-spatial-canvas");
     const svg = svgNode("svg", { viewBox: "0 0 360 240", role: "application", "aria-label": "Spatial camera path editor. Drag camera points or use the controls below." });
@@ -178,8 +224,19 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
             timeline.appendChild(button);
         }
         timeline.appendChild(actionButton("+ Point", () => {
-            path.waypoints = addSpatialWaypoint(path.waypoints, state.selected); state.selected = Math.min(state.selected + 1, path.waypoints.length - 1); commit(); rerender();
+            const existingIds = new Set(path.waypoints.map((point) => point.id));
+            path.waypoints = addSpatialWaypoint(path.waypoints, state.selected);
+            state.selected = Math.max(0, path.waypoints.findIndex((point) => !existingIds.has(point.id)));
+            commit(); rerender();
         }, { disabled: path.waypoints.length >= 6 }));
+        const compressed = path.waypoints.some((point, index) => index > 0 && point.at - path.waypoints[index - 1].at < .03);
+        if (compressed) {
+            const repair = actionButton("Space timing evenly", () => {
+                path.waypoints = redistributeSpatialWaypointTiming(path.waypoints); commit(); rerender();
+            });
+            repair.title = "Repair camera positions that occupy almost the same moment.";
+            timeline.appendChild(repair);
+        }
     }
 
     function renderScene() {
@@ -189,10 +246,16 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
         svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-path", d: spatialPathD(path.waypoints, state.view, path.pathShape) }));
         const target = svgNode("g", { class: "minimax-h3-spatial-target", transform: "translate(180 122)" });
         target.append(svgNode("circle", { r: 16 }), svgNode("circle", { r: 4 })); svg.appendChild(target);
-        svg.appendChild(svgNode("text", { class: "minimax-h3-spatial-origin-label", x: 14, y: 22 }, path.coordinateSpace === "subject" ? "SUBJECT-RELATIVE ORIGIN" : "SCENE ORIGIN"));
+        const anchorSubject = (project?.subjects ?? []).find((subject) => subject.id === path.anchorTarget?.id);
+        const originLabel = path.coordinateSpace === "subject"
+            ? anchorSubject ? `AROUND ${String(anchorSubject.name || anchorSubject.id).toLocaleUpperCase()}` : ((project?.subjects ?? []).length > 1 ? "CHOOSE SUBJECT ANCHOR" : `AROUND ${String(project?.subjects?.[0]?.name || "SHOT SUBJECT").toLocaleUpperCase()}`)
+            : "SCENE ORIGIN";
+        svg.appendChild(svgNode("text", { class: "minimax-h3-spatial-origin-label", x: 14, y: 22 }, originLabel));
         projected.forEach((position, index) => {
             const point = path.waypoints[index]; const group = svgNode("g", { class: "minimax-h3-spatial-point", "data-selected": String(index === state.selected), transform: `translate(${position.x} ${position.y})`, tabindex: "0", role: "button", "aria-label": `Camera position ${index + 1}, ${Math.round(point.at * 100)} percent` });
-            group.append(svgNode("circle", { r: index === state.selected ? 15 : 12 }), svgNode("path", { d: "M 10 -7 L 27 -14 L 27 14 L 10 7 Z" }), svgNode("text", { y: 4, "text-anchor": "middle" }, String(index + 1)));
+            const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view)})` });
+            cameraGlyph.appendChild(svgNode("path", { d: "M 10 -7 L 27 -14 L 27 14 L 10 7 Z" }));
+            group.append(svgNode("circle", { r: index === state.selected ? 15 : 12 }), cameraGlyph, svgNode("text", { y: 4, "text-anchor": "middle" }, String(index + 1)));
             group.addEventListener("click", () => { state.selected = index; renderScene(); renderInspector(); renderTimeline(); });
             group.addEventListener("keydown", (event) => {
                 if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", " "].includes(event.key)) return;
@@ -232,7 +295,22 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
         const heading = element("div", "minimax-h3-spatial-inspector-heading");
         heading.append(element("strong", "", `Position ${state.selected + 1}`), element("span", "", `${Math.round(point.at * 100)}% of shot`));
         const update = (key) => (value, final) => { point[key] = round(value); renderScene(); if (final) { commit(); rerender(); } };
-        inspector.append(heading, slider("Left / right", point.x, -1, 1, .01, update("x")), slider("Height", point.y, -1, 1, .01, update("y")), slider("Near / far", point.z, -1, 1, .01, update("z")));
+        inspector.append(heading, slider("Left / right", point.x, -1, 1, .01, update("x")), slider("Height", point.y, -1, 1, .01, update("y")), slider("Behind / in front", point.z, -1, 1, .01, update("z")));
+        const aim = selectInput(point.aimMode ?? "", AIM_MODES, { ariaLabel: `Camera aim at position ${state.selected + 1}` });
+        aim.addEventListener("change", () => {
+            if (aim.value) point.aimMode = aim.value; else delete point.aimMode;
+            if (aim.value !== "custom") { delete point.panDegrees; delete point.tiltDegrees; }
+            commit(); rerender();
+        });
+        const aimLabel = element("label", "minimax-h3-spatial-aim");
+        aimLabel.append(element("span", "", "Where the camera faces"), aim);
+        inspector.appendChild(aimLabel);
+        if (point.aimMode === "custom") {
+            inspector.append(
+                slider("Pan · left / right (degrees)", point.panDegrees ?? 0, -180, 180, 5, update("panDegrees")),
+                slider("Tilt · down / up (degrees)", point.tiltDegrees ?? 0, -90, 90, 5, update("tiltDegrees")),
+            );
+        }
         if (state.selected > 0 && state.selected < path.waypoints.length - 1) {
             const lower = path.waypoints[state.selected - 1].at + .01; const upper = path.waypoints[state.selected + 1].at - .01;
             inspector.appendChild(slider("Timing", point.at, lower, upper, .01, update("at")));
@@ -245,6 +323,6 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
 
     renderScene(); renderTimeline(); renderInspector();
     const workspace = element("div", "minimax-h3-spatial-workspace"); workspace.append(canvas, inspector); canvas.append(svg, playback, timeline);
-    root.append(toolbar, workspace, element("p", "minimax-h3-spatial-note", "Spatial direction preview · relative coordinates, not a physical simulation"));
+    root.append(toolbar, workspace, element("p", "minimax-h3-spatial-note", "Position, anchor and aim are compiled into prompt direction · this is not a physical simulation"));
     container.appendChild(root);
 }

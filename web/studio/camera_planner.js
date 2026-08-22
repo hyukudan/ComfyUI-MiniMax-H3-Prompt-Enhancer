@@ -97,7 +97,9 @@ export function cameraInstructionPreview(shot = {}) {
     else if (path.motionType === "static") parts.push("Movement: locked off throughout the shot.");
     else {
         const qualifiers = [path.amplitude && `${title(path.amplitude)} travel`, path.speed && `${title(path.speed)} pace`, path.easing && title(path.easing), path.timing && title(path.timing)].filter(Boolean);
-        const spatial = Array.isArray(path.waypoints) ? ` · ${path.waypoints.length} timed positions · ${title(path.pathShape || "smooth")} · ${title(path.coordinateSpace || "subject")}-relative` : "";
+        const anchor = path.anchorTarget?.kind === "subject" ? ` · anchored to ${path.anchorTarget.id}` : "";
+        const aimed = Array.isArray(path.waypoints) ? path.waypoints.filter((point) => point.aimMode).length : 0;
+        const spatial = Array.isArray(path.waypoints) ? ` · ${path.waypoints.length} timed positions · ${title(path.pathShape || "smooth")} · ${title(path.coordinateSpace || "subject")}-relative${anchor}${aimed ? ` · ${aimed} aimed positions` : ""}` : "";
         parts.push(`Movement: ${MOTION_LABELS[path.motionType] ?? title(path.motionType)}${qualifiers.length ? ` · ${qualifiers.join(" · ")}` : ""}${spatial}.`);
     }
     parts.push(`End${endBits.length ? `: ${endBits.join(", ")}` : ": inherits the start"}.`);
@@ -276,29 +278,36 @@ function cameraFrameError(value, path) {
 }
 
 function cameraPathError(value) {
-    const allowed = new Set(["motionType", ...Object.keys(PATH_ENUMS), "coordinateSpace", "pathShape", "waypoints"]);
+    const allowed = new Set(["motionType", ...Object.keys(PATH_ENUMS), "coordinateSpace", "pathShape", "anchorTarget", "waypoints"]);
     const unknown = Object.keys(value).filter((key) => !allowed.has(key));
     if (unknown.length) return `cameraPath contains unsupported keys: ${unknown.join(", ")}.`;
     if (!MOTION_LABELS[value.motionType]) return "cameraPath.motionType is not supported by shot plan v2.";
     for (const [key, choices] of Object.entries(PATH_ENUMS)) if (value[key] !== undefined && !choices.has(value[key])) return `cameraPath.${key} is not supported.`;
     if (value.coordinateSpace !== undefined && !["subject", "scene"].includes(value.coordinateSpace)) return "cameraPath.coordinateSpace is not supported.";
     if (value.pathShape !== undefined && !["straight", "smooth", "arc_left", "arc_right"].includes(value.pathShape)) return "cameraPath.pathShape is not supported.";
+    if (value.anchorTarget) {
+        const error = cameraTargetError(value.anchorTarget, "cameraPath.anchorTarget"); if (error) return error;
+    }
     if (value.waypoints !== undefined) {
         if (!Array.isArray(value.waypoints) || value.waypoints.length < 2 || value.waypoints.length > 6) return "cameraPath.waypoints must contain 2–6 positions.";
         let previous = -1;
         for (const [index, point] of value.waypoints.entries()) {
             if (!point || typeof point !== "object" || Array.isArray(point)) return `cameraPath.waypoints[${index}] must be an object.`;
-            const unknownPoint = Object.keys(point).filter((key) => !["id", "at", "x", "y", "z", "framing", "angle", "hold"].includes(key));
+            const unknownPoint = Object.keys(point).filter((key) => !["id", "at", "x", "y", "z", "framing", "angle", "hold", "aimMode", "panDegrees", "tiltDegrees"].includes(key));
             if (unknownPoint.length) return `cameraPath.waypoints[${index}] contains unsupported keys: ${unknownPoint.join(", ")}.`;
             if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(point.id ?? "")) return `cameraPath.waypoints[${index}].id is invalid.`;
             for (const key of ["at", "x", "y", "z"]) if (typeof point[key] !== "number" || !Number.isFinite(point[key])) return `cameraPath.waypoints[${index}].${key} must be numeric.`;
             if (point.at < 0 || point.at > 1 || point.at <= previous) return "cameraPath.waypoints timing must be strictly increasing from 0 to 1.";
             if (["x", "y", "z"].some((key) => point[key] < -1 || point[key] > 1)) return `cameraPath.waypoints[${index}] coordinates must be between -1 and 1.`;
+            if (point.aimMode !== undefined && !["anchor", "travel", "custom"].includes(point.aimMode)) return `cameraPath.waypoints[${index}].aimMode is not supported.`;
+            if (point.panDegrees !== undefined && (!Number.isFinite(point.panDegrees) || point.panDegrees < -180 || point.panDegrees > 180)) return `cameraPath.waypoints[${index}].panDegrees must be between -180 and 180.`;
+            if (point.tiltDegrees !== undefined && (!Number.isFinite(point.tiltDegrees) || point.tiltDegrees < -90 || point.tiltDegrees > 90)) return `cameraPath.waypoints[${index}].tiltDegrees must be between -90 and 90.`;
+            if ((point.panDegrees !== undefined || point.tiltDegrees !== undefined) && point.aimMode !== "custom") return `cameraPath.waypoints[${index}] custom angles require aimMode custom.`;
             previous = point.at;
         }
         if (value.waypoints[0].at !== 0 || value.waypoints.at(-1).at !== 1) return "cameraPath.waypoints must start at 0 and end at 1.";
     }
-    if (value.motionType === "static" && ["amplitude", "speed", "easing", "coordinateSpace", "pathShape", "waypoints"].some((key) => value[key] !== undefined)) return "A locked camera cannot include movement properties.";
+    if (value.motionType === "static" && ["amplitude", "speed", "easing", "coordinateSpace", "pathShape", "anchorTarget", "waypoints"].some((key) => value[key] !== undefined)) return "A locked camera cannot include movement properties.";
     return "";
 }
 
@@ -339,7 +348,7 @@ export function renderCameraDataFallback(container, shot, commit, rerender) {
     details.append(editor, feedback, apply); container.appendChild(details);
 }
 
-export function renderVisualCameraPlanner(container, shot, commit, rerender) {
+export function renderVisualCameraPlanner(container, shot, project, commit, rerender) {
     ensureCameraPlannerStyles();
     const root = element("section", "minimax-h3-camera-planner");
     const heading = element("div", "minimax-h3-camera-planner-header");
@@ -350,7 +359,7 @@ export function renderVisualCameraPlanner(container, shot, commit, rerender) {
     heading.append(titleBlock, element("span", "minimax-h3-camera-planner-badge", "Direction guide · shot plan v2"));
     root.setAttribute("aria-labelledby", headingId);
     root.appendChild(heading);
-    renderSpatialCameraEditor(root, shot, commit, rerender);
+    renderSpatialCameraEditor(root, shot, project, commit, rerender);
     const phaseDetails = element("details", "minimax-h3-camera-preset-disclosure");
     phaseDetails.open = !Array.isArray(shot.cameraPath?.waypoints);
     phaseDetails.appendChild(element("summary", "", Array.isArray(shot.cameraPath?.waypoints) ? "Framing & movement presets" : "Start, movement & end"));

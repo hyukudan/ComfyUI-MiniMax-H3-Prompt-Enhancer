@@ -86,6 +86,7 @@ export function usageIndex(project = {}, plan = {}) {
                 targetUses(target, `${label} camera target`, indexes);
             }
         }
+        targetUses(shot.cameraPath?.anchorTarget, `${label} camera path anchor`, indexes);
     }
     return indexes;
 }

@@ -97,19 +97,45 @@ def test_v2_rejects_non_camera_role_aspects_and_static_qualifiers():
 def test_spatial_camera_waypoints_are_canonical_and_reach_prompt_instruction():
     path = {
         "motionType": "tracking", "coordinateSpace": "subject", "pathShape": "arc_left",
+        "anchorTarget": {"kind": "subject", "id": "marta"},
         "easing": "ease_in_out",
         "waypoints": [
-            {"id": "cam1", "at": 0, "x": -0.8, "y": 0.1, "z": 0.7, "framing": "wide"},
-            {"id": "cam2", "at": 0.45, "x": -0.1, "y": 0.25, "z": 0.1, "hold": True},
-            {"id": "cam3", "at": 1, "x": 0.65, "y": -0.1, "z": -0.4, "framing": "close_up"},
+            {"id": "cam1", "at": 0, "x": -0.8, "y": 0.1, "z": 0.7, "framing": "wide", "aimMode": "anchor"},
+            {"id": "cam2", "at": 0.45, "x": -0.1, "y": 0.25, "z": 0.1, "hold": True, "aimMode": "travel"},
+            {"id": "cam3", "at": 1, "x": 0.65, "y": -0.1, "z": -0.4, "framing": "close_up", "aimMode": "custom", "panDegrees": 135, "tiltDegrees": -15},
         ],
     }
     plan = parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0)
     assert plan["shots"][0]["cameraPath"] == path
     instruction = shot_plan_instruction(plan, "t2va")
     assert "subject-relative space" in instruction
-    assert "45% at relative position" in instruction
+    assert "subject 'marta'" in instruction
+    assert "keeping the camera aimed" in instruction
+    assert "aiming along the direction of travel" in instruction
+    assert "135 degrees right" in instruction
+    assert "15 degrees down" in instruction
+    assert "45% at above the anchor" in instruction
+    assert "behind subject 'marta'" in instruction
+    assert "in front of subject 'marta'" in instruction
+    assert "x=" not in instruction
+    assert "y=" not in instruction
+    assert "z=" not in instruction
     assert "brief hold" in instruction
+
+
+def test_numbered_subject_anchor_uses_the_h3_reference_label():
+    path = {
+        "motionType": "arc", "coordinateSpace": "subject",
+        "anchorTarget": {"kind": "subject", "id": "subject.2"},
+        "waypoints": [
+            {"id": "a", "at": 0, "x": 0, "y": 0, "z": 0.8, "aimMode": "anchor"},
+            {"id": "b", "at": 1, "x": 0, "y": 0, "z": -0.8, "aimMode": "anchor"},
+        ],
+    }
+    instruction = shot_plan_instruction(parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0), "ref2va")
+    assert "in front of <Subject 2>" in instruction
+    assert "behind <Subject 2>" in instruction
+    assert "keeping the camera aimed at <Subject 2>" in instruction
 
 
 @pytest.mark.parametrize("waypoints", [
@@ -126,6 +152,21 @@ def test_spatial_camera_waypoints_are_canonical_and_reach_prompt_instruction():
 def test_spatial_camera_waypoints_reject_invalid_timeline(waypoints):
     with pytest.raises(ValueError):
         parse_shot_plan(_plan(_shot(cameraPath={"motionType": "tracking", "waypoints": waypoints})), 8.0)
+
+
+def test_custom_camera_aim_requires_custom_mode_and_bounded_angles():
+    base = [
+        {"id": "a", "at": 0, "x": 0, "y": 0, "z": 1},
+        {"id": "b", "at": 1, "x": 0, "y": 0, "z": -1},
+    ]
+    with pytest.raises(ValueError, match="require aimMode 'custom'"):
+        parse_shot_plan(_plan(_shot(cameraPath={"motionType": "tracking", "waypoints": [
+            {**base[0], "panDegrees": 45}, base[1],
+        ]})), 8.0)
+    with pytest.raises(ValueError, match="between -180 and 180"):
+        parse_shot_plan(_plan(_shot(cameraPath={"motionType": "tracking", "waypoints": [
+            {**base[0], "aimMode": "custom", "panDegrees": 200}, base[1],
+        ]})), 8.0)
 
 
 def test_action_beats_link_visible_action_and_dialogue_without_leaking_control_labels():
