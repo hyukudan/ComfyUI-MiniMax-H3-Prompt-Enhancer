@@ -64,6 +64,8 @@ The logical reference says what a file means and how it may be used. The physica
 3. Choose global presentation in **Look**, use **Camera** when a shot needs explicit direction, and check **Review**.
 4. Connect `enhanced_prompt` to the H3 generation node. The Media library can remain empty.
 
+When all structured widgets are blank, Overview also offers three small editable v2 examples: a spatial camera move, timed dialogue delivery, and a Picture 1 reference contract. They contain no external media, brand names, or hidden prompt suffixes and disappear once the user has started a project.
+
 ### I2V / FL2V / L2V — alignment frames
 
 1. Load the physical image with the normal ComfyUI image loader and connect it to the H3 first/last-frame input.
@@ -139,7 +141,7 @@ The Reference library describes logical references; generation cards describe ac
 Media setup is deliberately two steps:
 
 1. Choose **+ Add reference** to register the logical reference, its type, identity, analysis, transcript, or camera-transfer intent. This creates metadata only; Prompt Studio does not upload or connect a file.
-2. Connect the physical picture, video, or audio in the generation node, then assign that logical reference to the matching generation binding and slot.
+2. Connect the physical picture, video, or audio in the generation node. The selected reference proposes the first compatible generation and slot — for example, **Assign to Generation 1 · Picture 1** — and writes that binding explicitly.
 
 A logical reference can be reused in several generations. A physical file connection is local to the generation that consumes it; registering the logical reference alone does not make media available to H3.
 
@@ -147,7 +149,17 @@ This distinction allows slot reuse across chained generations without changing a
 
 ### Camera
 
-Shots keeps camera context compact: it shows the selected shot's current instruction and an **Edit camera** action. Camera opens the spatial planner at workspace scale, provides a shot selector, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Y/Z, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. The Perspective and Top views edit the same data; they are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Both surfaces read and write the same shot object in `shot_plan_json` v2, so switching sections does not copy or reconcile data.
+Shots keeps camera context compact: it shows the selected shot's current instruction and an **Edit camera** action. Camera opens the spatial planner at workspace scale, provides a shot selector, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Y/Z, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. A four-second **Preview** and scrubber interpolate by each waypoint's actual `at` value, so uneven timing remains visible. The Perspective and Top views edit the same data; they are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Both surfaces read and write the same shot object in `shot_plan_json` v2, so switching sections does not copy or reconcile data.
+
+### Before-generation checks and Review
+
+Overview checks the current in-browser v2 documents immediately, before the node runs. It catches missing shot actions, invalid generation links, incomplete declared presence, empty action beats, invalid spatial timing, deleted references, and reference uses without file-slot assignments. The compact result is either **Ready to generate**, a non-blocking note, or a blocking count; each visible issue opens the relevant Shots, Media, or Camera workspace.
+
+These checks are intentionally bounded and do not replace backend validation. **Review** is populated after execution and remains authoritative for compiled continuity, camera ownership, H3 contract quality, and Prompt Coach guidance.
+
+### Project v2 transfer
+
+**Overview > Import & source tools > Project v2 transfer** copies or imports one validated portable JSON package containing any current native-v2 shot plan, media project, creative treatment, and cinematography documents. All included documents are validated for the supported schema version before any import handler runs. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
 
 Start and End are temporal phases, not competing owners. An omitted End field inherits Start and is not serialized redundantly.
 

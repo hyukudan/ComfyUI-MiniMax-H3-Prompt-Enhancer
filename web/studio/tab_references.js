@@ -9,6 +9,28 @@ export function physicalLabel(asset, binding) {
     return `<${prefix} ${binding?.slotIndex ?? "?"}>`;
 }
 
+export function bindingSuggestion(project, asset, preferredGenerationId = "") {
+    if (!project || !asset) return null;
+    const candidates = [...(project.generations ?? [])].sort((left, right) => {
+        if (left.id === preferredGenerationId) return -1;
+        if (right.id === preferredGenerationId) return 1;
+        return Number(left.order ?? 0) - Number(right.order ?? 0);
+    });
+    for (const generation of candidates) {
+        if ((generation.bindings ?? []).some((binding) => binding.assetId === asset.id)) continue;
+        const slotIndex = nextAvailableSlot(project, generation, asset.type);
+        if (slotIndex === null) continue;
+        const suggestion = { generation, binding: { assetId: asset.id, slotIndex } };
+        if (asset.type === "video" && ["paired", "alone"].includes(asset.audioMode)) {
+            const soundtrackSlotIndex = nextAvailableSlot(project, generation, "audio");
+            if (soundtrackSlotIndex === null) continue;
+            suggestion.binding.soundtrackSlotIndex = soundtrackSlotIndex;
+        }
+        return suggestion;
+    }
+    return null;
+}
+
 function actionButton(label, action, className = "") {
     const button = document.createElement("button");
     button.type = "button";
@@ -215,6 +237,7 @@ function renderAssetInspector(container, project, asset, controller) {
         }));
     }
     inspector.appendChild(identity.details);
+    inspector.appendChild(renderFirstAssignment(container, project, asset, controller));
     {
         const structuredAnalysis = asset.analysis !== undefined && typeof asset.analysis !== "string";
         const analysis = section("Analysis", structuredAnalysis ? "structured source preserved" : "optional observations");
@@ -272,6 +295,63 @@ function renderAssetInspector(container, project, asset, controller) {
     }
     inspector.appendChild(footer);
     return inspector;
+}
+
+function renderFirstAssignment(container, project, asset, controller) {
+    const card = document.createElement("section");
+    card.className = "minimax-h3-media-assistant";
+    const heading = document.createElement("div");
+    heading.className = "minimax-h3-media-assistant-heading";
+    const title = document.createElement("strong");
+    title.textContent = "Use this reference in a generation";
+    const badge = document.createElement("span");
+    const assignments = (project.generations ?? []).flatMap((generation) => (generation.bindings ?? [])
+        .filter((binding) => binding.assetId === asset.id)
+        .map((binding) => ({ generation, binding })));
+    badge.textContent = assignments.length ? `${assignments.length} assigned` : "Next step";
+    heading.append(title, badge);
+    card.appendChild(heading);
+
+    if (assignments.length) {
+        const list = document.createElement("div");
+        list.className = "minimax-h3-media-assistant-assignments";
+        for (const { generation, binding } of assignments) {
+            const item = document.createElement("span");
+            item.textContent = `Generation ${generation.order ?? generation.id} · ${physicalLabel(asset, binding)}`;
+            list.appendChild(item);
+        }
+        card.appendChild(list);
+    }
+
+    const suggestion = bindingSuggestion(project, asset, controller.projectUiState.selectedGenerationId);
+    if (!suggestion) {
+        const note = helpText(assignments.length
+            ? "This reference is assigned everywhere it can be used. Manage or remove assignments in the generation section below."
+            : "No compatible file slot is available. Free a Picture, Video or Audio slot in a generation first.", "minimax-h3-media-empty-note");
+        card.appendChild(note);
+        return card;
+    }
+
+    const availableSuggestions = (project.generations ?? []).map((generation) => bindingSuggestion({ ...project, generations: [generation] }, asset, generation.id)).filter(Boolean);
+    const generationChoices = availableSuggestions.map(({ generation }) => [generation.id, `Generation ${generation.order ?? generation.id}`]);
+    const selectedId = generationChoices.some(([id]) => id === suggestion.generation.id)
+        ? suggestion.generation.id : generationChoices[0]?.[0];
+    if (generationChoices.length > 1) {
+        card.appendChild(labeledSelect("Target generation", selectedId, generationChoices, (value) => {
+            controller.projectUiState.selectedGenerationId = value;
+            renderReferencesTab(container, controller);
+        }));
+    }
+    const chosen = availableSuggestions.find(({ generation }) => generation.id === selectedId) ?? suggestion;
+    const explanation = document.createElement("p");
+    explanation.textContent = `Prompt Studio will refer to this file as ${physicalLabel(asset, chosen.binding)}. Connect the actual file to the matching generator input.`;
+    const assign = actionButton(`Assign to Generation ${chosen.generation.order ?? chosen.generation.id} · ${physicalLabel(asset, chosen.binding)}`, () => {
+        (chosen.generation.bindings ??= []).push({ ...chosen.binding });
+        controller.projectUiState.selectedGenerationId = chosen.generation.id;
+        commitAndRender(container, controller);
+    }, "minimax-h3-button minimax-h3-button-primary");
+    card.append(explanation, assign);
+    return card;
 }
 
 function allResources(project) {

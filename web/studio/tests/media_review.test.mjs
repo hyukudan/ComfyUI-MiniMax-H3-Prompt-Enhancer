@@ -12,7 +12,7 @@ import {
     visualLanguagePopoverGeometry,
 } from "../tab_camera_look.js";
 import { diagnosticLocationLabel, groupDiagnosticsBySeverity } from "../tab_coach.js";
-import { renderReferencesTab } from "../tab_references.js";
+import { bindingSuggestion, renderReferencesTab } from "../tab_references.js";
 
 class FakeElement {
     constructor(tagName = "div") {
@@ -120,6 +120,18 @@ test("media model resolves populated assets, dependencies and paired soundtrack 
     assert.equal(model.audioSeconds, 4);
     assert.match(model.resources.find((resource) => resource.id === "portrait").reasons.join(" "), /identity of Marta/);
     assert.equal(nextAvailableSlot(project, project.generations[0], "video"), 2);
+});
+
+test("first-reference assistant chooses a compatible generation and physical slots", () => {
+    const project = projectFixture();
+    const portrait = project.assets.find((asset) => asset.id === "portrait");
+    const motion = project.assets.find((asset) => asset.id === "motion");
+    assert.equal(bindingSuggestion(project, portrait, "g1").generation.id, "g1");
+    assert.equal(bindingSuggestion(project, motion, "g1").generation.id, "g2", "already-bound references move to the next generation");
+    const suggestion = bindingSuggestion(project, motion, "g2");
+    assert.equal(suggestion.generation.id, "g2");
+    assert.equal(suggestion.binding.slotIndex, 1);
+    assert.equal(suggestion.binding.soundtrackSlotIndex, 1);
 });
 
 test("Visual language popover stays inside 720, 820 and 920 viewports", () => {

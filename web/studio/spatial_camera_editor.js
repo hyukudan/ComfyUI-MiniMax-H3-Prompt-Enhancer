@@ -60,6 +60,21 @@ export function spatialPathD(waypoints, view = "perspective", shape = "smooth") 
     return result;
 }
 
+export function interpolateSpatialWaypoint(waypoints, progress) {
+    const points = normalizeSpatialWaypoints(waypoints);
+    const at = clamp(progress, 0, 1);
+    const rightIndex = points.findIndex((point) => point.at >= at);
+    if (rightIndex <= 0) return { ...points[0] };
+    const right = points[rightIndex]; const left = points[rightIndex - 1];
+    const span = right.at - left.at || 1; const mix = (at - left.at) / span;
+    return {
+        at,
+        x: left.x + (right.x - left.x) * mix,
+        y: left.y + (right.y - left.y) * mix,
+        z: left.z + (right.z - left.z) * mix,
+    };
+}
+
 export function addSpatialWaypoint(waypoints, selectedIndex = 0) {
     if (waypoints.length >= 6) return waypoints;
     const left = waypoints[selectedIndex] ?? waypoints[waypoints.length - 2];
@@ -137,6 +152,23 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
     const svg = svgNode("svg", { viewBox: "0 0 360 240", role: "application", "aria-label": "Spatial camera path editor. Drag camera points or use the controls below." });
     const timeline = element("div", "minimax-h3-spatial-timeline");
     const inspector = element("div", "minimax-h3-spatial-inspector");
+    const playback = element("div", "minimax-h3-spatial-playback");
+    const play = actionButton("▶ Preview", () => {
+        if (state.playing) { state.playing = false; play.textContent = "▶ Preview"; return; }
+        state.playing = true; play.textContent = "■ Stop"; const startAt = performance.now(); const startProgress = state.progress >= 1 ? 0 : state.progress;
+        const tick = (now) => {
+            if (!state.playing || ("isConnected" in root && !root.isConnected)) { state.playing = false; play.textContent = "▶ Preview"; return; }
+            state.progress = Math.min(1, startProgress + (now - startAt) / 4000);
+            scrub.value = String(state.progress); progressLabel.textContent = `${Math.round(state.progress * 100)}%`; updatePlaybackMarker();
+            if (state.progress < 1) (globalThis.requestAnimationFrame ?? ((callback) => setTimeout(() => callback(performance.now()), 16)))(tick);
+            else { state.playing = false; play.textContent = "↻ Replay"; }
+        };
+        (globalThis.requestAnimationFrame ?? ((callback) => setTimeout(() => callback(performance.now()), 16)))(tick);
+    });
+    const scrub = document.createElement("input"); scrub.type = "range"; scrub.min = "0"; scrub.max = "1"; scrub.step = ".01"; scrub.value = String(state.progress); scrub.setAttribute("aria-label", "Camera path preview position");
+    const progressLabel = element("output", "", `${Math.round(state.progress * 100)}%`);
+    scrub.addEventListener("input", () => { state.playing = false; play.textContent = "▶ Preview"; state.progress = Number(scrub.value); progressLabel.textContent = `${Math.round(state.progress * 100)}%`; updatePlaybackMarker(); });
+    playback.append(play, scrub, progressLabel);
 
     function renderTimeline() {
         timeline.replaceChildren();
@@ -185,6 +217,14 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
             });
             svg.appendChild(group);
         });
+        const previewPoint = projectCameraPoint(interpolateSpatialWaypoint(path.waypoints, state.progress), state.view);
+        const marker = svgNode("g", { class: "minimax-h3-spatial-playhead", "data-playback-marker": "true", transform: `translate(${previewPoint.x} ${previewPoint.y})` });
+        marker.append(svgNode("circle", { r: 7 }), svgNode("path", { d: "M 7 -4 L 18 -8 L 18 8 L 7 4 Z" })); svg.appendChild(marker);
+    }
+
+    function updatePlaybackMarker() {
+        const point = projectCameraPoint(interpolateSpatialWaypoint(path.waypoints, state.progress), state.view);
+        svg.querySelector?.("[data-playback-marker]")?.setAttribute("transform", `translate(${point.x} ${point.y})`);
     }
 
     function renderInspector() {
@@ -204,7 +244,7 @@ export function renderSpatialCameraEditor(container, shot, commit, rerender) {
     }
 
     renderScene(); renderTimeline(); renderInspector();
-    const workspace = element("div", "minimax-h3-spatial-workspace"); workspace.append(canvas, inspector); canvas.append(svg, timeline);
+    const workspace = element("div", "minimax-h3-spatial-workspace"); workspace.append(canvas, inspector); canvas.append(svg, playback, timeline);
     root.append(toolbar, workspace, element("p", "minimax-h3-spatial-note", "Spatial direction preview · relative coordinates, not a physical simulation"));
     container.appendChild(root);
 }

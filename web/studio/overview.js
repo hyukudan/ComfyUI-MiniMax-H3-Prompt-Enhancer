@@ -1,5 +1,8 @@
 import { createEmptyState } from "./components/empty_state.js";
 import { createSourcePill, createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
+import { localPreflight } from "./preflight.js";
+import { createProjectBundle, parseProjectBundle } from "./project_bundle.js";
+import { applyStarterExample, STARTER_EXAMPLES } from "./starter_examples.js";
 
 function safeDocument(read) {
     try {
@@ -27,6 +30,7 @@ export function overviewModel(controller) {
     const shot = safeDocument(() => controller.shotDocument());
     const project = safeDocument(() => controller.projectDocument());
     const camera = safeDocument(() => controller.cinematographyDocument());
+    const creative = safeDocument(() => controller.creativeDocument());
     const shots = Array.isArray(shot.value?.shots) ? shot.value.shots : [];
     const projectValue = project.kind === "v2" ? project.value : null;
     const projectGenerations = Array.isArray(projectValue?.generations) ? projectValue.generations : [];
@@ -56,10 +60,132 @@ export function overviewModel(controller) {
         environments: projectValue?.environments?.length ?? 0,
         assets: projectValue?.assets?.length ?? 0,
         generations,
-        sources: { shot, project, camera },
+        sources: { shot, project, camera, creative },
+        preflight: localPreflight({ shotDocument: shot, projectDocument: project }),
         diagnostics: diagnosticCounts(report),
         stale: Boolean(report?.stale),
     };
+}
+
+function projectTransfer(controller, model) {
+    const details = document.createElement("details");
+    details.className = "minimax-h3-project-transfer";
+    const summary = document.createElement("summary");
+    summary.textContent = "Project v2 transfer";
+    const body = document.createElement("div");
+    body.className = "minimax-h3-project-transfer-body";
+    const help = document.createElement("p");
+    help.textContent = "Copy or paste one portable package containing the current v2 shot, media, creative and camera documents. This does not include physical media files.";
+    const textarea = document.createElement("textarea");
+    textarea.placeholder = "Paste a Prompt Studio v2 package here…";
+    textarea.setAttribute("aria-label", "Prompt Studio v2 package");
+    const feedback = document.createElement("p");
+    feedback.className = "minimax-h3-source-feedback";
+    const actions = document.createElement("div");
+    actions.className = "minimax-h3-studio-toolbar";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "minimax-h3-button minimax-h3-button-secondary";
+    copy.textContent = "Copy v2 package";
+    copy.addEventListener("click", async () => {
+        const raw = JSON.stringify(createProjectBundle({
+            shotPlan: model.sources.shot,
+            mediaProject: model.sources.project,
+            creativeTreatment: model.sources.creative,
+            cinematography: model.sources.camera,
+        }), null, 2);
+        textarea.value = raw;
+        try {
+            if (!globalThis.navigator?.clipboard?.writeText) throw new Error("Clipboard unavailable");
+            await globalThis.navigator.clipboard.writeText(raw);
+            feedback.textContent = "Copied. Physical pictures, videos and audio remain separate.";
+            feedback.dataset.valid = "true";
+        } catch {
+            textarea.focus(); textarea.select();
+            feedback.textContent = "Package prepared. Copy it from the field above.";
+            feedback.dataset.valid = "true";
+        }
+    });
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "minimax-h3-button minimax-h3-button-primary";
+    apply.textContent = "Import v2 package";
+    apply.addEventListener("click", () => {
+        const parsed = parseProjectBundle(textarea.value);
+        if (!parsed.ok) {
+            feedback.textContent = parsed.message;
+            feedback.dataset.valid = "false";
+            return;
+        }
+        const handlers = {
+            shotPlan: (value) => controller.replaceShotRaw?.(JSON.stringify(value)),
+            mediaProject: (value) => controller.replaceProjectRaw?.(JSON.stringify(value)),
+            creativeTreatment: (value) => controller.replaceStructuredRaw?.("creative_treatment_json", JSON.stringify(value)),
+            cinematography: (value) => controller.replaceStructuredRaw?.("cinematography_json", JSON.stringify(value)),
+        };
+        feedback.textContent = "Importing validated v2 documents…";
+        feedback.dataset.valid = "true";
+        for (const [key, value] of Object.entries(parsed.documents)) handlers[key]?.(value);
+    });
+    actions.append(copy, apply);
+    body.append(help, textarea, actions, feedback);
+    details.append(summary, body);
+    return details;
+}
+
+function preflightSummary(model, navigate) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-preflight";
+    section.dataset.status = model.preflight.status;
+    const header = document.createElement("div");
+    header.className = "minimax-h3-preflight-header";
+    const text = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "minimax-h3-preflight-eyebrow";
+    eyebrow.textContent = "Before generation · local checks";
+    const heading = document.createElement("h3");
+    const copy = document.createElement("p");
+    if (!model.preflight.hasStructuredPlan) {
+        heading.textContent = "Ready for a prompt-only run";
+        copy.textContent = "Shots and media planning are optional. Add them only when you need precise continuity or references.";
+    } else if (model.preflight.status === "ready") {
+        heading.textContent = "Ready to generate";
+        copy.textContent = "The current shot and media structure passes immediate checks.";
+    } else {
+        heading.textContent = model.preflight.errors ? "Needs attention before generating" : "Ready with a few notes";
+        copy.textContent = `${model.preflight.errors} blocking · ${model.preflight.warnings} notes`;
+    }
+    text.append(eyebrow, heading, copy);
+    const badge = document.createElement("span");
+    badge.className = "minimax-h3-preflight-badge";
+    badge.textContent = model.preflight.status === "ready" ? "Ready" : model.preflight.errors ? String(model.preflight.errors) : String(model.preflight.warnings);
+    header.append(text, badge);
+    section.appendChild(header);
+    if (model.preflight.items.length) {
+        const list = document.createElement("div");
+        list.className = "minimax-h3-preflight-list";
+        for (const item of model.preflight.items.slice(0, 3)) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "minimax-h3-preflight-item";
+            button.dataset.severity = item.severity;
+            const message = document.createElement("span");
+            message.textContent = item.message;
+            const action = document.createElement("strong");
+            action.textContent = `Open ${item.section === "media" ? "Media" : item.section === "camera" ? "Camera" : "Shots"}`;
+            button.append(message, action);
+            button.addEventListener("click", () => navigate(item.section));
+            list.appendChild(button);
+        }
+        if (model.preflight.items.length > 3) {
+            const more = document.createElement("p");
+            more.className = "minimax-h3-muted";
+            more.textContent = `+ ${model.preflight.items.length - 3} more local checks`;
+            list.appendChild(more);
+        }
+        section.appendChild(list);
+    }
+    return section;
 }
 
 function overviewAction(title, description, actionLabel, onAction) {
@@ -76,6 +202,35 @@ function overviewAction(title, description, actionLabel, onAction) {
     action.addEventListener("click", onAction);
     card.append(heading, copy, action);
     return card;
+}
+
+function starterExamples(controller) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-starters";
+    const heading = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = "Or start with a small example";
+    const copy = document.createElement("p");
+    copy.textContent = "Examples add editable v2 structure only. They contain no external images, brands or hidden prompt text.";
+    heading.append(title, copy);
+    const grid = document.createElement("div");
+    grid.className = "minimax-h3-starter-grid";
+    for (const example of STARTER_EXAMPLES) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "minimax-h3-starter-card";
+        const name = document.createElement("strong");
+        name.textContent = example.title;
+        const description = document.createElement("span");
+        description.textContent = example.description;
+        const action = document.createElement("em");
+        action.textContent = "Use example";
+        button.append(name, description, action);
+        button.addEventListener("click", () => applyStarterExample(controller, example));
+        grid.appendChild(button);
+    }
+    section.append(heading, grid);
+    return section;
 }
 
 function sourceTools(controller, model) {
@@ -104,7 +259,7 @@ function sourceTools(controller, model) {
         createSourcePill("Media project", model.sources.project),
         createSourcePill("Camera", model.sources.camera),
     );
-    body.append(help, pills);
+    body.append(help, pills, projectTransfer(controller, model));
     const exceptional = document.createElement("div");
     exceptional.className = "minimax-h3-source-cards";
     if (model.sources.project.kind === "v2") {
@@ -262,6 +417,7 @@ export function renderOverview(container, controller, { navigate = () => {}, ope
             overviewAction("Register media", "Connect pictures, videos and audio to physical generation slots.", "Open Media", () => navigate("media")),
         );
         container.appendChild(actions);
+        container.appendChild(starterExamples(controller));
         container.appendChild(createEmptyState({
             title: "Prompt Coach is ready when you are",
             description: "Run the node after planning to check continuity, camera authority and prompt clarity.",
@@ -272,7 +428,7 @@ export function renderOverview(container, controller, { navigate = () => {}, ope
         container.appendChild(pipelineSection(model, navigate));
         const continuity = continuitySection(model);
         if (continuity) container.appendChild(continuity);
-        container.append(librarySection(model, navigate), healthSummary(model, openReview));
+        container.append(librarySection(model, navigate), preflightSummary(model, navigate), healthSummary(model, openReview));
     }
     container.appendChild(sourceTools(controller, model));
 }

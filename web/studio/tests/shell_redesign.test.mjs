@@ -202,6 +202,15 @@ test("ported visual-language navigation keeps an explicit pointer affordance", (
     assert.match(stylesSource, /\.minimax-h3-visual-back\s*\{[^}]*cursor:\s*pointer/s);
 });
 
+test("Look cards keep intrinsic height and collapse fields before labels clip", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    const lookSource = readFileSync(new URL("../tab_camera_look.js", import.meta.url), "utf8");
+    assert.match(stylesSource, /\.minimax-h3-section-camera,[\s\S]*?\.minimax-h3-section-look\s*\{[^}]*grid-auto-rows:\s*max-content/s);
+    assert.match(stylesSource, /@container h3-studio-panel \(max-width: 620px\)[\s\S]*?\.minimax-h3-look-block \.minimax-h3-studio-columns\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+    assert.match(stylesSource, /\.minimax-h3-progressive-disclosure\s*\{[^}]*gap:[^}]*padding:/s);
+    assert.match(lookSource, /minimax-h3-look-camera/);
+});
+
 test("Media shell keeps cards separated and dense editors inside the panel", () => {
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     const mediaSource = readFileSync(new URL("../tab_references.js", import.meta.url), "utf8");

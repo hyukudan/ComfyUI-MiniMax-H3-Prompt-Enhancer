@@ -122,9 +122,11 @@ export function renderCameraLookTab(container, controller) {
     const cameraDocument = controller.cinematographyDocument();
     const lookTargetsEditable = [creativeDocument?.kind, cameraDocument?.kind].every((kind) => ["blank", "v2"].includes(kind));
     const creative = block("Creative direction", "story-independent visual language");
+    creative.details.className += " minimax-h3-look-block minimax-h3-look-creative";
     if (["blank", "v2"].includes(creativeDocument.kind)) {
         const toolbar = document.createElement("div");
         toolbar.className = "minimax-h3-studio-toolbar";
+        toolbar.className += " minimax-h3-look-intro-toolbar";
         const help = document.createElement("span");
         help.textContent = "Format, genre, visual language, world, scene-wide mood and title styling";
         const explore = button("Explore", () => {
@@ -179,6 +181,7 @@ export function renderCameraLookTab(container, controller) {
     container.appendChild(creative.details);
 
     const camera = block("Global camera", "shot values take precedence");
+    camera.details.className += " minimax-h3-look-block minimax-h3-look-camera";
     if (["blank", "v2"].includes(cameraDocument.kind)) {
         const fields = new Map(controller.cameraFields().map((field) => [field[0], field]));
         for (const [groupLabel, keys] of CAMERA_GROUPS) {
@@ -207,6 +210,7 @@ export function renderCameraLookTab(container, controller) {
     container.appendChild(camera.details);
 
     const looks = block("Looks", `${controller.lookNames?.().length ?? 0} saved in this browser`);
+    looks.details.className += " minimax-h3-look-block minimax-h3-look-library";
     const lookState = controller.lookUiState ??= {
         selectedName: "",
         nameDraft: "",

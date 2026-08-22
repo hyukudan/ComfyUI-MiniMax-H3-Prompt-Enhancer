@@ -114,7 +114,13 @@ const plan = {
         subjects: [{ subjectId: "marta", presence: "present", blocking: "Foreground" }], environment: { environmentId: "alley", viewIds: ["wide"] },
         referenceUses: [{ assetId: "move", role: "camera_transfer", cameraAspects: ["motion", "framing"], targetIds: ["marta"] }],
         cameraStart: { framing: "medium", composition: "rule_of_thirds", focus: { mode: "single_target", primaryTarget: { kind: "subject", id: "marta" } } },
-        cameraEnd: { framing: "close_up", distance: "near" }, cameraPath: { motionType: "push_in", amplitude: "small", speed: "slow", easing: "ease_in", timing: "during_action" },
+        cameraEnd: { framing: "close_up", distance: "near" }, cameraPath: {
+            motionType: "push_in", amplitude: "small", speed: "slow", easing: "ease_in", timing: "during_action",
+            coordinateSpace: "subject", pathShape: "smooth", waypoints: [
+                { id: "wp1", at: 0, x: 0, y: 0, z: 1 },
+                { id: "wp2", at: 1, x: 0, y: 0, z: -.5 },
+            ],
+        },
         actionBeats: [{ id: "beat1", at: .5, action: "Marta looks up", dialogue: { speakerId: "marta", text: "It is starting.", delivery: "whispers", mood: "wary" } }],
         appearanceTransitions: [{ subjectId: "marta", fromStateId: "base", toStateId: "wet", timing: "during_shot" }],
         environmentTransitions: [{ environmentId: "alley", fromStateId: "day", toStateId: "night", timing: "at_end" }],
@@ -162,7 +168,7 @@ test("Camera mounts the selected shot planner and precise controls without hydra
     const container = new TestElement("section");
     renderCameraTab(container, controller);
     assert.equal(controller.writes, 0);
-    for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
+    for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
         assert.match(container.textContent, new RegExp(label));
     }
 });

@@ -166,6 +166,13 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-point path { fill: color-mix(in srgb, var(--h3-accent) 25%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 2; }
         .minimax-h3-spatial-point[data-selected="true"] circle { fill: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 3; }
         .minimax-h3-spatial-point:focus-visible circle { stroke: var(--h3-tip); stroke-width: 4; }
+        .minimax-h3-spatial-playhead { pointer-events: none; filter: drop-shadow(0 0 5px var(--h3-tip)); }
+        .minimax-h3-spatial-playhead circle { fill: var(--h3-tip); stroke: var(--h3-bg); stroke-width: 2; }
+        .minimax-h3-spatial-playhead path { fill: color-mix(in srgb, var(--h3-tip) 70%, white); stroke: var(--h3-bg); stroke-width: 1.5; }
+        .minimax-h3-spatial-playback { display: grid; min-width: 0; grid-template-columns: auto minmax(80px, 1fr) 38px; align-items: center; gap: 8px; border-top: 1px solid var(--h3-border); padding: 8px; }
+        .minimax-h3-spatial-playback button { min-height: 30px; }
+        .minimax-h3-spatial-playback input { width: 100%; min-width: 0; accent-color: var(--h3-tip); }
+        .minimax-h3-spatial-playback output { color: var(--h3-text-muted); font: 10.5px/1 var(--h3-mono); text-align: right; }
         .minimax-h3-spatial-timeline { display: flex; min-width: 0; flex-wrap: wrap; gap: 5px; border-top: 1px solid var(--h3-border); padding: 8px; }
         .minimax-h3-spatial-timeline button { min-height: 30px; padding: 4px 8px; font-size: 10.5px; }
         .minimax-h3-spatial-timeline button[aria-pressed="true"] { border-color: var(--h3-accent) !important; background: color-mix(in srgb, var(--h3-accent) 18%, var(--h3-surface)) !important; }

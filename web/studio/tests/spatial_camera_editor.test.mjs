@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
     addSpatialWaypoint,
     defaultSpatialWaypoints,
+    interpolateSpatialWaypoint,
     normalizeSpatialWaypoints,
     projectCameraPoint,
     spatialPathD,
@@ -16,6 +17,15 @@ test("spatial camera defaults are a valid normalized two-point timeline", () => 
     assert.equal(points[0].at, 0);
     assert.equal(points.at(-1).at, 1);
     assert.ok(points.every((point) => [point.x, point.y, point.z].every((value) => value >= -1 && value <= 1)));
+});
+
+test("playback interpolation follows waypoint timing instead of point index", () => {
+    const point = interpolateSpatialWaypoint([
+        { id: "a", at: 0, x: -1, y: 0, z: 1 },
+        { id: "b", at: .25, x: 0, y: 1, z: 0 },
+        { id: "c", at: 1, x: 1, y: 0, z: -1 },
+    ], .625);
+    assert.deepEqual(point, { at: .625, x: .5, y: .5, z: -.5 });
 });
 
 test("projection round-trips draggable axes in perspective and top views", () => {
