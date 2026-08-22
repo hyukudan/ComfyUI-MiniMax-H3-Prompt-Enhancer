@@ -21,6 +21,15 @@ export function parseStructuredJson(value, {
         return { kind: "blank", raw, version: null, value: null, errors: [], dirty: false };
     }
 
+    // Former BOOLEAN widgets were sometimes serialized into string-backed
+    // structured slots using Python casing ("True" / "False" / "None"),
+    // which is not JSON. Only explicitly compatible widgets may reinterpret
+    // these exact scalar tokens as an untouched blank document.
+    const legacyScalar = raw.trim().toLocaleLowerCase();
+    if (allowLegacyBlankScalars && ["true", "false", "null", "none"].includes(legacyScalar)) {
+        return { kind: "blank", raw, version: null, value: null, errors: [], dirty: false };
+    }
+
     let parsed;
     try {
         parsed = JSON.parse(raw);

@@ -4303,7 +4303,7 @@ def parse_shot_plan(value: str | Mapping[str, Any] | bool | None, duration_secon
     # Pre-Studio workflows could leave the former boolean Shot Plan control in
     # this storage position. Either boolean is therefore a neutral legacy
     # sentinel; non-boolean scalars stay strict.
-    if value is None or isinstance(value, bool) or (isinstance(value, str) and not value.strip()):
+    if _legacy_blank_storage_value(value):
         return empty_shot_plan(duration_seconds, frame_count)
     if isinstance(value, str):
         if len(value) > 262144:

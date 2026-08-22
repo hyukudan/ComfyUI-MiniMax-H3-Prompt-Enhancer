@@ -56,7 +56,7 @@ test("blank media state creates a new v2 draft without committing during hydrati
 });
 
 test("legacy boolean/null shot storage is semantic blank without hydration writes", () => {
-    for (const raw of ["false", "true", " null "]) {
+    for (const raw of ["false", "False", "true", "True", " null ", "None"]) {
         const widget = { value: raw };
         const store = createWidgetStore(widget, {
             supportedVersions: [1, 2],

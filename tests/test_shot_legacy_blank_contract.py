@@ -7,7 +7,7 @@ import pytest
 from creative_treatments import parse_shot_plan
 
 
-@pytest.mark.parametrize("legacy_blank", (False, True, "false", "true", " null "))
+@pytest.mark.parametrize("legacy_blank", (False, True, "false", "False", " FALSE ", "true", "True", " TRUE ", " null ", "NULL", "None"))
 def test_legacy_boolean_and_null_shot_storage_is_the_neutral_empty_plan(legacy_blank):
     parsed = parse_shot_plan(legacy_blank, 5.0, mode="t2va")
     blank = parse_shot_plan("", 5.0, mode="t2va")
