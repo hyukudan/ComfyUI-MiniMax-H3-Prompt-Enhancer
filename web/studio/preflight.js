@@ -71,6 +71,12 @@ export function localPreflight({ shotDocument, projectDocument } = {}) {
     const assets = new Map((project?.assets ?? []).map((asset) => [asset.id, asset]));
     const subjects = project?.subjects ?? [];
 
+    for (const subject of subjects) {
+        if (!nonEmpty(subject?.description) || subject.description === "Describe the stable identity.") {
+            items.push(issue("error", "subjects", "Describe the stable identity before generating.", subject?.id || "Subject"));
+        }
+    }
+
     for (const shot of shots) {
         const label = shot?.id || "Shot";
         if (!nonEmpty(shot?.action)) items.push(issue("error", "shots", "Describe the visible action before generating.", label));
@@ -81,9 +87,17 @@ export function localPreflight({ shotDocument, projectDocument } = {}) {
             items.push(issue("warning", "shots", "Full presence is enabled, but at least one subject has no presence state.", label));
         }
         for (const beat of shot?.actionBeats ?? []) {
+            if (beat?.dialogue && !nonEmpty(beat.dialogue.text)) {
+                items.push(issue("error", "shots", "Add the exact spoken words or turn dialogue off for this beat.", label));
+            }
             if (!nonEmpty(beat?.action) && !nonEmpty(beat?.dialogue?.text)) {
                 items.push(issue("warning", "shots", "An action beat is empty and will add no direction.", label));
                 break;
+            }
+        }
+        for (const relationship of shot?.scaleRelationships ?? []) {
+            if (relationship?.relation === "custom" && !nonEmpty(relationship.note)) {
+                items.push(issue("error", "shots", "Describe the custom visible scale relationship.", label));
             }
         }
         items.push(...actionBeatIssues(shot));

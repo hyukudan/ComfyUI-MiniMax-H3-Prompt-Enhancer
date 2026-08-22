@@ -297,6 +297,12 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
         _required_fields(subject, subject_fields, field, issues)
         _text_field(subject.get("name"), f"{field}.name", issues, 500, required=True)
         _text_field(subject.get("description"), f"{field}.description", issues, 8000, required=True)
+        if subject.get("description") == "Describe the stable identity.":
+            issues.append(_project_issue(
+                "schema.media_manifest.invalid_value",
+                f"{field}.description is unfinished instructional text",
+                f"{field}.description",
+            ))
         if not isinstance(subject.get("h3Index"), int) or isinstance(subject.get("h3Index"), bool) or not 1 <= subject.get("h3Index", 0) <= 64:
             issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.h3Index must be 1..64", f"{field}.h3Index"))
         if _require_array(subject.get("identityAssetIds"), f"{field}.identityAssetIds", issues):

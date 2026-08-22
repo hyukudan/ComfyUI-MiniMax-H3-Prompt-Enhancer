@@ -20,6 +20,8 @@ Selecting a chip opens one drawer attached to that node. The node's **Open Studi
 
 There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is committed immediately to this node's structured v2 widgets and is saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not write anything.
 
+Empty authoring fields use instructional placeholders. The example disappears on focus and returns on blur only while the field remains empty; it is never stored in project JSON or compiled into the prompt. Required empty drafts remain visibly editable and Review identifies them before generation instead of substituting invented prose.
+
 **Guided / Advanced** is a Look-specific presentation control and therefore appears inside **Look**, not in the global Studio header. Guided presents the principal Look controls first and places neutral specialist fields behind a labelled disclosure; if an advanced Creative Treatment value is already active, that disclosure opens and reports the active count. Advanced renders every available Look field. Switching modes never clears, rewrites, or adds a workflow field, and it does not affect Shots, Media, Camera, Subjects, Environments, or Review.
 
 ## What Prompt Studio does — and does not do

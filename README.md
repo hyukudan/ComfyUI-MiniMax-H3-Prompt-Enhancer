@@ -124,6 +124,8 @@ graph LR
 
 The enhancer node now stays compact through seven summary chips — Shots, Subjects, Environments, Media, Camera, Look, and Review. Each opens a wide, resizable viewport-level drawer that does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays; it is bounded between 420 px and `min(1100px, 60vw)`, becomes full-width below 700 px, and stacks master/detail editors on narrow content. The node button changes from **Open Studio** to **Close Studio** while its drawer is open; `Esc` and the header close button do the same and return focus to the node. Every deliberate editor change is saved immediately into that node's v2 workflow data—there is no separate Save button. The **Guided / Advanced** selector lives inside **Look**, the only area it affects: Guided groups specialist Look controls behind a labelled disclosure, while Advanced shows them all. This browser-local presentation preference never changes or clears workflow data. The Studio edits the existing `media_manifest`, `shot_plan_json`, `creative_treatment_json`, and `cinematography_json` values; it does not add widgets, outputs, a project service, or persistent project data in `localStorage`.
 
+Instructional examples inside empty authoring fields are placeholders, not saved prompt text. They disappear when the field receives focus, return only if it is left empty, and never become JSON automatically. Review blocks generation when a required identity, dialogue line, or custom relationship is still unfinished.
+
 Prompt Studio plans what H3 should do; it does not carry image/video tensors or upload files. The two paths meet at the H3 generation node:
 
 ```text

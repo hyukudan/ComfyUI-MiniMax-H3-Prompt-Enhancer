@@ -47,7 +47,7 @@ test("complete presence and empty beats are non-blocking local notes", () => {
             subjects: [], actionBeats: [{}],
         }] }),
         projectDocument: documentState({
-            subjects: [{ id: "ana" }], assets: [], generations: [{ id: "g1", bindings: [] }],
+            subjects: [{ id: "ana", description: "Adult woman with short dark hair." }], assets: [], generations: [{ id: "g1", bindings: [] }],
         }),
     });
     assert.equal(result.status, "attention");
@@ -67,6 +67,24 @@ test("dialogue-only beats read the structured dialogue text", () => {
     });
     assert.equal(result.status, "ready");
     assert.equal(result.items.some((item) => item.message.includes("action beat is empty")), false);
+});
+
+test("unfinished identity, dialogue and custom scale drafts are explicit blocking items", () => {
+    const result = localPreflight({
+        shotDocument: documentState({ shots: [{
+            id: "s1", generationId: "g1", action: "Ana waits.",
+            actionBeats: [{ action: "Ana looks up.", dialogue: { text: "", delivery: "says" } }],
+            scaleRelationships: [{ relation: "custom", subjectId: "ana", relativeToId: "bea" }],
+        }] }),
+        projectDocument: documentState({
+            subjects: [{ id: "ana", description: "Describe the stable identity." }],
+            assets: [], generations: [{ id: "g1", bindings: [] }],
+        }),
+    });
+    assert.equal(result.status, "blocked");
+    assert.ok(result.items.some(({ section, message }) => section === "subjects" && message.includes("stable identity")));
+    assert.ok(result.items.some(({ message }) => message.includes("exact spoken words")));
+    assert.ok(result.items.some(({ message }) => message.includes("custom visible scale")));
 });
 
 test("malformed and future sources are blocking without reading their values", () => {

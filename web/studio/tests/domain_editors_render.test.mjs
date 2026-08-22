@@ -5,6 +5,7 @@ import { renderEnvironmentsTab } from "../tab_environments.js";
 import { renderCameraTab } from "../tab_camera.js";
 import { renderCoachTab } from "../tab_coach.js";
 import { diagnosticFieldLabels, focusDiagnosticLocation } from "../drawer.js";
+import { textArea, textInput } from "../domain_components.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
 import { createWidgetStore } from "../widget_store.js";
@@ -76,6 +77,22 @@ function findField(root, label) {
 function dispatch(element, eventName) {
     for (const listener of element.listeners.get(eventName) ?? []) listener({ preventDefault() {} });
 }
+
+test("instructional placeholders clear on focus, return on blur and never become values", () => {
+    for (const control of [
+        textInput("", { placeholder: "Describe the identity" }),
+        textArea("", "Describe the action"),
+    ]) {
+        assert.match(control.placeholder, /^Describe/);
+        assert.equal(control.value, "");
+        dispatch(control, "focus");
+        assert.equal(control.placeholder, "");
+        assert.equal(control.value, "");
+        dispatch(control, "blur");
+        assert.match(control.placeholder, /^Describe/);
+        assert.equal(control.value, "");
+    }
+});
 
 function matches(element, selector) {
     if (selector === "[data-target-value]") return element.dataset.targetValue !== undefined;

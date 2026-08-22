@@ -5,19 +5,29 @@ export function element(tag, className = "", text = "") {
     return node;
 }
 
+export function instructionalPlaceholder(control, placeholder) {
+    if (!placeholder) return control;
+    control.placeholder = placeholder;
+    control.addEventListener("focus", () => {
+        if (!control.value) control.placeholder = "";
+    });
+    control.addEventListener("blur", () => {
+        control.placeholder = placeholder;
+    });
+    return control;
+}
+
 export function textInput(value = "", { type = "text", placeholder = "" } = {}) {
     const control = document.createElement("input");
     control.type = type;
     control.value = value ?? "";
-    if (placeholder) control.placeholder = placeholder;
-    return control;
+    return instructionalPlaceholder(control, placeholder);
 }
 
 export function textArea(value = "", placeholder = "") {
     const control = document.createElement("textarea");
     control.value = value ?? "";
-    if (placeholder) control.placeholder = placeholder;
-    return control;
+    return instructionalPlaceholder(control, placeholder);
 }
 
 export function selectInput(value, choices, { ariaLabel = "" } = {}) {

@@ -72,6 +72,18 @@ def test_manifest_v2_rejects_duplicate_json_keys_and_future_versions():
     assert future["diagnostics"][0]["code"] == "schema.media_manifest.unsupported_version"
 
 
+def test_manifest_v2_never_compiles_the_old_identity_instruction_as_prompt_content():
+    project = _project()
+    project["subjects"][0]["description"] = "Describe the stable identity."
+    compiled = parse_media_project(project)
+    assert not compiled["valid"]
+    assert any(
+        item["code"] == "schema.media_manifest.invalid_value"
+        and item["field"].endswith(".description")
+        for item in compiled["diagnostics"]
+    )
+
+
 def test_manifest_v2_detects_state_cycles_and_unknown_bases():
     project = _project()
     states = project["subjects"][0]["appearanceStates"]
@@ -151,4 +163,3 @@ def test_manifest_v2_environment_inheritance_and_carry_are_resolved():
     assert compiled["generations"]["g2"]["initialState"]["environments"]["room"] == "rain"
     context = manifest_context_for_generation(compiled, "g2")
     assert "daylight" in context and "rain" in context and "stone walls" in context
-

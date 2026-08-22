@@ -4,6 +4,7 @@ import {
     visualLanguageSearchText,
 } from "./visual_language_catalog.js";
 import { MOOD_GUARDRAIL, moodChoiceGroups } from "./mood_catalog.js";
+import { instructionalPlaceholder } from "./domain_components.js";
 
 const CAMERA_GROUPS = [
     ["Image", ["colorPalette", "exposureContrast", "imageTexture", "lensEffects"]],
@@ -308,7 +309,7 @@ export function renderCameraLookTab(container, controller) {
     const name = document.createElement("input");
     name.type = "text";
     name.maxLength = 64;
-    name.placeholder = "Name the current direction and camera…";
+    instructionalPlaceholder(name, "Name the current direction and camera…");
     name.setAttribute("aria-label", "New look name");
     name.value = lookState.nameDraft;
     name.addEventListener("input", () => { lookState.nameDraft = name.value; });

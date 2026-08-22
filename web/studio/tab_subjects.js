@@ -22,7 +22,7 @@ function nextH3Index(subjects) {
 function newSubject(project) {
     const id = uniqueId(project.subjects, "subject.");
     return {
-        id, h3Index: nextH3Index(project.subjects), name: "New subject", description: "Describe the stable identity.",
+        id, h3Index: nextH3Index(project.subjects), name: "New subject", description: "",
         identityAssetIds: [], baseAppearanceStateId: "base",
         appearanceStates: [{ id: "base", name: "Base", controls: [], attributes: {} }],
     };
@@ -163,7 +163,8 @@ export function renderSubjectsTab(container, controller) {
         const label = masterRows.get(subject.id)?.children?.[0];
         if (label) label.textContent = name.value.trim() || subject.id;
     });
-    const description = textArea(subject.description, "Stable face, body and identity traits");
+    const legacyInstruction = subject.description === "Describe the stable identity.";
+    const description = textArea(legacyInstruction ? "" : subject.description, "Describe stable face, body and identity traits…");
     bindCommit(description, (value) => { subject.description = value.trim(); }, commit, "blur");
     identity.body.append(field("Name", name), field("Identity description", description));
     const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture").map((asset) => ({ id: asset.id, label: asset.name || asset.id }));

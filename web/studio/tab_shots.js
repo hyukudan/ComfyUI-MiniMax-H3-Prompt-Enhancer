@@ -191,7 +191,7 @@ function renderActionBeats(container, shot, project, commit, rerender) {
         shot.actionBeats ??= [];
         const count = shot.actionBeats.length;
         const at = count ? Math.min(.95, Math.round(((count + 1) / (count + 2)) * 100) / 100) : .5;
-        shot.actionBeats.push({ id: nextBeatId(shot.actionBeats), at, action: "Describe this beat" });
+        shot.actionBeats.push({ id: nextBeatId(shot.actionBeats), at, action: "" });
         shot.actionBeats.sort((a, b) => a.at - b.at); commit(); rerender();
     }, { disabled: beats.length >= 12 });
     add.className += " minimax-h3-button minimax-h3-button-secondary"; section.body.appendChild(add);
@@ -223,13 +223,12 @@ function renderActionBeats(container, shot, project, commit, rerender) {
         bindCommit(action, (value) => {
             const text = value.trim();
             if (text) beat.action = text;
-            else if (beat.dialogue) delete beat.action;
-            else beat.action = "Describe this beat";
+            else delete beat.action;
         }, commit, "blur"); card.appendChild(field("Action / reaction", action));
         const dialogueToggle = document.createElement("input"); dialogueToggle.type = "checkbox"; dialogueToggle.checked = Boolean(beat.dialogue);
         dialogueToggle.addEventListener("change", () => {
-            if (dialogueToggle.checked) beat.dialogue = { text: "Dialogue", delivery: "says" };
-            else { delete beat.dialogue; if (!beat.action) beat.action = "Describe this beat"; }
+            if (dialogueToggle.checked) beat.dialogue = { text: "", delivery: "says" };
+            else delete beat.dialogue;
             commit(); rerender();
         });
         card.appendChild(field("Dialogue at this beat", dialogueToggle));
@@ -241,7 +240,7 @@ function renderActionBeats(container, shot, project, commit, rerender) {
             bindCommit(delivery, (value) => { beat.dialogue.delivery = value; }, commit);
             dialogueGrid.append(field("Speaker", speaker), field("Delivery", delivery));
             const text = textInput(beat.dialogue.text, { placeholder: "Exact spoken words" });
-            bindCommit(text, (value) => { beat.dialogue.text = value.trim() || "Dialogue"; }, commit);
+            bindCommit(text, (value) => { beat.dialogue.text = value.trim(); }, commit);
             const mood = textInput(beat.dialogue.mood, { placeholder: "e.g. relieved, restrained" });
             bindCommit(mood, (value) => setOptional(beat.dialogue, "mood", value.trim()), commit);
             dialogueGrid.append(field("Spoken words", text), field("Mood", mood)); card.appendChild(dialogueGrid);
@@ -345,7 +344,7 @@ function renderScaleRelationships(container, shot, project, commit, rerender) {
         row.append(field("Subject", subject), field("Relationship", relation), field("Compared with", landmark));
         if (relationship.relation === "custom") {
             const note = textInput(relationship.note, { placeholder: "Visible relationship, without exact units" });
-            bindCommit(note, (value) => { relationship.note = value.trim() || "Describe the visible scale relationship"; }, commit);
+            bindCommit(note, (value) => setOptional(relationship, "note", value.trim()), commit);
             row.appendChild(field("Custom relationship", note));
         }
         row.appendChild(actionButton("Remove", () => {
