@@ -136,6 +136,54 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-camera-data-fallback textarea { width: 100%; min-height: 130px; box-sizing: border-box; margin-top: var(--h3-space-2); font: 11px/1.45 var(--h3-mono) !important; }
         .minimax-h3-camera-data-feedback { min-height: 18px; margin: 5px 0; color: var(--h3-text-muted); font-size: 11px; }
         .minimax-h3-camera-data-feedback[data-kind="error"] { color: var(--h3-error); }
+        .minimax-h3-spatial-editor { display: grid; min-width: 0; gap: 10px; margin: 0 var(--h3-space-3); }
+        .minimax-h3-spatial-empty {
+            display: grid; justify-items: center; gap: 7px; min-height: 230px; align-content: center;
+            border: 1px dashed color-mix(in srgb, var(--h3-accent) 48%, var(--h3-border)); border-radius: var(--h3-radius-md);
+            padding: 24px; text-align: center; background: radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--h3-accent) 12%, transparent), transparent 42%), var(--h3-bg);
+        }
+        .minimax-h3-spatial-empty h3, .minimax-h3-spatial-empty p { margin: 0; }
+        .minimax-h3-spatial-empty p { max-width: 420px; color: var(--h3-text-muted); line-height: 1.45; }
+        .minimax-h3-spatial-empty-art { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid var(--h3-accent); border-radius: 18px; color: var(--h3-accent); font-size: 30px; background: color-mix(in srgb, var(--h3-accent) 12%, var(--h3-surface)); }
+        .minimax-h3-spatial-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; }
+        .minimax-h3-spatial-toolbar select { width: auto; min-width: 118px; flex: 1 1 118px; }
+        .minimax-h3-spatial-segments { display: inline-flex; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); }
+        .minimax-h3-spatial-segments button { min-height: 32px; border: 0 !important; border-radius: 0 !important; padding: 5px 10px; }
+        .minimax-h3-spatial-segments button[aria-pressed="true"] { color: var(--h3-text); background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; }
+        .minimax-h3-spatial-workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+        .minimax-h3-spatial-canvas { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--h3-accent) 34%, var(--h3-border)); border-radius: var(--h3-radius-md); background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--h3-accent) 12%, transparent), transparent 42%), color-mix(in srgb, var(--h3-bg) 90%, black 10%); }
+        .minimax-h3-spatial-canvas svg { display: block; width: 100%; min-height: 270px; touch-action: none; }
+        .minimax-h3-spatial-grid { fill: none; stroke: color-mix(in srgb, var(--h3-border-strong) 46%, transparent); stroke-width: 1; }
+        .minimax-h3-spatial-path-shadow { fill: none; stroke: color-mix(in srgb, black 50%, transparent); stroke-width: 10; opacity: .35; }
+        .minimax-h3-spatial-path { fill: none; stroke: var(--h3-accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--h3-accent) 60%, transparent)); }
+        .minimax-h3-spatial-target circle:first-child { fill: color-mix(in srgb, var(--h3-tip) 14%, var(--h3-bg)); stroke: var(--h3-tip); stroke-width: 2; }
+        .minimax-h3-spatial-target circle:nth-child(2) { fill: var(--h3-tip); }
+        .minimax-h3-spatial-point text { fill: var(--h3-text); pointer-events: none; font: 700 10px/1 var(--h3-font); }
+        .minimax-h3-spatial-origin-label { fill: var(--h3-text-muted); font: 650 9px/1 var(--h3-font); letter-spacing: .06em; }
+        .minimax-h3-spatial-point { cursor: grab; outline: none; }
+        .minimax-h3-spatial-point:active { cursor: grabbing; }
+        .minimax-h3-spatial-point circle { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 2; }
+        .minimax-h3-spatial-point path { fill: color-mix(in srgb, var(--h3-accent) 25%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 2; }
+        .minimax-h3-spatial-point[data-selected="true"] circle { fill: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 3; }
+        .minimax-h3-spatial-point:focus-visible circle { stroke: var(--h3-tip); stroke-width: 4; }
+        .minimax-h3-spatial-timeline { display: flex; min-width: 0; flex-wrap: wrap; gap: 5px; border-top: 1px solid var(--h3-border); padding: 8px; }
+        .minimax-h3-spatial-timeline button { min-height: 30px; padding: 4px 8px; font-size: 10.5px; }
+        .minimax-h3-spatial-timeline button[aria-pressed="true"] { border-color: var(--h3-accent) !important; background: color-mix(in srgb, var(--h3-accent) 18%, var(--h3-surface)) !important; }
+        .minimax-h3-spatial-inspector { display: grid; align-content: start; min-width: 0; gap: 10px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: 11px; background: var(--h3-surface); }
+        .minimax-h3-spatial-inspector-heading { display: flex; justify-content: space-between; gap: 8px; }
+        .minimax-h3-spatial-inspector-heading span { color: var(--h3-text-muted); font-size: 10.5px; }
+        .minimax-h3-spatial-slider { display: grid; min-width: 0; gap: 4px; }
+        .minimax-h3-spatial-slider > span { display: flex; justify-content: space-between; gap: 8px; color: var(--h3-text-muted); font-size: 10.5px; }
+        .minimax-h3-spatial-slider output { color: var(--h3-text); font-family: var(--h3-mono); }
+        .minimax-h3-spatial-slider input { width: 100%; min-width: 0; accent-color: var(--h3-accent); }
+        .minimax-h3-spatial-inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
+        .minimax-h3-spatial-note { margin: 0; color: var(--h3-text-muted); font-size: 9.5px; text-align: right; }
+        .minimax-h3-camera-preset-disclosure { margin: 0 var(--h3-space-3); overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-surface) 88%, transparent); }
+        .minimax-h3-camera-preset-disclosure > summary { min-height: 38px; padding: 8px 11px; cursor: pointer; color: var(--h3-text); font-weight: 650; }
+        .minimax-h3-camera-preset-disclosure .minimax-h3-camera-phases { padding: 0 10px 10px; }
+        @container h3-camera-planner (min-width: 720px) {
+            .minimax-h3-spatial-workspace { grid-template-columns: minmax(0, 1.55fr) minmax(190px, .72fr); }
+        }
         @container h3-camera-planner (min-width: 680px) {
             .minimax-h3-camera-phases { grid-template-columns: minmax(0, .8fr) minmax(0, 1.25fr) minmax(0, .8fr); }
         }

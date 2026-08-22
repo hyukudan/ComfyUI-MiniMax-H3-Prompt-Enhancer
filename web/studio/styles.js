@@ -587,6 +587,8 @@ export function ensureStudioStyles() {
         }
         .minimax-h3-searchable-select-popover button,
         .minimax-h3-searchable-select-popover input { color: inherit; font: inherit; }
+        .minimax-h3-searchable-select-popover button:not(:disabled) { cursor: pointer; }
+        .minimax-h3-searchable-select-popover button:disabled { cursor: not-allowed; }
         .minimax-h3-searchable-select-popover[hidden] { display: none; }
         .minimax-h3-visual-navigation {
             display: flex;
@@ -603,6 +605,7 @@ export function ensureStudioStyles() {
             padding: 2px 5px !important;
             background: transparent !important;
             color: var(--h3-button-text) !important;
+            cursor: pointer;
         }
         .minimax-h3-visual-back[hidden] { display: none; }
         .minimax-h3-visual-breadcrumb {
@@ -970,6 +973,12 @@ export function ensureStudioStyles() {
         }
         .minimax-h3-shot-camera-summary > div { display: grid; min-width: 0; gap: 3px; }
         .minimax-h3-shot-camera-summary p { margin: 0; color: var(--h3-text-muted); font-size: 11.5px; line-height: 1.4; overflow-wrap: anywhere; }
+        .minimax-h3-action-beat { display: grid; min-width: 0; gap: 8px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: 10px; background: color-mix(in srgb, var(--h3-input-bg) 82%, transparent); }
+        .minimax-h3-action-beat + .minimax-h3-action-beat { margin-top: 8px; }
+        .minimax-h3-action-beat-header { display: flex; min-width: 0; align-items: center; gap: 8px; }
+        .minimax-h3-action-beat-header > span { margin-right: auto; color: var(--h3-text-muted); font-size: 10.5px; }
+        .minimax-h3-action-beat > input[type="range"] { width: 100%; accent-color: var(--h3-accent); }
+        .minimax-h3-action-beat-dialogue { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 1px solid var(--h3-border); padding-top: 8px; }
         .minimax-h3-camera-workspace-header {
             display: flex;
             min-width: 0;
@@ -1188,6 +1197,7 @@ export function ensureStudioStyles() {
             .minimax-h3-header-state { width: 100%; justify-content: flex-end; }
             .minimax-h3-header-state { gap: 2px; }
             .minimax-h3-review-label { max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .minimax-h3-action-beat-dialogue { grid-template-columns: minmax(0, 1fr); }
         }
         @container h3-studio (max-width: 479px) {
             .minimax-h3-studio-body { grid-template-columns: var(--h3-rail-compact-width) minmax(0, 1fr); }

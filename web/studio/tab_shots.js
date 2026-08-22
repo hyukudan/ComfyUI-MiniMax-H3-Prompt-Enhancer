@@ -175,6 +175,67 @@ function renderStory(container, shot, commit, rerender) {
     container.appendChild(section.details);
 }
 
+const DELIVERY_CHOICES = [["says", "Says"], ["whispers", "Whispers"], ["shouts", "Shouts"], ["asks", "Asks"], ["sings", "Sings"], ["voice_over", "Voice-over"]];
+
+function nextBeatId(beats) {
+    const used = new Set(beats.map((beat) => beat.id)); let index = beats.length + 1;
+    while (used.has(`beat${index}`)) index += 1;
+    return `beat${index}`;
+}
+
+function renderActionBeats(container, shot, project, commit, rerender) {
+    const beats = shot.actionBeats ?? [];
+    const section = inspectorSection("Action beats", beats.length ? `${beats.length} timed` : "Optional rhythm", false);
+    section.body.appendChild(element("p", "minimax-h3-field-hint", "Use beats only when order or rhythm matters. Their percentages stay relative if the clip duration changes."));
+    const add = actionButton("+ Add beat", () => {
+        shot.actionBeats ??= [];
+        const count = shot.actionBeats.length;
+        const at = count ? Math.min(.95, Math.round(((count + 1) / (count + 2)) * 100) / 100) : .5;
+        shot.actionBeats.push({ id: nextBeatId(shot.actionBeats), at, action: "Describe this beat" });
+        shot.actionBeats.sort((a, b) => a.at - b.at); commit(); rerender();
+    }, { disabled: beats.length >= 12 });
+    add.className += " minimax-h3-button minimax-h3-button-secondary"; section.body.appendChild(add);
+    for (const [index, beat] of beats.entries()) {
+        const card = element("article", "minimax-h3-action-beat");
+        const header = element("div", "minimax-h3-action-beat-header");
+        header.append(element("strong", "", `Beat ${index + 1}`), element("span", "", `${Math.round(Number(beat.at) * 100)}%`));
+        header.appendChild(actionButton("Remove", () => {
+            shot.actionBeats.splice(index, 1); if (!shot.actionBeats.length) delete shot.actionBeats; commit(); rerender();
+        }, { danger: true })); card.appendChild(header);
+        const timing = document.createElement("input"); timing.type = "range"; timing.min = index ? String(Number(beats[index - 1].at) + .01) : "0"; timing.max = index < beats.length - 1 ? String(Number(beats[index + 1].at) - .01) : "1"; timing.step = ".01"; timing.value = String(beat.at); timing.setAttribute("aria-label", `Beat ${index + 1} timing`);
+        timing.addEventListener("change", () => { beat.at = Math.round(Number(timing.value) * 100) / 100; commit(); rerender(); }); card.appendChild(timing);
+        const action = textArea(beat.action, "Visible action or reaction at this beat");
+        bindCommit(action, (value) => {
+            const text = value.trim();
+            if (text) beat.action = text;
+            else if (beat.dialogue) delete beat.action;
+            else beat.action = "Describe this beat";
+        }, commit, "blur"); card.appendChild(field("Action / reaction", action));
+        const dialogueToggle = document.createElement("input"); dialogueToggle.type = "checkbox"; dialogueToggle.checked = Boolean(beat.dialogue);
+        dialogueToggle.addEventListener("change", () => {
+            if (dialogueToggle.checked) beat.dialogue = { text: "Dialogue", delivery: "says" };
+            else { delete beat.dialogue; if (!beat.action) beat.action = "Describe this beat"; }
+            commit(); rerender();
+        });
+        card.appendChild(field("Dialogue at this beat", dialogueToggle));
+        if (beat.dialogue) {
+            const dialogueGrid = element("div", "minimax-h3-action-beat-dialogue");
+            const speaker = selectInput(beat.dialogue.speakerId ?? "", [["", "Unspecified speaker"], ...(project.subjects ?? []).map((subject) => [subject.id, subject.name || subject.id])], { ariaLabel: `Beat ${index + 1} speaker` });
+            bindCommit(speaker, (value) => setOptional(beat.dialogue, "speakerId", value), commit);
+            const delivery = selectInput(beat.dialogue.delivery ?? "says", DELIVERY_CHOICES, { ariaLabel: `Beat ${index + 1} delivery` });
+            bindCommit(delivery, (value) => { beat.dialogue.delivery = value; }, commit);
+            dialogueGrid.append(field("Speaker", speaker), field("Delivery", delivery));
+            const text = textInput(beat.dialogue.text, { placeholder: "Exact spoken words" });
+            bindCommit(text, (value) => { beat.dialogue.text = value.trim() || "Dialogue"; }, commit);
+            const mood = textInput(beat.dialogue.mood, { placeholder: "e.g. relieved, restrained" });
+            bindCommit(mood, (value) => setOptional(beat.dialogue, "mood", value.trim()), commit);
+            dialogueGrid.append(field("Spoken words", text), field("Mood", mood)); card.appendChild(dialogueGrid);
+        }
+        section.body.appendChild(card);
+    }
+    container.appendChild(section.details);
+}
+
 function renderTiming(container, shot, plan, commit, rerender) {
     const section = inspectorSection("Timing & cut", plan.timingMode === "exact" ? `${shot.durationSeconds ?? 1}s` : "Auto timing", false);
     const transition = selectInput(shot.transitionIn, TRANSITIONS);
@@ -512,7 +573,7 @@ export function renderShotsTab(container, controller) {
     const generation = selectInput(shot.generationId, generationIds(project, controller).map((id) => [id, id]));
     generation.addEventListener("change", () => { shot.generationId = generation.value; commit(); rerender(); }); header.appendChild(field("Generation", generation));
     editor.appendChild(header);
-    renderStory(editor, shot, commit, rerender); renderTiming(editor, shot, state.plan, commit, rerender);
+    renderStory(editor, shot, commit, rerender); renderActionBeats(editor, shot, project, commit, rerender); renderTiming(editor, shot, state.plan, commit, rerender);
     renderPresence(editor, shot, project, entryStates, commit, rerender);
     renderEnvironment(editor, shot, project, entryStates, commit, rerender);
     renderReferences(editor, shot, project, commit, rerender);

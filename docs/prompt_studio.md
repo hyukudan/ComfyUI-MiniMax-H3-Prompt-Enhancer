@@ -110,7 +110,8 @@ For shot-plan v2, the editor owns:
 - transition and cut context;
 - complete subject presence and blocking;
 - environment/view selection and reference uses;
-- camera Start, Path, and sparse End values;
+- camera Start, Path, and sparse End values, including an optional 2–6 point spatial path;
+- optional relative action beats, each with a visible action/reaction and linked dialogue delivery;
 - appearance and environment transitions.
 
 `openingState` is the visible first-frame condition. `action` is the change that occurs during the shot. Do not repeat the opening state as if it were a second event.
@@ -146,7 +147,7 @@ This distinction allows slot reuse across chained generations without changing a
 
 ### Camera
 
-Shots keeps camera context compact: it shows the selected shot's current instruction and an **Edit camera** action. Camera opens the existing visual planner at workspace scale, provides a shot selector, and exposes precise Start/Path/End fields. Both surfaces read and write the same shot object in `shot_plan_json` v2, so switching sections does not copy or reconcile data.
+Shots keeps camera context compact: it shows the selected shot's current instruction and an **Edit camera** action. Camera opens the spatial planner at workspace scale, provides a shot selector, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Y/Z, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. The Perspective and Top views edit the same data; they are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Both surfaces read and write the same shot object in `shot_plan_json` v2, so switching sections does not copy or reconcile data.
 
 Start and End are temporal phases, not competing owners. An omitted End field inherits Start and is not serialized redundantly.
 
@@ -210,7 +211,7 @@ The normative schema is [`schemas/media_manifest_v2.schema.json`](schemas/media_
 
 Shot-plan v2 is the temporal source of truth. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode.
 
-`timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start.
+`timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `actionBeats[].at` and camera waypoint `at` values are normalized from 0 to 1, so their rhythm survives duration changes. Beat percentages and editor labels never appear in the enhanced prompt; they compile to natural temporal flow. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start.
 
 The normative schema is [`schemas/shot_plan_v2.schema.json`](schemas/shot_plan_v2.schema.json). Shot-plan v1 remains accepted without changing its generated instruction. The first intentional structured edit migrates a v1 shot plan atomically to v2.
 

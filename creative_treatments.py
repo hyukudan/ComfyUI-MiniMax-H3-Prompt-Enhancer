@@ -3804,7 +3804,7 @@ _SHOT_PLAN_V2_ITEM_KEYS = {
     "id", "generationId", "openingState", "action", "durationSeconds",
     "transitionIn", "cutContext", "subjectPresenceComplete", "subjects",
     "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
-    "appearanceTransitions", "environmentTransitions",
+    "actionBeats", "appearanceTransitions", "environmentTransitions",
 }
 _REFERENCE_ROLES = {
     "identity_reinforcement", "appearance", "environment_view", "scale",
@@ -3962,6 +3962,60 @@ def _shot_v2_transition(value: Any, path: str, entity_key: str) -> list[dict[str
     return result
 
 
+def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not 1 <= len(value) <= 12:
+        raise ValueError(f"{path} must be an array containing 1-12 beats")
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    previous_at = -1.0
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - {"id", "at", "action", "dialogue"})
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        beat_id = _shot_v2_id(raw.get("id"), f"{item_path}.id")
+        if beat_id in seen:
+            raise ValueError(f"{path} contains duplicate id {beat_id!r}")
+        seen.add(beat_id)
+        at = raw.get("at")
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(float(at)):
+            raise ValueError(f"{item_path}.at must be a finite number")
+        at = float(at)
+        if at < 0 or at > 1 or at <= previous_at:
+            raise ValueError(f"{path} at values must be strictly increasing between 0 and 1")
+        previous_at = at
+        normalized: dict[str, Any] = {"id": beat_id, "at": at}
+        if "action" in raw:
+            normalized["action"] = _shot_v2_text(raw["action"], f"{item_path}.action", 1000)
+        if "dialogue" in raw:
+            dialogue = raw["dialogue"]
+            if not isinstance(dialogue, Mapping):
+                raise ValueError(f"{item_path}.dialogue must be an object")
+            dialogue = dict(dialogue)
+            unknown_dialogue = sorted(set(dialogue) - {"speakerId", "text", "delivery", "mood"})
+            if unknown_dialogue:
+                raise ValueError(f"{item_path}.dialogue contains unsupported keys: {unknown_dialogue}")
+            delivery = dialogue.get("delivery", "says")
+            if delivery not in {"says", "whispers", "shouts", "asks", "sings", "voice_over"}:
+                raise ValueError(f"{item_path}.dialogue.delivery is unsupported")
+            normalized_dialogue: dict[str, Any] = {
+                "text": _shot_v2_text(dialogue.get("text"), f"{item_path}.dialogue.text", 1000),
+                "delivery": delivery,
+            }
+            if "speakerId" in dialogue:
+                normalized_dialogue["speakerId"] = _shot_v2_id(dialogue["speakerId"], f"{item_path}.dialogue.speakerId")
+            if "mood" in dialogue:
+                normalized_dialogue["mood"] = _shot_v2_text(dialogue["mood"], f"{item_path}.dialogue.mood", 120)
+            normalized["dialogue"] = normalized_dialogue
+        if "action" not in normalized and "dialogue" not in normalized:
+            raise ValueError(f"{item_path} requires action or dialogue")
+        result.append(normalized)
+    return result
+
+
 def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
                         frame_count: int, mode: str) -> dict[str, Any]:
     raw_timing_mode = raw.get("timingMode")
@@ -4066,6 +4120,8 @@ def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
                 shot["cameraEnd"] = end_delta
         if "cameraPath" in data:
             shot["cameraPath"] = normalize_camera_path(data["cameraPath"], f"{path} cameraPath")
+        if "actionBeats" in data:
+            shot["actionBeats"] = _shot_v2_action_beats(data["actionBeats"], f"{path} actionBeats")
         if "appearanceTransitions" in data:
             shot["appearanceTransitions"] = _shot_v2_transition(
                 data["appearanceTransitions"], f"{path} appearanceTransitions", "subjectId"
@@ -4401,6 +4457,19 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
                 "  Structured allocation: "
                 + json.dumps(allocation, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             )
+        if shot.get("actionBeats"):
+            lines.append("  Authored action rhythm (relative progress within this shot):")
+            for beat in shot["actionBeats"]:
+                content = []
+                if beat.get("action"):
+                    content.append(beat["action"])
+                if beat.get("dialogue"):
+                    dialogue = beat["dialogue"]
+                    speaker = f"{dialogue['speakerId']} " if dialogue.get("speakerId") else "A speaker "
+                    delivery = str(dialogue["delivery"]).replace("_", " ")
+                    mood = f" with {dialogue['mood']} mood" if dialogue.get("mood") else ""
+                    content.append(f"{speaker}{delivery}{mood}: {json.dumps(dialogue['text'], ensure_ascii=False)}")
+                lines.append(f"    - At {round(float(beat['at']) * 100)}%: " + " ".join(content))
         camera_sentences = []
         start = shot.get("cameraStart", {})
         end_delta = shot.get("cameraEnd", {})
@@ -4419,7 +4488,8 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
     lines.append(
         "Reference uses grant only their declared role. camera_transfer transfers only its listed cameraAspects; "
         "a video reference does not own any other camera property. Render all structured facts as natural scene "
-        "language and never expose JSON or these control labels in the enhanced prompt."
+        "language and never expose JSON, percentages, or these control labels in the enhanced prompt. Convert authored "
+        "relative beat positions into natural temporal flow while preserving their order and spacing."
     )
     return "\n".join(lines)
 

@@ -94,6 +94,64 @@ def test_v2_rejects_non_camera_role_aspects_and_static_qualifiers():
         parse_shot_plan(_plan(_shot(cameraPath={"motionType": "static", "speed": "slow"})), 8.0)
 
 
+def test_spatial_camera_waypoints_are_canonical_and_reach_prompt_instruction():
+    path = {
+        "motionType": "tracking", "coordinateSpace": "subject", "pathShape": "arc_left",
+        "easing": "ease_in_out",
+        "waypoints": [
+            {"id": "cam1", "at": 0, "x": -0.8, "y": 0.1, "z": 0.7, "framing": "wide"},
+            {"id": "cam2", "at": 0.45, "x": -0.1, "y": 0.25, "z": 0.1, "hold": True},
+            {"id": "cam3", "at": 1, "x": 0.65, "y": -0.1, "z": -0.4, "framing": "close_up"},
+        ],
+    }
+    plan = parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0)
+    assert plan["shots"][0]["cameraPath"] == path
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "subject-relative space" in instruction
+    assert "45% at relative position" in instruction
+    assert "brief hold" in instruction
+
+
+@pytest.mark.parametrize("waypoints", [
+    [{"id": "a", "at": 0, "x": 0, "y": 0, "z": 0}],
+    [
+        {"id": "a", "at": 0.2, "x": 0, "y": 0, "z": 0},
+        {"id": "b", "at": 1, "x": 0, "y": 0, "z": 0},
+    ],
+    [
+        {"id": "a", "at": 0, "x": 0, "y": 0, "z": 0},
+        {"id": "b", "at": 0, "x": 0, "y": 0, "z": 0},
+    ],
+])
+def test_spatial_camera_waypoints_reject_invalid_timeline(waypoints):
+    with pytest.raises(ValueError):
+        parse_shot_plan(_plan(_shot(cameraPath={"motionType": "tracking", "waypoints": waypoints})), 8.0)
+
+
+def test_action_beats_link_visible_action_and_dialogue_without_leaking_control_labels():
+    plan = parse_shot_plan(_plan(_shot(actionBeats=[
+        {"id": "b1", "at": .2, "action": "Ana notices the open door."},
+        {"id": "b2", "at": .65, "action": "She stops.", "dialogue": {
+            "speakerId": "ana", "text": "Who is there?", "delivery": "whispers", "mood": "wary",
+        }},
+    ])), 8.0)
+    assert plan["shots"][0]["actionBeats"][1]["dialogue"]["speakerId"] == "ana"
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "At 65%" in instruction
+    assert 'ana whispers with wary mood: "Who is there?"' in instruction
+    assert "never expose JSON, percentages" in instruction
+
+
+def test_action_beats_require_content_and_strictly_increasing_progress():
+    with pytest.raises(ValueError, match="requires action or dialogue"):
+        parse_shot_plan(_plan(_shot(actionBeats=[{"id": "b1", "at": .5}])), 8.0)
+    with pytest.raises(ValueError, match="strictly increasing"):
+        parse_shot_plan(_plan(_shot(actionBeats=[
+            {"id": "b1", "at": .6, "action": "First"},
+            {"id": "b2", "at": .4, "action": "Second"},
+        ])), 8.0)
+
+
 def test_v2_rejects_empty_end_after_delta_normalization_without_serializing_it():
     plan = parse_shot_plan(_plan(_shot(
         cameraStart={"framing": "wide"}, cameraEnd={"framing": "wide"},

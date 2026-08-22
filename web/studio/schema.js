@@ -160,7 +160,7 @@ export function normalizeShotPlanV2(value) {
         Object.assign(shot, copyKnown(source, [
             "transitionIn", "cutContext", "subjectPresenceComplete", "subjects", "environment",
             "referenceUses", "cameraStart", "cameraEnd", "cameraPath", "appearanceTransitions",
-            "environmentTransitions",
+            "environmentTransitions", "actionBeats",
         ]));
         if (shot.cameraEnd && !Object.keys(shot.cameraEnd).length) delete shot.cameraEnd;
         if (shot.cameraStart && !Object.keys(shot.cameraStart).length) delete shot.cameraStart;

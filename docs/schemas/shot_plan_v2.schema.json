@@ -61,12 +61,32 @@
         "amplitude": {"enum": ["small", "medium", "large"]},
         "speed": {"enum": ["slow", "normal", "fast"]},
         "easing": {"enum": ["linear", "ease_in", "ease_out", "ease_in_out"]},
-        "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "before_cut"]}
+        "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "before_cut"]},
+        "coordinateSpace": {"enum": ["subject", "scene"]},
+        "pathShape": {"enum": ["straight", "smooth", "arc_left", "arc_right"]},
+        "waypoints": {
+          "type": "array", "minItems": 2, "maxItems": 6,
+          "items": {"$ref": "#/$defs/cameraWaypoint"}
+        }
       },
       "allOf": [{
         "if": {"properties": {"motionType": {"const": "static"}}, "required": ["motionType"]},
         "then": {"not": {"anyOf": [{"required": ["amplitude"]}, {"required": ["speed"]}, {"required": ["easing"]}]}}
       }]
+    },
+    "cameraWaypoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "at", "x", "y", "z"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "at": {"type": "number", "minimum": 0, "maximum": 1},
+        "x": {"type": "number", "minimum": -1, "maximum": 1},
+        "y": {"type": "number", "minimum": -1, "maximum": 1},
+        "z": {"type": "number", "minimum": -1, "maximum": 1},
+        "framing": {"enum": ["extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide", "extreme_wide"]},
+        "angle": {"enum": ["eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye"]},
+        "hold": {"type": "boolean"}
+      }
     },
     "subjectPresence": {
       "type": "object", "additionalProperties": false, "required": ["subjectId", "presence"],
@@ -75,6 +95,25 @@
         "presence": {"enum": ["present", "enters", "exits", "absent"]},
         "blocking": {"$ref": "#/$defs/shortText"}
       }
+    },
+    "actionBeat": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "at"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "at": {"type": "number", "minimum": 0, "maximum": 1},
+        "action": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "dialogue": {
+          "type": "object", "additionalProperties": false, "required": ["text", "delivery"],
+          "properties": {
+            "speakerId": {"$ref": "#/$defs/id"},
+            "text": {"type": "string", "minLength": 1, "maxLength": 1000},
+            "delivery": {"enum": ["says", "whispers", "shouts", "asks", "sings", "voice_over"]},
+            "mood": {"type": "string", "minLength": 1, "maxLength": 120}
+          }
+        }
+      },
+      "anyOf": [{"required": ["action"]}, {"required": ["dialogue"]}]
     },
     "environmentSelection": {
       "type": "object", "additionalProperties": false, "required": ["environmentId"],
@@ -138,6 +177,7 @@
         "subjects": {"type": "array", "items": {"$ref": "#/$defs/subjectPresence"}},
         "environment": {"$ref": "#/$defs/environmentSelection"},
         "referenceUses": {"type": "array", "items": {"$ref": "#/$defs/referenceUse"}},
+        "actionBeats": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/actionBeat"}},
         "cameraStart": {"$ref": "#/$defs/cameraFrame"},
         "cameraEnd": {"$ref": "#/$defs/cameraFrame"},
         "cameraPath": {"$ref": "#/$defs/cameraPath"},

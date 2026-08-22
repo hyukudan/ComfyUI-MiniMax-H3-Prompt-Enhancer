@@ -47,7 +47,11 @@ MOTION_TYPES = {
     "pedestal_up", "pedestal_down", "arc", "tracking", "shake",
     "roll_clockwise", "roll_counterclockwise",
 }
-PATH_KEYS = {"motionType", "amplitude", "speed", "easing", "timing"}
+PATH_KEYS = {
+    "motionType", "amplitude", "speed", "easing", "timing",
+    "coordinateSpace", "pathShape", "waypoints",
+}
+WAYPOINT_KEYS = {"id", "at", "x", "y", "z", "framing", "angle", "hold"}
 
 
 def _short_text(value: Any, path: str) -> str:
@@ -157,7 +161,66 @@ def resolve_camera_end(start: Mapping[str, Any] | None,
     return resolved
 
 
-def normalize_camera_path(value: Any, path: str) -> dict[str, str]:
+def _finite_number(value: Any, path: str, minimum: float, maximum: float) -> float:
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{path} must be numeric")
+    result = float(value)
+    if not math.isfinite(result) or result < minimum or result > maximum:
+        raise ValueError(f"{path} must be finite and between {minimum:g} and {maximum:g}")
+    return result
+
+
+def normalize_camera_waypoints(value: Any, path: str) -> list[dict[str, Any]]:
+    """Validate 2–6 normalized, duration-independent spatial camera keyframes."""
+    if not isinstance(value, list) or not 2 <= len(value) <= 6:
+        raise ValueError(f"{path} must be an array containing 2-6 waypoints")
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    previous_at = -1.0
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - WAYPOINT_KEYS)
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        waypoint_id = _identifier(raw.get("id"), f"{item_path}.id")
+        if waypoint_id in seen:
+            raise ValueError(f"{path} contains duplicate id {waypoint_id!r}")
+        seen.add(waypoint_id)
+        at = _finite_number(raw.get("at"), f"{item_path}.at", 0.0, 1.0)
+        if at <= previous_at:
+            raise ValueError(f"{path} at values must be strictly increasing")
+        previous_at = at
+        normalized: dict[str, Any] = {
+            "id": waypoint_id,
+            "at": at,
+            "x": _finite_number(raw.get("x"), f"{item_path}.x", -1.0, 1.0),
+            "y": _finite_number(raw.get("y"), f"{item_path}.y", -1.0, 1.0),
+            "z": _finite_number(raw.get("z"), f"{item_path}.z", -1.0, 1.0),
+        }
+        for key in ("framing", "angle"):
+            if key in raw:
+                if raw[key] not in FRAME_ENUMS[key]:
+                    raise ValueError(
+                        f"{item_path}.{key} must be one of: {', '.join(sorted(FRAME_ENUMS[key]))}"
+                    )
+                normalized[key] = raw[key]
+        if "hold" in raw:
+            if not isinstance(raw["hold"], bool):
+                raise ValueError(f"{item_path}.hold must be boolean")
+            if raw["hold"]:
+                normalized["hold"] = True
+        result.append(normalized)
+    if result[0]["at"] != 0.0 or result[-1]["at"] != 1.0:
+        raise ValueError(f"{path} must start at 0 and end at 1")
+    return result
+
+
+def normalize_camera_path(value: Any, path: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{path} must be an object")
     raw = dict(value)
@@ -179,8 +242,24 @@ def normalize_camera_path(value: Any, path: str) -> dict[str, str]:
             if raw[key] not in allowed:
                 raise ValueError(f"{path}.{key} must be one of: {', '.join(sorted(allowed))}")
             result[key] = raw[key]
-    if motion == "static" and any(key in result for key in ("amplitude", "speed", "easing")):
-        raise ValueError(f"{path} cannot set amplitude, speed, or easing when motionType is 'static'")
+    if "coordinateSpace" in raw:
+        if raw["coordinateSpace"] not in {"subject", "scene"}:
+            raise ValueError(f"{path}.coordinateSpace must be subject or scene")
+        result["coordinateSpace"] = raw["coordinateSpace"]
+    if "pathShape" in raw:
+        if raw["pathShape"] not in {"straight", "smooth", "arc_left", "arc_right"}:
+            raise ValueError(f"{path}.pathShape must be straight, smooth, arc_left, or arc_right")
+        result["pathShape"] = raw["pathShape"]
+    if "waypoints" in raw:
+        result["waypoints"] = normalize_camera_waypoints(raw["waypoints"], f"{path}.waypoints")
+    if motion == "static" and any(
+        key in result for key in ("amplitude", "speed", "easing", "coordinateSpace", "pathShape", "waypoints")
+    ):
+        raise ValueError(f"{path} cannot set movement properties when motionType is 'static'")
+    if "waypoints" in result and "coordinateSpace" not in result:
+        result["coordinateSpace"] = "subject"
+    if "waypoints" in result and "pathShape" not in result:
+        result["pathShape"] = "smooth"
     return result
 
 
@@ -214,4 +293,25 @@ def camera_path_sentence(path: Mapping[str, Any]) -> str:
         text += f", using {str(path['easing']).replace('_', ' ')} easing"
     if "timing" in path:
         text += f", {str(path['timing']).replace('_', ' ')}"
+    waypoints = path.get("waypoints")
+    if waypoints:
+        space = str(path.get("coordinateSpace", "subject")).replace("_", " ")
+        shape = str(path.get("pathShape", "smooth")).replace("_", " ")
+        positions = []
+        for index, point in enumerate(waypoints):
+            progress = round(float(point["at"]) * 100)
+            position = (
+                f"{progress}% at relative position "
+                f"x={float(point['x']):.2f}, y={float(point['y']):.2f}, z={float(point['z']):.2f}"
+            )
+            details = [str(point[key]).replace("_", " ") for key in ("framing", "angle") if key in point]
+            if details:
+                position += " (" + ", ".join(details) + ")"
+            if point.get("hold"):
+                position += " with a brief hold"
+            positions.append(position)
+        text += (
+            f" along a {shape} path in {space}-relative space, passing "
+            + "; then ".join(positions)
+        )
     return text + "."

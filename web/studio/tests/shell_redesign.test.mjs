@@ -196,6 +196,12 @@ test("Overview density adapts across the 720, 820 and 920 drawer defaults", () =
     assert.match(stylesSource, /\.minimax-h3-overview-health\s*\{[^}]*flex-direction:\s*column/);
 });
 
+test("ported visual-language navigation keeps an explicit pointer affordance", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    assert.match(stylesSource, /\.minimax-h3-searchable-select-popover button:not\(:disabled\)\s*\{\s*cursor:\s*pointer/);
+    assert.match(stylesSource, /\.minimax-h3-visual-back\s*\{[^}]*cursor:\s*pointer/s);
+});
+
 test("Media shell keeps cards separated and dense editors inside the panel", () => {
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     const mediaSource = readFileSync(new URL("../tab_references.js", import.meta.url), "utf8");

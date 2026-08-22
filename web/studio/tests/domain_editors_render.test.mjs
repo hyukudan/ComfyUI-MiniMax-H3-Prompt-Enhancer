@@ -115,6 +115,7 @@ const plan = {
         referenceUses: [{ assetId: "move", role: "camera_transfer", cameraAspects: ["motion", "framing"], targetIds: ["marta"] }],
         cameraStart: { framing: "medium", composition: "rule_of_thirds", focus: { mode: "single_target", primaryTarget: { kind: "subject", id: "marta" } } },
         cameraEnd: { framing: "close_up", distance: "near" }, cameraPath: { motionType: "push_in", amplitude: "small", speed: "slow", easing: "ease_in", timing: "during_action" },
+        actionBeats: [{ id: "beat1", at: .5, action: "Marta looks up", dialogue: { speakerId: "marta", text: "It is starting.", delivery: "whispers", mood: "wary" } }],
         appearanceTransitions: [{ subjectId: "marta", fromStateId: "base", toStateId: "wet", timing: "during_shot" }],
         environmentTransitions: [{ environmentId: "alley", fromStateId: "day", toStateId: "night", timing: "at_end" }],
     }],
@@ -145,9 +146,11 @@ for (const [name, render] of [["Shots", renderShotsTab], ["Subjects", renderSubj
         assert.ok(container.children.length > 0);
         assert.doesNotMatch(container.textContent, /JSON array|comma-separated|Picture asset ID/);
         if (name === "Shots") {
-            for (const label of ["Opening state", "Full presence declared", "Edit camera", "Appearance changes", "Environment changes"]) {
+            for (const label of ["Opening state", "Action beats", "Full presence declared", "Edit camera", "Appearance changes", "Environment changes"]) {
                 assert.match(container.textContent, new RegExp(label));
             }
+            assert.ok(findByClass(container, "minimax-h3-action-beat"));
+            assert.equal(findField(container, "Spoken words").children[1].value, "It is starting.");
         } else {
             assert.match(container.textContent, /Cannot delete|Used by/);
         }

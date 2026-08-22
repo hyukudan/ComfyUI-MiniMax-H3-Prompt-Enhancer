@@ -200,7 +200,8 @@ See the normative [`media_manifest_v2.schema.json`](schemas/media_manifest_v2.sc
 - complete subject presence/blocking;
 - environment and view selection;
 - role-bounded `referenceUses`;
-- `cameraStart`, `cameraPath`, and sparse `cameraEnd`;
+- `cameraStart`, `cameraPath`, and sparse `cameraEnd`; `cameraPath` may add 2–6 strictly ordered normalized waypoints, relative coordinates, coordinate space, and path shape;
+- `actionBeats`, with strictly ordered normalized progress and an action/reaction and/or linked dialogue (`speakerId`, exact text, delivery, and optional mood);
 - appearance and environment transitions with exact from/to state IDs, timing, trigger, and mechanism.
 
 `openingState` describes the visible first frame. `action` describes what changes during the shot. The validator does not infer this split from generated prose or from shot-plan v1.
