@@ -1,5 +1,6 @@
 const SEVERITY_ORDER = ["error", "warning", "advice", "info"];
 const SEVERITY_LABELS = { error: "Errors", warning: "Warnings", advice: "Tips", info: "Information" };
+const BASIS_LABELS = { contract: "Contract rule", configuration: "Configuration", derived: "Derived check", heuristic: "Heuristic advice" };
 export const REVIEW_DISMISSALS_KEY = "minimax_h3_review_dismissals_v1";
 const REVIEW_DISMISSALS_VERSION = 1;
 
@@ -111,7 +112,8 @@ function renderDiagnostic(diagnostic, report, controller, { dismissed = false, o
     const title = document.createElement("strong");
     title.textContent = `${diagnostic.severity === "advice" ? "Tip" : diagnostic.severity ?? "Info"} · ${diagnostic.category ?? "configuration"}`;
     const confidence = document.createElement("span");
-    confidence.textContent = diagnostic.basis === "heuristic" ? "heuristic" : diagnostic.basis ?? "derived";
+    confidence.textContent = BASIS_LABELS[diagnostic.basis] ?? "Derived check";
+    confidence.title = "Why this finding exists";
     const dismiss = button(dismissed ? "Restore" : "Dismiss", () => onDismiss(diagnostic.fingerprint, !dismissed));
     dismiss.className = "minimax-h3-review-dismiss";
     dismiss.title = dismissed ? "Return this finding to the active review" : "Hide this fingerprint in this browser only";

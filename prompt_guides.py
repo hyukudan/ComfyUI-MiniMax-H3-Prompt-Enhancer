@@ -1229,6 +1229,9 @@ Shared timeline rules:
 - At a subject's first clear appearance, establish only source-supported identity, appearance, frame position, and
   current action; later mentions must remain consistent without repeatedly redefining the subject. Allocate detail
   according to each shot's information load rather than padding every shot equally.
+- When two or more people, characters, or reusable Subjects share a shot, keep each identity, face, body, wardrobe,
+  voice, position, action, and reference binding attached to its own stable label. Never blend, average, swap, merge,
+  or transfer traits between co-present identities unless the authoritative source explicitly requests that event.
 - Shot 1 has no timestamp. Later shots are sequential and begin with strictly increasing [Shot N] At MM:SS.mmm,
   cut times inside the requested duration.
 - Describe style and initial composition at Shot 1. Write camera motion as a natural action inside the shot: motion
@@ -1322,9 +1325,12 @@ after that prefix with "The target video is an edited version of <Video 1>." The
 labels and introduces no new one. retention_analysis uses only the documented visual markers fully_preserved, partially_preserved,
 attribute_transfer, weak_reference and audio markers fully_copy, partially_copy, reference, weak_reference.
 Give every defined label exactly one line, and start that line with the label itself, its marker after a colon:
-  <Picture 1>: fully_preserved — the face, hair and jacket carry over unchanged.
-  <Audio 1>: reference — timbre, pace and accent only; none of its words are spoken.
+  <Picture 1>: fully_preserved — the face, hair and jacket carry over unchanged; it supplies no camera motion or unrelated scene styling.
+  <Audio 1>: reference — timbre, pace and accent only; it supplies no words or unrelated sounds.
 A line that does not begin with its label, or that carries no marker after a colon, is rejected.
+Every retention line states both sides of its boundary in its own wording: what that reference contributes and what
+it explicitly does not own. Do not let a placement, lighting, performance, voice, scale, or camera reference leak
+pixels, identity, wardrobe, dialogue, environment, or camera aspects outside its declared role.
 When verbal content belongs only to a copied soundtrack or BGM, attribute its <d> block to <Audio N> without
 inventing a speaker ID. A concrete person, narrator, or independent vocal source uses a stable (Sx); an Audio
 reference bound to that speaker reuses the same ID. Timbre-, rhythm-, or delivery-only references never import words.
@@ -2315,14 +2321,16 @@ def _default_retention_line(item: Mapping[str, Any]) -> str:
     if item["kind"] == "subject":
         return (
             f"{label}: {marker} - carry the {item.get('kind', 'subject')} identity/design derived from {asset} "
-            "into every shot where this Subject appears, while explicit source changes still win."
+            "into every shot where this Subject appears, while explicit source changes still win; this binding does "
+            "not supply another subject's traits, unrelated styling, dialogue, environment, or camera motion."
         )
     if item["kind"] == "audio":
         action = "copy the synchronized signal" if marker in {"fully_copy", "partially_copy"} else "use only its stated audio attributes"
-        return f"{label}: {marker} - {action} at the source-specified moments; do not import unrelated words or sounds."
+        return f"{label}: {marker} - {action} at the source-specified moments; it supplies no unrelated words, identity, visuals, or sounds."
     return (
         f"{label}: {marker} - apply its stated {item['kind']} role at the specified timeline positions and preserve "
-        "the concrete source relationship described above."
+        "the concrete source relationship described above; it supplies no identity, dialogue, environment, styling, "
+        "or camera property outside that declared role."
     )
 
 
@@ -7455,6 +7463,8 @@ def _validate_prompt_compiled(prompt: str, mode: str, duration_seconds: float,
                 errors.append(f"{label} uses incompatible retention marker {marker!r}")
             if item and marker != item["marker"]:
                 errors.append(f"{label} retention marker must be {item['marker']!r}, observed {marker!r}")
+            if item and not re.search(r"\b(?:does not|do not|no unrelated|none of|only)\b", lines[0], re.IGNORECASE):
+                warnings.append(f"{label} retention line should state what the reference does not own")
 
         if re.search(r"(?im)^\s*<Audio\s+\d+>[^\r\n]*:\s*fully_copy\b", retention):
             if ambience_foley_policy == "off" or background_score_policy == "off" or voice_performance != "audible":

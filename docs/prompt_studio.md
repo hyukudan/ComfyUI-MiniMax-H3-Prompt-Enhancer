@@ -16,9 +16,11 @@ The enhancer node presents seven dashboard chips:
 - **Look** — creative direction and global cinematography defaults.
 - **Review** — current structured diagnostic count and Prompt Coach advice.
 
-Selecting a chip opens one drawer attached to that node. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it with **Close** or `Esc`; focus returns to the chip that opened it. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–7.
+Selecting a chip opens one drawer attached to that node. The node's **Open Studio** button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–7.
 
-The header also stores a browser-local **Guided / Advanced** preference. Guided presents the principal workflow controls first and places neutral specialist fields behind a disclosure; if an advanced Creative Treatment value is already active, that disclosure opens and reports the active count. Advanced renders every available field. Switching modes never clears, rewrites, or adds a workflow field.
+There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is committed immediately to this node's structured v2 widgets and is saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not write anything.
+
+**Guided / Advanced** is a Look-specific presentation control and therefore appears inside **Look**, not in the global Studio header. Guided presents the principal Look controls first and places neutral specialist fields behind a labelled disclosure; if an advanced Creative Treatment value is already active, that disclosure opens and reports the active count. Advanced renders every available Look field. Switching modes never clears, rewrites, or adds a workflow field, and it does not affect Shots, Media, Camera, Subjects, Environments, or Review.
 
 ## What Prompt Studio does — and does not do
 
@@ -114,6 +116,8 @@ For shot-plan v2, the editor owns:
 - environment/view selection and reference uses;
 - camera Start, Path, and sparse End values, including an optional 2–6 point spatial path;
 - optional relative action beats, each with a visible action/reaction and linked dialogue delivery;
+- optional beat spans with a start and end, overlap/gap feedback, and a dialogue-duration estimate when exact timing is available;
+- explicit subject-to-subject scale relationships without inventing dimensions;
 - appearance and environment transitions.
 
 `openingState` is the visible first-frame condition. `action` is the change that occurs during the shot. Do not repeat the opening state as if it were a second event.
@@ -165,7 +169,7 @@ These checks are intentionally bounded and do not replace backend validation. **
 
 ### Project v2 transfer
 
-**Overview > Import & source tools > Project v2 transfer** copies or imports one portable JSON package containing any current native-v2 shot plan, media project, creative treatment, and cinematography documents. Import validates nested arrays, identifiers, field types, limits, and supported schema versions, then shows a replacement preview with document counts. Applying the preview is atomic at the node-controller boundary: all target storage widgets are available before writing, and exact raw snapshots are restored if a widget callback or hydration step fails. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
+**Overview > Import & source tools > Project v2 transfer** copies or imports one portable JSON package containing any current native-v2 shot plan, media project, creative treatment, and cinematography documents. Import validates nested arrays, identifiers, field types, limits, and supported schema versions, then shows a preview with document counts. **Replace project** applies the complete preview atomically: all target storage widgets are available before writing, and exact raw snapshots are restored if a widget callback or hydration step fails. **Append generations** retains the current project and adds the package's generations and shots with collision-safe IDs; shared subjects, environments, appearances, and assets must be identical when their IDs match, so append cannot silently merge conflicting definitions. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
 
 Start and End are temporal phases, not competing owners. An omitted End field inherits Start and is not serialized redundantly.
 
@@ -175,7 +179,9 @@ Global cinematography values are defaults. Shot Start/Path/End values override t
 
 The Visual Language selector is organized as **family → era/technique → variant**, with Back and breadcrumb navigation, while committing the same canonical `visualLanguage` token as before. Search stays global and groups matches by family and branch; it includes the visible label, token, family, branch, and conservative aliases. An unknown future token remains visible under **Other** instead of being reset. Visual language is independent from narrative Genre and scene-wide Mood.
 
-Every option has preview-card infrastructure, but this repository intentionally ships no claimed H3 result images. The empty manifest produces one discreet notice for the selector instead of repeating a placeholder on every option. To add project-owned examples later, place an original or licensed local `avif`, `jpg`, `png`, or `webp` file under `web/studio/previews/` and register it in `VISUAL_LANGUAGE_PREVIEW_MANIFEST` with:
+Every option has preview-card infrastructure. Nine newly expanded drawn-animation profiles ship with small, project-original comparison samples built around the same clockwork-bird subject, making differences in line, shape, cel treatment, mechanical detail, compositing, and print texture easier to compare. They were generated specifically for this repository, are not H3 outputs, do not predict model adherence, and record their source, license, alt text, and exact SHA-256 in `VISUAL_LANGUAGE_PREVIEW_MANIFEST`. Options without a sample remain honest text-only choices instead of showing a fabricated result.
+
+To add another project-owned example, place an original or licensed local `avif`, `jpg`, `png`, or `webp` file under `web/studio/previews/` and register it in `VISUAL_LANGUAGE_PREVIEW_MANIFEST` with:
 
 - `kind`: `original` or `licensed`;
 - a relative `./previews/...` source and descriptive `alt` text;
@@ -233,7 +239,7 @@ The normative schema is [`schemas/media_manifest_v2.schema.json`](schemas/media_
 
 Shot-plan v2 is the temporal source of truth. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode.
 
-`timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `actionBeats[].at` and camera waypoint `at` values are normalized from 0 to 1, so their rhythm survives duration changes. Beat percentages and editor labels never appear in the enhanced prompt; they compile to natural temporal flow. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start.
+`timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `actionBeats[].at`, optional `actionBeats[].endAt`, and camera waypoint `at` values are normalized from 0 to 1, so their rhythm survives duration changes. Beats may use neutral projected **calls out** delivery as well as the other documented verbs. The editor warns about overlaps, large fully-authored gaps, and dialogue that is likely too dense for its exact span using a transparent 150-words-per-minute estimate. Beat percentages and editor labels never appear in the enhanced prompt; they compile to natural temporal flow. Camera timing may also target **during dialogue** or **after dialogue**. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start. Shot transitions include ordinary cuts plus cross dissolve and fade through black. `scaleRelationships` describes only explicitly authored relative scale between present subjects and never supplies invented measurements.
 
 The normative schema is [`schemas/shot_plan_v2.schema.json`](schemas/shot_plan_v2.schema.json). Shot-plan v1 remains accepted without changing its generated instruction. The first intentional structured edit migrates a v1 shot plan atomically to v2.
 

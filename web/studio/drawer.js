@@ -170,6 +170,7 @@ export function closeStudioDrawer(nodeId = null) {
     activeDrawer = null;
     closing.cleanup?.();
     closing.element.remove();
+    closing.node?.__minimaxStudioDashboard?.refresh?.();
     closing.returnFocus?.focus?.();
     return true;
 }
@@ -212,7 +213,7 @@ function createIconButton(icon, label, className = "minimax-h3-icon-button") {
     return button;
 }
 
-function createHeader(controller, onReview, onClose, onDetailMode) {
+function createHeader(controller, onReview, onClose) {
     const header = createPanelElement("header", "minimax-h3-studio-header");
     const main = createPanelElement("div", "minimax-h3-header-main");
     const identity = createPanelElement("div", "minimax-h3-header-identity");
@@ -220,22 +221,8 @@ function createHeader(controller, onReview, onClose, onDetailMode) {
     const context = createPanelElement("p", "minimax-h3-header-context");
     identity.append(title, context);
     const state = createPanelElement("div", "minimax-h3-header-state");
-    const detailMode = createPanelElement("div", "minimax-h3-detail-mode");
-    detailMode.setAttribute("role", "group");
-    detailMode.setAttribute("aria-label", "Editor detail");
-    const detailButtons = new Map();
-    for (const [mode, label, title] of [
-        ["guided", "Guided", "Show core controls first; active advanced values remain visible."],
-        ["advanced", "Advanced", "Show every available editor control."],
-    ]) {
-        const control = createPanelElement("button", "", label);
-        control.type = "button";
-        control.title = title;
-        control.addEventListener("click", () => onDetailMode(mode));
-        detailButtons.set(mode, control);
-        detailMode.appendChild(control);
-    }
-    const saved = createPanelElement("span", "minimax-h3-saved-state", "Synced to node");
+    const saved = createPanelElement("span", "minimax-h3-saved-state", "Saved automatically to workflow");
+    saved.title = "Every explicit edit is stored immediately in this node's Project v2 data.";
     const review = createPanelElement("button", "minimax-h3-review-button");
     review.type = "button";
     review.append(createStudioIcon("review"), createPanelElement("span", "minimax-h3-review-label", "Review"));
@@ -245,7 +232,7 @@ function createHeader(controller, onReview, onClose, onDetailMode) {
     help.setAttribute("aria-expanded", "false");
     const close = createIconButton("close", "Close Prompt Studio");
     close.addEventListener("click", onClose);
-    state.append(detailMode, saved, review, help, close);
+    state.append(saved, review, help, close);
     main.append(identity, state);
 
     const shortcuts = createPanelElement("section", "minimax-h3-shortcuts");
@@ -282,10 +269,7 @@ function createHeader(controller, onReview, onClose, onDetailMode) {
             ? `Review · stale`
             : counts.total ? `Review · ${counts.errors} errors · ${counts.warnings + counts.tips} notes` : "Review";
     };
-    const setDetailMode = (mode) => {
-        for (const [value, control] of detailButtons) control.setAttribute("aria-pressed", String(value === mode));
-    };
-    return { header, shortcuts, setShortcutsOpen, setDetailMode, refresh, close };
+    return { header, shortcuts, setShortcutsOpen, refresh, close };
 }
 
 function createNavigation(node, onNavigate, onCollapse) {
@@ -418,9 +402,7 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
         controller,
         () => render("review"),
         () => closeStudioDrawer(node.id),
-        (mode) => applyDetailMode(mode),
     );
-    header.setDetailMode(prefs.detailMode);
     const navigation = createNavigation(node, (id) => render(id), () => {
         const collapsed = drawer.dataset.railCollapsed !== "true";
         drawer.dataset.railCollapsed = String(collapsed);
@@ -477,7 +459,6 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
         savePrefs({ detailMode: mode });
         drawer.dataset.detailMode = mode;
         controller.studioDetailMode = mode;
-        header.setDetailMode(mode);
         render(currentSection);
     };
 
@@ -554,7 +535,9 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     document.body.appendChild(drawer);
     const previousNavigateStudio = controller.navigateStudio;
     const previousNavigateStudioLocation = controller.navigateStudioLocation;
+    const previousSetStudioDetailMode = controller.setStudioDetailMode;
     controller.navigateStudio = render;
+    controller.setStudioDetailMode = applyDetailMode;
     const navigateStudioLocation = (section, location = {}) => {
         render(section);
         queueMicrotask(() => {
@@ -578,12 +561,17 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             if (previousNavigateStudioLocation === undefined) delete controller.navigateStudioLocation;
             else controller.navigateStudioLocation = previousNavigateStudioLocation;
         }
+        if (controller.setStudioDetailMode === applyDetailMode) {
+            if (previousSetStudioDetailMode === undefined) delete controller.setStudioDetailMode;
+            else controller.setStudioDetailMode = previousSetStudioDetailMode;
+        }
         if (controller.studioDetailMode === prefs.detailMode) {
             if (previousDetailMode === undefined) delete controller.studioDetailMode;
             else controller.studioDetailMode = previousDetailMode;
         }
     };
-    activeDrawer = { nodeId: node.id, element: drawer, controller, returnFocus, tabId: previousSection, render, cleanup };
+    activeDrawer = { nodeId: node.id, node, element: drawer, controller, returnFocus, tabId: previousSection, render, cleanup };
+    node.__minimaxStudioDashboard?.refresh?.();
     updateResizer();
     render(initialTab ?? prefs.lastSection);
     header.close.focus();
@@ -613,7 +601,10 @@ export function createStudioDashboard(node, controller) {
     const open = createPanelElement("button", "minimax-h3-dashboard-open");
     open.type = "button";
     open.append(createStudioIcon("overview", 20), createPanelElement("span", "", "Open Studio"));
-    open.addEventListener("click", () => openStudioDrawer(node, controller, null, open));
+    open.addEventListener("click", () => {
+        if (studioDrawerIsOpenFor(node.id)) closeStudioDrawer(node.id);
+        else openStudioDrawer(node, controller, null, open);
+    });
     root.appendChild(open);
     const strip = createPanelElement("div", "minimax-h3-dashboard-links");
     const definitions = [
@@ -627,6 +618,10 @@ export function createStudioDashboard(node, controller) {
     ];
     const refresh = () => {
         const summary = dashboardSummaries(controller);
+        const isOpen = studioDrawerIsOpenFor(node.id);
+        open.querySelector("span").textContent = isOpen ? "Close Studio" : "Open Studio";
+        open.setAttribute("aria-pressed", String(isOpen));
+        open.title = isOpen ? "Close Prompt Studio and return to the workflow" : "Open Prompt Studio";
         for (const [id, label, , value] of definitions) {
             const chip = root.querySelector(`[data-studio-tab="${id}"]`);
             if (!chip) continue;

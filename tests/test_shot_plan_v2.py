@@ -142,6 +142,41 @@ def test_action_beats_link_visible_action_and_dialogue_without_leaking_control_l
     assert "never expose JSON, percentages" in instruction
 
 
+def test_action_beat_spans_calls_out_and_dialogue_camera_timing_reach_instruction():
+    plan = parse_shot_plan(_plan(
+        _shot(id="s1", action="Ana enters."),
+        _shot(id="s2",
+              actionBeats=[{"id": "b1", "at": .2, "endAt": .55, "dialogue": {
+                  "speakerId": "ana", "text": "Wait for me!", "delivery": "calls_out",
+              }}],
+              cameraPath={"motionType": "push_in", "timing": "during_dialogue"},
+              transitionIn="cross_dissolve"),
+    ), 8.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "From 20% to 55%" in instruction
+    assert 'ana calls out: "Wait for me!"' in instruction
+    assert "during dialogue" in instruction
+    assert "brief cross-dissolve" in instruction
+
+
+def test_scale_relationships_are_explicit_non_metric_prompt_constraints():
+    plan = parse_shot_plan(_plan(_shot(scaleRelationships=[
+        {"subjectId": "giant", "relativeToId": "ana", "relation": "twice_height"},
+        {"subjectId": "ana", "relativeToId": "child", "relation": "custom", "note": "Ana reaches the child's shoulder."},
+    ])), 8.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "giant is about twice the visible height of ana" in instruction
+    assert "preserve without inventing physical units" in instruction
+    with pytest.raises(ValueError, match="two different subjects"):
+        parse_shot_plan(_plan(_shot(scaleRelationships=[
+            {"subjectId": "ana", "relativeToId": "ana", "relation": "same_height"},
+        ])), 8.0)
+    with pytest.raises(ValueError, match="note is required"):
+        parse_shot_plan(_plan(_shot(scaleRelationships=[
+            {"subjectId": "ana", "relativeToId": "child", "relation": "custom"},
+        ])), 8.0)
+
+
 def test_action_beats_require_content_and_strictly_increasing_progress():
     with pytest.raises(ValueError, match="requires action or dialogue"):
         parse_shot_plan(_plan(_shot(actionBeats=[{"id": "b1", "at": .5}])), 8.0)

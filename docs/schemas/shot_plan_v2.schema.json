@@ -61,7 +61,7 @@
         "amplitude": {"enum": ["small", "medium", "large"]},
         "speed": {"enum": ["slow", "normal", "fast"]},
         "easing": {"enum": ["linear", "ease_in", "ease_out", "ease_in_out"]},
-        "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "before_cut"]},
+        "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "during_dialogue", "after_dialogue", "before_cut"]},
         "coordinateSpace": {"enum": ["subject", "scene"]},
         "pathShape": {"enum": ["straight", "smooth", "arc_left", "arc_right"]},
         "waypoints": {
@@ -80,6 +80,7 @@
       "properties": {
         "id": {"$ref": "#/$defs/id"},
         "at": {"type": "number", "minimum": 0, "maximum": 1},
+        "endAt": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
         "x": {"type": "number", "minimum": -1, "maximum": 1},
         "y": {"type": "number", "minimum": -1, "maximum": 1},
         "z": {"type": "number", "minimum": -1, "maximum": 1},
@@ -108,12 +109,22 @@
           "properties": {
             "speakerId": {"$ref": "#/$defs/id"},
             "text": {"type": "string", "minLength": 1, "maxLength": 1000},
-            "delivery": {"enum": ["says", "whispers", "shouts", "asks", "sings", "voice_over"]},
+            "delivery": {"enum": ["says", "whispers", "shouts", "asks", "sings", "calls_out", "voice_over"]},
             "mood": {"type": "string", "minLength": 1, "maxLength": 120}
           }
         }
       },
       "anyOf": [{"required": ["action"]}, {"required": ["dialogue"]}]
+    },
+    "scaleRelationship": {
+      "type": "object", "additionalProperties": false,
+      "required": ["subjectId", "relativeToId", "relation"],
+      "properties": {
+        "subjectId": {"$ref": "#/$defs/id"},
+        "relativeToId": {"$ref": "#/$defs/id"},
+        "relation": {"enum": ["same_height", "slightly_taller", "taller", "twice_height", "slightly_shorter", "shorter", "half_height", "custom"]},
+        "note": {"$ref": "#/$defs/shortText"}
+      }
     },
     "environmentSelection": {
       "type": "object", "additionalProperties": false, "required": ["environmentId"],
@@ -171,13 +182,14 @@
         "id": {"$ref": "#/$defs/id"}, "generationId": {"$ref": "#/$defs/id"},
         "openingState": {"$ref": "#/$defs/text"}, "action": {"$ref": "#/$defs/text"},
         "durationSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 150},
-        "transitionIn": {"enum": ["cut", "match_cut", "whip_pan", "hold"]},
+        "transitionIn": {"enum": ["cut", "match_cut", "whip_pan", "cross_dissolve", "fade_through_black", "hold"]},
         "cutContext": {"$ref": "#/$defs/cutContext"},
         "subjectPresenceComplete": {"type": "boolean"},
         "subjects": {"type": "array", "items": {"$ref": "#/$defs/subjectPresence"}},
         "environment": {"$ref": "#/$defs/environmentSelection"},
         "referenceUses": {"type": "array", "items": {"$ref": "#/$defs/referenceUse"}},
         "actionBeats": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/actionBeat"}},
+        "scaleRelationships": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/scaleRelationship"}},
         "cameraStart": {"$ref": "#/$defs/cameraFrame"},
         "cameraEnd": {"$ref": "#/$defs/cameraFrame"},
         "cameraPath": {"$ref": "#/$defs/cameraPath"},

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { localPreflight } from "../preflight.js";
+import { actionBeatIssues, localPreflight } from "../preflight.js";
 
 function documentState(value) {
     return { kind: "v2", value };
@@ -76,4 +76,32 @@ test("malformed and future sources are blocking without reading their values", (
     });
     assert.equal(result.errors, 2);
     assert.equal(result.status, "blocked");
+});
+
+test("timed action spans expose overlaps, gaps and an honest speech-rate estimate", () => {
+    const issues = actionBeatIssues({
+        id: "s1", durationSeconds: 10,
+        actionBeats: [
+            { at: 0, endAt: .4, action: "First action." },
+            { at: .3, endAt: .45, dialogue: { text: "one two three four five six seven eight nine ten" } },
+            { at: .7, endAt: .9, action: "Final action." },
+        ],
+    });
+    assert.ok(issues.some(({ message }) => message.includes("overlaps")));
+    assert.ok(issues.some(({ message }) => message.includes("150 wpm")));
+    assert.ok(issues.some(({ message }) => message.includes("25% gap")));
+});
+
+test("voice ownership without authored dialogue is visible before generation", () => {
+    const result = localPreflight({
+        shotDocument: documentState({ shots: [{
+            id: "s1", generationId: "g1", action: "Ana listens.",
+            referenceUses: [{ assetId: "voice", role: "voice" }],
+        }] }),
+        projectDocument: documentState({
+            subjects: [], assets: [{ id: "voice", name: "Voice", type: "audio" }],
+            generations: [{ id: "g1", bindings: [{ assetId: "voice", slotIndex: 1 }] }],
+        }),
+    });
+    assert.ok(result.items.some(({ message }) => message.includes("no authored dialogue beat")));
 });

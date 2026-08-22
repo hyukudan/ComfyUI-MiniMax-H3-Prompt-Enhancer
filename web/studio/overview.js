@@ -1,7 +1,7 @@
 import { createEmptyState } from "./components/empty_state.js";
 import { createSourcePill, createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
 import { localPreflight } from "./preflight.js";
-import { createProjectBundle, parseProjectBundle, summarizeProjectBundle } from "./project_bundle.js";
+import { appendProjectBundleGenerations, createProjectBundle, parseProjectBundle, summarizeProjectBundle } from "./project_bundle.js";
 import { applyStarterExample, STARTER_EXAMPLES } from "./starter_examples.js";
 
 function safeDocument(read) {
@@ -127,7 +127,13 @@ function projectTransfer(controller, model) {
     apply.type = "button";
     apply.className = "minimax-h3-button minimax-h3-button-primary";
     apply.textContent = "Preview import";
+    const append = document.createElement("button");
+    append.type = "button";
+    append.className = "minimax-h3-button minimax-h3-button-secondary";
+    append.textContent = "Append generations";
+    append.disabled = true;
     let pending = null;
+    let pendingAppend = null;
     apply.addEventListener("click", () => {
         if (pending) {
             const result = controller.replaceProjectBundleAtomically?.(pending.documents)
@@ -140,6 +146,7 @@ function projectTransfer(controller, model) {
             feedback.textContent = "Imported all previewed documents as one transaction.";
             feedback.dataset.valid = "true";
             pending = null; preview.hidden = true; apply.textContent = "Preview import";
+            pendingAppend = null; append.disabled = true;
             return;
         }
         const parsed = parseProjectBundle(textarea.value);
@@ -149,6 +156,10 @@ function projectTransfer(controller, model) {
             return;
         }
         pending = parsed;
+        pendingAppend = appendProjectBundleGenerations(parsed.documents, {
+            shotPlan: model.sources.shot, mediaProject: model.sources.project,
+        });
+        append.disabled = !pendingAppend.ok;
         preview.replaceChildren(...summarizeProjectBundle(parsed.documents, {
             shotPlan: model.sources.shot, mediaProject: model.sources.project,
             creativeTreatment: model.sources.creative, cinematography: model.sources.camera,
@@ -159,13 +170,23 @@ function projectTransfer(controller, model) {
         }));
         preview.hidden = false;
         apply.textContent = "Apply previewed package";
-        feedback.textContent = "Review every replacement above, then apply. Nothing has changed yet.";
+        feedback.textContent = pendingAppend.ok
+            ? `Review every replacement above. You may replace the package or append only ${pendingAppend.detail}. Nothing has changed yet.`
+            : `Review every replacement above, then apply. Append is unavailable: ${pendingAppend.message} Nothing has changed yet.`;
         feedback.dataset.valid = "true";
     });
-    actions.append(copy, apply);
+    append.addEventListener("click", () => {
+        if (!pendingAppend?.ok) return;
+        const result = controller.replaceProjectBundleAtomically?.(pendingAppend.documents)
+            ?? { ok: false, message: "Atomic project import is unavailable in this node." };
+        if (!result.ok) { feedback.textContent = `${result.message} No appended data was kept.`; feedback.dataset.valid = "false"; return; }
+        feedback.textContent = `Appended ${pendingAppend.detail} as one transaction.`; feedback.dataset.valid = "true";
+        pending = null; pendingAppend = null; preview.hidden = true; apply.textContent = "Preview import"; append.disabled = true;
+    });
+    actions.append(copy, apply, append);
     textarea.addEventListener("input", () => {
         if (!pending) return;
-        pending = null; preview.hidden = true; apply.textContent = "Preview import";
+        pending = null; pendingAppend = null; preview.hidden = true; apply.textContent = "Preview import"; append.disabled = true;
         feedback.textContent = "Package changed. Preview it again before applying.";
     });
     body.append(help, textarea, preview, actions, feedback);

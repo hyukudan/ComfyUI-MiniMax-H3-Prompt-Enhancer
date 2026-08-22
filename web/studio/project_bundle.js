@@ -79,6 +79,67 @@ export function summarizeProjectBundle(documents, current = {}) {
     }));
 }
 
+function uniqueId(preferred, used, prefix) {
+    if (preferred && !used.has(preferred)) { used.add(preferred); return preferred; }
+    let index = 1;
+    while (used.has(`${prefix}${index}`)) index += 1;
+    const result = `${prefix}${index}`; used.add(result); return result;
+}
+
+function appendUniqueResources(currentItems, incomingItems, label, errors) {
+    const result = structuredClone(currentItems ?? []);
+    const byId = new Map(result.map((item) => [item.id, item]));
+    for (const item of incomingItems ?? []) {
+        const existing = byId.get(item.id);
+        if (!existing) { const copy = structuredClone(item); result.push(copy); byId.set(copy.id, copy); continue; }
+        if (JSON.stringify(existing) !== JSON.stringify(item)) errors.push(`${label} id “${item.id}” already exists with different data.`);
+    }
+    return result;
+}
+
+export function appendProjectBundleGenerations(incoming, current = {}) {
+    const sourceShot = incoming?.shotPlan;
+    const sourceMedia = incoming?.mediaProject;
+    const currentShot = current?.shotPlan?.value ?? current?.shotPlan;
+    const currentMedia = current?.mediaProject?.value ?? current?.mediaProject;
+    if (!isRecord(sourceShot) || !isRecord(sourceMedia)) return { ok: false, message: "Append requires both Shot plan and Media project documents." };
+    if (!isRecord(currentShot) || currentShot.schemaVersion !== 2 || !isRecord(currentMedia) || currentMedia.schemaVersion !== 2) return { ok: false, message: "The current Shot plan and Media project must both be editable v2 documents." };
+    if (sourceShot.timingMode !== currentShot.timingMode) return { ok: false, message: "Append requires the same shot timing mode as the current project." };
+    if (!(sourceMedia.generations ?? []).length) return { ok: false, message: "The package has no generations to append." };
+    const errors = [];
+    const mediaProject = structuredClone(currentMedia);
+    mediaProject.assets = appendUniqueResources(currentMedia.assets, sourceMedia.assets, "Asset", errors);
+    mediaProject.subjects = appendUniqueResources(currentMedia.subjects, sourceMedia.subjects, "Subject", errors);
+    mediaProject.environments = appendUniqueResources(currentMedia.environments, sourceMedia.environments, "Environment", errors);
+    if (errors.length) return { ok: false, message: errors[0], errors };
+
+    const generationIds = new Set((currentMedia.generations ?? []).map((item) => item.id));
+    const generationMap = new Map();
+    let order = Math.max(0, ...(currentMedia.generations ?? []).map((item) => Number(item.order) || 0));
+    const appendedGenerations = (sourceMedia.generations ?? []).map((generation) => {
+        const id = uniqueId(generation.id, generationIds, "g"); generationMap.set(generation.id, id); order += 1;
+        return { ...structuredClone(generation), id, order };
+    });
+    mediaProject.generations = [...(mediaProject.generations ?? []), ...appendedGenerations];
+    if (mediaProject.generations.length > 64) return { ok: false, message: "Append would exceed 64 generations." };
+    if (mediaProject.generations.length > 1) mediaProject.mode = "chained_multishot";
+
+    const shotIds = new Set((currentShot.shots ?? []).map((item) => item.id));
+    const appendedShots = [];
+    for (const shot of sourceShot.shots ?? []) {
+        const generationId = generationMap.get(shot.generationId);
+        if (!generationId) return { ok: false, message: `Shot “${shot.id}” refers to a generation not included in the package.` };
+        appendedShots.push({ ...structuredClone(shot), id: uniqueId(shot.id, shotIds, "s"), generationId });
+    }
+    const shotPlan = { ...structuredClone(currentShot), shots: [...(currentShot.shots ?? []), ...appendedShots] };
+    if (shotPlan.shots.length > 64) return { ok: false, message: "Append would exceed 64 shots." };
+    return {
+        ok: true,
+        documents: { shotPlan, mediaProject },
+        detail: `${appendedGenerations.length} generations · ${appendedShots.length} shots · ${(sourceMedia.assets ?? []).length} referenced media`,
+    };
+}
+
 export function applyDocumentTransaction(entries, { read, write }) {
     const snapshots = new Map(entries.map(([key]) => [key, read(key)]));
     const written = [];

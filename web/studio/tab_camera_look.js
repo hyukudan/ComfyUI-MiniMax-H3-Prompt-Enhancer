@@ -112,13 +112,40 @@ function button(label, action) {
     return control;
 }
 
+function lookDetailMode(controller) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-look-detail-mode";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = "Look editing detail";
+    const hint = document.createElement("p");
+    hint.textContent = (controller.studioDetailMode ?? "guided") === "advanced"
+        ? "Advanced shows every creative control at once."
+        : "Guided keeps specialist controls in a clearly labelled section without discarding their values.";
+    copy.append(title, hint);
+    const choices = document.createElement("div");
+    choices.className = "minimax-h3-detail-mode";
+    choices.setAttribute("role", "group");
+    choices.setAttribute("aria-label", "Look editing detail");
+    for (const [mode, label] of [["guided", "Guided"], ["advanced", "Advanced"]]) {
+        const control = button(label, () => controller.setStudioDetailMode?.(mode));
+        control.setAttribute("aria-pressed", String((controller.studioDetailMode ?? "guided") === mode));
+        control.title = mode === "guided"
+            ? "Show the most useful Look controls first."
+            : "Show all Look controls at once.";
+        choices.appendChild(control);
+    }
+    section.append(copy, choices);
+    return section;
+}
+
 export function renderCameraLookTab(container, controller) {
     container.replaceChildren();
     const sourceTools = [];
     const intro = document.createElement("p");
     intro.className = "minimax-h3-studio-status";
     intro.textContent = "Global camera values are calm defaults. A shot or an explicit camera-reference video may own an aspect without creating a conflict.";
-    container.appendChild(intro);
+    container.append(intro, lookDetailMode(controller));
 
     const creativeDocument = controller.creativeDocument();
     const cameraDocument = controller.cinematographyDocument();
@@ -579,7 +606,10 @@ function visualLanguageField(label, value, choices, groups, commit) {
     navigation.append(back, breadcrumb);
     const previewNotice = document.createElement("p");
     previewNotice.className = "minimax-h3-visual-preview-notice";
-    previewNotice.textContent = "Preview samples are not installed. Labels describe the catalog vocabulary, not a guaranteed H3 result.";
+    const installedPreviewCount = (choices ?? []).filter(([token]) => visualLanguagePreview(token).status === "available").length;
+    previewNotice.textContent = installedPreviewCount
+        ? `${installedPreviewCount} original comparison samples are installed. They illustrate catalog vocabulary, not a guaranteed H3 result.`
+        : "Preview samples are not installed. Labels describe the catalog vocabulary, not a guaranteed H3 result.";
     let selectedValue = value;
     let selectedFamily = "";
     let selectedBranch = "";

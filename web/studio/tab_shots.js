@@ -37,7 +37,7 @@ const COMPOSITION = [["", "Unspecified"], ["centered", "Centered"], ["rule_of_th
 const DISTANCE = [["", "Unspecified"], ["intimate", "Intimate"], ["near", "Near"], ["medium", "Medium"], ["far", "Far"], ["very_far", "Very far"], ["custom", "Custom"]];
 const FOCUS = [["", "Unspecified"], ["single_target", "Single target"], ["split_focus", "Split focus"], ["deep_focus", "Deep focus"], ["custom", "Custom"]];
 const MOTION = [["", "Unspecified"], ["static", "Static"], ["zoom_in", "Zoom in"], ["zoom_out", "Zoom out"], ["push_in", "Push in"], ["pull_out", "Pull out"], ["pan_left", "Pan left"], ["pan_right", "Pan right"], ["truck_left", "Truck left"], ["truck_right", "Truck right"], ["tilt_up", "Tilt up"], ["tilt_down", "Tilt down"], ["pedestal_up", "Pedestal up"], ["pedestal_down", "Pedestal down"], ["arc", "Arc"], ["tracking", "Tracking"], ["shake", "Shake"], ["roll_clockwise", "Roll clockwise"], ["roll_counterclockwise", "Roll counter-clockwise"]];
-const TRANSITIONS = [["", "Default cut"], ["cut", "Cut"], ["match_cut", "Match cut"], ["whip_pan", "Whip pan"], ["hold", "Hold"]];
+const TRANSITIONS = [["", "Default cut"], ["cut", "Cut"], ["match_cut", "Match cut"], ["whip_pan", "Whip pan"], ["cross_dissolve", "Cross-dissolve"], ["fade_through_black", "Fade through black"], ["hold", "Hold"]];
 const PRESENCE = [["", "Not declared"], ["present", "Present"], ["enters", "Enters"], ["exits", "Exits"], ["absent", "Absent"]];
 const REFERENCE_ROLES = ["identity_reinforcement", "appearance", "environment_view", "scale", "placement", "continuity", "lighting", "composition", "performance", "voice", "exact_dialogue", "soundtrack", "camera_transfer"].map((value) => [value, value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase())]);
 const CAMERA_ASPECTS = ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"];
@@ -175,7 +175,7 @@ function renderStory(container, shot, commit, rerender) {
     container.appendChild(section.details);
 }
 
-const DELIVERY_CHOICES = [["says", "Says"], ["whispers", "Whispers"], ["shouts", "Shouts"], ["asks", "Asks"], ["sings", "Sings"], ["voice_over", "Voice-over"]];
+const DELIVERY_CHOICES = [["says", "Says"], ["whispers", "Whispers"], ["shouts", "Shouts"], ["asks", "Asks"], ["sings", "Sings"], ["calls_out", "Calls out"], ["voice_over", "Voice-over"]];
 
 function nextBeatId(beats) {
     const used = new Set(beats.map((beat) => beat.id)); let index = beats.length + 1;
@@ -198,12 +198,27 @@ function renderActionBeats(container, shot, project, commit, rerender) {
     for (const [index, beat] of beats.entries()) {
         const card = element("article", "minimax-h3-action-beat");
         const header = element("div", "minimax-h3-action-beat-header");
-        header.append(element("strong", "", `Beat ${index + 1}`), element("span", "", `${Math.round(Number(beat.at) * 100)}%`));
+        const spanLabel = beat.endAt !== undefined
+            ? `${Math.round(Number(beat.at) * 100)}–${Math.round(Number(beat.endAt) * 100)}%`
+            : `${Math.round(Number(beat.at) * 100)}%`;
+        header.append(element("strong", "", `Beat ${index + 1}`), element("span", "", spanLabel));
         header.appendChild(actionButton("Remove", () => {
             shot.actionBeats.splice(index, 1); if (!shot.actionBeats.length) delete shot.actionBeats; commit(); rerender();
         }, { danger: true })); card.appendChild(header);
         const timing = document.createElement("input"); timing.type = "range"; timing.min = index ? String(Number(beats[index - 1].at) + .01) : "0"; timing.max = index < beats.length - 1 ? String(Number(beats[index + 1].at) - .01) : "1"; timing.step = ".01"; timing.value = String(beat.at); timing.setAttribute("aria-label", `Beat ${index + 1} timing`);
         timing.addEventListener("change", () => { beat.at = Math.round(Number(timing.value) * 100) / 100; commit(); rerender(); }); card.appendChild(timing);
+        const spanEnabled = document.createElement("input"); spanEnabled.type = "checkbox"; spanEnabled.checked = beat.endAt !== undefined;
+        spanEnabled.addEventListener("change", () => {
+            if (spanEnabled.checked) beat.endAt = Math.min(1, Math.max(Number(beat.at) + .01, Number(beats[index + 1]?.at ?? 1)));
+            else delete beat.endAt;
+            commit(); rerender();
+        });
+        card.appendChild(field("Reserve a time span", spanEnabled, "Use a span when dialogue or an action must fit inside a bounded part of the shot."));
+        if (beat.endAt !== undefined) {
+            const end = document.createElement("input"); end.type = "range"; end.min = String(Number(beat.at) + .01); end.max = "1"; end.step = ".01"; end.value = String(beat.endAt); end.setAttribute("aria-label", `Beat ${index + 1} end timing`);
+            end.addEventListener("change", () => { beat.endAt = Math.round(Number(end.value) * 100) / 100; commit(); rerender(); });
+            card.appendChild(field("End of beat", end, `${Math.round(Number(beat.endAt) * 100)}% of this shot.`));
+        }
         const action = textArea(beat.action, "Visible action or reaction at this beat");
         bindCommit(action, (value) => {
             const text = value.trim();
@@ -296,6 +311,48 @@ function renderPresence(container, shot, project, entry, commit, rerender) {
         section.body.appendChild(row);
     }
     if (!(project.subjects ?? []).length) section.body.appendChild(element("p", "minimax-h3-field-hint", "Create subjects first; they will appear here as selectable cast."));
+    container.appendChild(section.details);
+}
+
+const SCALE_RELATIONS = [
+    ["same_height", "Same height"], ["slightly_taller", "Slightly taller"], ["taller", "Clearly taller"],
+    ["twice_height", "About twice as tall"], ["slightly_shorter", "Slightly shorter"],
+    ["shorter", "Clearly shorter"], ["half_height", "About half as tall"], ["custom", "Custom visible relationship"],
+];
+
+function renderScaleRelationships(container, shot, project, commit, rerender) {
+    const relationships = shot.scaleRelationships ?? [];
+    const section = inspectorSection("Relative scale", relationships.length ? `${relationships.length} relationships` : "Optional", false);
+    section.body.appendChild(element("p", "minimax-h3-field-hint", "Describe visible size relationships without inventing metres or exact measurements."));
+    const choices = (project.subjects ?? []).map((subject) => [subject.id, subject.name || subject.id]);
+    const add = actionButton("+ Add scale relationship", () => {
+        if (choices.length < 2) return;
+        shot.scaleRelationships ??= [];
+        shot.scaleRelationships.push({ subjectId: choices[0][0], relativeToId: choices[1][0], relation: "same_height" });
+        commit(); rerender();
+    }, { disabled: choices.length < 2 || relationships.length >= 16 });
+    add.className += " minimax-h3-button minimax-h3-button-secondary";
+    section.body.appendChild(add);
+    if (choices.length < 2) section.body.appendChild(element("p", "minimax-h3-field-hint", "Create at least two subjects to compare their visible scale."));
+    for (const [index, relationship] of relationships.entries()) {
+        const row = element("article", "minimax-h3-scale-relationship");
+        const subject = selectInput(relationship.subjectId, choices, { ariaLabel: `Scale relationship ${index + 1} subject` });
+        bindCommit(subject, (value) => { relationship.subjectId = value; }, commit);
+        const relation = selectInput(relationship.relation, SCALE_RELATIONS, { ariaLabel: `Scale relationship ${index + 1} relation` });
+        relation.addEventListener("change", () => { relationship.relation = relation.value; if (relation.value !== "custom") delete relationship.note; commit(); rerender(); });
+        const landmark = selectInput(relationship.relativeToId, choices, { ariaLabel: `Scale relationship ${index + 1} comparison subject` });
+        bindCommit(landmark, (value) => { relationship.relativeToId = value; }, commit);
+        row.append(field("Subject", subject), field("Relationship", relation), field("Compared with", landmark));
+        if (relationship.relation === "custom") {
+            const note = textInput(relationship.note, { placeholder: "Visible relationship, without exact units" });
+            bindCommit(note, (value) => { relationship.note = value.trim() || "Describe the visible scale relationship"; }, commit);
+            row.appendChild(field("Custom relationship", note));
+        }
+        row.appendChild(actionButton("Remove", () => {
+            shot.scaleRelationships.splice(index, 1); if (!shot.scaleRelationships.length) delete shot.scaleRelationships; commit(); rerender();
+        }, { danger: true }));
+        section.body.appendChild(row);
+    }
     container.appendChild(section.details);
 }
 
@@ -404,7 +461,7 @@ export function renderCameraPath(container, shot, provenance, commit, rerender) 
             ["amplitude", "Amplitude", [["", "Unspecified"], ["small", "Small"], ["medium", "Medium"], ["large", "Large"]]],
             ["speed", "Speed", [["", "Unspecified"], ["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]]],
             ["easing", "Easing", [["", "Unspecified"], ["linear", "Linear"], ["ease_in", "Ease in"], ["ease_out", "Ease out"], ["ease_in_out", "Ease in/out"]]],
-            ["timing", "Timing", [["", "Unspecified"], ["throughout", "Throughout"], ["during_opening", "During opening"], ["after_opening", "After opening"], ["during_action", "During action"], ["before_cut", "Before cut"]]],
+            ["timing", "Timing", [["", "Unspecified"], ["throughout", "Throughout"], ["during_opening", "During opening"], ["after_opening", "After opening"], ["during_action", "During action"], ["during_dialogue", "During dialogue"], ["after_dialogue", "After dialogue"], ["before_cut", "Before cut"]]],
         ]) {
             const control = selectInput(path[property], choices); bindCommit(control, (value) => setOptional(shot.cameraPath, property, value), commit);
             section.body.appendChild(field(label, control));
@@ -575,6 +632,7 @@ export function renderShotsTab(container, controller) {
     editor.appendChild(header);
     renderStory(editor, shot, commit, rerender); renderActionBeats(editor, shot, project, commit, rerender); renderTiming(editor, shot, state.plan, commit, rerender);
     renderPresence(editor, shot, project, entryStates, commit, rerender);
+    renderScaleRelationships(editor, shot, project, commit, rerender);
     renderEnvironment(editor, shot, project, entryStates, commit, rerender);
     renderReferences(editor, shot, project, commit, rerender);
     const cameraSummary = element("section", "minimax-h3-shot-camera-summary");

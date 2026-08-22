@@ -25,6 +25,38 @@ function cameraPathIssues(shot) {
     return [];
 }
 
+export function actionBeatIssues(shot) {
+    const items = [];
+    const beats = Array.isArray(shot?.actionBeats) ? shot.actionBeats : [];
+    let previousEnd = 0;
+    let everyBeatHasSpan = beats.length > 0;
+    for (const [index, beat] of beats.entries()) {
+        const start = Number(beat?.at);
+        const end = beat?.endAt === undefined ? null : Number(beat.endAt);
+        if (!Number.isFinite(start)) { everyBeatHasSpan = false; continue; }
+        if (start < 0 || start > 1 || (end !== null && (!Number.isFinite(end) || end <= start || end > 1))) {
+            items.push(issue("error", "shots", `Beat ${index + 1} needs a valid start and an end after it.`, shot?.id));
+            continue;
+        }
+        if (end === null) everyBeatHasSpan = false;
+        if (end !== null && start < previousEnd) items.push(issue("warning", "shots", `Beat ${index + 1} overlaps the previous reserved span.`, shot?.id));
+        previousEnd = Math.max(previousEnd, end ?? start);
+        const words = String(beat?.dialogue?.text ?? "").trim().split(/\s+/u).filter(Boolean).length;
+        if (words && end !== null && Number(shot?.durationSeconds) > 0) {
+            const available = (end - start) * Number(shot.durationSeconds);
+            const estimate = words / 2.5;
+            if (estimate > available) items.push(issue("warning", "shots", `Beat ${index + 1} reserves about ${available.toFixed(1)}s for roughly ${estimate.toFixed(1)}s of dialogue at 150 wpm.`, shot?.id));
+        }
+    }
+    if (everyBeatHasSpan && beats.length > 1) {
+        for (let index = 1; index < beats.length; index += 1) {
+            const gap = Number(beats[index].at) - Number(beats[index - 1].endAt);
+            if (gap > .15) items.push(issue("info", "shots", `There is an unassigned ${Math.round(gap * 100)}% gap before Beat ${index + 1}.`, shot?.id));
+        }
+    }
+    return items;
+}
+
 export function localPreflight({ shotDocument, projectDocument } = {}) {
     const items = [];
     for (const candidate of [
@@ -54,7 +86,12 @@ export function localPreflight({ shotDocument, projectDocument } = {}) {
                 break;
             }
         }
+        items.push(...actionBeatIssues(shot));
         items.push(...cameraPathIssues(shot));
+        const hasDialogue = (shot?.actionBeats ?? []).some((beat) => nonEmpty(beat?.dialogue?.text));
+        if (!hasDialogue && (shot?.referenceUses ?? []).some((reference) => ["voice", "exact_dialogue"].includes(reference?.role))) {
+            items.push(issue("warning", "media", "A voice or exact-dialogue reference is assigned to a shot with no authored dialogue beat.", label));
+        }
         for (const reference of shot?.referenceUses ?? []) {
             const asset = assets.get(reference?.assetId);
             if (!asset) {

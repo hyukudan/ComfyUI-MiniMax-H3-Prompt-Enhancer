@@ -2,9 +2,49 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-    applyDocumentTransaction, createProjectBundle, parseProjectBundle,
+    appendProjectBundleGenerations, applyDocumentTransaction, createProjectBundle, parseProjectBundle,
     PROJECT_BUNDLE_FORMAT, summarizeProjectBundle,
 } from "../project_bundle.js";
+
+test("append generations remaps collisions and preserves compatible shared resources", () => {
+    const shared = { id: "hero", name: "Hero", appearances: [] };
+    const result = appendProjectBundleGenerations({
+        shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [{ id: "s1", generationId: "g1", action: "Hero exits." }] },
+        mediaProject: {
+            schemaVersion: 2, mode: "single", assets: [], subjects: [shared], environments: [],
+            generations: [{ id: "g1", order: 1, bindings: [], subjectStates: [], environmentStates: [] }],
+        },
+    }, {
+        shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [{ id: "s1", generationId: "g1", action: "Hero enters." }] },
+        mediaProject: {
+            schemaVersion: 2, mode: "single", assets: [], subjects: [shared], environments: [],
+            generations: [{ id: "g1", order: 1, bindings: [], subjectStates: [], environmentStates: [] }],
+        },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.documents.mediaProject.mode, "chained_multishot");
+    assert.deepEqual(result.documents.mediaProject.generations.map(({ id, order }) => [id, order]), [["g1", 1], ["g2", 2]]);
+    assert.deepEqual(result.documents.shotPlan.shots.map(({ id, generationId }) => [id, generationId]), [["s1", "g1"], ["s2", "g2"]]);
+    assert.equal(result.documents.mediaProject.subjects.length, 1);
+});
+
+test("append generations rejects empty packages and conflicting shared definitions", () => {
+    const current = {
+        shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [] },
+        mediaProject: { schemaVersion: 2, assets: [], subjects: [{ id: "hero", name: "Old" }], environments: [], generations: [] },
+    };
+    assert.match(appendProjectBundleGenerations({
+        shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [] },
+        mediaProject: { schemaVersion: 2, assets: [], subjects: [], environments: [], generations: [] },
+    }, current).message, /no generations/);
+    assert.match(appendProjectBundleGenerations({
+        shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [] },
+        mediaProject: {
+            schemaVersion: 2, assets: [], subjects: [{ id: "hero", name: "Changed" }], environments: [],
+            generations: [{ id: "g1", bindings: [], subjectStates: [], environmentStates: [] }],
+        },
+    }, current).message, /different data/);
+});
 
 test("project transfer includes only native v2 structured documents", () => {
     const bundle = createProjectBundle({

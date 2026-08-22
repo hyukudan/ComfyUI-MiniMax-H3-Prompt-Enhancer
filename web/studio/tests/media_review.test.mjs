@@ -314,6 +314,8 @@ test("Look renders hierarchical visual-language navigation, global search and cl
         } },
     });
     const controller = {
+        studioDetailMode: "guided",
+        setStudioDetailMode(mode) { this.studioDetailMode = mode; },
         creativeDocument: () => ({ kind: "v2", value: { schemaVersion: 2 } }),
         cinematographyDocument: () => ({ kind: "v2", value: { schemaVersion: 2 } }),
         creativeFields: () => [
@@ -340,6 +342,12 @@ test("Look renders hierarchical visual-language navigation, global search and cl
         const container = new FakeElement();
         renderCameraLookTab(container, controller);
         const elements = descendants(container);
+        const detailGroup = elements.find((element) => element.className === "minimax-h3-detail-mode");
+        assert.ok(detailGroup, "Look owns its own Guided / Advanced control");
+        const advanced = descendants(detailGroup).find((element) => element.textContent === "Advanced");
+        assert.equal(advanced?.["aria-pressed"], "false");
+        await advanced.dispatch("click");
+        assert.equal(controller.studioDetailMode, "advanced");
         const combobox = elements.find((element) => element.role === "combobox");
         const search = elements.find((element) => element.type === "search");
         const controlled = elements.find((element) => element.id === combobox?.["aria-controls"]);

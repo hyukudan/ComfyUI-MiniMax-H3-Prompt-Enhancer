@@ -56,6 +56,10 @@ export function usageIndex(project = {}, plan = {}) {
     for (const [shotIndex, shot] of (plan.shots ?? []).entries()) {
         const label = `Shot ${shotIndex + 1} · ${shot.id}`;
         for (const presence of shot.subjects ?? []) addUse(indexes.subjects, presence.subjectId, `${label} presence`);
+        for (const relationship of shot.scaleRelationships ?? []) {
+            addUse(indexes.subjects, relationship.subjectId, `${label} scale relationship`);
+            addUse(indexes.subjects, relationship.relativeToId, `${label} scale landmark`);
+        }
         if (shot.environment?.environmentId) {
             addUse(indexes.environments, shot.environment.environmentId, `${label} location`);
             for (const viewId of shot.environment.viewIds ?? []) addUse(indexes.environmentViews, viewKey(shot.environment.environmentId, viewId), `${label} view`);

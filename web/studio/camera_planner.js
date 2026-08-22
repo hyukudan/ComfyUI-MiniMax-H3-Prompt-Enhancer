@@ -36,7 +36,7 @@ const FRAME_KEYS = new Set([...Object.keys(FRAME_ENUMS), "compositionNote", "pri
 const PATH_ENUMS = Object.freeze({
     amplitude: new Set(["small", "medium", "large"]), speed: new Set(["slow", "normal", "fast"]),
     easing: new Set(["linear", "ease_in", "ease_out", "ease_in_out"]),
-    timing: new Set(["throughout", "during_opening", "after_opening", "during_action", "before_cut"]),
+    timing: new Set(["throughout", "during_opening", "after_opening", "during_action", "during_dialogue", "after_dialogue", "before_cut"]),
 });
 
 const SPATIAL_ENDS = Object.freeze({

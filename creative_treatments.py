@@ -3828,6 +3828,8 @@ SHOT_TRANSITION_CHOICES = {
     "cut": "",
     "match_cut": "Enter this shot on a match cut that continues a shape, movement, or composition already present at the end of the previous shot.",
     "whip_pan": "Enter this shot through a fast whip-pan blur that starts at the end of the previous shot and resolves into this framing.",
+    "cross_dissolve": "Enter this shot through a brief cross-dissolve in which the previous image visibly gives way to the new shot without adding another event.",
+    "fade_through_black": "Enter this shot through a brief fade through black, ending the previous image before the new shot becomes visible.",
     "hold": "Enter this shot after holding the previous framing one extra beat, without adding a transition effect.",
 }
 
@@ -3864,7 +3866,7 @@ _SHOT_PLAN_V2_ITEM_KEYS = {
     "id", "generationId", "openingState", "action", "durationSeconds",
     "transitionIn", "cutContext", "subjectPresenceComplete", "subjects",
     "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
-    "actionBeats", "appearanceTransitions", "environmentTransitions",
+    "actionBeats", "scaleRelationships", "appearanceTransitions", "environmentTransitions",
 }
 _REFERENCE_ROLES = {
     "identity_reinforcement", "appearance", "environment_view", "scale",
@@ -4033,7 +4035,7 @@ def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
         if not isinstance(item, Mapping):
             raise ValueError(f"{item_path} must be an object")
         raw = dict(item)
-        unknown = sorted(set(raw) - {"id", "at", "action", "dialogue"})
+        unknown = sorted(set(raw) - {"id", "at", "endAt", "action", "dialogue"})
         if unknown:
             raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
         beat_id = _shot_v2_id(raw.get("id"), f"{item_path}.id")
@@ -4048,6 +4050,14 @@ def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
             raise ValueError(f"{path} at values must be strictly increasing between 0 and 1")
         previous_at = at
         normalized: dict[str, Any] = {"id": beat_id, "at": at}
+        if "endAt" in raw:
+            end_at = raw["endAt"]
+            if isinstance(end_at, bool) or not isinstance(end_at, (int, float)) or not math.isfinite(float(end_at)):
+                raise ValueError(f"{item_path}.endAt must be a finite number")
+            end_at = float(end_at)
+            if end_at <= at or end_at > 1:
+                raise ValueError(f"{item_path}.endAt must be greater than at and no greater than 1")
+            normalized["endAt"] = end_at
         if "action" in raw:
             normalized["action"] = _shot_v2_text(raw["action"], f"{item_path}.action", 1000)
         if "dialogue" in raw:
@@ -4059,7 +4069,7 @@ def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
             if unknown_dialogue:
                 raise ValueError(f"{item_path}.dialogue contains unsupported keys: {unknown_dialogue}")
             delivery = dialogue.get("delivery", "says")
-            if delivery not in {"says", "whispers", "shouts", "asks", "sings", "voice_over"}:
+            if delivery not in {"says", "whispers", "shouts", "asks", "sings", "calls_out", "voice_over"}:
                 raise ValueError(f"{item_path}.dialogue.delivery is unsupported")
             normalized_dialogue: dict[str, Any] = {
                 "text": _shot_v2_text(dialogue.get("text"), f"{item_path}.dialogue.text", 1000),
@@ -4072,6 +4082,40 @@ def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
             normalized["dialogue"] = normalized_dialogue
         if "action" not in normalized and "dialogue" not in normalized:
             raise ValueError(f"{item_path} requires action or dialogue")
+        result.append(normalized)
+    return result
+
+
+def _shot_v2_scale_relationships(value: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or len(value) > 16:
+        raise ValueError(f"{path} must be an array containing at most 16 relationships")
+    allowed = {"same_height", "slightly_taller", "taller", "twice_height", "slightly_shorter", "shorter", "half_height", "custom"}
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - {"subjectId", "relativeToId", "relation", "note"})
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        subject_id = _shot_v2_id(raw.get("subjectId"), f"{item_path}.subjectId")
+        relative_to_id = _shot_v2_id(raw.get("relativeToId"), f"{item_path}.relativeToId")
+        if subject_id == relative_to_id:
+            raise ValueError(f"{item_path} must compare two different subjects")
+        pair = (subject_id, relative_to_id)
+        if pair in seen:
+            raise ValueError(f"{path} contains duplicate relationship {subject_id!r} -> {relative_to_id!r}")
+        seen.add(pair)
+        relation = raw.get("relation")
+        if relation not in allowed:
+            raise ValueError(f"{item_path}.relation must be one of: {', '.join(sorted(allowed))}")
+        normalized = {"subjectId": subject_id, "relativeToId": relative_to_id, "relation": relation}
+        if "note" in raw:
+            normalized["note"] = _shot_v2_text(raw["note"], f"{item_path}.note", 500)
+        if relation == "custom" and "note" not in normalized:
+            raise ValueError(f"{item_path}.note is required for a custom relationship")
         result.append(normalized)
     return result
 
@@ -4182,6 +4226,8 @@ def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
             shot["cameraPath"] = normalize_camera_path(data["cameraPath"], f"{path} cameraPath")
         if "actionBeats" in data:
             shot["actionBeats"] = _shot_v2_action_beats(data["actionBeats"], f"{path} actionBeats")
+        if "scaleRelationships" in data:
+            shot["scaleRelationships"] = _shot_v2_scale_relationships(data["scaleRelationships"], f"{path} scaleRelationships")
         if "appearanceTransitions" in data:
             shot["appearanceTransitions"] = _shot_v2_transition(
                 data["appearanceTransitions"], f"{path} appearanceTransitions", "subjectId"
@@ -4509,6 +4555,7 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
             for key in (
                 "subjectPresenceComplete", "subjects", "environment", "referenceUses",
                 "appearanceTransitions", "environmentTransitions", "cutContext",
+                "scaleRelationships",
             )
             if key in shot
         }
@@ -4529,7 +4576,24 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
                     delivery = str(dialogue["delivery"]).replace("_", " ")
                     mood = f" with {dialogue['mood']} mood" if dialogue.get("mood") else ""
                     content.append(f"{speaker}{delivery}{mood}: {json.dumps(dialogue['text'], ensure_ascii=False)}")
-                lines.append(f"    - At {round(float(beat['at']) * 100)}%: " + " ".join(content))
+                timing_label = f"From {round(float(beat['at']) * 100)}%"
+                if "endAt" in beat:
+                    timing_label += f" to {round(float(beat['endAt']) * 100)}%"
+                else:
+                    timing_label = f"At {round(float(beat['at']) * 100)}%"
+                lines.append(f"    - {timing_label}: " + " ".join(content))
+        if shot.get("scaleRelationships"):
+            relationship_labels = {
+                "same_height": "the same visible height as", "slightly_taller": "slightly taller than",
+                "taller": "clearly taller than", "twice_height": "about twice the visible height of",
+                "slightly_shorter": "slightly shorter than", "shorter": "clearly shorter than",
+                "half_height": "about half the visible height of", "custom": "in the custom visible scale relationship to",
+            }
+            lines.append("  Visible scale relationships (preserve without inventing physical units):")
+            for relationship in shot["scaleRelationships"]:
+                description = relationship_labels[relationship["relation"]]
+                note = f"; {relationship['note']}" if relationship.get("note") else ""
+                lines.append(f"    - {relationship['subjectId']} is {description} {relationship['relativeToId']}{note}.")
         camera_sentences = []
         start = shot.get("cameraStart", {})
         end_delta = shot.get("cameraEnd", {})

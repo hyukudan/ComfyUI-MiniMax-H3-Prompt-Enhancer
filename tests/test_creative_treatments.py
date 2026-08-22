@@ -1516,7 +1516,9 @@ def test_resolved_visual_style_suppresses_only_lines_claiming_the_explicit_field
 
 
 def test_shot_rows_accept_optional_camera_and_transition_without_changing_legacy_rows():
-    assert shot_transition_choices() == ("cut", "match_cut", "whip_pan", "hold")
+    assert shot_transition_choices() == (
+        "cut", "match_cut", "whip_pan", "cross_dissolve", "fade_through_black", "hold",
+    )
     assert set(SHOT_TRANSITION_CHOICES) == set(shot_transition_choices())
 
     legacy = parse_shot_plan(_plan([{"id": "s1", "description": "She waits."}]), 8.0)

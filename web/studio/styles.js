@@ -135,7 +135,7 @@ export function ensureStudioStyles() {
             align-items: center;
             gap: var(--h3-space-2);
         }
-        .minimax-h3-detail-mode {
+.minimax-h3-detail-mode {
             display: inline-flex;
             gap: 2px;
             border: 1px solid var(--h3-border);
@@ -1010,6 +1010,8 @@ export function ensureStudioStyles() {
             padding: 7px;
             background: var(--h3-input-bg);
         }
+        .minimax-h3-scale-relationship { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; gap: var(--h3-space-3); border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: var(--h3-space-3); background: var(--h3-input-bg); }
+        .minimax-h3-scale-relationship > .minimax-h3-button { justify-self: start; }
         .minimax-h3-inline-editor > .minimax-h3-studio-field,
         .minimax-h3-binding-row > .minimax-h3-studio-field,
         .minimax-h3-state-row > .minimax-h3-studio-field {
@@ -1336,6 +1338,7 @@ export function ensureStudioStyles() {
             .minimax-h3-starter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @container h3-studio (max-width: 559px) {
+            .minimax-h3-scale-relationship { grid-template-columns: minmax(0, 1fr); }
             .minimax-h3-studio-grid,
             .minimax-h3-master-detail { grid-template-columns: 1fr; }
             .minimax-h3-virtual-list { height: min(36vh, 320px); }
@@ -1383,6 +1386,25 @@ export function ensureStudioStyles() {
             .minimax-h3-studio,
             .minimax-h3-studio *,
             .minimax-h3-dashboard * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+        }
+        .minimax-h3-look-detail-mode {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--h3-space-4);
+            padding: var(--h3-space-3) var(--h3-space-4);
+            border: 1px solid var(--h3-border);
+            border-radius: var(--h3-radius-md);
+            background: var(--h3-surface-raised);
+        }
+        .minimax-h3-look-detail-mode p {
+            margin: var(--h3-space-1) 0 0;
+            color: var(--h3-text-muted);
+        }
+        .minimax-h3-look-detail-mode .minimax-h3-detail-mode { flex: 0 0 auto; }
+        @container h3-studio (max-width: 479px) {
+            .minimax-h3-look-detail-mode { align-items: stretch; flex-direction: column; }
+            .minimax-h3-look-detail-mode .minimax-h3-detail-mode { align-self: flex-start; }
         }
     `;
     document.head.appendChild(style);

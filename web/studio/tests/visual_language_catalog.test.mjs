@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
     VISUAL_LANGUAGE_TAXONOMY,
+    VISUAL_LANGUAGE_PREVIEW_MANIFEST,
     previewRecordIsValid,
     visualLanguageHierarchy,
     visualLanguagePreview,
@@ -79,4 +81,13 @@ test("preview cards reject remote or unprovenanced images and label placeholders
         schemaVersion: 1,
         assets: { vintage_rubberhose_2d: valid },
     }).status, "available");
+});
+
+test("bundled original previews exist and match their recorded provenance digest", () => {
+    assert.deepEqual(Object.keys(VISUAL_LANGUAGE_PREVIEW_MANIFEST.assets).sort(), [...NEW_VISUAL_LANGUAGES].sort());
+    for (const [token, record] of Object.entries(VISUAL_LANGUAGE_PREVIEW_MANIFEST.assets)) {
+        assert.equal(previewRecordIsValid(record), true, `${token} manifest record is valid`);
+        const bytes = readFileSync(new URL(`../${record.src.slice(2)}`, import.meta.url));
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), record.provenance.sha256, `${token} digest`);
+    }
 });

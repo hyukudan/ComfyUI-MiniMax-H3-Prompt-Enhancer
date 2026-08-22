@@ -235,7 +235,7 @@ def normalize_camera_path(value: Any, path: str) -> dict[str, Any]:
         "amplitude": {"small", "medium", "large"},
         "speed": {"slow", "normal", "fast"},
         "easing": {"linear", "ease_in", "ease_out", "ease_in_out"},
-        "timing": {"throughout", "during_opening", "after_opening", "during_action", "before_cut"},
+        "timing": {"throughout", "during_opening", "after_opening", "during_action", "during_dialogue", "after_dialogue", "before_cut"},
     }
     for key, allowed in choices.items():
         if key in raw:
