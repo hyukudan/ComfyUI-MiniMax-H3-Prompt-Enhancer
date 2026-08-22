@@ -16,6 +16,7 @@ import unicodedata
 from typing import Any
 
 try:
+    from .camera_authority import claims_from_global_cinematography, claims_from_shot_plan, claims_from_video_references, resolve_camera_authority
     from .content_formats import content_format_instruction, content_format_signatures, resolve_content_format
     from .creative_treatments import (
         parse_cinematography,
@@ -29,8 +30,12 @@ try:
         title_screen_style_instruction,
         treatment_warnings,
     )
-    from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
+    from .prompt_coach import run_prompt_coach
+    from .planning_context import compile_planning_context
+    from .diagnostics import diagnostic_report_digest
+    from .media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_context_for_generation, manifest_dialogue, parse_media_manifest, parse_media_project
 except ImportError:  # pragma: no cover - direct test/import compatibility
+    from camera_authority import claims_from_global_cinematography, claims_from_shot_plan, claims_from_video_references, resolve_camera_authority
     from content_formats import content_format_instruction, content_format_signatures, resolve_content_format
     from creative_treatments import (
         parse_cinematography,
@@ -44,7 +49,10 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         title_screen_style_instruction,
         treatment_warnings,
     )
-    from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_dialogue, parse_media_manifest
+    from prompt_coach import run_prompt_coach
+    from planning_context import compile_planning_context
+    from diagnostics import diagnostic_report_digest
+    from media_manifest import ASPECT_RATIOS, generation_profile, manifest_context, manifest_context_for_generation, manifest_dialogue, parse_media_manifest, parse_media_project
 
 
 BASE_SECTIONS = (
@@ -3513,7 +3521,25 @@ def _delivery_marks_contract(source_prompt: str) -> str:
     )
 
 
-def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
+def planning_manifest_context(media_manifest: str | Mapping[str, Any] | None,
+                              shot_plan: Mapping[str, Any] | None = None) -> str:
+    """Render the active per-generation closure, falling back exactly to v1 context."""
+    compiled = parse_media_project(media_manifest)
+    if compiled.get("schemaVersion") != 2:
+        return manifest_context(media_manifest)
+    generation_ids = list(compiled.get("generations", {}))
+    if shot_plan and shot_plan.get("schemaVersion") == 2:
+        planned = list(dict.fromkeys(
+            shot["generationId"] for shot in shot_plan.get("shots", ())
+        ))
+        generation_ids = [item for item in planned if item in compiled.get("generations", {})]
+    return "\n\n".join(
+        context for generation_id in generation_ids
+        if (context := manifest_context_for_generation(compiled, generation_id))
+    )
+
+
+def _build_user_request_compiled(basic_prompt: str, mode: str, duration_seconds: float,
                        reference_context: str = "", enhance_description: bool = True,
                        ambience_foley_policy: str = "auto",
                        background_score_policy: str = "follow_prompt",
@@ -3535,7 +3561,8 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                        dialogue_coverage: str = "off",
                        dialogue_language: str = "auto",
                        editing_intent: str = "none",
-                       invent_scene: bool = False) -> str:
+                       invent_scene: bool = False,
+                       compiled_planning_context: Mapping[str, Any] | None = None) -> str:
     if ambience_foley_policy not in AMBIENCE_FOLEY_POLICIES:
         raise ValueError(f"Unsupported ambience/foley policy {ambience_foley_policy!r}")
     if background_score_policy not in BACKGROUND_SCORE_POLICIES:
@@ -3572,11 +3599,15 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved,
     )
+    planned_prompt_count = (
+        explicit_shot_plan.get("generationCount", explicit_shot_plan["shotCount"])
+        if explicit_shot_plan["provided"] else 0
+    )
     if explicit_shot_plan["provided"] and int(multishot_shot_count or 0):
-        if resolved == "chained_multishot" and int(multishot_shot_count) != explicit_shot_plan["shotCount"]:
+        if resolved == "chained_multishot" and int(multishot_shot_count) != planned_prompt_count:
             raise ValueError(
-                "multishot_shot_count conflicts with the explicit shot_plan_json shot count "
-                f"({int(multishot_shot_count)} versus {explicit_shot_plan['shotCount']})"
+                "multishot_shot_count conflicts with the explicit shot_plan_json generation count "
+                f"({int(multishot_shot_count)} versus {planned_prompt_count})"
             )
     source_explicit_count = _required_explicit_shot_count(basic_prompt)
     if (explicit_shot_plan["provided"] and source_explicit_count
@@ -3610,7 +3641,14 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     if fidelity_contract:
         parts.append(fidelity_contract)
     parsed_manifest = parse_media_manifest(media_manifest)
-    connected_context = manifest_context(media_manifest)
+    if compiled_planning_context and compiled_planning_context.get("applied"):
+        connected_context = "\n\n".join(
+            str(item.get("context", ""))
+            for item in compiled_planning_context.get("generations", {}).values()
+            if item.get("context")
+        )
+    else:
+        connected_context = planning_manifest_context(media_manifest, explicit_shot_plan)
     if connected_context:
         parts.append(connected_context)
     if parsed_manifest["errors"]:
@@ -3815,7 +3853,7 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
                 "performance, production design, camera, lighting, atmosphere, story, or sound."
             )
         count = (
-            explicit_shot_plan["shotCount"]
+            planned_prompt_count
             if explicit_shot_plan["provided"] else max(0, int(multishot_shot_count or 0))
         )
         locks = [
@@ -4227,6 +4265,41 @@ def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
     parts.append("FINAL CHECK: " + "; ".join(final_checks) + ".")
     parts.append("Rewrite now using the exact section contract for this task mode.")
     return "\n\n".join(parts)
+
+
+def build_user_request(basic_prompt: str, mode: str, duration_seconds: float,
+                       reference_context: str = "", enhance_description: bool = True,
+                       ambience_foley_policy: str = "auto",
+                       background_score_policy: str = "follow_prompt",
+                       voice_performance: str = "audible",
+                       instrumental_description: str = "",
+                       aspect_ratio: str = "auto",
+                       media_manifest: str = "",
+                       multishot_shot_count: int = 0,
+                       frame_count: int = 0,
+                       multishot_identity_lock: str = "",
+                       multishot_voice_lock: str = "",
+                       multishot_setting_lock: str = "",
+                       authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                       creative_treatment_json: str = "",
+                       shot_plan_json: str = "",
+                       cinematography_json: str = "",
+                       instrumental_style: str = "none",
+                       acoustic_space: str = "none",
+                       dialogue_coverage: str = "off",
+                       dialogue_language: str = "auto",
+                       editing_intent: str = "none",
+                       invent_scene: bool = False) -> str:
+    """Public compatibility wrapper; compiled planning stays an internal concern."""
+    return _build_user_request_compiled(
+        basic_prompt, mode, duration_seconds, reference_context, enhance_description,
+        ambience_foley_policy, background_score_policy, voice_performance,
+        instrumental_description, aspect_ratio, media_manifest, multishot_shot_count,
+        frame_count, multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+        authored_dialogue_ledger, creative_treatment_json, shot_plan_json,
+        cinematography_json, instrumental_style, acoustic_space, dialogue_coverage,
+        dialogue_language, editing_intent, invent_scene,
+    )
 
 
 def treatment_warning_report(creative_treatment_json: str = "", cinematography_json: str = "",
@@ -5823,6 +5896,43 @@ def _creative_literal_adherence_errors(
                 f"({list(dict.fromkeys(incompatible))!r}). Keep one fixed low-resolution integer grid, hard "
                 "nearest-neighbor clusters, discrete palette ramps, and stepped grid-aligned motion."
             )
+    if "visual_language:japanese_print_animation" in selected:
+        incompatible = []
+        for pattern in (
+            r"\bphotorealistic\b",
+            r"\blive[- ]action\b",
+            r"\b(?:directional|volumetric)\s+light(?:ing)?\b",
+            r"\bchiaroscuro\b",
+            r"\bpools?\s+of\s+light\b",
+            r"\bcast(?:s|ing)?\s+(?:hard|soft|realistic|naturalistic)?\s*(?:shadows?|contrast)\b",
+            r"\bspecular\s+highlights?\b",
+            r"\batmospheric\s+depth\b",
+            r"\bdepth\s+of\s+field\b",
+            r"\bbokeh\b",
+            r"\b(?:serves as|is)\s+the\s+(?:primary\s+)?light\s+source\b",
+        ):
+            if _positive_pattern_matches(source_prompt, pattern):
+                continue
+            incompatible.extend(
+                match.group(0) for match in _positive_pattern_matches(output_prompt, pattern)
+            )
+        weak_identity = []
+        for pattern in (
+            r"\b(?:reminiscent\s+of|inspired\s+by|evoking)\s+(?:Japanese\s+)?(?:woodblock(?:[- ]prints?)?|ukiyo[- ]?e)\b",
+            r"\bin\s+the\s+(?:visual\s+)?style\s+of\s+(?:Japanese\s+)?(?:woodblock(?:[- ]prints?)?|ukiyo[- ]?e)\b",
+        ):
+            weak_identity.extend(
+                match.group(0) for match in _positive_pattern_matches(output_prompt, pattern)
+            )
+        if incompatible or weak_identity:
+            observed = list(dict.fromkeys(incompatible + weak_identity))
+            errors.append(
+                "The selected Japanese print animation was weakened into photographic lighting or a mere "
+                f"print-inspired filter ({observed!r}). Rewrite the entire visible scene as an unmistakably "
+                "non-photorealistic moving Japanese woodblock print with carved ink contours, flat registered "
+                "pigment planes, locked paper texture, tiered illustrated depth, and lighting expressed only as "
+                "bounded paper-and-pigment value shapes."
+            )
     return errors
 
 
@@ -5836,6 +5946,12 @@ _VISUAL_MEDIUM_ANCHORS = {
         r"\bgraphic[- ]novel\b",
         r"\bhand[- ]illustrated\s+2d\b",
         r"\b(?:ink|illustrated)\s+contours?\b",
+    ),
+    "japanese_print": (
+        r"\bmoving\s+Japanese\s+woodblock\s+print\b",
+        r"\bhand[- ]printed\s+2d\b",
+        r"\bnon[- ]photorealistic\b[^.!?]{0,100}\b(?:woodblock|ukiyo[- ]?e)\b",
+        r"\bcarved\s+ink\s+contours?\b[^.!?]{0,100}\bflat\s+registered\s+pigment\s+planes?\b",
     ),
     "stop_motion": (
         r"\bstop[- ]motion\b",
@@ -5873,14 +5989,21 @@ _VISUAL_MEDIUM_SENTENCES = {
         "The entire visible scene is hand-illustrated 2D graphic-novel art, with controlled ink "
         "contours, shaped shadow masses, and stable drawn surfaces."
     ),
+    "japanese_print": (
+        "The entire visible scene is a moving Japanese woodblock print: unmistakably non-photorealistic "
+        "hand-printed 2D illustration with carved ink contours, flat registered pigment planes, stable paper "
+        "texture, and light expressed only as bounded paper-and-pigment value shapes rather than photographic "
+        "shading or material response."
+    ),
     "stop_motion": (
         "The entire visible scene is handcrafted stop-motion animation, with tactile miniature "
         "construction and deliberate frame-by-frame pose increments."
     ),
     "supermarionation": (
-        "The entire visible scene uses 1960s Supermarionation craft: the man is a visibly artificial "
-        "marionette with a glossy sculpted head, jointed hands, restrained vertical float, and controlled "
-        "head-tilt performance, staged in a practical miniature refrigerator and apartment set."
+        "The entire visible scene uses 1960s Supermarionation craft: every supplied character is performed "
+        "as a visibly artificial marionette with a glossy sculpted head, jointed hands, restrained vertical "
+        "float, and controlled head-tilt acting, while every supplied environment and object is built as a "
+        "practical miniature with honest fabricated edges and working detail only where already present."
     ),
     "live_action": (
         "The entire scene is photographed cinematic live action, with physically real materials, "
@@ -5907,6 +6030,8 @@ def _visual_medium_family(visual_language: str) -> str:
         return "anime"
     if selected in {"graphic_novel", "graphic_noir"}:
         return "graphic_illustration"
+    if selected == "japanese_print_animation":
+        return "japanese_print"
     if selected == "stop_motion_handcrafted":
         return "stop_motion"
     if selected == "supermarionation":
@@ -5929,6 +6054,12 @@ _SOURCE_VISUAL_MEDIUM_PATTERNS = {
         r"\bcel(?:[- ]shaded|\s+animation)\b",
     ),
     "graphic_illustration": (r"\bgraphic[- ]novel(?:\s+(?:style|look|art))?\b",),
+    "japanese_print": (
+        r"\bukiyo[- ]?e\b",
+        r"\bJapanese\s+woodblock(?:[- ]print)?\b",
+        r"\bwoodblock[- ]print(?:\s+(?:style|look|animation|art))?\b",
+        r"\bhand[- ]printed\s+2d\b",
+    ),
     "stop_motion": (r"\bstop[- ]motion\b",),
     "supermarionation": (r"\bsupermarionation\b", r"\bmarionette[- ]show\b"),
     "live_action": (r"\blive[- ]action\b", r"\bphotorealistic\b"),
@@ -5968,7 +6099,7 @@ def normalize_visual_medium_anchor(
         return value
 
     def anchored(body: str) -> str:
-        if any(re.search(pattern, body or "", re.IGNORECASE) for pattern in patterns):
+        if any(_positive_pattern_matches(body, pattern) for pattern in patterns):
             return body
         marker = re.match(r"(\s*\[Shot\s+1\]\s*)", body or "", re.IGNORECASE)
         if marker:
@@ -6007,7 +6138,7 @@ def _visual_medium_adherence_errors(
     if _selected_medium_is_subordinate_to_source(treatment, source_prompt):
         return []
     patterns = _VISUAL_MEDIUM_ANCHORS.get(family, ())
-    if not patterns or any(re.search(pattern, visual_text or "", re.IGNORECASE) for pattern in patterns):
+    if not patterns or any(_positive_pattern_matches(visual_text, pattern) for pattern in patterns):
         return []
     prefix = f"{item_label}: " if item_label else ""
     readable = family.replace("_", " ")
@@ -6321,13 +6452,38 @@ def _shot_plan_semantic_errors(items: list[str], plan: Mapping[str, Any]) -> lis
         if index > len(items):
             break
         observed = items[index - 1].casefold()
+        authoritative_text = planned.get("description", "")
+        if plan.get("schemaVersion") == 2:
+            authoritative_text = " ".join(
+                part for part in (planned.get("openingState", ""), planned.get("action", "")) if part
+            )
         tokens = list(dict.fromkeys(
-            token.casefold() for token in re.findall(r"\b[\wÀ-ÿ'-]{4,}\b", planned.get("description", ""))
+            token.casefold() for token in re.findall(r"\b[\wÀ-ÿ'-]{4,}\b", authoritative_text)
             if token.casefold() not in stop
         ))
         needed = min(2, len(tokens))
         if needed and sum(token in observed for token in tokens) < needed:
-            errors.append(f"Shot-plan item {index} dropped its authoritative description")
+            fact_name = "opening/action allocation" if plan.get("schemaVersion") == 2 else "description"
+            errors.append(f"Shot-plan item {index} dropped its authoritative {fact_name}")
+        if plan.get("schemaVersion") == 2:
+            path_motion = str(planned.get("cameraPath", {}).get("motionType", "")).replace("_", " ")
+            if path_motion and not any(part in observed for part in path_motion.split() if len(part) >= 4):
+                errors.append(f"Shot-plan item {index} dropped cameraPath.motionType={path_motion!r}")
+            for transition_key in ("appearanceTransitions", "environmentTransitions"):
+                for transition in planned.get(transition_key, ()):
+                    evidence = " ".join(
+                        str(transition.get(key, ""))
+                        for key in ("trigger", "mechanism", "toStateId")
+                    ).casefold()
+                    evidence_tokens = [
+                        token for token in re.findall(r"\b[\wÀ-ÿ'-]{4,}\b", evidence)
+                        if token not in stop
+                    ]
+                    if evidence_tokens and not any(token in observed for token in evidence_tokens):
+                        errors.append(
+                            f"Shot-plan item {index} dropped an authoritative {transition_key} transition"
+                        )
+            continue
         motion = str(planned.get("cameraMotion", "none")).replace("_", " ")
         if motion != "none" and not any(part in observed for part in motion.split() if len(part) >= 4):
             errors.append(f"Shot-plan item {index} dropped cameraMotion={planned['cameraMotion']!r}")
@@ -6339,7 +6495,59 @@ def _shot_plan_semantic_errors(items: list[str], plan: Mapping[str, Any]) -> lis
     return errors
 
 
-def validate_prompt(prompt: str, mode: str, duration_seconds: float,
+def _attach_structured_diagnostics(report: dict[str, Any], plan: Mapping[str, Any],
+                                   cinematography: Mapping[str, Any] | None = None,
+                                   media_manifest: str = "",
+                                   compiled_planning_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Attach additive typed diagnostics while preserving the public legacy projection."""
+    collector = run_prompt_coach(plan)
+    camera_claims = [*claims_from_shot_plan(plan)]
+    camera_claims.extend(claims_from_global_cinematography(
+        cinematography or {}, (str(shot.get("id", "")) for shot in plan.get("shots", ())),
+    ))
+    camera_claims.extend(claims_from_video_references(parse_media_project(media_manifest), plan))
+    camera_authority = resolve_camera_authority(camera_claims, collector)
+    projection = collector.legacy_projection().to_dict()
+    for key in ("errors", "warnings", "coverageGaps", "styleCoverageGaps", "contentFormatCoverageGaps"):
+        existing = report.setdefault(key, [])
+        existing.extend(item for item in projection[key] if item not in existing)
+    report["valid"] = bool(report.get("valid", False) and projection["valid"])
+    report["qualityValid"] = bool(report.get("qualityValid", False) and projection["qualityValid"])
+    diagnostic_report = collector.to_report()
+    planning_report = (
+        compiled_planning_context.get("diagnosticReport", {})
+        if compiled_planning_context and compiled_planning_context.get("applied") else {}
+    )
+    if planning_report:
+        combined = []
+        fingerprints: set[str] = set()
+        for item in (*planning_report.get("diagnostics", ()), *diagnostic_report.get("diagnostics", ())):
+            fingerprint = str(item.get("fingerprint", ""))
+            if fingerprint and fingerprint in fingerprints:
+                continue
+            if fingerprint:
+                fingerprints.add(fingerprint)
+            combined.append(item)
+        diagnostic_report["diagnostics"] = combined
+        diagnostic_report["summary"].update({
+            severity: sum(item.get("severity") == severity[:-1] for item in combined)
+            for severity in ("errors", "warnings")
+        })
+        diagnostic_report["summary"]["advice"] = sum(item.get("severity") == "advice" for item in combined)
+        diagnostic_report["summary"]["info"] = sum(item.get("severity") == "info" for item in combined)
+        if any(item.get("blocks", {}).get("valid") for item in combined):
+            report["valid"] = False
+        if any(item.get("blocks", {}).get("quality") for item in combined):
+            report["qualityValid"] = False
+    diagnostic_report["summary"]["valid"] = bool(report.get("valid", False))
+    diagnostic_report["summary"]["qualityValid"] = bool(report.get("qualityValid", False))
+    report["diagnosticReport"] = diagnostic_report
+    report["diagnosticsDigest"] = diagnostic_report_digest(diagnostic_report)
+    report["cameraAuthority"] = camera_authority.to_dict()
+    return report
+
+
+def _validate_prompt_compiled(prompt: str, mode: str, duration_seconds: float,
                     source_prompt: str = "", reference_context: str = "",
                     ambience_foley_policy: str = "auto",
                     background_score_policy: str = "follow_prompt",
@@ -6363,14 +6571,25 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                     dialogue_coverage: str = "off",
                     dialogue_language: str = "auto",
                     editing_intent: str = "none",
-                    invent_scene: bool = False) -> dict[str, Any]:
+                    invent_scene: bool = False,
+                    compiled_planning_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     resolved = resolve_mode(mode, reference_context, source_prompt, media_manifest, editing_intent=editing_intent)
     profile_name = (
         enhancement_profile(enhance_description, invent_scene)
         if enhance_description is not None else "legacy_unprofiled"
     )
+    planned_context_text = ""
+    if compiled_planning_context and compiled_planning_context.get("applied"):
+        planned_context_text = "\n\n".join(
+            str(item.get("context", ""))
+            for item in compiled_planning_context.get("generations", {}).values()
+            if item.get("context")
+        )
     reference_context = "\n".join(
-        part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
+        part for part in (
+            str(reference_context).strip(),
+            planned_context_text or planning_manifest_context(media_manifest),
+        ) if part
     )
     configuration_errors: list[str] = []
     if delivery_target not in DELIVERY_TARGETS:
@@ -6407,16 +6626,29 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     except ValueError as exc:
         configuration_errors.append(str(exc))
         explicit_shot_plan = parse_shot_plan("", profile["effectiveDurationSeconds"], 0, resolved)
+    if compiled_planning_context is None:
+        compiled_planning_context = compile_planning_context(
+            media_manifest, explicit_shot_plan, profile["effectiveDurationSeconds"], mode=resolved,
+        )
+    if compiled_planning_context.get("applied"):
+        for diagnostic in compiled_planning_context.get("diagnosticReport", {}).get("diagnostics", ()):
+            if diagnostic.get("blocks", {}).get("valid"):
+                message = str(diagnostic.get("message", diagnostic.get("code", "Invalid planning configuration")))
+                if message not in configuration_errors:
+                    configuration_errors.append(message)
     if resolved == "chained_multishot":
         locks = (multishot_identity_lock, multishot_voice_lock, multishot_setting_lock)
+        planned_prompt_count = explicit_shot_plan.get(
+            "generationCount", explicit_shot_plan["shotCount"],
+        )
         expected_count = (
-            explicit_shot_plan["shotCount"]
+            planned_prompt_count
             if explicit_shot_plan["provided"] else multishot_shot_count
         )
         if (explicit_shot_plan["provided"] and int(multishot_shot_count or 0)
-                and int(multishot_shot_count) != explicit_shot_plan["shotCount"]):
+                and int(multishot_shot_count) != planned_prompt_count):
             configuration_errors.append(
-                "multishot_shot_count conflicts with the explicit shot_plan_json shot count"
+                "multishot_shot_count conflicts with the explicit shot_plan_json generation count"
             )
         report = _validate_multishot(
             prompt, profile["effectiveDurationSeconds"], source_prompt, expected_count, locks,
@@ -6452,7 +6684,21 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
                 source_prompt=source_prompt,
             )
         )
-        report["errors"].extend(_shot_plan_semantic_errors(prompt_items, explicit_shot_plan))
+        semantic_items = prompt_items
+        if explicit_shot_plan.get("schemaVersion") == 2:
+            generation_order = list(dict.fromkeys(
+                shot["generationId"] for shot in explicit_shot_plan.get("shots", ())
+            ))
+            by_generation = {
+                generation_id: prompt_items[index]
+                for index, generation_id in enumerate(generation_order)
+                if index < len(prompt_items)
+            }
+            semantic_items = [
+                by_generation.get(shot["generationId"], "")
+                for shot in explicit_shot_plan.get("shots", ())
+            ]
+        report["errors"].extend(_shot_plan_semantic_errors(semantic_items, explicit_shot_plan))
         api_compatible = all(len(item) <= _API_V2_TEXT_BLOCK_CHARACTER_LIMIT for item in prompt_items)
         for index, item in enumerate(prompt_items, 1):
             if len(item) > _API_V2_TEXT_BLOCK_CHARACTER_LIMIT:
@@ -6503,7 +6749,10 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         report["generationProfile"] = profile
         report["mediaManifest"] = parsed
         report["shotPlan"] = explicit_shot_plan
-        return report
+        return _attach_structured_diagnostics(
+            report, explicit_shot_plan, selected_cinematography, media_manifest,
+            compiled_planning_context,
+        )
     text = str(prompt).strip()
     errors: list[str] = list(configuration_errors)
     warnings: list[str] = []
@@ -7269,7 +7518,7 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
     warnings.extend(_resolved_style_coverage_warnings(text, resolved_visual_style))
     content_format_gaps = content_format_coverage_gaps(text, resolved, resolved_content_format)
     valid = not errors
-    return {
+    report = {
         "valid": valid,
         "qualityValid": valid and not coverage_gaps and not style_coverage_gaps and not content_format_gaps,
         "mode": resolved,
@@ -7291,3 +7540,45 @@ def validate_prompt(prompt: str, mode: str, duration_seconds: float,
         "generationProfile": profile,
         "shotPlan": explicit_shot_plan,
     }
+    return _attach_structured_diagnostics(
+        report, explicit_shot_plan, selected_cinematography, media_manifest,
+        compiled_planning_context,
+    )
+
+
+def validate_prompt(prompt: str, mode: str, duration_seconds: float,
+                    source_prompt: str = "", reference_context: str = "",
+                    ambience_foley_policy: str = "auto",
+                    background_score_policy: str = "follow_prompt",
+                    voice_performance: str = "audible",
+                    aspect_ratio: str = "auto",
+                    media_manifest: str = "",
+                    multishot_shot_count: int = 0,
+                    frame_count: int = 0,
+                    multishot_identity_lock: str = "",
+                    multishot_voice_lock: str = "",
+                    multishot_setting_lock: str = "",
+                    authored_dialogue_ledger: tuple[tuple[str, str], ...] = (),
+                    creative_treatment_json: str = "",
+                    shot_plan_json: str = "",
+                    cinematography_json: str = "",
+                    enhance_description: bool | None = None,
+                    delivery_target: str = "local",
+                    instrumental_description: str = "",
+                    instrumental_style: str = "none",
+                    acoustic_space: str = "none",
+                    dialogue_coverage: str = "off",
+                    dialogue_language: str = "auto",
+                    editing_intent: str = "none",
+                    invent_scene: bool = False) -> dict[str, Any]:
+    """Public compatibility wrapper; one-shot callers compile internally."""
+    return _validate_prompt_compiled(
+        prompt, mode, duration_seconds, source_prompt, reference_context,
+        ambience_foley_policy, background_score_policy, voice_performance,
+        aspect_ratio, media_manifest, multishot_shot_count, frame_count,
+        multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
+        authored_dialogue_ledger, creative_treatment_json, shot_plan_json,
+        cinematography_json, enhance_description, delivery_target,
+        instrumental_description, instrumental_style, acoustic_space,
+        dialogue_coverage, dialogue_language, editing_intent, invent_scene,
+    )

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minimax-h3-prompt-enhancer.local/schemas/shot-plan-v2.json",
+  "title": "MiniMax H3 Shot Plan v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "timingMode", "shots"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "timingMode": {"enum": ["auto", "exact"]},
+    "shots": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/shot"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 8000},
+    "shortText": {"type": "string", "minLength": 1, "maxLength": 500},
+    "target": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+          "properties": {
+            "kind": {"enum": ["subject", "environment", "asset"]},
+            "id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "text"],
+          "properties": {"kind": {"const": "text"}, "text": {"$ref": "#/$defs/shortText"}}
+        }
+      ]
+    },
+    "focus": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["single_target", "split_focus", "deep_focus", "custom"]},
+        "primaryTarget": {"$ref": "#/$defs/target"},
+        "secondaryTarget": {"$ref": "#/$defs/target"},
+        "note": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "cameraFrame": {
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "framing": {"enum": ["extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide", "extreme_wide"]},
+        "angle": {"enum": ["eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye"]},
+        "viewpoint": {"enum": ["pov", "over_the_shoulder", "mirror_or_reflection", "front", "three_quarter", "profile", "rear_three_quarter", "rear"]},
+        "composition": {"enum": ["centered", "rule_of_thirds", "symmetrical", "layered_depth", "frame_within_frame", "negative_space", "two_shot", "custom"]},
+        "compositionNote": {"$ref": "#/$defs/shortText"},
+        "primaryTarget": {"$ref": "#/$defs/target"},
+        "secondaryTarget": {"$ref": "#/$defs/target"},
+        "foregroundTarget": {"$ref": "#/$defs/target"},
+        "focus": {"$ref": "#/$defs/focus"},
+        "distance": {"enum": ["intimate", "near", "medium", "far", "very_far", "custom"]},
+        "distanceNote": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "cameraPath": {
+      "type": "object", "additionalProperties": false, "required": ["motionType"],
+      "properties": {
+        "motionType": {"enum": ["static", "zoom_in", "zoom_out", "push_in", "pull_out", "pan_left", "pan_right", "truck_left", "truck_right", "tilt_up", "tilt_down", "pedestal_up", "pedestal_down", "arc", "tracking", "shake", "roll_clockwise", "roll_counterclockwise"]},
+        "amplitude": {"enum": ["small", "medium", "large"]},
+        "speed": {"enum": ["slow", "normal", "fast"]},
+        "easing": {"enum": ["linear", "ease_in", "ease_out", "ease_in_out"]},
+        "timing": {"enum": ["throughout", "during_opening", "after_opening", "during_action", "before_cut"]}
+      },
+      "allOf": [{
+        "if": {"properties": {"motionType": {"const": "static"}}, "required": ["motionType"]},
+        "then": {"not": {"anyOf": [{"required": ["amplitude"]}, {"required": ["speed"]}, {"required": ["easing"]}]}}
+      }]
+    },
+    "subjectPresence": {
+      "type": "object", "additionalProperties": false, "required": ["subjectId", "presence"],
+      "properties": {
+        "subjectId": {"$ref": "#/$defs/id"},
+        "presence": {"enum": ["present", "enters", "exits", "absent"]},
+        "blocking": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "environmentSelection": {
+      "type": "object", "additionalProperties": false, "required": ["environmentId"],
+      "properties": {
+        "environmentId": {"$ref": "#/$defs/id"},
+        "viewIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "referenceUse": {
+      "type": "object", "additionalProperties": false, "required": ["assetId", "role"],
+      "properties": {
+        "assetId": {"$ref": "#/$defs/id"},
+        "role": {"enum": ["identity_reinforcement", "appearance", "environment_view", "scale", "placement", "continuity", "lighting", "composition", "performance", "voice", "exact_dialogue", "soundtrack", "camera_transfer"]},
+        "targetIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "cameraAspects": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"]}},
+        "note": {"$ref": "#/$defs/shortText"}
+      },
+      "allOf": [{
+        "if": {"properties": {"role": {"const": "camera_transfer"}}, "required": ["role"]},
+        "then": {"required": ["cameraAspects"]},
+        "else": {"not": {"required": ["cameraAspects"]}}
+      }]
+    },
+    "appearanceTransition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["subjectId", "fromStateId", "toStateId", "timing"],
+      "properties": {
+        "subjectId": {"$ref": "#/$defs/id"}, "fromStateId": {"$ref": "#/$defs/id"},
+        "toStateId": {"$ref": "#/$defs/id"},
+        "timing": {"enum": ["at_cut", "during_shot", "at_end", "custom"]},
+        "trigger": {"$ref": "#/$defs/shortText"}, "mechanism": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "environmentTransition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["environmentId", "fromStateId", "toStateId", "timing"],
+      "properties": {
+        "environmentId": {"$ref": "#/$defs/id"}, "fromStateId": {"$ref": "#/$defs/id"},
+        "toStateId": {"$ref": "#/$defs/id"},
+        "timing": {"enum": ["at_cut", "during_shot", "at_end", "custom"]},
+        "trigger": {"$ref": "#/$defs/shortText"}, "mechanism": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "cutContext": {
+      "type": "object", "additionalProperties": false, "required": ["timeRelation", "purpose"],
+      "properties": {
+        "timeRelation": {"enum": ["continuous", "later", "earlier", "parallel", "unknown"]},
+        "purpose": {"enum": ["subject", "space", "state", "viewpoint", "time", "rhythm", "unspecified"]}
+      }
+    },
+    "shot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "generationId", "action"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "generationId": {"$ref": "#/$defs/id"},
+        "openingState": {"$ref": "#/$defs/text"}, "action": {"$ref": "#/$defs/text"},
+        "durationSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 150},
+        "transitionIn": {"enum": ["cut", "match_cut", "whip_pan", "hold"]},
+        "cutContext": {"$ref": "#/$defs/cutContext"},
+        "subjectPresenceComplete": {"type": "boolean"},
+        "subjects": {"type": "array", "items": {"$ref": "#/$defs/subjectPresence"}},
+        "environment": {"$ref": "#/$defs/environmentSelection"},
+        "referenceUses": {"type": "array", "items": {"$ref": "#/$defs/referenceUse"}},
+        "cameraStart": {"$ref": "#/$defs/cameraFrame"},
+        "cameraEnd": {"$ref": "#/$defs/cameraFrame"},
+        "cameraPath": {"$ref": "#/$defs/cameraPath"},
+        "appearanceTransitions": {"type": "array", "items": {"$ref": "#/$defs/appearanceTransition"}},
+        "environmentTransitions": {"type": "array", "items": {"$ref": "#/$defs/environmentTransition"}}
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"timingMode": {"const": "exact"}}, "required": ["timingMode"]},
+    "then": {"properties": {"shots": {"items": {"allOf": [{"$ref": "#/$defs/shot"}, {"required": ["durationSeconds"]}]}}}},
+    "else": {"properties": {"shots": {"items": {"allOf": [{"$ref": "#/$defs/shot"}, {"not": {"required": ["durationSeconds"]}}]}}}}
+  }]
+}

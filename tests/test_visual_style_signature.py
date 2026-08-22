@@ -10,6 +10,7 @@ from creative_treatments import (
     compose_creative_treatment,
     parse_cinematography,
     resolve_visual_style,
+    resolved_visual_style_instruction,
 )
 from prompt_enhancer import enhance_prompt_with_completion
 from prompt_guides import (
@@ -631,6 +632,89 @@ def test_supermarionation_gets_an_unmistakable_puppet_and_miniature_anchor():
     assert "visibly artificial marionette" in anchored
     assert "glossy sculpted head" in anchored
     assert "practical miniature" in anchored
+    assert "elderly woman" in anchored
+    assert "the man" not in anchored.casefold()
+    assert "refrigerator" not in anchored.casefold()
+    assert "apartment" not in anchored.casefold()
+
+
+def test_japanese_print_gets_a_strong_non_photographic_medium_anchor():
+    treatment = compose_creative_treatment(visual_language="japanese_print_animation")
+    anchored = normalize_visual_medium_anchor(BASE_OUTPUT, "t2va", treatment, SOURCE)
+
+    assert "moving Japanese woodblock print" in anchored
+    assert "unmistakably non-photorealistic" in anchored
+    assert "hand-printed 2D illustration" in anchored
+    assert anchored.index("moving Japanese woodblock print") < anchored.index("elderly woman")
+
+
+def test_japanese_print_anchor_is_inserted_in_ref2va_detailed_description():
+    treatment = compose_creative_treatment(visual_language="japanese_print_animation")
+    anchored = normalize_visual_medium_anchor(REF_OUTPUT, "ref2va", treatment, "Ukiyo-e animation.")
+
+    detailed = anchored.split("detailed_description:", 1)[1].split("overall_soundscape:", 1)[0]
+    assert "moving Japanese woodblock print" in detailed
+    assert "hand-printed 2D illustration" in detailed
+    assert "<Subject 1>" in detailed
+    assert "moving Japanese woodblock print" not in anchored.split("summary:", 1)[0]
+
+
+def test_negated_japanese_print_claim_does_not_count_as_a_medium_anchor():
+    treatment = compose_creative_treatment(visual_language="japanese_print_animation")
+    negated = BASE_OUTPUT.replace(
+        "[Shot 1] ", "[Shot 1] This is not a moving Japanese woodblock print. "
+    )
+    anchored = normalize_visual_medium_anchor(negated, "t2va", treatment, SOURCE)
+
+    assert anchored.count("moving Japanese woodblock print") == 2
+    assert "The entire visible scene is a moving Japanese woodblock print" in anchored
+
+
+def test_japanese_print_rejects_a_photographic_filter_and_physical_lighting():
+    treatment_json = json.dumps({
+        "schemaVersion": 1,
+        "genre": "none",
+        "visualLanguage": "japanese_print_animation",
+        "worldAesthetic": "none",
+        "tone": "none",
+    })
+    weak_print = BASE_OUTPUT.replace(
+        "[Shot 1] ",
+        "[Shot 1] The scene is rendered in a graphic animation style reminiscent of Japanese woodblock "
+        "prints. A full moon serves as the primary light source, casting hard contrast. ",
+    )
+    report = validate_prompt(
+        weak_print, "t2va", 5.0, SOURCE,
+        creative_treatment_json=treatment_json,
+        enhance_description=True,
+    )
+
+    assert not report["valid"]
+    assert any("mere print-inspired filter" in error for error in report["errors"])
+
+
+def test_japanese_print_translates_genre_lighting_into_flat_graphic_values():
+    treatment = compose_creative_treatment(
+        genre="adventure",
+        visual_language="japanese_print_animation",
+        world_aesthetic="film_noir",
+    )
+    style = resolve_visual_style(treatment)
+    lighting = " ".join(style["treatmentDimensions"]["lighting_and_color"])
+
+    assert "unmistakably non-photorealistic" in style["visualSignature"]
+    assert "hand-printed 2D Japanese woodblock illustration" in style["visualSignature"]
+    assert "inspired" not in style["visualSignature"].casefold()
+    assert "reminiscent" not in style["visualSignature"].casefold()
+    assert "Japanese woodblock-print graphic value design" in lighting
+    assert "Use coherent atmospheric depth and directional light to clarify scale" not in lighting
+    assert "Use motivated chiaroscuro, hard/soft contrast, pools of light" not in lighting
+    assert style["mediumAdaptedCreativeDimensions"] == ["lighting_and_color"]
+
+    instruction = resolved_visual_style_instruction(style)
+    assert "bounded paper-light and flat pigment-value shapes" in instruction
+    assert "registered pigment planes" in instruction
+    assert "materials respond to that light" not in instruction
 
 
 def test_explicit_source_medium_outranks_incompatible_selector_anchor():

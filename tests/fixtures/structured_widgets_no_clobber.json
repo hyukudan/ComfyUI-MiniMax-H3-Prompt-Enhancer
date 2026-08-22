@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "widgetNames": [
+    "creative_treatment_json",
+    "shot_plan_json",
+    "cinematography_json"
+  ],
+  "cases": {
+    "blank": ["", " \n", "\t"],
+    "v1": [
+      "{  \"schemaVersion\" : 1, \"genre\" : \"action\" }",
+      "{\n  \"schemaVersion\": 1,\n  \"timingMode\": \"auto\",\n  \"shots\": []\n}",
+      "{\"schemaVersion\":1,\"cameraMotion\":\"none\"}"
+    ],
+    "malformed": [
+      "{\"schemaVersion\":1,",
+      "{\"schemaVersion\":1,\"shots\":[",
+      "not json"
+    ],
+    "future": [
+      "{ \"schemaVersion\": 9, \"creative\": true }",
+      "{\n\"schemaVersion\":12,\"shots\":[{\"unknown\":true}]\n}",
+      "{\"schemaVersion\":99,\"cameraRig\":{\"future\":true}}"
+    ]
+  }
+}

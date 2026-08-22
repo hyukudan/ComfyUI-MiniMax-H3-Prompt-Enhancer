@@ -4,12 +4,21 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from typing import Any
+
+try:
+    from .continuity_state import compile_generation_states, resolve_state, validate_state_graph
+    from .reference_resolution import resolve_generation_references
+except ImportError:
+    from continuity_state import compile_generation_states, resolve_state, validate_state_graph
+    from reference_resolution import resolve_generation_references
 
 
 ASPECT_RATIOS = ("auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
 MEDIA_TYPES = {"picture", "image", "video", "audio"}
+MEDIA_MANIFEST_SCHEMA_VERSION = 2
 
 
 def parse_media_manifest(value: str | dict | list | None) -> dict[str, Any]:
@@ -35,6 +44,8 @@ def parse_media_manifest(value: str | dict | list | None) -> dict[str, Any]:
         data = {"items": data}
     if not isinstance(data, dict):
         return {"items": [], "mode": "", "warnings": [], "errors": ["media_manifest must be a JSON object or array"]}
+    if data.get("schemaVersion") == MEDIA_MANIFEST_SCHEMA_VERSION:
+        return _legacy_projection_v2(parse_media_project(data))
     raw_items = data.get("items", data.get("assets", data.get("media", [])))
     if not isinstance(raw_items, list):
         return {"items": [], "mode": "", "warnings": [], "errors": ["media_manifest.items must be an array"]}
@@ -141,6 +152,562 @@ def parse_media_manifest(value: str | dict | list | None) -> dict[str, Any]:
         "videoSeconds": video_seconds,
         "audioSeconds": audio_seconds,
     }
+
+
+class _DuplicateKeyError(ValueError):
+    pass
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateKeyError(f"duplicate key {key!r}")
+        result[key] = value
+    return result
+
+
+def _project_issue(code: str, message: str, field: str = "media_manifest", **data: Any) -> dict[str, Any]:
+    return {"code": code, "message": message, "field": field, "data": data}
+
+
+def _canonical_json(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _unknown_keys(value: Any, allowed: set[str], field: str, issues: list[dict[str, Any]]) -> None:
+    if not isinstance(value, dict):
+        return
+    for key in value.keys() - allowed:
+        issues.append(_project_issue("schema.media_manifest.unknown_field", f"Unknown field {key!r} at {field}", f"{field}.{key}"))
+
+
+def _require_object(value: Any, field: str, issues: list[dict[str, Any]]) -> bool:
+    if isinstance(value, dict):
+        return True
+    issues.append(_project_issue("schema.media_manifest.invalid_type", f"{field} must be an object", field))
+    return False
+
+
+def _require_array(value: Any, field: str, issues: list[dict[str, Any]], maximum: int | None = None) -> bool:
+    if not isinstance(value, list):
+        issues.append(_project_issue("schema.media_manifest.invalid_type", f"{field} must be an array", field))
+        return False
+    if maximum is not None and len(value) > maximum:
+        issues.append(_project_issue("schema.media_manifest.limit", f"{field} accepts at most {maximum} items", field))
+    return True
+
+
+def _valid_id(value: Any) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value) is not None
+
+
+def _all_unique(values: list[Any]) -> bool:
+    keys = [_canonical_json(value) for value in values]
+    return len(keys) == len(set(keys))
+
+
+def _required_fields(value: dict[str, Any], required: set[str], field: str, issues: list[dict[str, Any]]) -> None:
+    for key in required - value.keys():
+        issues.append(_project_issue("schema.media_manifest.missing_field", f"Missing required field {key!r} at {field}", f"{field}.{key}"))
+
+
+def _text_field(value: Any, field: str, issues: list[dict[str, Any]], maximum: int, *, required: bool = False) -> None:
+    if value is None and not required:
+        return
+    if not isinstance(value, str) or not value or len(value) > maximum:
+        issues.append(_project_issue("schema.media_manifest.invalid_text", f"{field} must be a non-empty string of at most {maximum} characters", field))
+
+
+def _check_text_values(value: Any, field: str, issues: list[dict[str, Any]]) -> None:
+    if isinstance(value, str) and "\x00" in value:
+        issues.append(_project_issue("schema.media_manifest.invalid_text", f"{field} contains a NUL character", field))
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            _check_text_values(child, f"{field}.{key}", issues)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _check_text_values(child, f"{field}.{index}", issues)
+
+
+def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    root_fields = {"schemaVersion", "mode", "assets", "subjects", "environments", "generations"}
+    _unknown_keys(project, root_fields, "media_manifest", issues)
+    _required_fields(project, {"schemaVersion", "assets", "subjects", "environments", "generations"}, "media_manifest", issues)
+    _check_text_values(project, "media_manifest", issues)
+    mode = project.get("mode", "auto")
+    if mode not in {"auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"}:
+        issues.append(_project_issue("schema.media_manifest.invalid_value", f"Unsupported mode {mode!r}", "media_manifest.mode"))
+    arrays = (("assets", 128), ("subjects", 64), ("environments", 64), ("generations", 64))
+    if not all(_require_array(project.get(name), f"media_manifest.{name}", issues, maximum) for name, maximum in arrays):
+        return issues
+    if not project["generations"]:
+        issues.append(_project_issue("schema.media_manifest.limit", "media_manifest.generations requires at least one item", "media_manifest.generations"))
+
+    asset_fields = {"id", "type", "name", "available", "durationSeconds", "audioMode", "description", "analysis", "transcript", "cameraTransfer"}
+    for index, asset in enumerate(project["assets"]):
+        field = f"media_manifest.assets.{index}"
+        if not _require_object(asset, field, issues):
+            continue
+        _unknown_keys(asset, asset_fields, field, issues)
+        _required_fields(asset, {"id", "type", "name"}, field, issues)
+        _text_field(asset.get("name"), f"{field}.name", issues, 500, required=True)
+        _text_field(asset.get("description"), f"{field}.description", issues, 8000)
+        if asset.get("type") not in {"picture", "video", "audio"}:
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid asset type {asset.get('type')!r}", f"{field}.type"))
+        if "available" in asset and not isinstance(asset["available"], bool):
+            issues.append(_project_issue("schema.media_manifest.invalid_type", f"{field}.available must be boolean", f"{field}.available"))
+        duration = asset.get("durationSeconds")
+        if duration is not None and (not isinstance(duration, (int, float)) or isinstance(duration, bool) or not 0 <= duration <= 15):
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.durationSeconds must be between 0 and 15", f"{field}.durationSeconds"))
+        if asset.get("type") != "video" and ("audioMode" in asset or "cameraTransfer" in asset):
+            issues.append(_project_issue("schema.media_manifest.invalid_value", "Only video assets may declare audioMode or cameraTransfer", field))
+        if asset.get("type") == "video" and asset.get("audioMode", "off") not in {"off", "paired", "alone"}:
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid audioMode for {asset.get('id')!r}", f"{field}.audioMode"))
+        transfer = asset.get("cameraTransfer")
+        if transfer is not None:
+            if _require_object(transfer, f"{field}.cameraTransfer", issues):
+                _unknown_keys(transfer, {"enabled", "role", "aspects"}, f"{field}.cameraTransfer", issues)
+                _required_fields(transfer, {"enabled", "role", "aspects"}, f"{field}.cameraTransfer", issues)
+                if transfer.get("enabled") is not True or transfer.get("role") != "camera_reference":
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", "cameraTransfer requires enabled=true and role='camera_reference'", f"{field}.cameraTransfer"))
+                aspects = transfer.get("aspects")
+                allowed = {"motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"}
+                if not isinstance(aspects, list) or not aspects or not _all_unique(aspects) or any(item not in allowed for item in aspects):
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", "cameraTransfer.aspects must be a non-empty unique list of camera aspects", f"{field}.cameraTransfer.aspects"))
+        if "transcript" in asset:
+            if _require_array(asset["transcript"], f"{field}.transcript", issues, 256):
+                for transcript_index, entry in enumerate(asset["transcript"]):
+                    entry_field = f"{field}.transcript.{transcript_index}"
+                    if isinstance(entry, str):
+                        _text_field(entry, entry_field, issues, 8000, required=True)
+                    elif _require_object(entry, entry_field, issues):
+                        _unknown_keys(entry, {"text", "language", "unclear"}, entry_field, issues)
+                        _required_fields(entry, {"text"}, entry_field, issues)
+                        _text_field(entry.get("text"), f"{entry_field}.text", issues, 8000, required=True)
+
+    state_fields = {"id", "name", "extends", "controls", "description", "attributes", "source"}
+    subject_fields = {"id", "h3Index", "name", "description", "identityAssetIds", "baseAppearanceStateId", "appearanceStates"}
+    for index, subject in enumerate(project["subjects"]):
+        field = f"media_manifest.subjects.{index}"
+        if not _require_object(subject, field, issues):
+            continue
+        _unknown_keys(subject, subject_fields, field, issues)
+        _required_fields(subject, subject_fields, field, issues)
+        _text_field(subject.get("name"), f"{field}.name", issues, 500, required=True)
+        _text_field(subject.get("description"), f"{field}.description", issues, 8000, required=True)
+        if not isinstance(subject.get("h3Index"), int) or isinstance(subject.get("h3Index"), bool) or not 1 <= subject.get("h3Index", 0) <= 64:
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.h3Index must be 1..64", f"{field}.h3Index"))
+        if _require_array(subject.get("identityAssetIds"), f"{field}.identityAssetIds", issues):
+            if not _all_unique(subject["identityAssetIds"]):
+                issues.append(_project_issue("schema.media_manifest.duplicate", f"{field}.identityAssetIds must be unique", f"{field}.identityAssetIds"))
+            if any(not _valid_id(asset_id) for asset_id in subject["identityAssetIds"]):
+                issues.append(_project_issue("schema.media_manifest.invalid_id", f"{field}.identityAssetIds contains an invalid ID", f"{field}.identityAssetIds"))
+        if _require_array(subject.get("appearanceStates"), f"{field}.appearanceStates", issues, 64):
+            if not subject["appearanceStates"]:
+                issues.append(_project_issue("schema.media_manifest.limit", f"{field}.appearanceStates requires at least one state", f"{field}.appearanceStates"))
+            for state_index, state in enumerate(subject["appearanceStates"]):
+                state_field = f"{field}.appearanceStates.{state_index}"
+                if not _require_object(state, state_field, issues):
+                    continue
+                _unknown_keys(state, state_fields, state_field, issues)
+                _required_fields(state, {"id", "name", "controls"}, state_field, issues)
+                _text_field(state.get("name"), f"{state_field}.name", issues, 500, required=True)
+                _text_field(state.get("description"), f"{state_field}.description", issues, 8000)
+                controls = state.get("controls")
+                allowed_controls = {"wardrobe", "hair", "makeup", "accessories", "carried_items", "damage", "wetness", "body_condition", "transformation", "other"}
+                if not isinstance(controls, list) or not _all_unique(controls) or any(item not in allowed_controls for item in controls):
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid controls in {state_field}", f"{state_field}.controls"))
+                if "extends" in state and not _valid_id(state["extends"]):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid extends ID in {state_field}", f"{state_field}.extends"))
+                if "attributes" in state and _require_object(state["attributes"], f"{state_field}.attributes", issues):
+                    _unknown_keys(state["attributes"], {"wardrobe", "hair", "makeup", "accessories", "carriedItems", "damage", "wetness", "bodyCondition", "transformation", "other"}, f"{state_field}.attributes", issues)
+                source = state.get("source")
+                if source is not None:
+                    if _require_object(source, f"{state_field}.source", issues):
+                        _unknown_keys(source, {"mode", "assetId", "region"}, f"{state_field}.source", issues)
+                        if source.get("mode") not in {"description", "asset"} or (source.get("mode") == "asset" and "assetId" not in source):
+                            issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid appearance source in {state_field}", f"{state_field}.source"))
+                        if source.get("mode") == "asset" and not _valid_id(source.get("assetId")):
+                            issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid appearance source asset ID in {state_field}", f"{state_field}.source.assetId"))
+
+    environment_fields = {"id", "name", "permanent", "views", "defaultStateId", "states"}
+    for index, environment in enumerate(project["environments"]):
+        field = f"media_manifest.environments.{index}"
+        if not _require_object(environment, field, issues):
+            continue
+        _unknown_keys(environment, environment_fields, field, issues)
+        _required_fields(environment, environment_fields, field, issues)
+        _text_field(environment.get("name"), f"{field}.name", issues, 500, required=True)
+        if _require_object(environment.get("permanent"), f"{field}.permanent", issues):
+            _unknown_keys(environment["permanent"], {"geography", "architecture", "fixedElements", "scale", "other"}, f"{field}.permanent", issues)
+        if _require_array(environment.get("views"), f"{field}.views", issues, 24):
+            for view_index, view in enumerate(environment["views"]):
+                view_field = f"{field}.views.{view_index}"
+                if not _require_object(view, view_field, issues):
+                    continue
+                _unknown_keys(view, {"id", "name", "role", "assetId", "description"}, view_field, issues)
+                _required_fields(view, {"id", "name", "role", "assetId"}, view_field, issues)
+                _text_field(view.get("name"), f"{view_field}.name", issues, 500, required=True)
+                _text_field(view.get("description"), f"{view_field}.description", issues, 8000)
+                if not _valid_id(view.get("assetId")):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid view asset ID in {view_field}", f"{view_field}.assetId"))
+                if view.get("role") not in {"overview", "alternate", "detail", "lighting", "custom"}:
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid view role {view.get('role')!r}", f"{view_field}.role"))
+        if _require_array(environment.get("states"), f"{field}.states", issues, 64):
+            if not environment["states"]:
+                issues.append(_project_issue("schema.media_manifest.limit", f"{field}.states requires at least one state", f"{field}.states"))
+            for state_index, state in enumerate(environment["states"]):
+                state_field = f"{field}.states.{state_index}"
+                if not _require_object(state, state_field, issues):
+                    continue
+                _unknown_keys(state, {"id", "name", "extends", "temporary"}, state_field, issues)
+                _required_fields(state, {"id", "name"}, state_field, issues)
+                _text_field(state.get("name"), f"{state_field}.name", issues, 500, required=True)
+                if "extends" in state and not _valid_id(state["extends"]):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid extends ID in {state_field}", f"{state_field}.extends"))
+                if "temporary" in state and _require_object(state["temporary"], f"{state_field}.temporary", issues):
+                    _unknown_keys(state["temporary"], {"lighting", "weather", "atmosphere", "condition", "timeOfDay", "temporaryElements", "other"}, f"{state_field}.temporary", issues)
+
+    generation_fields = {"id", "order", "activation", "bindings", "subjectStates", "environmentStates"}
+    for index, generation in enumerate(project["generations"]):
+        field = f"media_manifest.generations.{index}"
+        if not _require_object(generation, field, issues):
+            continue
+        _unknown_keys(generation, generation_fields, field, issues)
+        _required_fields(generation, generation_fields, field, issues)
+        if not isinstance(generation.get("order"), int) or isinstance(generation.get("order"), bool) or not 1 <= generation.get("order", 0) <= 64:
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.order must be 1..64", f"{field}.order"))
+        activation = generation.get("activation")
+        if _require_object(activation, f"{field}.activation", issues):
+            _unknown_keys(activation, {"mode", "roots", "exclude"}, f"{field}.activation", issues)
+            if activation.get("mode") not in {"auto", "explicit"}:
+                issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid activation mode {activation.get('mode')!r}", f"{field}.activation.mode"))
+            if activation.get("mode") == "explicit" and ("roots" not in activation or not isinstance(activation.get("roots"), list) or not activation["roots"]):
+                issues.append(_project_issue("schema.media_manifest.invalid_value", "Explicit activation requires at least one root", f"{field}.activation.roots"))
+            for list_name in ("roots", "exclude"):
+                if list_name in activation and _require_array(activation[list_name], f"{field}.activation.{list_name}", issues):
+                    for ref_index, resource in enumerate(activation[list_name]):
+                        ref_field = f"{field}.activation.{list_name}.{ref_index}"
+                        if _require_object(resource, ref_field, issues):
+                            _unknown_keys(resource, {"kind", "id"}, ref_field, issues)
+                            _required_fields(resource, {"kind", "id"}, ref_field, issues)
+                            if not _valid_id(resource.get("id")):
+                                issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid resource ID at {ref_field}", f"{ref_field}.id"))
+                            if resource.get("kind") not in {"asset", "subject", "environment"}:
+                                issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid resource kind {resource.get('kind')!r}", f"{ref_field}.kind"))
+        for list_name in ("bindings", "subjectStates", "environmentStates"):
+            _require_array(generation.get(list_name), f"{field}.{list_name}", issues, 15 if list_name == "bindings" else None)
+        for binding_index, binding in enumerate(generation.get("bindings", ()) if isinstance(generation.get("bindings"), list) else ()):
+            binding_field = f"{field}.bindings.{binding_index}"
+            if _require_object(binding, binding_field, issues):
+                _unknown_keys(binding, {"assetId", "slotIndex", "soundtrackSlotIndex"}, binding_field, issues)
+                _required_fields(binding, {"assetId", "slotIndex"}, binding_field, issues)
+                if not _valid_id(binding.get("assetId")):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid asset ID at {binding_field}", f"{binding_field}.assetId"))
+                for slot_field in ("slotIndex", "soundtrackSlotIndex"):
+                    if slot_field in binding and (not isinstance(binding[slot_field], int) or isinstance(binding[slot_field], bool) or not 1 <= binding[slot_field] <= (3 if slot_field == "soundtrackSlotIndex" else 9)):
+                        issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid {slot_field}", f"{binding_field}.{slot_field}"))
+        for selection_index, selection in enumerate(generation.get("subjectStates", ()) if isinstance(generation.get("subjectStates"), list) else ()):
+            selection_field = f"{field}.subjectStates.{selection_index}"
+            if _require_object(selection, selection_field, issues):
+                _unknown_keys(selection, {"subjectId", "policy", "stateId", "reason"}, selection_field, issues)
+                required = {"subjectId", "policy"} | ({"stateId"} if selection.get("policy") != "carry" else set()) | ({"reason"} if selection.get("policy") == "reset" else set())
+                _required_fields(selection, required, selection_field, issues)
+                if not _valid_id(selection.get("subjectId")) or ("stateId" in selection and not _valid_id(selection.get("stateId"))):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid subject/state ID at {selection_field}", selection_field))
+                if selection.get("policy") not in {"carry", "explicit", "reset"}:
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid subject-state policy {selection.get('policy')!r}", f"{selection_field}.policy"))
+        for selection_index, selection in enumerate(generation.get("environmentStates", ()) if isinstance(generation.get("environmentStates"), list) else ()):
+            selection_field = f"{field}.environmentStates.{selection_index}"
+            if _require_object(selection, selection_field, issues):
+                _unknown_keys(selection, {"environmentId", "policy", "stateId", "viewIds", "reason"}, selection_field, issues)
+                required = {"environmentId", "policy", "viewIds"} | ({"stateId"} if selection.get("policy") != "carry" else set()) | ({"reason"} if selection.get("policy") == "reset" else set())
+                _required_fields(selection, required, selection_field, issues)
+                if not _valid_id(selection.get("environmentId")) or ("stateId" in selection and not _valid_id(selection.get("stateId"))):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid environment/state ID at {selection_field}", selection_field))
+                if selection.get("policy") not in {"carry", "explicit", "reset"}:
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid environment-state policy {selection.get('policy')!r}", f"{selection_field}.policy"))
+                _require_array(selection.get("viewIds"), f"{selection_field}.viewIds", issues)
+                if isinstance(selection.get("viewIds"), list) and (not _all_unique(selection["viewIds"]) or any(not _valid_id(view_id) for view_id in selection["viewIds"])):
+                    issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid or duplicate view ID at {selection_field}", f"{selection_field}.viewIds"))
+    return issues
+
+
+def _duplicate_id_issues(items: list[dict[str, Any]], namespace: str) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(items):
+        item_id = item.get("id")
+        field = f"media_manifest.{namespace}.{index}.id"
+        if not _valid_id(item_id):
+            issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid ID {item_id!r} in {namespace}", field))
+        elif item_id in seen:
+            issues.append(_project_issue("schema.media_manifest.duplicate_id", f"Duplicate {namespace} ID {item_id!r}", field))
+        if _valid_id(item_id):
+            seen.add(item_id)
+    return issues
+
+
+def _validate_v2_semantics(project: dict[str, Any]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for namespace in ("assets", "subjects", "environments", "generations"):
+        issues.extend(_duplicate_id_issues(project[namespace], namespace))
+    assets = {asset["id"]: asset for asset in project["assets"] if _valid_id(asset.get("id"))}
+    h3_indices: set[int] = set()
+    for subject in project["subjects"]:
+        if subject["h3Index"] in h3_indices:
+            issues.append(_project_issue("schema.media_manifest.duplicate_h3_index", f"Duplicate h3Index {subject['h3Index']}", f"subjects.{subject['id']}.h3Index"))
+        h3_indices.add(subject["h3Index"])
+        issues.extend(_duplicate_id_issues(subject["appearanceStates"], f"subjects.{subject['id']}.appearanceStates"))
+        state_ids = {state["id"] for state in subject["appearanceStates"] if _valid_id(state.get("id"))}
+        if not _valid_id(subject.get("baseAppearanceStateId")) or subject["baseAppearanceStateId"] not in state_ids:
+            issues.append(_project_issue("appearance.state.unknown", f"Subject {subject['id']!r} has unknown base appearance state", f"subjects.{subject['id']}.baseAppearanceStateId"))
+        if all(_valid_id(state.get("id")) and ("extends" not in state or _valid_id(state.get("extends"))) for state in subject["appearanceStates"]):
+            issues.extend(validate_state_graph(subject["appearanceStates"], entity_kind="appearance", entity_id=subject["id"]))
+        for asset_id in subject["identityAssetIds"]:
+            if not _valid_id(asset_id) or asset_id not in assets or assets[asset_id]["type"] != "picture":
+                issues.append(_project_issue("reference.binding.type_mismatch", f"Identity asset {asset_id!r} for subject {subject['id']!r} must be a picture", f"subjects.{subject['id']}.identityAssetIds"))
+        for state in subject["appearanceStates"]:
+            source = state.get("source", {})
+            if source.get("mode") == "asset":
+                asset = assets.get(source.get("assetId"))
+                if asset is None or asset["type"] not in {"picture", "video"}:
+                    issues.append(_project_issue("reference.binding.type_mismatch", f"Appearance source {source.get('assetId')!r} must be a picture or video", f"subjects.{subject['id']}.appearanceStates.{state['id']}.source"))
+    for environment in project["environments"]:
+        issues.extend(_duplicate_id_issues(environment["views"], f"environments.{environment['id']}.views"))
+        issues.extend(_duplicate_id_issues(environment["states"], f"environments.{environment['id']}.states"))
+        state_ids = {state["id"] for state in environment["states"] if _valid_id(state.get("id"))}
+        if not _valid_id(environment.get("defaultStateId")) or environment["defaultStateId"] not in state_ids:
+            issues.append(_project_issue("environment.state.unknown", f"Environment {environment['id']!r} has unknown default state", f"environments.{environment['id']}.defaultStateId"))
+        if all(_valid_id(state.get("id")) and ("extends" not in state or _valid_id(state.get("extends"))) for state in environment["states"]):
+            issues.extend(validate_state_graph(environment["states"], entity_kind="environment", entity_id=environment["id"]))
+        for view in environment["views"]:
+            asset = assets.get(view["assetId"]) if _valid_id(view.get("assetId")) else None
+            if asset is None or asset["type"] != "picture":
+                issues.append(_project_issue("reference.binding.type_mismatch", f"Environment view asset {view['assetId']!r} must be a picture", f"environments.{environment['id']}.views.{view['id']}"))
+    orders = sorted(generation["order"] for generation in project["generations"] if isinstance(generation.get("order"), int))
+    if orders != list(range(1, len(project["generations"]) + 1)):
+        issues.append(_project_issue("schema.media_manifest.generation_order", "Generation orders must be contiguous from 1", "media_manifest.generations"))
+    mode = project.get("mode", "auto")
+    if mode != "chained_multishot" and (len(project["generations"]) != 1 or project["generations"][0].get("id") != "g1"):
+        issues.append(_project_issue("schema.media_manifest.generation_mode", "Ordinary modes require exactly generation g1", "media_manifest.generations"))
+    if mode in {"i2va", "fl2va", "l2va"} and len(project["generations"]) == 1:
+        bindings = project["generations"][0]["bindings"]
+        pictures = sorted(binding["slotIndex"] for binding in bindings if assets.get(binding["assetId"], {}).get("type") == "picture")
+        expected = [1, 2] if mode == "fl2va" else [1]
+        if pictures[:len(expected)] != expected:
+            issues.append(_project_issue("reference.binding.fixed_mode", f"Mode {mode} requires picture slots {expected}", "generations.g1.bindings"))
+    return issues
+
+
+def _legacy_project(value: str | dict | list | None) -> dict[str, Any]:
+    parsed = parse_media_manifest(value)
+    if isinstance(value, str):
+        canonical = value.strip() if value.strip() else ""
+    else:
+        canonical = _canonical_json(value) if value is not None else ""
+    return {
+        "schemaVersion": 1,
+        "valid": not parsed["errors"],
+        "errors": list(parsed["errors"]),
+        "warnings": list(parsed["warnings"]),
+        "diagnostics": [
+            _project_issue("schema.media_manifest.legacy_error", message) for message in parsed["errors"]
+        ],
+        "canonicalJson": canonical,
+        "digest": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "legacy": parsed,
+        "legacyValue": value,
+        "generations": {},
+    }
+
+
+def parse_media_project(value: str | dict | list | None) -> dict[str, Any]:
+    """Parse a legacy manifest or compile a canonical logical media project v2."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return _legacy_project(value)
+    if isinstance(value, str):
+        if value.strip().lower() in ASPECT_RATIOS:
+            return _legacy_project(value)
+        try:
+            data = json.loads(value, object_pairs_hook=_reject_duplicate_keys)
+        except (json.JSONDecodeError, _DuplicateKeyError) as exc:
+            message = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
+            diagnostic = _project_issue("schema.media_manifest.invalid_json", f"media_manifest is invalid JSON: {message}")
+            return {
+                "schemaVersion": None, "valid": False, "errors": [diagnostic["message"]], "warnings": [],
+                "diagnostics": [diagnostic], "canonicalJson": "", "digest": "", "generations": {},
+            }
+    else:
+        data = value
+    if not isinstance(data, dict) or "schemaVersion" not in data:
+        return _legacy_project(value)
+    if data.get("schemaVersion") != MEDIA_MANIFEST_SCHEMA_VERSION:
+        diagnostic = _project_issue(
+            "schema.media_manifest.unsupported_version",
+            f"Unsupported media_manifest schemaVersion {data.get('schemaVersion')!r}; expected 2",
+            "media_manifest.schemaVersion",
+        )
+        raw = _canonical_json(data)
+        return {
+            "schemaVersion": data.get("schemaVersion"), "valid": False, "errors": [diagnostic["message"]],
+            "warnings": [], "diagnostics": [diagnostic], "canonicalJson": raw,
+            "digest": hashlib.sha256(raw.encode("utf-8")).hexdigest(), "generations": {},
+        }
+    shape_issues = _validate_v2_shape(data)
+    canonical = _canonical_json(data)
+    if shape_issues:
+        return {
+            "schemaVersion": 2, "valid": False, "errors": [issue["message"] for issue in shape_issues],
+            "warnings": [], "diagnostics": shape_issues, "canonicalJson": canonical,
+            "digest": hashlib.sha256(canonical.encode("utf-8")).hexdigest(), "project": data, "generations": {},
+        }
+    semantic_issues = _validate_v2_semantics(data)
+    if semantic_issues:
+        return {
+            "schemaVersion": 2, "valid": False, "errors": [issue["message"] for issue in semantic_issues],
+            "warnings": [], "diagnostics": semantic_issues, "canonicalJson": canonical,
+            "digest": hashlib.sha256(canonical.encode("utf-8")).hexdigest(), "project": data, "generations": {},
+        }
+    generation_states, continuity_issues = compile_generation_states(data)
+    semantic_issues.extend(continuity_issues)
+    generation_results: dict[str, dict[str, Any]] = {}
+    assets_by_id = {asset["id"]: asset for asset in data["assets"]}
+    for generation in sorted(data["generations"], key=lambda item: item["order"]):
+        generation_for_resolution = dict(generation)
+        generation_for_resolution["subjectStates"] = [dict(item) for item in generation["subjectStates"]]
+        generation_for_resolution["environmentStates"] = [dict(item) for item in generation["environmentStates"]]
+        state = generation_states.get(generation["id"], {})
+        for selection in generation_for_resolution["subjectStates"]:
+            selection["resolvedStateId"] = state.get("subjects", {}).get(selection["subjectId"], selection.get("stateId"))
+        for selection in generation_for_resolution["environmentStates"]:
+            selection["resolvedStateId"] = state.get("environments", {}).get(selection["environmentId"], selection.get("stateId"))
+        resolution = resolve_generation_references(data, generation_for_resolution)
+        counts = resolution["counts"]
+        total_files = resolution["totalFiles"]
+        mode = data.get("mode", "auto")
+        mode_invalid = (
+            (mode == "t2va" and total_files != 0)
+            or (mode in {"i2va", "l2va"} and (counts["picture"] != 1 or total_files != 1))
+            or (mode == "fl2va" and (counts["picture"] != 2 or total_files != 2))
+            or (mode == "ref2va" and (total_files == 0 or not (counts["picture"] or counts["video"])))
+        )
+        if mode_invalid:
+            resolution["issues"].append(_project_issue(
+                "reference.binding.mode_mismatch",
+                f"Generation {generation['id']} bindings do not match mode {mode}",
+                f"generations.{generation['id']}.bindings",
+            ))
+        for asset_id in resolution["activeAssetIds"]:
+            if assets_by_id[asset_id].get("available", True) is False:
+                resolution["issues"].append(_project_issue("reference.activation.unavailable", f"Unavailable asset {asset_id!r} is active", f"generations.{generation['id']}.activation"))
+        resolution["initialState"] = state
+        resolution["stateDigest"] = state.get("initialDigest", "")
+        generation_results[generation["id"]] = resolution
+        semantic_issues.extend(resolution["issues"])
+    return {
+        "schemaVersion": 2,
+        "valid": not semantic_issues,
+        "errors": [issue["message"] for issue in semantic_issues],
+        "warnings": [],
+        "diagnostics": semantic_issues,
+        "canonicalJson": canonical,
+        "digest": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "project": data,
+        "generations": generation_results,
+    }
+
+
+def _legacy_projection_v2(compiled: dict[str, Any]) -> dict[str, Any]:
+    if not compiled.get("valid") or not compiled.get("project"):
+        return {"items": [], "subjects": [], "mode": "", "warnings": [], "errors": list(compiled.get("errors", ())) }
+    project = compiled["project"]
+    first_generation = next(iter(compiled.get("generations", {}).values()), {"inputMap": {}})
+    input_map = first_generation.get("inputMap", {})
+    items: list[dict[str, Any]] = []
+    for position, asset in enumerate(project["assets"], start=1):
+        label = input_map.get(asset["id"])
+        if not label:
+            continue
+        item = dict(asset)
+        item.update({"label": label, "position": position, "duration_seconds": float(asset.get("durationSeconds", 0))})
+        soundtrack = input_map.get(f"{asset['id']}:soundtrack")
+        if soundtrack:
+            item["soundtrack_label"] = soundtrack
+            item["audio_mode"] = asset.get("audioMode")
+        items.append(item)
+    subjects = [
+        {
+            "label": f"<Subject {subject['h3Index']}>",
+            "description": subject["description"],
+            "sources": [input_map[asset_id] for asset_id in subject["identityAssetIds"] if asset_id in input_map],
+        }
+        for subject in project["subjects"]
+    ]
+    counts = {kind: sum(item["type"] == kind for item in items) for kind in ("picture", "video", "audio")}
+    counts["audio"] += sum(bool(item.get("soundtrack_label")) for item in items)
+    return {
+        "items": items, "subjects": subjects, "mode": project.get("mode", ""),
+        "warnings": list(compiled.get("warnings", ())), "errors": list(compiled.get("errors", ())),
+        "counts": counts, "totalFiles": len(items),
+        "videoSeconds": sum(item["duration_seconds"] for item in items if item["type"] == "video"),
+        "audioSeconds": sum(item["duration_seconds"] for item in items if item["type"] == "audio") + sum(item["duration_seconds"] for item in items if item.get("soundtrack_label")),
+    }
+
+
+def manifest_context_for_generation(compiled: dict[str, Any], generation_id: str) -> str:
+    """Render only the logical resources active and bound in one generation."""
+    if compiled.get("schemaVersion") != 2:
+        return manifest_context(compiled.get("legacyValue"))
+    project = compiled.get("project", {})
+    resolved = compiled.get("generations", {}).get(generation_id)
+    if not resolved:
+        return ""
+    active_resources = {(item["kind"], item["id"]) for item in resolved["activeResources"]}
+    active_assets = set(resolved["activeAssetIds"])
+    input_map = resolved["inputMap"]
+    state = resolved.get("initialState", {})
+    lines = [f"CONNECTED MEDIA PROJECT — GENERATION {generation_id} (only active resources are authoritative):"]
+    if input_map:
+        lines.append("PHYSICAL INPUT MAP:")
+        for asset in project["assets"]:
+            if asset["id"] not in active_assets or asset["id"] not in input_map:
+                continue
+            detail = asset.get("analysis", asset.get("description", ""))
+            if isinstance(detail, dict):
+                detail = "; ".join(f"{key}={value}" for key, value in detail.items() if value not in (None, "", [], {}))
+            suffix = f"; {detail}" if detail else ""
+            lines.append(f"- {input_map[asset['id']]} = asset {asset['id']} ({asset['name']}){suffix}")
+            soundtrack = input_map.get(f"{asset['id']}:soundtrack")
+            if soundtrack:
+                lines.append(f"- {soundtrack} = {asset.get('audioMode')} soundtrack from {input_map[asset['id']]}")
+    for subject in project["subjects"]:
+        if ("subject", subject["id"]) not in active_resources:
+            continue
+        lines.append(f"<Subject {subject['h3Index']}> ({subject['name']}): {subject['description']}")
+        state_id = state.get("subjects", {}).get(subject["id"], subject["baseAppearanceStateId"])
+        appearance = resolve_state(subject["appearanceStates"], state_id, "attributes")
+        details = "; ".join(f"{key}: {value}" for key, value in appearance["attributes"].items() if value not in (None, "", [], {}))
+        if details or appearance["description"]:
+            lines.append(f"- Initial appearance {state_id}: {details or appearance['description']}")
+    for environment in project["environments"]:
+        if ("environment", environment["id"]) not in active_resources:
+            continue
+        permanent = "; ".join(f"{key}: {value}" for key, value in environment["permanent"].items() if value not in (None, "", [], {}))
+        lines.append(f"Environment {environment['id']} ({environment['name']}), permanent facts: {permanent or 'no additional permanent facts'}")
+        state_id = state.get("environments", {}).get(environment["id"], environment["defaultStateId"])
+        temporary = resolve_state(environment["states"], state_id, "temporary")
+        details = "; ".join(f"{key}: {value}" for key, value in temporary["temporary"].items() if value not in (None, "", [], {}))
+        if details:
+            lines.append(f"- Initial environment state {state_id}: {details}")
+        view_ids = set(state.get("views", {}).get(environment["id"], ()))
+        for view in environment["views"]:
+            if view["id"] in view_ids and view["assetId"] in input_map:
+                suffix = f"; {view['description']}" if view.get("description") else ""
+                lines.append(f"- View {view['id']} ({view['role']}) uses {input_map[view['assetId']]}{suffix}")
+    return "\n".join(lines)
 
 
 def manifest_context(value: str | dict | list | None) -> str:

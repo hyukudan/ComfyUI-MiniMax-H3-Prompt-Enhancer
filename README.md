@@ -29,10 +29,11 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Multilingual & Dialects** | Generic or broken `[Original language]` | **17 Canonical Languages + 88 Dialect Aliases** (Castilian, Québécois, Flemish, etc.) |
 | **Audio Reference Binding** | Treated as background noise | **Cross-Modal Voice Binding** (`<Audio N>` $\rightarrow$ `<Subject N> (Sx)`) |
 | **Visual Text vs Speech** | Signs converted into dialogue | **Intelligent Separation** of signs/shirts/doors from spoken character dialogue |
-| **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16px from Aspect Ratio & `target_megapixels` (0.2–2.0+ MP) |
+| **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16 px from Aspect Ratio (shape) and Resolution Budget (area: Auto or Custom MP) |
 | **Visual Style Presets** | Generic prompt words | **52 Direct Preset Styles** + 116 Curated Profiles & 13-Axis Cinematography Engine |
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
+| **Production Planning** | Prompt prose or disconnected form fields | **Prompt Studio** with stateful shots, subjects, appearance states, environments, per-generation references, camera ownership, and structured diagnostics |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
 
 ---
@@ -44,8 +45,9 @@ Explore the specialized guides in [`docs/`](docs/):
 | Guide | Description |
 |---|---|
 | 📜 [**Prompt Contracts & Modes**](docs/prompt_contracts.md) | Full specifications for T2VA, Ref2VA, I2VA, FL2VA, L2VA, Chained Multishot, Frame Grid Math ($17 \times n + 5$), and Megapixel Scaling. |
+| 🎛️ [**Prompt Studio**](docs/prompt_studio.md) | Compact dashboard and wide responsive drawer, v2 planning contracts, appearance and environment continuity, logical-reference bindings, camera authority, Coach diagnostics, and no-clobber migration. |
 | 🎙️ [**Dialogue & Audio Architecture**](docs/dialogue_and_audio.md) | Multilingual engine, dialect recognition, audio reference binding (`<Audio N>`), and acoustic space policies. |
-| 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 52 Visual Languages, 19 World Aesthetics, 17 Tones, 11 Genres, 17 Content Formats, and 13 Cinematography Axes. |
+| 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 61 Visual Languages, 19 World Aesthetics, 17 Tones, 11 Genres, 17 Content Formats, and 13 Cinematography Axes. |
 | 🖼️ [**Media References & Manifests**](docs/media_references_and_manifests.md) | Plain-text reference context vs structured JSON manifests, subject mapping, and retention analysis. |
 | ⚙️ [**Architecture, GGUF & Memory**](docs/architecture_and_gguf.md) | Standalone `llama-server` architecture, local GGUF discovery, memory reclaim policies, and troubleshooting. |
 
@@ -87,7 +89,7 @@ graph LR
     subgraph Input
         A[Basic Prompt]
         B[Reference Context / Manifest]
-        C[Presets & Target Megapixels]
+        C[Presets & Resolution Budget]
     end
     subgraph Enhancer Pack
         D[MiniMax H3 Prompt Enhancer]
@@ -118,10 +120,36 @@ graph LR
 
 ## Key Highlights
 
-### Direct Resolution Outputs & Megapixel Scaling (`target_megapixels`)
-All enhancer nodes output calibrated `width` and `height` integer slots compatible with downstream video samplers and empty latent generators.
-- **Default (`0.0`)**: Standard MiniMax H3 720p base (`1280x720` for 16:9, `720x1280` for 9:16, `1080x1080` for 1:1, `1680x720` for 21:9).
-- **Custom Megapixels**: Enter any float target (e.g. `0.2` MP $\rightarrow$ `592x336`, `0.3` MP $\rightarrow$ `736x416`, `0.5` MP $\rightarrow$ `944x528`, `2.0` MP $\rightarrow$ `1888x1056`) automatically rounded to the nearest multiple of 16.
+### Prompt Studio: Stateful Planning Without New Ports
+
+The enhancer node now stays compact through seven summary chips — Shots, Subjects, Environments, Media, Camera, Look, and Review. Each opens a wide, resizable viewport-level drawer that does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays; it is bounded between 420 px and `min(1100px, 60vw)`, becomes full-width below 700 px, and stacks master/detail editors on narrow content. **Guided** mode presents core controls first while keeping active advanced values visible; **Advanced** shows every available control. This UI preference is local browser state and never changes the workflow contract. The Studio edits the existing `media_manifest`, `shot_plan_json`, `creative_treatment_json`, and `cinematography_json` values; it does not add widgets, outputs, a project service, or persistent project data in `localStorage`.
+
+Prompt Studio plans what H3 should do; it does not carry image/video tensors or upload files. The two paths meet at the H3 generation node:
+
+```text
+Idea → Prompt Enhancer / Prompt Studio → enhanced_prompt ───────────────┐
+Load Image / Load Video / audio source → physical H3 media inputs ────┼→ H3 generation node
+Add reference → logical reference → generation binding / physical slot ┘
+```
+
+Use **Shots** for visible beats and a compact camera summary, **Subjects** for identity and appearances, **Environments** for stable places and temporary states, **Media** for the Reference library and per-generation physical slots, **Camera** for the selected shot's visual planner, **Look** for creative direction and global cinematography defaults, and **Review** for diagnostics. Camera and Shots edit the same `shot_plan_json` v2 data; the split adds workspace, not schema. In T2V, media can remain empty. In I2V, the image still travels from a Load Image node to H3. Ref2VA pairs each logical reference with a physically connected file and slot. Chained projects repeat that binding step per generation so slots can be reused without changing logical identity.
+
+`media_manifest` v2 separates stable logical references from generation-specific `<Picture N>`, `<Video N>`, and `<Audio N>` bindings. **+ Add reference** registers reusable metadata in the Reference library; it does not upload or connect a file. The corresponding physical picture, video, or audio must still be connected in the generation node and assigned to that generation's binding. The project also owns subject identity, appearance-state libraries, logical environments with bounded reference views, temporary environment states, activation, and generation initial state. `shot_plan_json` v2 owns when those resources appear or transition, plus separate opening/action fields and camera Start/Path/End.
+
+Creative Treatment and Cinematography are native v2 documents; v1 remains runtime-compatible but read-only in the Studio until an explicit import validates and writes v2. Structured values are classified before editing as blank, v1, v2, malformed, or future. Loading never writes. Historical `false`/`null` values for Creative Treatment and Cinematography, plus boolean/`null` values left in Shot Plan storage by older controls, are neutral blanks without rewriting their source bytes; the first intentional edit creates v2. An untouched v1 shot plan remains byte-identical and migrates only on the first deliberate edit. Malformed and future JSON remains read-only and is never replaced with defaults, while legacy media manifests continue through their existing backend path without a guessed stateful conversion.
+
+Camera direction is resolved per shot, phase, and aspect. An explicit source fact outranks an authorized video transfer, which outranks a shot plan, global cinematography, generated prose, and creative treatment. A shot overriding a global camera default is normal shadowing, while incompatible explicit owners are reported as configuration errors. A connected video receives no camera authority unless it declares `cameraTransfer`, is active and bound in that generation, and the shot explicitly uses it for named camera aspects.
+
+The existing `validation_report` now includes a versioned `diagnosticReport` with stable codes, locations, blocking policy, repair eligibility, fingerprints, and bounded Prompt Coach advice. The eight enhancer outputs and the direct Python `enhance()` tuple remain unchanged; ComfyUI receives diagnostics through an ephemeral UI payload instead of a new port.
+
+See [Prompt Studio](docs/prompt_studio.md) for the complete UI, schema, authority, diagnostic, migration, and compatibility contract.
+
+### Direct Resolution Outputs: Shape + Area
+
+All enhancer nodes output calibrated `width` and `height` integer slots compatible with downstream video samplers and empty latent generators. **Aspect Ratio** selects the frame shape; **Resolution Budget** selects its approximate pixel area.
+
+- **Auto** uses the H3-oriented default for the chosen shape: `1280×720` for 16:9, `720×1280` for 9:16, `1080×1080` for 1:1, `960×720` for 4:3, `720×960` for 3:4, and `1680×720` for 21:9.
+- **Custom MP** targets a megapixel budget while preserving the aspect ratio. Final width and height are aligned to 16-pixel steps and shown live on the node. For 16:9, examples include `0.2 MP → 592×336`, `0.5 MP → 944×528`, and `2.0 MP → 1888×1056`.
 
 ### One-Click Visual Style Presets (`visual_style_preset`)
 Instant dropdown selection for every curated directorial style (`live_action_cinematic`, `1970s_new_hollywood`, `anime_ultradetailed_cinematic`, `stylized_3d_animation`, `stop_motion_handcrafted`, `supermarionation`, `giallo`, `live_action_visceral_horror`, etc.) without writing manual JSON schemas.
@@ -144,7 +172,7 @@ Binds audio tracks (`<Audio 1>`, `<Audio 2>`) directly to character identities (
 ```
 
 ### Non-Destructive Style Bible & Directing Engine
-Choose from **116 curated profiles** (52 visual languages, 19 world aesthetics, 17 tones, 11 genres, 17 content formats) and **13 cinematography dimensions** (optics, depth of field, color grading, camera speed/amplitude). Explicit user facts in the prompt always take absolute precedence over styles.
+Choose from **125 curated profiles** (61 visual languages, 19 world aesthetics, 17 tones, 11 genres, 17 content formats) and **13 cinematography dimensions** (optics, depth of field, color grading, camera speed/amplitude). Explicit user facts in the prompt always take absolute precedence over styles.
 
 Each profile carries a `must_not_invent` list, emitted as `forbidden_inventions`. It bars the **profile** from adding those things on its own initiative; it never overrides you. `supermarionation` forbids visible strings so the style cannot drag in a puppet gag by itself — ask for strings in your prompt and you get them.
 
@@ -195,22 +223,24 @@ Delivery landed outside `<d>`, each mark stayed on its own speaker, the Spanish 
 
 Marks bind to a line by proximity, so two speakers each keep their own delivery instead of sharing a pooled list. Bracket aliases (`[enfadada]`, `[susurro]`, `[pausa]`, ~30 in Spanish and English) work the same way, and official H3 brackets (`[Shot 2]`, `[English]`, `[unclear]`) are never touched.
 
-The palette shows the marks in two tiers. Always visible: the seven that resolve to a **documented vocal verb**, each with a text label, because a verb the guide spells out is a safer instruction than an invented adverb — and because a 1px green border alone turned out to be invisible on a dark canvas:
+The palette separates three jobs that used to look alike: **Delivery** offers five documented speech verbs, **Channel** adds off-screen V.O., and **Timing** inserts the pause convention. Every control has a visible label and explains its result; keyboard users enter the toolbar once and move through it with the arrow keys.
 
 | | resolves to | | resolves to |
 |---|---|---|---|
-| 💬 `says` | neutral, even pitch | ❓ `ask` | pitch lifting through the last words |
-| 🤫 `whisper` | breath-light and close | 🎤 `sing` | pitch sustained and supported |
-| 😡 `shout` | chest-deep, hard-edged | 🎙️ `V.O.` | off-screen voiceover, lips stay closed |
+| 💬 `says` | neutral, even pitch | ❓ `asks` | pitch lifting through the last words |
+| 🤫 `whispers` | breath-light and close | 🎤 `sings` | pitch sustained and supported |
+| 😡 `shouts` | chest-deep, hard-edged | 🎙️ `V.O.` | off-screen voiceover, lips stay closed |
 | ⏸️ `pause` | our own convention | | |
 
-Behind a **`+ tone`** toggle, grouped by family, sit fourteen emotional marks — fourteen yellow faces read as one wall at 20px, so they stay out of the way until asked for:
+Behind **`Voice…`**, the **Voice color** library groups fourteen vocal shades by meaning and shows a text label beside every emoji. It is distinct from scene-wide **Mood (tone)** in Look. Escape closes the library and returns focus; marks without quoted dialogue produce a non-blocking warning instead of being silently dropped.
 
 | | | | | | |
 |---|---|---|---|---|---|
 | 😠 hard, low | 😲 stunned | 😨 thin, frightened | 😢 close to tears | 😭 through tears | 🥺 pleading |
 | 🥰 tender | 😀 bright, warm | 😂 through laughter | 😏 flat, sardonic | 😐 cold, level | 🥱 slow, weary |
 | ⚡ quick, urgent | 🫢 hushed, conspiratorial | | | | |
+
+The authoring marks remain temporary shorthand. The line under the palette previews the contract in plain language: they are written as prose and never appear in the final prompt. Put each mark beside or inside the quoted line it belongs to; use one Delivery verb per line and combine Voice colors freely.
 
 The prose column follows the axes the guide names for a speaker — pitch, timbre, speaking rate, accent — phrased like its own examples (*"The young woman with a quiet, breathy voice (S1) says:"*).
 

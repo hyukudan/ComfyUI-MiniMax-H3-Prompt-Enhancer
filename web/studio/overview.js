@@ -1,0 +1,278 @@
+import { createEmptyState } from "./components/empty_state.js";
+import { createSourcePill, createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
+
+function safeDocument(read) {
+    try {
+        return normalizedSourceState(read?.());
+    } catch {
+        return normalizedSourceState(null);
+    }
+}
+
+function diagnosticCounts(report) {
+    const counts = { errors: 0, warnings: 0, tips: 0 };
+    for (const item of report?.diagnostics ?? []) {
+        if (item?.severity === "error") counts.errors += 1;
+        else if (item?.severity === "warning") counts.warnings += 1;
+        else counts.tips += 1;
+    }
+    return counts;
+}
+
+export function sourceToolAttention(sources) {
+    return Object.values(sources ?? {}).filter((source) => ["malformed", "future"].includes(source?.kind)).length;
+}
+
+export function overviewModel(controller) {
+    const shot = safeDocument(() => controller.shotDocument());
+    const project = safeDocument(() => controller.projectDocument());
+    const camera = safeDocument(() => controller.cinematographyDocument());
+    const shots = Array.isArray(shot.value?.shots) ? shot.value.shots : [];
+    const projectValue = project.kind === "v2" ? project.value : null;
+    const projectGenerations = Array.isArray(projectValue?.generations) ? projectValue.generations : [];
+    const shotGenerationIds = shots.map((item) => item?.generationId).filter(Boolean);
+    const generationIds = [...new Set([
+        ...projectGenerations.map((item) => item?.id).filter(Boolean),
+        ...shotGenerationIds,
+    ])];
+    if (!generationIds.length && shots.length) generationIds.push("g1");
+    const generations = generationIds.map((id, index) => {
+        const projectGeneration = projectGenerations.find((item) => item?.id === id);
+        return {
+            id,
+            order: projectGeneration?.order ?? index + 1,
+            shots: shots.filter((item) => (item?.generationId ?? "g1") === id).length,
+            bindings: projectGeneration?.bindings?.length ?? 0,
+            carrySubjects: projectGeneration?.subjectStates?.filter((item) => item?.policy === "carry").length ?? 0,
+            carryEnvironments: projectGeneration?.environmentStates?.filter((item) => item?.policy === "carry").length ?? 0,
+        };
+    }).sort((left, right) => left.order - right.order);
+    const report = controller.diagnostics?.() ?? { diagnostics: [], stale: false };
+    return {
+        blank: shot.kind === "blank" && project.kind === "blank" && camera.kind === "blank",
+        mode: projectValue?.mode ?? "auto",
+        shots: shots.length,
+        subjects: projectValue?.subjects?.length ?? 0,
+        environments: projectValue?.environments?.length ?? 0,
+        assets: projectValue?.assets?.length ?? 0,
+        generations,
+        sources: { shot, project, camera },
+        diagnostics: diagnosticCounts(report),
+        stale: Boolean(report?.stale),
+    };
+}
+
+function overviewAction(title, description, actionLabel, onAction) {
+    const card = document.createElement("article");
+    card.className = "minimax-h3-overview-action";
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const copy = document.createElement("p");
+    copy.textContent = description;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "minimax-h3-button minimax-h3-button-secondary";
+    action.textContent = actionLabel;
+    action.addEventListener("click", onAction);
+    card.append(heading, copy, action);
+    return card;
+}
+
+function sourceTools(controller, model) {
+    const section = document.createElement("details");
+    section.className = "minimax-h3-source-tools";
+    const summary = document.createElement("summary");
+    const title = document.createElement("span");
+    title.textContent = "Import & source tools";
+    summary.appendChild(title);
+    const attention = sourceToolAttention(model.sources);
+    if (attention) {
+        const state = document.createElement("span");
+        state.className = "minimax-h3-source-tools-attention";
+        state.textContent = `${attention} need${attention === 1 ? "s" : ""} attention`;
+        summary.appendChild(state);
+    }
+    const body = document.createElement("div");
+    body.className = "minimax-h3-source-tools-body";
+    const help = document.createElement("p");
+    help.className = "minimax-h3-field-hint";
+    help.textContent = "Inspect structured inputs, repair invalid JSON or copy a read-only source.";
+    const pills = document.createElement("div");
+    pills.className = "minimax-h3-source-pills";
+    pills.append(
+        createSourcePill("Shot plan", model.sources.shot),
+        createSourcePill("Media project", model.sources.project),
+        createSourcePill("Camera", model.sources.camera),
+    );
+    body.append(help, pills);
+    const exceptional = document.createElement("div");
+    exceptional.className = "minimax-h3-source-cards";
+    if (model.sources.project.kind === "v2") {
+        exceptional.appendChild(createSourceStateCard({
+            name: "Media project v2",
+            documentState: model.sources.project,
+            acceptedVersions: [2],
+        }));
+    }
+    if (["malformed", "future"].includes(model.sources.shot.kind)) {
+        exceptional.appendChild(createSourceStateCard({
+            name: "Shot plan",
+            documentState: model.sources.shot,
+            acceptedVersions: [1, 2],
+            onApplyRaw: controller.replaceShotRaw ? (raw) => controller.replaceShotRaw(raw) : null,
+        }));
+    }
+    if (["v1", "malformed", "future"].includes(model.sources.project.kind)) {
+        exceptional.appendChild(createSourceStateCard({
+            name: "Media project",
+            documentState: model.sources.project,
+            acceptedVersions: [2],
+            legacyDescription: "This legacy manifest is preserved unchanged and is read-only in Prompt Studio.",
+            onApplyRaw: controller.replaceProjectRaw ? (raw) => controller.replaceProjectRaw(raw) : null,
+        }));
+    }
+    if (["malformed", "future"].includes(model.sources.camera.kind)) {
+        exceptional.appendChild(createSourceStateCard({
+            name: "Camera",
+            documentState: model.sources.camera,
+            acceptedVersions: [1],
+            onApplyRaw: controller.replaceStructuredRaw
+                ? (raw) => controller.replaceStructuredRaw("cinematography_json", raw)
+                : null,
+        }));
+    }
+    if (exceptional.childElementCount) body.appendChild(exceptional);
+    section.append(summary, body);
+    return section;
+}
+
+function healthSummary(model, onReview) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-overview-health";
+    const text = document.createElement("div");
+    const heading = document.createElement("h3");
+    heading.textContent = "Project health";
+    const summary = document.createElement("p");
+    if (model.stale) summary.textContent = "Review is based on an earlier run. Run the node again after editing.";
+    else if (model.diagnostics.errors || model.diagnostics.warnings || model.diagnostics.tips) {
+        summary.textContent = `${model.diagnostics.errors} errors · ${model.diagnostics.warnings} warnings · ${model.diagnostics.tips} tips`;
+    } else summary.textContent = "Run the node to validate continuity and receive contextual guidance.";
+    text.append(heading, summary);
+    const review = document.createElement("button");
+    review.type = "button";
+    review.className = "minimax-h3-button minimax-h3-button-primary";
+    review.textContent = "Open Review";
+    review.addEventListener("click", onReview);
+    section.append(text, review);
+    return section;
+}
+
+function pipelineSection(model, navigate) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-overview-section";
+    const heading = document.createElement("h3");
+    heading.textContent = "Pipeline";
+    const pipeline = document.createElement("div");
+    pipeline.className = "minimax-h3-pipeline";
+    for (const generation of model.generations) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "minimax-h3-generation-card";
+        const title = document.createElement("strong");
+        title.textContent = `Generation ${generation.order}`;
+        const details = document.createElement("span");
+        details.textContent = `${generation.shots} shots · ${generation.bindings} media bindings`;
+        button.append(title, details);
+        button.addEventListener("click", () => navigate("shots"));
+        pipeline.appendChild(button);
+    }
+    if (!model.generations.length) {
+        const hint = document.createElement("p");
+        hint.className = "minimax-h3-muted";
+        hint.textContent = "Your generations and shots will appear here as the plan grows.";
+        pipeline.appendChild(hint);
+    }
+    section.append(heading, pipeline);
+    return section;
+}
+
+function librarySection(model, navigate) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-overview-section";
+    const heading = document.createElement("h3");
+    heading.textContent = "Library";
+    const grid = document.createElement("div");
+    grid.className = "minimax-h3-library-grid";
+    for (const [id, count, label] of [
+        ["subjects", model.subjects, "Subjects"],
+        ["environments", model.environments, "Environments"],
+        ["media", model.assets, "Media assets"],
+    ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "minimax-h3-library-card";
+        const value = document.createElement("strong");
+        value.textContent = String(count);
+        const title = document.createElement("span");
+        title.textContent = label;
+        button.append(value, title);
+        button.addEventListener("click", () => navigate(id));
+        grid.appendChild(button);
+    }
+    section.append(heading, grid);
+    return section;
+}
+
+function continuitySection(model) {
+    const carrying = model.generations.slice(1).filter((item) => item.carrySubjects || item.carryEnvironments);
+    if (!carrying.length) return null;
+    const section = document.createElement("section");
+    section.className = "minimax-h3-overview-section";
+    const heading = document.createElement("h3");
+    heading.textContent = "Continuity";
+    const list = document.createElement("ul");
+    for (const generation of carrying) {
+        const item = document.createElement("li");
+        item.textContent = `Generation ${generation.order} carries ${generation.carrySubjects} subject and ${generation.carryEnvironments} environment states forward.`;
+        list.appendChild(item);
+    }
+    section.append(heading, list);
+    return section;
+}
+
+export function renderOverview(container, controller, { navigate = () => {}, openReview = () => {} } = {}) {
+    container.replaceChildren();
+    container.classList.add("minimax-h3-overview");
+    const model = overviewModel(controller);
+    const intro = document.createElement("div");
+    intro.className = "minimax-h3-overview-intro";
+    const title = document.createElement("h2");
+    title.textContent = model.blank ? "Plan your video" : "Your production at a glance";
+    const copy = document.createElement("p");
+    copy.textContent = "Your prompt remains the narrative source. Prompt Studio adds reusable structure, continuity and camera intent.";
+    intro.append(title, copy);
+    container.appendChild(intro);
+
+    if (model.blank) {
+        const actions = document.createElement("div");
+        actions.className = "minimax-h3-overview-actions";
+        actions.append(
+            overviewAction("Plan shots", "Divide the scene into purposeful shots with their own action and camera.", "Open Shots", () => navigate("shots")),
+            overviewAction("Add a subject", "Keep identity and appearance states consistent across the sequence.", "Open Subjects", () => navigate("subjects")),
+            overviewAction("Register media", "Connect pictures, videos and audio to physical generation slots.", "Open Media", () => navigate("media")),
+        );
+        container.appendChild(actions);
+        container.appendChild(createEmptyState({
+            title: "Prompt Coach is ready when you are",
+            description: "Run the node after planning to check continuity, camera authority and prompt clarity.",
+            actionLabel: "Open Review",
+            onAction: openReview,
+        }));
+    } else {
+        container.appendChild(pipelineSection(model, navigate));
+        const continuity = continuitySection(model);
+        if (continuity) container.appendChild(continuity);
+        container.append(librarySection(model, navigate), healthSummary(model, openReview));
+    }
+    container.appendChild(sourceTools(controller, model));
+}

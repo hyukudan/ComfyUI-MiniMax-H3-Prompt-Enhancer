@@ -108,9 +108,9 @@ non_diegetic_music: N/A"""
     assert legacy[0] == explicit[0]
     assert legacy[1] == explicit[1]
     manifest = explicit[2]
-    assert manifest["creativeTreatmentSchemaVersion"] == 1
+    assert manifest["creativeTreatmentSchemaVersion"] == 2
     assert manifest["creativeProfileCatalogVersion"] == 22
-    assert manifest["cinematographySchemaVersion"] == 1
+    assert manifest["cinematographySchemaVersion"] == 2
     assert manifest["cinematographyCatalogVersion"] == 6
     assert manifest["shotPlanSchemaVersion"] == 1
     assert manifest["shotsPackageSchemaVersion"] == 1
@@ -227,7 +227,7 @@ def test_pipeline_records_canonical_treatment_plan_digests_and_shots_package():
     assert prompt.count("[Shot ") == 2
 
     treatment = manifest["creativeTreatment"]
-    assert treatment["schemaVersion"] == 1
+    assert treatment["schemaVersion"] == 2
     assert treatment["genre"] == "action"
     assert treatment["visualLanguage"] == "anime_shonen"
     assert treatment["worldAesthetic"] == "cyberpunk"

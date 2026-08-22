@@ -17,13 +17,44 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+try:
+    from .camera_state import (
+        camera_frame_sentence,
+        camera_path_sentence,
+        normalize_camera_end_delta,
+        normalize_camera_frame,
+        normalize_camera_path,
+        resolve_camera_end,
+    )
+except ImportError:  # pragma: no cover - direct test/import compatibility
+    from camera_state import (
+        camera_frame_sentence,
+        camera_path_sentence,
+        normalize_camera_end_delta,
+        normalize_camera_frame,
+        normalize_camera_path,
+        resolve_camera_end,
+    )
 
-CREATIVE_TREATMENT_SCHEMA_VERSION = 1
+
+CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION = 1
+CREATIVE_TREATMENT_SCHEMA_VERSION = 2
+CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS = (
+    CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION,
+    CREATIVE_TREATMENT_SCHEMA_VERSION,
+)
 CREATIVE_PROFILE_CATALOG_VERSION = 22
 TITLE_SCREEN_STYLE_CATALOG_VERSION = 2
-CINEMATOGRAPHY_SCHEMA_VERSION = 1
+CINEMATOGRAPHY_LEGACY_SCHEMA_VERSION = 1
+CINEMATOGRAPHY_SCHEMA_VERSION = 2
+CINEMATOGRAPHY_SUPPORTED_SCHEMA_VERSIONS = (
+    CINEMATOGRAPHY_LEGACY_SCHEMA_VERSION,
+    CINEMATOGRAPHY_SCHEMA_VERSION,
+)
 CINEMATOGRAPHY_CATALOG_VERSION = 6
 SHOT_PLAN_SCHEMA_VERSION = 1
+SHOT_PLAN_SCHEMA_V2 = 2
+SHOT_PLAN_SUPPORTED_SCHEMA_VERSIONS = (SHOT_PLAN_SCHEMA_VERSION, SHOT_PLAN_SCHEMA_V2)
 
 CREATIVE_AXES = ("genre", "visual_language", "world_aesthetic", "tone")
 CREATIVE_JSON_KEYS = {
@@ -337,6 +368,186 @@ GENRE_PROFILES = {
 
 VISUAL_LANGUAGE_PROFILES = {
     "none": _profile(),
+    "vintage_rubberhose_2d": _profile(
+        editing_and_pacing=(
+            "Present the supplied sequence as early theatrical hand-inked cel animation with elastic but readable pose-to-pose timing, clear anticipation and recovery, deliberate held drawings, and complete actions in the supplied order.",
+        ),
+        camera_and_framing=(
+            "Use frontal or three-quarter proscenium staging, bold silhouette arcs, graphic depth planes, restrained rostrum movement, and stable screen direction without imitating a named short or character.",
+        ),
+        lighting_and_color=(
+            "Use confident variable black contours, opaque cel fills, compact period-compatible color relationships, simple bounded shadows, and stable painted backgrounds without archival damage or flicker.",
+        ),
+        production_design=(
+            "Translate only supplied people, objects, wardrobe, and environments into coherent early hand-drawn ink-and-cel construction with rounded graphic forms while preserving identity, anatomy, count, subtype, era, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use clear line-of-action posing, grounded contact, readable weight, and restrained elastic spacing solely to express supplied behavior; keep anatomy and identity stable.",
+        ),
+        sound_treatment=("The visual treatment grants no music, singing, funny voices, whistles, impacts, or cartoon effects; audio remains limited to independently authorized sources and visible causes.",),
+        may_fill_unspecified=("Ink-contour weight, rounded graphic construction, cel-fill organization, painted-plane depth, rostrum-feasible movement, and economical elastic spacing."),
+        must_not_invent=("Mascot characters, talking animals, gloves, pie eyes, musical performance, dancing, synchronized-object gags, pratfalls, impossible deformation, jokes, period stereotypes, racist caricature or blackface imagery, written intertitles, franchise designs, archival damage, dialogue, vocals, music, or cartoon effects."),
+    ),
+    "cable_angular_graphic_comedy": _profile(
+        editing_and_pacing=(
+            "Present supplied events in a late-1990s-to-2000s angular graphic television-animation language with concise pose changes, selective replacement drawings, dry holds, and economical loops only where motion truly repeats.",
+        ),
+        camera_and_framing=(
+            "Favor flat graphic layouts, asymmetric crops, readable negative space, strong silhouettes, locked perspective, and restrained pans or reframing rather than cinematic lens display.",
+        ),
+        lighting_and_color=(
+            "Use bold angular contours, flat saturated fills, compact palette roles, sparse hard-edged shadow shapes, and stable digital color without gloss, volumetric light, or photographic grading.",
+        ),
+        production_design=(
+            "Translate supplied subjects, props, and settings into coherent angular flat-shape construction with repeatable model-sheet geometry while preserving identity, age, anatomy, count, object subtype, location, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use economical graphic poses, exact eyelines, concise mouth and hand shapes, and a held reaction only where it clarifies behavior already supplied; style alone supplies no comedy.",
+        ),
+        sound_treatment=("Angular graphic styling grants no funny voice, laugh track, sting, dialogue, narration, music, or comic effect.",),
+        may_fill_unspecified=("Angular contour language, flat-shape construction, compact saturated palette, selective replacement drawings, dry held timing, and locked-layout staging."),
+        must_not_invent=("Jokes, punchlines, sarcasm, slapstick, humiliation, caricatured behavior, extra reactions, mascots, talking animals, suburban or workplace settings, props, signs, readable text, series references, franchise designs, dialogue, laughter, music, or comic effects."),
+    ),
+    "contemporary_vector_2d": _profile(
+        editing_and_pacing=(
+            "Present the supplied sequence as contemporary vector-authored 2D animation with clean key poses, controlled easing, deliberate holds, economical cut-out articulation, and stable temporal continuity.",
+        ),
+        camera_and_framing=(
+            "Compose with clear geometric silhouettes, flat layered depth, disciplined negative space, stable Bézier geometry, and modest parallax or camera movement feasible in a vector scene.",
+        ),
+        lighting_and_color=(
+            "Use crisp scalable edges, opaque flat fills, restrained gradients only where motivated, stable palette roles, and simple authored shadow shapes without photographic texture or rendering.",
+        ),
+        production_design=(
+            "Translate supplied subjects, objects, materials, and environments into one coherent vector shape, contour, fill, and modular articulation system while preserving identity, proportions, count, subtype, location, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use readable geometric posing, stable pivots and joints, clean contact, controlled easing, and purposeful secondary motion without puppet-like detachment or unstable topology.",
+        ),
+        sound_treatment=("Vector styling grants no interface sounds, corporate voice-over, music, dialogue, or stylized effects.",),
+        may_fill_unspecified=("Bézier shape construction, flat-fill organization, modular articulation, controlled easing, layered vector depth, and restrained gradients."),
+        must_not_invent=("Corporate mascots, brands, logos, slogans, products, packaging, user interfaces, icons, charts, infographics, explainers, call-to-action graphics, readable text, stock characters, dialogue, voice-over, music, or interface effects."),
+    ),
+    "manga_monochrome_print": _profile(
+        editing_and_pacing=(
+            "Present the moving sequence through deliberate monochrome ink compositions, held graphic keys, selective pose changes, and stable illustrated motion while preserving every supplied event and its order.",
+        ),
+        camera_and_framing=(
+            "Use strong black-and-white composition, purposeful cropping, clear silhouette and gaze direction, graphic depth, and controlled parallax without turning the video into a page layout.",
+        ),
+        lighting_and_color=(
+            "Render with stable black ink, white paper-light regions, bounded screentone, disciplined hatching, and clear value hierarchy; keep dot scale and line texture temporally locked without moiré or crawl.",
+        ),
+        production_design=(
+            "Translate only supplied subjects, wardrobe, objects, and settings into coherent monochrome print drawing while preserving identity, anatomy, count, subtype, culture, era, and design facts.",
+        ),
+        blocking_and_performance=(
+            "Use legible inked poses, facial keys, hand shapes, contact, and weight; graphic emphasis may clarify but never manufacture emotion or action.",
+        ),
+        sound_treatment=("Monochrome print styling grants no narration, dialogue, page-turn sound, music, or written-effect audio.",),
+        may_fill_unspecified=("Ink-line hierarchy, screentone density, hatching direction, white-space balance, print-value grouping, held illustrated keys, and stable graphic parallax."),
+        must_not_invent=("Panels, gutters, page borders, captions, speech balloons, narration boxes, written sound effects, Japanese text, page turns, extra poses, action lines, symbols, school settings, powers, franchise designs, dialogue, narration, or music."),
+    ),
+    "anime_1960s70s_limited_cel": _profile(
+        editing_and_pacing=(
+            "Present supplied events as early broadcast Japanese limited-cel animation with economical key drawings, purposeful body holds, selective mouth or eye replacement, sparse in-betweens, and complete readable actions.",
+        ),
+        camera_and_framing=(
+            "Use clear frontal, profile, and three-quarter television layouts, stable painted planes, restrained pans or optical-free approaches, and simple multiplane depth with consistent perspective.",
+        ),
+        lighting_and_color=(
+            "Use firm ink contours, a short broadcast-safe cel palette built from vermilion, ochre, teal, cream, and charcoal relationships, opaque fills, one simple shadow group where needed, and poster-like painted backdrops without modern glow or photographic grading.",
+        ),
+        production_design=(
+            "Translate supplied people, objects, wardrobe, and settings into repeatable early Japanese television model-sheet construction while preserving identity, age, anatomy, count, subtype, location, era, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use concise pose changes, stable eyelines, legible hands, controlled head turns, and selective facial replacement to express only supplied behavior.",
+        ),
+        sound_treatment=("Early television-cel styling grants no announcer, theme song, dialogue, vocal exertion, music, or stylized effect.",),
+        may_fill_unspecified=("Short cel palette, economical model-sheet construction, selective replacement drawings, purposeful holds, registered acetate layers, static painted planes, and simple multiplane depth."),
+        must_not_invent=("Robots, machines, powers, transformations, sports competition, teams, schools, mascots, vehicles, weapons, battles, missions, moral lessons, title cards, vintage damage, franchise designs, dialogue, announcers, theme songs, or effects."),
+    ),
+    "mecha_super_robot_cel": _profile(
+        editing_and_pacing=(
+            "When supplied content actually contains machinery, present it with classic super-robot cel clarity: decisive mechanical key poses, readable articulation, controlled held drawings, and complete action phases without adding an event.",
+        ),
+        camera_and_framing=(
+            "For existing machines, use bold heroic silhouette, low or three-quarter mechanical views, legible joint relationships, stable scale, and restrained multiplane movement; otherwise retain neutral classic-cel staging.",
+        ),
+        lighting_and_color=(
+            "Use firm ink contours, saturated primary-led cel color, crisp material-separated fills, sparse hard shadow bands, and stable highlights without modern metallic rendering or glow.",
+        ),
+        production_design=(
+            "Translate only supplied people, machines, objects, and settings into coherent 1970s-to-1980s mechanical cel construction while preserving exact identity, machine subtype, component count, silhouette, insignia facts, location, and colors.",
+        ),
+        blocking_and_performance=(
+            "Keep existing mechanisms, hinges, contacts, mass, and trajectories legible; a heroic pose applies only to a supplied machine action and never creates a robot or weapon.",
+        ),
+        sound_treatment=("Mechanical cel styling grants no transformation call, pilot dialogue, attack name, motor, alarm, impact, theme music, or electronic effect unless independently authorized.",),
+        may_fill_unspecified=("Mechanical contour hierarchy, cel material separation, joint legibility, saturated palette organization, decisive machinery posing, and painted industrial depth where compatible."),
+        must_not_invent=("Robots, pilots, cockpits, enemies, aliens, weapons, attacks, transformations, launch sequences, military forces, cities, destruction, insignia, readable labels, franchise designs, dialogue, shouted names, alarms, music, or mechanical effects."),
+    ),
+    "anime_ova_mechanical_detail": _profile(
+        editing_and_pacing=(
+            "Present supplied events with disciplined 1980s original-video-animation detail: reserve dense redraws for focal beats, use controlled holds and selective motion, and keep every action and endpoint readable.",
+        ),
+        camera_and_framing=(
+            "Use exact drawn perspective, layered foreground machinery or architecture only when supplied, stable deep layouts, controlled parallax, and restrained cinematic reframing that preserves geography.",
+        ),
+        lighting_and_color=(
+            "Use fine variable linework, multi-band cel shadows, restrained period color, material-specific highlight shapes, and richly painted backgrounds with stable analog softness but no archival damage.",
+        ),
+        production_design=(
+            "Translate supplied faces, garments, objects, machinery, and environments into high-specificity 1980s cel-and-painted construction while preserving identity, anatomy, component count, subtype, location, era, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Preserve nuanced eye, hand, cloth, weight, and mechanical articulation with stable anatomy and topology; detail may describe only what is already present.",
+        ),
+        sound_treatment=("Detailed OVA styling grants no weapons, machinery sounds, dialogue, electronic ambience, music, or impacts unless the source and audio policies authorize them.",),
+        may_fill_unspecified=("Fine line hierarchy, multi-band cel shadowing, material-specific painted detail, stable analog softness, deep illustrated layouts, and selective high-detail redraws."),
+        must_not_invent=("Robots, military hardware, weapons, violence, destroyed cities, dystopia, corporations, cockpit displays, readable labels, particles, lens flares, franchise designs, dialogue, electronic effects, or score."),
+    ),
+    "anime_1990s_broadcast_cel": _profile(
+        editing_and_pacing=(
+            "Present supplied events as late broadcast-cel Japanese animation with clean key poses, selective limited motion, settled reaction holds, economical in-betweens, and complete actions without opening-sequence montage language.",
+        ),
+        camera_and_framing=(
+            "Use disciplined television layouts, clear silhouettes, stable foreground and background planes, modest multiplane parallax, and motivated cuts or pans with locked perspective.",
+        ),
+        lighting_and_color=(
+            "Use warm telecined color with peach skin, dusk blue, mauve, amber, and cool-gray relationships, clean contour-to-fill boundaries, compact shadow bands, restrained airbrushed horizon transitions, and subtle optical softness without tape damage or flicker.",
+        ),
+        production_design=(
+            "Translate supplied subjects, wardrobe, objects, and settings into repeatable late-cel model-sheet design and painted background language while preserving identity, anatomy, count, subtype, location, era, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use stable facial keys, readable mouth and eye replacement, clear gestures, grounded contact, and restrained secondary motion solely around behavior already supplied.",
+        ),
+        sound_treatment=("Broadcast-cel styling grants no opening song, eyecatch sound, announcer, dialogue, music, tape noise, or stylized effect.",),
+        may_fill_unspecified=("Late-cel contour treatment, warm broadcast palette, compact shadow bands, airbrushed background transitions, subtle telecine softness, economical replacement drawings, and multiplane depth."),
+        must_not_invent=("Opening or ending sequences, eyecatches, title cards, school settings, powers, transformations, mascots, teams, villains, vehicles, franchise designs, vintage broadcast damage, dialogue, announcers, songs, music, or effects."),
+    ),
+    "anime_digital_compositing": _profile(
+        editing_and_pacing=(
+            "Present supplied events as contemporary digitally composited 2D anime with stable key poses, controlled in-betweens, selective held detail, clean temporal continuity, and no promotional montage additions.",
+        ),
+        camera_and_framing=(
+            "Use exact drawn layout perspective, layered 2D and restrained 2.5D parallax, controlled virtual-camera movement, and consistent scale without turning the scene into generic 3D rendering.",
+        ),
+        lighting_and_color=(
+            "Use stable digital linework, coherent cel-value groups, controlled gradients, motivated bloom or glow only from existing sources, restrained particles only when already present, and locked local colors.",
+        ),
+        production_design=(
+            "Translate supplied subjects, objects, materials, and environments into one contemporary anime line, cel-shading, painted-background, and compositing language while preserving identity, anatomy, count, subtype, location, and required colors.",
+        ),
+        blocking_and_performance=(
+            "Use nuanced stable facial animation, precise hand and body contact, controlled hair or cloth secondary motion, and clean layer interaction without topology drift.",
+        ),
+        sound_treatment=("Digital compositing grants no dialogue, vocals, music, whooshes, impact sweetening, or electronic effects.",),
+        may_fill_unspecified=("Stable digital line quality, cel-value organization, controlled gradients, painted background layering, restrained 2.5D parallax, and motivated compositing integration."),
+        must_not_invent=("Unmotivated particles, sparkles, bloom, lens flares, chromatic aberration, holograms, powers, transformations, speed lines, impact frames, 3D camera spectacle, franchise designs, dialogue, vocals, music, or effects."),
+    ),
     "anime_general": _profile(
         version=2,
         editing_and_pacing=(
@@ -412,25 +623,27 @@ VISUAL_LANGUAGE_PROFILES = {
         must_not_invent=("Ukiyo-e or woodblock-print rendering, calligraphic brush texture, paper grain, Edo-period styling, pastel softness, watercolor diffusion, contemporary kawaii gloss, American children's-comic rendering, infant anatomy, jokes, punchlines, pratfalls, slapstick, humiliation, childish behavior, chibi transformation, impossible deformation, ninjas, robots, mascots, talking animals, magical gadgets, secret tools, schoolchildren, rivals, tricks, costumes, thought symbols, panels, written effects, funny voices, laughter, comic audio, or franchise designs."),
     ),
     "japanese_print_animation": _profile(
+        version=2,
         editing_and_pacing=(
-            "Present the supplied sequence as moving Japanese woodblock-print-inspired graphic animation, using composed tableau-like holds, deliberate pose changes, and selective motion within stable illustrated planes while preserving every requested event and its order.",
+            "Present the supplied sequence as an unmistakably non-photorealistic moving Japanese woodblock print: hand-printed 2D animation using composed tableau holds, deliberate pose changes, and selective motion within stable illustrated planes while preserving every requested event and its order.",
         ),
         camera_and_framing=(
-            "Use bold asymmetrical cropping, diagonal flow, clear negative space, tiered flattened depth, and controlled lateral or vertical parallax inspired by printed composition while keeping subject scale, geography, and physical action understandable.",
+            "Use bold asymmetrical cropping, diagonal flow, clear negative space, tiered flattened depth, and controlled lateral or vertical parallax between registered print planes while keeping subject scale, geography, and physical action understandable.",
         ),
         lighting_and_color=(
-            "Use carved-looking variable contours, flat bounded color planes, restrained mineral-pigment-like color relationships, selective paper-and-ink texture, and graphic pattern rhythm with temporally stable registration and readable luminance separation.",
+            "Use carved ink contours, flat bounded registered pigment planes, restrained mineral-pigment color relationships, locked paper-and-ink texture, and graphic pattern rhythm with temporally stable registration and readable value separation.",
+            "Translate every compatible lighting direction from genre, world aesthetic, or tone into graphic value design: large flat dark pigment planes against untouched paper-light planes, hard bounded shadow shapes with carved contour edges, and asymmetric light-dark composition rather than modeled shading, cast light, specular response, volumetric illumination, or atmospheric depth.",
             "Preserve authoritative skin, wardrobe, product, object, and reference colors; print texture must remain subtle and locked rather than flickering, crawling, fading, or simulating damaged archival material.",
         ),
         production_design=(
-            "Translate only the supplied people, wardrobe, objects, materials, and setting into a coherent Japanese print-inspired illustration vocabulary; retain their exact era, culture, identity, count, object subtype, architecture, and environment instead of converting the story into historical Japan.",
+            "Translate only the supplied people, wardrobe, objects, materials, and setting into unmistakably non-photorealistic hand-printed 2D Japanese woodblock illustration; retain their exact era, culture, identity, count, object subtype, architecture, and environment instead of converting the story into historical Japan.",
         ),
         blocking_and_performance=(
             "Use clean profile, three-quarter, and full-figure poses with articulate hands, fabric direction, gaze, and weight transfer; stylized flatness must not break anatomy, contact, or causal movement.",
         ),
-        sound_treatment=("Print-inspired visuals authorize no traditional instruments, narration, written effects, or added sound; follow only the selected audio policies and supplied sources.",),
-        may_fill_unspecified=("Woodblock-inspired contour rhythm, flat registered color planes, restrained print texture, asymmetrical negative space, tiered graphic depth, pattern hierarchy, and stable illustrated parallax."),
-        must_not_invent=("Edo-period settings, ukiyo-e subjects, kimono, samurai, geisha, kabuki, temples, Mount Fuji, waves, boats, cherry blossom, Japanese text, seals, borders, paper damage, fading, historical claims, traditional music, narration, or franchise imagery."),
+        sound_treatment=("Woodblock-print visuals authorize no traditional instruments, narration, written effects, or added sound; follow only the selected audio policies and supplied sources.",),
+        may_fill_unspecified=("Carved ink contour rhythm, flat registered pigment planes, locked paper texture, asymmetrical negative space, tiered graphic depth, pattern hierarchy, bounded value shapes, and stable illustrated parallax."),
+        must_not_invent=("Live-action or photoreal rendering, photographic light transport, modeled shading, cast-light simulation, specular material response, depth of field, bokeh, atmospheric depth, or a mere woodblock post-process filter; Edo-period settings, ukiyo-e subjects, kimono, samurai, geisha, kabuki, temples, Mount Fuji, waves, boats, cherry blossom, Japanese text, seals, borders, paper damage, fading, historical claims, traditional music, narration, or franchise imagery."),
     ),
     "anime_ultradetailed_cinematic": _profile(
         editing_and_pacing=(
@@ -1490,7 +1703,7 @@ VISUAL_LANGUAGE_PROFILES = {
             "Use only practical fixtures the supplied set actually contains, supported by hard studio keys, and let smooth molded faces take a clean specular highlight without inventing console panels, ceiling strips, or instrument lamps.",
         ),
         production_design=(
-            "Construct every set, interior, and piece of equipment as a meticulously detailed miniature with working practical lights, real switchgear, decals, panel lines, and honest fabricated edges photographed as physical objects.",
+            "Construct every supplied setting, interior, prop, and machine as meticulously fabricated miniature scenery, preserving its exact type and features while expressing existing surface seams, practical illumination, and honest fabricated edges only where applicable.",
             "Stage an elaborate mechanical launch or transit sequence only when the source already supplies both the machine and the movement; the craft never introduces one.",
         ),
         blocking_and_performance=(
@@ -2300,17 +2513,25 @@ def _strict_json_loads(value: str, field_name: str) -> Any:
         raise ValueError(f"{field_name} must be valid JSON: {exc.msg}") from exc
 
 
-def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any]:
-    """Parse the optional manual cinematography schema without changing legacy creative JSON."""
-    if value is None or (isinstance(value, str) and not value.strip()):
+def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[str, Any]:
+    """Parse native v2 cinematography, accepting v1 as a read-only runtime source.
+
+    Both source versions normalize to the v2 internal contract. Historical false
+    and null storage placeholders are neutral blanks. This parser never writes the
+    normalized value back to the caller's workflow or source mapping.
+    """
+    if value is None or value is False or (isinstance(value, str) and not value.strip()):
         raw: dict[str, Any] = {}
     elif isinstance(value, str):
         if len(value) > 32768:
             raise ValueError("cinematography_json exceeds the 32768-character limit")
         parsed = _strict_json_loads(value, "cinematography_json")
-        if not isinstance(parsed, dict):
+        if parsed is None or parsed is False:
+            raw = {}
+        elif not isinstance(parsed, dict):
             raise ValueError("cinematography_json must be a JSON object")
-        raw = parsed
+        else:
+            raw = parsed
     elif isinstance(value, Mapping):
         raw = dict(value)
     else:
@@ -2321,21 +2542,31 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
     if unknown:
         raise ValueError(f"cinematography_json contains unsupported keys: {unknown}")
     if raw and "schemaVersion" not in raw:
-        raise ValueError(f"cinematography_json requires schemaVersion {CINEMATOGRAPHY_SCHEMA_VERSION}")
+        raise ValueError(
+            "cinematography_json requires schemaVersion; choose one of: "
+            + ", ".join(str(version) for version in CINEMATOGRAPHY_SUPPORTED_SCHEMA_VERSIONS)
+        )
     schema = raw.get("schemaVersion", CINEMATOGRAPHY_SCHEMA_VERSION)
     if raw and (
         not isinstance(schema, int)
         or isinstance(schema, bool)
-        or schema != CINEMATOGRAPHY_SCHEMA_VERSION
+        or schema not in CINEMATOGRAPHY_SUPPORTED_SCHEMA_VERSIONS
     ):
-        raise ValueError(f"cinematography_json schemaVersion must be {CINEMATOGRAPHY_SCHEMA_VERSION}")
+        raise ValueError(
+            "cinematography_json schemaVersion must be one of: "
+            + ", ".join(str(version) for version in CINEMATOGRAPHY_SUPPORTED_SCHEMA_VERSIONS)
+        )
 
     selections: dict[str, str] = {}
     canonical: dict[str, Any] = {"schemaVersion": CINEMATOGRAPHY_SCHEMA_VERSION}
     warnings: list[str] = []
     requested_motion = raw.get("cameraMotion", "")
     legacy_motion = requested_motion.strip().lower() if isinstance(requested_motion, str) else ""
-    legacy_overrides = LEGACY_CAMERA_MOTIONS.get(legacy_motion, {})
+    legacy_overrides = (
+        LEGACY_CAMERA_MOTIONS.get(legacy_motion, {})
+        if raw and schema == CINEMATOGRAPHY_LEGACY_SCHEMA_VERSION
+        else {}
+    )
     if legacy_overrides:
         warnings.append(
             f"cameraMotion {legacy_motion!r} is a legacy value; it now resolves to "
@@ -2394,6 +2625,8 @@ def parse_cinematography(value: str | Mapping[str, Any] | None) -> dict[str, Any
     }
     return {
         **canonical,
+        "sourceSchemaVersion": schema if raw else None,
+        "legacyInput": bool(raw and schema == CINEMATOGRAPHY_LEGACY_SCHEMA_VERSION),
         "catalogVersion": CINEMATOGRAPHY_CATALOG_VERSION,
         "requested": requested,
         "applied": requested,
@@ -2747,23 +2980,28 @@ def _resolve_profile(axis: str, name: str) -> dict[str, list[str]]:
     }
 
 
-def parse_creative_treatment(value: str | Mapping[str, Any] | None,
+def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
                              *, enabled: bool = True) -> dict[str, Any]:
-    """Parse schema v1 and compose the four axes into one deterministic treatment.
+    """Parse native v2 or legacy v1 and compose one deterministic treatment.
 
     A non-empty value is strict: unknown keys, schema versions, axes, and profile
-    names fail explicitly instead of silently steering the LLM.  Blank input is
-    the neutral backwards-compatible state.
+    names fail explicitly instead of silently steering the LLM. Both accepted
+    source versions normalize to v2 in memory without rewriting the source.
+    Blank input, including historical false/null storage placeholders, is the
+    neutral backwards-compatible state.
     """
-    if value is None or (isinstance(value, str) and not value.strip()):
+    if value is None or value is False or (isinstance(value, str) and not value.strip()):
         raw: dict[str, Any] = {}
     elif isinstance(value, str):
         if len(value) > 16384:
             raise ValueError("creative_treatment_json exceeds the 16384-character limit")
         parsed = _strict_json_loads(value, "creative_treatment_json")
-        if not isinstance(parsed, dict):
+        if parsed is None or parsed is False:
+            raw = {}
+        elif not isinstance(parsed, dict):
             raise ValueError("creative_treatment_json must be a JSON object")
-        raw = parsed
+        else:
+            raw = parsed
     elif isinstance(value, Mapping):
         raw = dict(value)
     else:
@@ -2775,16 +3013,18 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
         raise ValueError(f"creative_treatment_json contains unsupported keys: {unknown_keys}")
     if raw and "schemaVersion" not in raw:
         raise ValueError(
-            f"creative_treatment_json requires schemaVersion {CREATIVE_TREATMENT_SCHEMA_VERSION}"
+            "creative_treatment_json requires schemaVersion; choose one of: "
+            + ", ".join(str(version) for version in CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS)
         )
     creative_schema = raw.get("schemaVersion", CREATIVE_TREATMENT_SCHEMA_VERSION)
     if raw and (
         not isinstance(creative_schema, int)
         or isinstance(creative_schema, bool)
-        or creative_schema != CREATIVE_TREATMENT_SCHEMA_VERSION
+        or creative_schema not in CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS
     ):
         raise ValueError(
-            f"creative_treatment_json schemaVersion must be {CREATIVE_TREATMENT_SCHEMA_VERSION}"
+            "creative_treatment_json schemaVersion must be one of: "
+            + ", ".join(str(version) for version in CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS)
         )
     selections = {}
     for external, internal in CREATIVE_JSON_KEYS.items():
@@ -2854,6 +3094,8 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | None,
     }
     return {
         **canonical,
+        "sourceSchemaVersion": creative_schema if raw else None,
+        "legacyInput": bool(raw and creative_schema == CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION),
         "catalogVersion": CREATIVE_PROFILE_CATALOG_VERSION,
         "requested": requested,
         "applied": bool(enabled) and requested,
@@ -3210,6 +3452,9 @@ def resolve_visual_style(treatment: Mapping[str, Any],
     pixel_art_active = bool(
         creative_applied and resolved_treatment.get("visualLanguage") == "pixel_art_16bit"
     )
+    japanese_print_active = bool(
+        creative_applied and resolved_treatment.get("visualLanguage") == "japanese_print_animation"
+    )
     if pixel_art_active:
         directives = [
             {**item, "instruction": _pixel_art_cinematography_instruction(item)}
@@ -3240,6 +3485,22 @@ def resolve_visual_style(treatment: Mapping[str, Any],
             else:
                 kept.append(line)
         dimensions[dimension] = kept
+    if japanese_print_active:
+        print_lighting = {
+            str(line).casefold()
+            for line in VISUAL_LANGUAGE_PROFILES["japanese_print_animation"]["lighting_and_color"]
+        }
+        current_lighting = dimensions.get("lighting_and_color", [])
+        if any(str(line).casefold() not in print_lighting for line in current_lighting):
+            dimensions["lighting_and_color"] = [
+                line for line in current_lighting if str(line).casefold() in print_lighting
+            ] + [
+                "Express compatible genre, world-aesthetic, and tone lighting intent only as Japanese "
+                "woodblock-print graphic value design: large flat dark pigment planes against untouched "
+                "paper-light planes, hard bounded shapes with carved contour edges, and asymmetric light-dark "
+                "composition; never as modeled shading, cast light, specular response, volumetric illumination, "
+                "or atmospheric depth."
+            ]
     selected_profiles = (
         ("genre", "genre", str(resolved_treatment.get("genre", "none"))),
         ("visualLanguage", "visual_language", str(resolved_treatment.get("visualLanguage", "none"))),
@@ -3314,6 +3575,9 @@ def resolve_visual_style(treatment: Mapping[str, Any],
             }]
             if pixel_art_active else []
         ),
+        "mediumAdaptedCreativeDimensions": (
+            ["lighting_and_color"] if japanese_print_active else []
+        ),
         "conflicts": conflicts,
     }
     cinematography_signature = _compact_cinematography_signature(resolved)
@@ -3350,6 +3614,20 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
     ]
     resolved_signature = str(style.get("resolvedSignature", "")).strip()
     if resolved_signature:
+        japanese_print_active = style.get("visualLanguage") == "japanese_print_animation"
+        light_coverage = (
+            "- Light and color: express every supplied illumination source and contrast as bounded paper-light "
+            "and flat pigment-value shapes; do not describe physical light falling across modeled surfaces."
+            if japanese_print_active else
+            "- Light and color: name the sources, colors, and contrast falling on the supplied subjects and "
+            "surfaces instead of the palette's label."
+        )
+        texture_coverage = (
+            "- Surfaces and texture: describe carved ink contours, registered pigment planes, and stable paper "
+            "texture instead of photographic material response."
+            if japanese_print_active else
+            "- Surfaces and texture: state how the supplied materials respond to that light."
+        )
         placement = (
             "Realize it inside every autonomous JSON prompt item"
             if mode == "chained_multishot" else
@@ -3366,11 +3644,10 @@ def resolved_visual_style_instruction(style: Mapping[str, Any],
             "- Camera grammar: state the motion as type + amplitude + speed (for example a slow prowling glide "
             "that commits to a fast push-in onto a face or object already present). A pacing adjective alone "
             "does not satisfy this; the movement itself must be written.",
-            "- Light and color: name the sources, colors, and contrast falling on the supplied subjects and "
-            "surfaces instead of the palette's label.",
+            light_coverage,
             "- Composition and framing: state what the frame contains and how it is arranged, using only "
             "elements the source already supplies.",
-            "- Surfaces and texture: state how the supplied materials respond to that light.",
+            texture_coverage,
             "- Performance and blocking: state the observable acting and staging the look implies.",
             "Omit any axis this scene cannot show with supplied elements; never invent a subject, prop, "
             "location, or event to satisfy it.",
@@ -3523,21 +3800,342 @@ def empty_shot_plan(duration_seconds: float = 0.0, frame_count: int = 0) -> dict
     }
 
 
-def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: float,
+_SHOT_PLAN_V2_ITEM_KEYS = {
+    "id", "generationId", "openingState", "action", "durationSeconds",
+    "transitionIn", "cutContext", "subjectPresenceComplete", "subjects",
+    "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
+    "appearanceTransitions", "environmentTransitions",
+}
+_REFERENCE_ROLES = {
+    "identity_reinforcement", "appearance", "environment_view", "scale",
+    "placement", "continuity", "lighting", "composition", "performance",
+    "voice", "exact_dialogue", "soundtrack", "camera_transfer",
+}
+_CAMERA_ASPECTS = {
+    "motion", "framing", "angle", "viewpoint", "composition", "focus",
+    "distance", "stability", "lens", "parallax",
+}
+
+
+def _shot_v2_id(value: Any, path: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{path} must be a string")
+    result = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", result):
+        raise ValueError(f"{path} must be 1-64 ASCII letters, digits, dot, underscore, or hyphen")
+    return result
+
+
+def _shot_v2_text(value: Any, path: str, limit: int = 8000) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{path} must be a string")
+    result = value.strip()
+    if not result:
+        raise ValueError(f"{path} must not be blank")
+    if len(result) > limit:
+        raise ValueError(f"{path} exceeds {limit} characters")
+    if "\x00" in result:
+        raise ValueError(f"{path} contains a NUL character")
+    return result
+
+
+def _shot_v2_unique_ids(value: Any, path: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be an array")
+    result = [_shot_v2_id(item, f"{path}[{index}]") for index, item in enumerate(value)]
+    if len(set(result)) != len(result):
+        raise ValueError(f"{path} must contain unique values")
+    return result
+
+
+def _shot_v2_presence(value: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be an array")
+    result = []
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - {"subjectId", "presence", "blocking"})
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        subject_id = _shot_v2_id(raw.get("subjectId"), f"{item_path}.subjectId")
+        if subject_id in seen:
+            raise ValueError(f"{path} contains duplicate subjectId {subject_id!r}")
+        seen.add(subject_id)
+        presence = raw.get("presence")
+        if presence not in {"present", "enters", "exits", "absent"}:
+            raise ValueError(f"{item_path}.presence must be present, enters, exits, or absent")
+        normalized: dict[str, Any] = {"subjectId": subject_id, "presence": presence}
+        if "blocking" in raw:
+            normalized["blocking"] = _shot_v2_text(raw["blocking"], f"{item_path}.blocking", 500)
+        result.append(normalized)
+    return result
+
+
+def _shot_v2_environment(value: Any, path: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{path} must be an object")
+    raw = dict(value)
+    unknown = sorted(set(raw) - {"environmentId", "viewIds"})
+    if unknown:
+        raise ValueError(f"{path} contains unsupported keys: {unknown}")
+    result: dict[str, Any] = {
+        "environmentId": _shot_v2_id(raw.get("environmentId"), f"{path}.environmentId")
+    }
+    if "viewIds" in raw:
+        result["viewIds"] = _shot_v2_unique_ids(raw["viewIds"], f"{path}.viewIds")
+    return result
+
+
+def _shot_v2_reference_uses(value: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be an array")
+    result = []
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - {"assetId", "role", "targetIds", "cameraAspects", "note"})
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        role = raw.get("role")
+        if role not in _REFERENCE_ROLES:
+            raise ValueError(f"{item_path}.role must be one of: {', '.join(sorted(_REFERENCE_ROLES))}")
+        normalized: dict[str, Any] = {
+            "assetId": _shot_v2_id(raw.get("assetId"), f"{item_path}.assetId"),
+            "role": role,
+        }
+        if "targetIds" in raw:
+            normalized["targetIds"] = _shot_v2_unique_ids(raw["targetIds"], f"{item_path}.targetIds")
+        if "cameraAspects" in raw:
+            aspects = raw["cameraAspects"]
+            if not isinstance(aspects, list) or not aspects:
+                raise ValueError(f"{item_path}.cameraAspects must be a non-empty array")
+            if any(aspect not in _CAMERA_ASPECTS for aspect in aspects):
+                raise ValueError(f"{item_path}.cameraAspects contains an unsupported camera aspect")
+            if len(set(aspects)) != len(aspects):
+                raise ValueError(f"{item_path}.cameraAspects must contain unique values")
+            normalized["cameraAspects"] = list(aspects)
+        if role == "camera_transfer" and "cameraAspects" not in normalized:
+            raise ValueError(f"{item_path} with role 'camera_transfer' requires cameraAspects")
+        if role != "camera_transfer" and "cameraAspects" in normalized:
+            raise ValueError(f"{item_path}.cameraAspects is only valid for role 'camera_transfer'")
+        if "note" in raw:
+            normalized["note"] = _shot_v2_text(raw["note"], f"{item_path}.note", 500)
+        result.append(normalized)
+    return result
+
+
+def _shot_v2_transition(value: Any, path: str, entity_key: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be an array")
+    result = []
+    allowed = {entity_key, "fromStateId", "toStateId", "timing", "trigger", "mechanism"}
+    timings = {"at_cut", "during_shot", "at_end", "custom"}
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - allowed)
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        normalized = {
+            entity_key: _shot_v2_id(raw.get(entity_key), f"{item_path}.{entity_key}"),
+            "fromStateId": _shot_v2_id(raw.get("fromStateId"), f"{item_path}.fromStateId"),
+            "toStateId": _shot_v2_id(raw.get("toStateId"), f"{item_path}.toStateId"),
+        }
+        if normalized["fromStateId"] == normalized["toStateId"]:
+            raise ValueError(f"{item_path} must transition to a different state")
+        timing = raw.get("timing")
+        if timing not in timings:
+            raise ValueError(f"{item_path}.timing must be one of: {', '.join(sorted(timings))}")
+        normalized["timing"] = timing
+        for key in ("trigger", "mechanism"):
+            if key in raw:
+                normalized[key] = _shot_v2_text(raw[key], f"{item_path}.{key}", 500)
+        result.append(normalized)
+    return result
+
+
+def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
+                        frame_count: int, mode: str) -> dict[str, Any]:
+    raw_timing_mode = raw.get("timingMode")
+    if raw_timing_mode not in {"auto", "exact"}:
+        raise ValueError("shot_plan_json timingMode must be 'auto' or 'exact'")
+    timing_mode = raw_timing_mode
+    raw_shots = raw.get("shots")
+    if not isinstance(raw_shots, list):
+        raise ValueError("shot_plan_json shots must be an array")
+    if len(raw_shots) > 64:
+        raise ValueError("shot_plan_json supports at most 64 shots")
+    effective = _effective_duration(duration_seconds, frame_count)
+    if not raw_shots:
+        canonical = {"schemaVersion": 2, "timingMode": timing_mode, "shots": []}
+        return {
+            **canonical, "warnings": [], "provided": True, "applied": False,
+            "shotCount": 0, "generationCount": 0, "effectiveDurationSeconds": effective,
+            "totalDurationSeconds": 0.0,
+            "durationToleranceSeconds": max(0.05, 1.0 / 24.0 if int(frame_count or 0) else 0.0),
+            "expectedCutTimesSeconds": [], "expectedCutTimesByGeneration": {},
+            "digest": _canonical_digest(canonical),
+            "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        }
+    shots: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    first_generation_index: dict[str, int] = {}
+    resolved_mode = str(mode or "").strip().lower()
+    for index, item in enumerate(raw_shots, start=1):
+        path = f"shot_plan_json shot {index}"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{path} must be an object")
+        data = dict(item)
+        unknown = sorted(set(data) - _SHOT_PLAN_V2_ITEM_KEYS)
+        if unknown:
+            raise ValueError(f"{path} contains unsupported keys: {unknown}")
+        shot_id = _shot_v2_id(data.get("id"), f"{path} id")
+        if shot_id in seen_ids:
+            raise ValueError(f"shot_plan_json shot id {shot_id!r} is duplicated")
+        seen_ids.add(shot_id)
+        generation_id = _shot_v2_id(data.get("generationId"), f"{path} generationId")
+        if resolved_mode != "chained_multishot" and generation_id != "g1":
+            raise ValueError(f"{path} generationId must be 'g1' outside chained_multishot mode")
+        first_generation_index.setdefault(generation_id, index)
+        shot: dict[str, Any] = {
+            "id": shot_id,
+            "generationId": generation_id,
+            "action": _shot_v2_text(data.get("action"), f"{path} action"),
+        }
+        if "openingState" in data:
+            shot["openingState"] = _shot_v2_text(data["openingState"], f"{path} openingState")
+        has_duration = "durationSeconds" in data and data.get("durationSeconds") not in (None, "")
+        if timing_mode == "auto" and has_duration:
+            raise ValueError(f"{path} supplies durationSeconds while timingMode is 'auto'")
+        if timing_mode == "exact":
+            if not has_duration:
+                raise ValueError(f"{path} requires durationSeconds while timingMode is 'exact'")
+            duration = data["durationSeconds"]
+            if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+                raise ValueError(f"{path} durationSeconds must be numeric")
+            duration = float(duration)
+            if not math.isfinite(duration) or duration <= 0 or duration > 150:
+                raise ValueError(f"{path} durationSeconds must be finite, positive, and no greater than 150")
+            shot["durationSeconds"] = duration
+        transition = data.get("transitionIn", "cut") or "cut"
+        if transition not in SHOT_TRANSITION_CHOICES:
+            raise ValueError(f"{path} transitionIn must be one of: {', '.join(SHOT_TRANSITION_CHOICES)}")
+        if index == first_generation_index[generation_id] and transition != "cut":
+            raise ValueError(f"{path} is the first shot in generation {generation_id!r} and transitionIn must be 'cut'")
+        if transition != "cut":
+            shot["transitionIn"] = transition
+        if "cutContext" in data:
+            cut = data["cutContext"]
+            if not isinstance(cut, Mapping):
+                raise ValueError(f"{path} cutContext must be an object")
+            cut = dict(cut)
+            unknown = sorted(set(cut) - {"timeRelation", "purpose"})
+            if unknown:
+                raise ValueError(f"{path} cutContext contains unsupported keys: {unknown}")
+            if cut.get("timeRelation") not in {"continuous", "later", "earlier", "parallel", "unknown"}:
+                raise ValueError(f"{path} cutContext.timeRelation is invalid")
+            if cut.get("purpose") not in {"subject", "space", "state", "viewpoint", "time", "rhythm", "unspecified"}:
+                raise ValueError(f"{path} cutContext.purpose is invalid")
+            shot["cutContext"] = {"timeRelation": cut["timeRelation"], "purpose": cut["purpose"]}
+        if "subjectPresenceComplete" in data:
+            if not isinstance(data["subjectPresenceComplete"], bool):
+                raise ValueError(f"{path} subjectPresenceComplete must be boolean")
+            if data["subjectPresenceComplete"]:
+                shot["subjectPresenceComplete"] = True
+        if "subjects" in data:
+            shot["subjects"] = _shot_v2_presence(data["subjects"], f"{path} subjects")
+        if "environment" in data:
+            shot["environment"] = _shot_v2_environment(data["environment"], f"{path} environment")
+        if "referenceUses" in data:
+            shot["referenceUses"] = _shot_v2_reference_uses(data["referenceUses"], f"{path} referenceUses")
+        camera_start: dict[str, Any] = {}
+        if "cameraStart" in data:
+            camera_start = normalize_camera_frame(data["cameraStart"], f"{path} cameraStart")
+            shot["cameraStart"] = camera_start
+        if "cameraEnd" in data:
+            end_delta = normalize_camera_end_delta(data["cameraEnd"], camera_start, f"{path} cameraEnd")
+            if end_delta:
+                shot["cameraEnd"] = end_delta
+        if "cameraPath" in data:
+            shot["cameraPath"] = normalize_camera_path(data["cameraPath"], f"{path} cameraPath")
+        if "appearanceTransitions" in data:
+            shot["appearanceTransitions"] = _shot_v2_transition(
+                data["appearanceTransitions"], f"{path} appearanceTransitions", "subjectId"
+            )
+        if "environmentTransitions" in data:
+            shot["environmentTransitions"] = _shot_v2_transition(
+                data["environmentTransitions"], f"{path} environmentTransitions", "environmentId"
+            )
+        shots.append(shot)
+
+    tolerance = max(0.05, 1.0 / 24.0 if int(frame_count or 0) else 0.0)
+    expected_by_generation: dict[str, list[float]] = {}
+    total = 0.0
+    if timing_mode == "exact":
+        grouped: dict[str, list[float]] = {}
+        for shot in shots:
+            grouped.setdefault(shot["generationId"], []).append(float(shot["durationSeconds"]))
+        for generation_id, durations in grouped.items():
+            generation_total = sum(durations)
+            if abs(generation_total - effective) > tolerance:
+                raise ValueError(
+                    f"shot_plan_json exact shots in generation {generation_id!r} total {generation_total:.6g}s, "
+                    f"but the effective generation duration is {effective:.6g}s (tolerance {tolerance:.3g}s)"
+                )
+            elapsed = 0.0
+            cuts = []
+            for duration in durations[:-1]:
+                elapsed += duration
+                cuts.append(round(elapsed, 3))
+            expected_by_generation[generation_id] = cuts
+            total += generation_total
+    else:
+        generations = {shot["generationId"] for shot in shots}
+        total = effective * len(generations)
+    canonical = {"schemaVersion": 2, "timingMode": timing_mode, "shots": shots}
+    flat_cuts = expected_by_generation.get("g1", []) if len(expected_by_generation) <= 1 else []
+    return {
+        **canonical, "warnings": [], "provided": True, "applied": True,
+        "shotCount": len(shots),
+        "generationCount": len({shot["generationId"] for shot in shots}),
+        "effectiveDurationSeconds": effective,
+        "totalDurationSeconds": total, "durationToleranceSeconds": tolerance,
+        "expectedCutTimesSeconds": flat_cuts,
+        "expectedCutTimesByGeneration": expected_by_generation,
+        "digest": _canonical_digest(canonical),
+        "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+    }
+
+
+def parse_shot_plan(value: str | Mapping[str, Any] | bool | None, duration_seconds: float,
                     frame_count: int = 0, mode: str = "t2va") -> dict[str, Any]:
     """Validate and normalize the stable explicit-shot-plan schema.
 
     In ordinary H3 modes the duration is the complete clip and exact shot
     durations must sum to it.  Chained multishot currently uses one uniform H3
     duration per autonomous item, so exact per-item durations must all equal the
-    effective per-segment duration.
+    effective per-segment duration. Historical boolean/null storage placeholders
+    are treated as neutral blank plans without rewriting the source.
     """
-    if value is None or (isinstance(value, str) and not value.strip()):
+    # Pre-Studio workflows could leave the former boolean Shot Plan control in
+    # this storage position. Either boolean is therefore a neutral legacy
+    # sentinel; non-boolean scalars stay strict.
+    if value is None or isinstance(value, bool) or (isinstance(value, str) and not value.strip()):
         return empty_shot_plan(duration_seconds, frame_count)
     if isinstance(value, str):
         if len(value) > 262144:
             raise ValueError("shot_plan_json exceeds the 262144-character limit")
         parsed = _strict_json_loads(value, "shot_plan_json")
+        if parsed is None or isinstance(parsed, bool):
+            return empty_shot_plan(duration_seconds, frame_count)
         if not isinstance(parsed, dict):
             raise ValueError("shot_plan_json must be a JSON object")
         raw = parsed
@@ -3553,12 +4151,15 @@ def parse_shot_plan(value: str | Mapping[str, Any] | None, duration_seconds: flo
     if "schemaVersion" not in raw:
         raise ValueError(f"shot_plan_json requires schemaVersion {SHOT_PLAN_SCHEMA_VERSION}")
     shot_schema = raw.get("schemaVersion", SHOT_PLAN_SCHEMA_VERSION)
-    if (
-        not isinstance(shot_schema, int)
-        or isinstance(shot_schema, bool)
-        or shot_schema != SHOT_PLAN_SCHEMA_VERSION
-    ):
-        raise ValueError(f"shot_plan_json schemaVersion must be {SHOT_PLAN_SCHEMA_VERSION}")
+    if not isinstance(shot_schema, int) or isinstance(shot_schema, bool):
+        raise ValueError("shot_plan_json schemaVersion must be an integer")
+    if shot_schema == SHOT_PLAN_SCHEMA_V2:
+        return _parse_shot_plan_v2(raw, duration_seconds, frame_count, mode)
+    if shot_schema != SHOT_PLAN_SCHEMA_VERSION:
+        raise ValueError(
+            "shot_plan_json schemaVersion must be one of: "
+            + ", ".join(str(version) for version in SHOT_PLAN_SUPPORTED_SCHEMA_VERSIONS)
+        )
     raw_timing_mode = raw.get("timingMode", "auto") or "auto"
     if not isinstance(raw_timing_mode, str):
         raise ValueError("shot_plan_json timingMode must be 'auto' or 'exact'")
@@ -3750,10 +4351,85 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{remainder:06.3f}"
 
 
+def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
+    resolved_mode = str(mode or "").strip().lower()
+    chained = resolved_mode == "chained_multishot"
+    lines = [
+        "AUTHORITATIVE STRUCTURED SHOT PLAN V2 — USER-SUPPLIED TEMPORAL STATE:",
+        f"Use exactly {int(plan['shotCount'])} shots in the exact listed order.",
+        "openingState is the visible state at the first frame of that shot; action is what changes or happens "
+        "during it. Do not restate the opening state as a second event. Preserve generation, subject presence, "
+        "environment, reference-use, camera, appearance-state, and environment-state allocation exactly. Do not "
+        "merge, split, reorder, omit, duplicate, or invent shots, subjects, states, references, transitions, or cuts.",
+        "cameraStart and cameraEnd are different temporal phases, not conflicting instructions. cameraEnd contains "
+        "only fields that change; inherit every omitted end field from cameraStart. A shot-level camera value "
+        "normally overrides the corresponding global cinematography value for that shot only.",
+    ]
+    if chained:
+        lines.append(
+            "Group shots by generationId in their listed order. Each generation becomes one autonomous prompts "
+            "array item; keep multiple shots inside that item when they share its generationId."
+        )
+    elif plan["timingMode"] == "exact":
+        lines.append("Honor the exact per-generation durations and cut positions; Shot 1 has no timestamp.")
+    else:
+        lines.append("Choose strictly increasing cut times while preserving shot and generation boundaries.")
+    generation_elapsed: dict[str, float] = {}
+    for index, shot in enumerate(plan["shots"], start=1):
+        generation_id = shot["generationId"]
+        elapsed = generation_elapsed.get(generation_id, 0.0)
+        timing = ""
+        if plan["timingMode"] == "exact":
+            duration = float(shot["durationSeconds"])
+            timing = f"; start {elapsed:.3f}s; duration {duration:.3f}s"
+            generation_elapsed[generation_id] = elapsed + duration
+        lines.append(
+            f"- Shot {index}; stable id {shot['id']!r}; generation {generation_id!r}{timing}; "
+            f"openingState={json.dumps(shot.get('openingState', ''), ensure_ascii=False)}; "
+            f"action={json.dumps(shot['action'], ensure_ascii=False)}"
+        )
+        allocation = {
+            key: shot[key]
+            for key in (
+                "subjectPresenceComplete", "subjects", "environment", "referenceUses",
+                "appearanceTransitions", "environmentTransitions", "cutContext",
+            )
+            if key in shot
+        }
+        if allocation:
+            lines.append(
+                "  Structured allocation: "
+                + json.dumps(allocation, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            )
+        camera_sentences = []
+        start = shot.get("cameraStart", {})
+        end_delta = shot.get("cameraEnd", {})
+        for sentence in (
+            camera_frame_sentence(start, "start"),
+            camera_path_sentence(shot.get("cameraPath", {})),
+            camera_frame_sentence(resolve_camera_end(start, end_delta), "end") if end_delta else "",
+        ):
+            if sentence:
+                camera_sentences.append(sentence)
+        if camera_sentences:
+            lines.append("  Camera: " + " ".join(camera_sentences))
+        transition = SHOT_TRANSITION_CHOICES.get(shot.get("transitionIn", "cut"), "")
+        if transition:
+            lines.append("  Boundary: " + transition)
+    lines.append(
+        "Reference uses grant only their declared role. camera_transfer transfers only its listed cameraAspects; "
+        "a video reference does not own any other camera property. Render all structured facts as natural scene "
+        "language and never expose JSON or these control labels in the enhanced prompt."
+    )
+    return "\n".join(lines)
+
+
 def shot_plan_instruction(plan: Mapping[str, Any], mode: str) -> str:
     """Render a strict allocation contract without interpreting JSON as meta-instructions."""
-    if not plan.get("provided"):
+    if not plan.get("provided") or not plan.get("applied"):
         return ""
+    if plan.get("schemaVersion") == SHOT_PLAN_SCHEMA_V2:
+        return _shot_plan_v2_instruction(plan, mode)
     resolved_mode = str(mode or "").strip().lower()
     chained = resolved_mode == "chained_multishot"
     shot_count = int(plan["shotCount"])
@@ -3969,6 +4645,11 @@ def build_shots_package(enhanced_prompt: str, resolved_mode: str,
 
     shots = []
     planned_shots = list(plan.get("shots", ()))
+    plan_v2 = plan.get("schemaVersion") == SHOT_PLAN_SCHEMA_V2
+    generation_order = list(dict.fromkeys(
+        str(item.get("generationId", "g1")) for item in planned_shots
+    ))
+    generation_part_index = {generation_id: index for index, generation_id in enumerate(generation_order)}
     effective = float(plan.get("effectiveDurationSeconds", 0.0))
     shared_audio_has_content = any(
         body and body.casefold() != "n/a"
@@ -3979,12 +4660,23 @@ def build_shots_package(enhanced_prompt: str, resolved_mode: str,
     )
     isolate_shared_audio = len(planned_shots) > 1
     for index, planned in enumerate(planned_shots, start=1):
+        part_index = index - 1
+        if plan_v2 and mode == "chained_multishot":
+            part_index = generation_part_index[str(planned.get("generationId", "g1"))]
+        timeline_body = enhanced_parts[part_index] if part_index < len(enhanced_parts) else ""
+        planned_description = planned.get("description")
+        if planned_description is None:
+            planned_description = " ".join(
+                part for part in (planned.get("openingState", ""), planned.get("action", "")) if part
+            )
         entry = {
             "index": index,
             "id": planned["id"],
-            "description": planned["description"],
-            "timelineBody": enhanced_parts[index - 1] if index <= len(enhanced_parts) else "",
+            "description": planned_description,
+            "timelineBody": timeline_body,
         }
+        if "generationId" in planned:
+            entry["generationId"] = planned["generationId"]
         if "durationSeconds" in planned:
             entry["durationSeconds"] = float(planned["durationSeconds"])
         if mode != "chained_multishot" and index <= len(start_times):
@@ -4023,18 +4715,58 @@ def build_shots_package(enhanced_prompt: str, resolved_mode: str,
             if entry["sharedAudioOmitted"] else "preserved"
         )
         shots.append(entry)
+    expected_prompt_count = (
+        len(generation_order) if plan_v2 and mode == "chained_multishot" else len(planned_shots)
+    )
     package = {
-        "schemaVersion": 1,
-        "shotPlanSchemaVersion": SHOT_PLAN_SCHEMA_VERSION,
+        "schemaVersion": 2 if plan_v2 else 1,
+        "shotPlanSchemaVersion": int(plan.get("schemaVersion", SHOT_PLAN_SCHEMA_VERSION)),
         "mode": mode,
         "timingMode": plan["timingMode"],
         "shotCount": len(planned_shots),
         "extractedPromptCount": len(enhanced_parts),
         "sourcePromptValid": bool(source_valid),
-        "complete": len(enhanced_parts) == len(planned_shots) and all(item["enhancedPrompt"] for item in shots),
+        "complete": len(enhanced_parts) == expected_prompt_count and all(item["enhancedPrompt"] for item in shots),
         "allAutonomous": bool(shots) and all(item["autonomous"] for item in shots),
         "shotPlanDigest": plan.get("digest", ""),
         "shots": shots,
     }
+    if plan_v2:
+        generations: dict[str, Any] = {}
+        for generation_id in generation_order:
+            generation_shots = [
+                shot for shot in planned_shots if shot.get("generationId", "g1") == generation_id
+            ]
+            active_asset_ids = list(dict.fromkeys(
+                use["assetId"]
+                for shot in generation_shots
+                for use in shot.get("referenceUses", ())
+            ))
+            state_payload = [
+                {
+                    key: shot.get(key)
+                    for key in (
+                        "id", "subjects", "environment", "appearanceTransitions",
+                        "environmentTransitions",
+                    )
+                    if key in shot
+                }
+                for shot in generation_shots
+            ]
+            authority_payload = [
+                {
+                    key: shot.get(key)
+                    for key in ("id", "referenceUses", "cameraStart", "cameraPath", "cameraEnd")
+                    if key in shot
+                }
+                for shot in generation_shots
+            ]
+            generations[generation_id] = {
+                "inputMap": {},
+                "activeAssetIds": active_asset_ids,
+                "stateDigest": _canonical_digest(state_payload),
+                "authorityDigest": _canonical_digest(authority_payload),
+            }
+        package["generations"] = generations
     package["digest"] = _canonical_digest(package)
     return package

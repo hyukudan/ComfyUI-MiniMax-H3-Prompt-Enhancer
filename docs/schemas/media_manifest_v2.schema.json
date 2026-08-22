@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minimax-h3-prompt-enhancer.local/schemas/media-manifest-v2.json",
+  "title": "MiniMax H3 Media Project",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assets", "subjects", "environments", "generations"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "mode": {"enum": ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]},
+    "assets": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/asset"}},
+    "subjects": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/subject"}},
+    "environments": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/environment"}},
+    "generations": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/generation"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 8000},
+    "shortText": {"type": "string", "minLength": 1, "maxLength": 500},
+    "resourceRef": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+      "properties": {"kind": {"enum": ["asset", "subject", "environment"]}, "id": {"$ref": "#/$defs/id"}}
+    },
+    "cameraTransfer": {
+      "type": "object", "additionalProperties": false, "required": ["enabled", "role", "aspects"],
+      "properties": {
+        "enabled": {"const": true}, "role": {"const": "camera_reference"},
+        "aspects": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"]}}
+      }
+    },
+    "transcriptEntry": {
+      "oneOf": [
+        {"$ref": "#/$defs/text"},
+        {"type": "object", "additionalProperties": false, "required": ["text"], "properties": {"text": {"$ref": "#/$defs/text"}, "language": {"type": "string", "minLength": 2, "maxLength": 64}, "unclear": {"type": "boolean"}}}
+      ]
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false, "required": ["id", "type", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "type": {"enum": ["picture", "video", "audio"]}, "name": {"$ref": "#/$defs/shortText"},
+        "available": {"type": "boolean", "default": true}, "durationSeconds": {"type": "number", "minimum": 0, "maximum": 15},
+        "audioMode": {"enum": ["off", "paired", "alone"]}, "description": {"$ref": "#/$defs/text"},
+        "analysis": {"oneOf": [{"$ref": "#/$defs/text"}, {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]}}]},
+        "transcript": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/transcriptEntry"}},
+        "cameraTransfer": {"$ref": "#/$defs/cameraTransfer"}
+      },
+      "allOf": [{"if": {"properties": {"type": {"const": "video"}}, "required": ["type"]}, "then": {}, "else": {"properties": {"audioMode": false, "cameraTransfer": false}}}]
+    },
+    "appearanceSource": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["mode"], "properties": {"mode": {"const": "description"}}},
+        {"type": "object", "additionalProperties": false, "required": ["mode", "assetId"], "properties": {"mode": {"const": "asset"}, "assetId": {"$ref": "#/$defs/id"}, "region": {"$ref": "#/$defs/shortText"}}}
+      ]
+    },
+    "appearanceAttributes": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "wardrobe": {"$ref": "#/$defs/shortText"}, "hair": {"$ref": "#/$defs/shortText"}, "makeup": {"$ref": "#/$defs/shortText"},
+        "accessories": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/shortText"}},
+        "carriedItems": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/shortText"}},
+        "damage": {"$ref": "#/$defs/shortText"}, "wetness": {"$ref": "#/$defs/shortText"}, "bodyCondition": {"$ref": "#/$defs/shortText"},
+        "transformation": {"$ref": "#/$defs/shortText"}, "other": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "appearanceState": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "controls"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/shortText"}, "extends": {"$ref": "#/$defs/id"},
+        "controls": {"type": "array", "uniqueItems": true, "items": {"enum": ["wardrobe", "hair", "makeup", "accessories", "carried_items", "damage", "wetness", "body_condition", "transformation", "other"]}},
+        "description": {"$ref": "#/$defs/text"}, "attributes": {"$ref": "#/$defs/appearanceAttributes"}, "source": {"$ref": "#/$defs/appearanceSource"}
+      }
+    },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "h3Index", "name", "description", "identityAssetIds", "baseAppearanceStateId", "appearanceStates"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "h3Index": {"type": "integer", "minimum": 1, "maximum": 64}, "name": {"$ref": "#/$defs/shortText"}, "description": {"$ref": "#/$defs/text"},
+        "identityAssetIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}, "baseAppearanceStateId": {"$ref": "#/$defs/id"},
+        "appearanceStates": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/appearanceState"}}
+      }
+    },
+    "environmentView": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "role", "assetId"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/shortText"}, "role": {"enum": ["overview", "alternate", "detail", "lighting", "custom"]}, "assetId": {"$ref": "#/$defs/id"}, "description": {"$ref": "#/$defs/text"}}
+    },
+    "environmentPermanent": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"geography": {"$ref": "#/$defs/text"}, "architecture": {"$ref": "#/$defs/text"}, "fixedElements": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/shortText"}}, "scale": {"$ref": "#/$defs/shortText"}, "other": {"$ref": "#/$defs/text"}}
+    },
+    "environmentTemporary": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"lighting": {"$ref": "#/$defs/shortText"}, "weather": {"$ref": "#/$defs/shortText"}, "atmosphere": {"$ref": "#/$defs/shortText"}, "condition": {"$ref": "#/$defs/shortText"}, "timeOfDay": {"$ref": "#/$defs/shortText"}, "temporaryElements": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/shortText"}}, "other": {"$ref": "#/$defs/text"}}
+    },
+    "environmentState": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/shortText"}, "extends": {"$ref": "#/$defs/id"}, "temporary": {"$ref": "#/$defs/environmentTemporary"}}
+    },
+    "environment": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "permanent", "views", "defaultStateId", "states"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/shortText"}, "permanent": {"$ref": "#/$defs/environmentPermanent"}, "views": {"type": "array", "maxItems": 24, "items": {"$ref": "#/$defs/environmentView"}}, "defaultStateId": {"$ref": "#/$defs/id"}, "states": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/environmentState"}}}
+    },
+    "activation": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["mode"], "properties": {"mode": {"const": "auto"}, "exclude": {"type": "array", "items": {"$ref": "#/$defs/resourceRef"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["mode", "roots"], "properties": {"mode": {"const": "explicit"}, "roots": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/resourceRef"}}, "exclude": {"type": "array", "items": {"$ref": "#/$defs/resourceRef"}}}}
+      ]
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false, "required": ["assetId", "slotIndex"],
+      "properties": {"assetId": {"$ref": "#/$defs/id"}, "slotIndex": {"type": "integer", "minimum": 1, "maximum": 9}, "soundtrackSlotIndex": {"type": "integer", "minimum": 1, "maximum": 3}}
+    },
+    "subjectStateSelection": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["subjectId", "policy"], "properties": {"subjectId": {"$ref": "#/$defs/id"}, "policy": {"const": "carry"}}},
+        {"type": "object", "additionalProperties": false, "required": ["subjectId", "policy", "stateId"], "properties": {"subjectId": {"$ref": "#/$defs/id"}, "policy": {"const": "explicit"}, "stateId": {"$ref": "#/$defs/id"}, "reason": {"$ref": "#/$defs/shortText"}}},
+        {"type": "object", "additionalProperties": false, "required": ["subjectId", "policy", "stateId", "reason"], "properties": {"subjectId": {"$ref": "#/$defs/id"}, "policy": {"const": "reset"}, "stateId": {"$ref": "#/$defs/id"}, "reason": {"$ref": "#/$defs/shortText"}}}
+      ]
+    },
+    "environmentStateSelection": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["environmentId", "policy", "viewIds"], "properties": {"environmentId": {"$ref": "#/$defs/id"}, "policy": {"const": "carry"}, "viewIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}}},
+        {"type": "object", "additionalProperties": false, "required": ["environmentId", "policy", "stateId", "viewIds"], "properties": {"environmentId": {"$ref": "#/$defs/id"}, "policy": {"const": "explicit"}, "stateId": {"$ref": "#/$defs/id"}, "viewIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}, "reason": {"$ref": "#/$defs/shortText"}}},
+        {"type": "object", "additionalProperties": false, "required": ["environmentId", "policy", "stateId", "viewIds", "reason"], "properties": {"environmentId": {"$ref": "#/$defs/id"}, "policy": {"const": "reset"}, "stateId": {"$ref": "#/$defs/id"}, "viewIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}, "reason": {"$ref": "#/$defs/shortText"}}}
+      ]
+    },
+    "generation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "order", "activation", "bindings", "subjectStates", "environmentStates"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "order": {"type": "integer", "minimum": 1, "maximum": 64}, "activation": {"$ref": "#/$defs/activation"},
+        "bindings": {"type": "array", "maxItems": 15, "items": {"$ref": "#/$defs/binding"}},
+        "subjectStates": {"type": "array", "items": {"$ref": "#/$defs/subjectStateSelection"}},
+        "environmentStates": {"type": "array", "items": {"$ref": "#/$defs/environmentStateSelection"}}
+      }
+    }
+  }
+}

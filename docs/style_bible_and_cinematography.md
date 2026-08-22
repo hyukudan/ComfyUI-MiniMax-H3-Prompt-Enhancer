@@ -1,6 +1,6 @@
 # Style Bible, Creative Treatments & Cinematography Guide
 
-This document provides the complete specification for the 131+ curated creative treatments, 13 cinematography dimensions, conflict resolution precedence, and the explicit shot-plan editor for MiniMax H3.
+This document provides the complete specification for 125 curated creative treatments, 13 cinematography dimensions, conflict resolution precedence, and the explicit shot-plan editor for MiniMax H3.
 
 ---
 
@@ -8,9 +8,9 @@ This document provides the complete specification for the 131+ curated creative 
 
 - [The Style Bible Architecture](#the-style-bible-architecture)
 - [How Styles are Expanded for the Diffusion Model](#how-styles-are-expanded-for-the-diffusion-model)
-- [Visual Language Catalog (53 Profiles)](#visual-language-catalog-53-profiles)
+- [Visual Language Catalog (61 Profiles)](#visual-language-catalog-61-profiles)
 - [World Aesthetic Catalog (20 Profiles)](#world-aesthetic-catalog-20-profiles)
-- [Emotional Tone Catalog (18 Profiles)](#emotional-tone-catalog-18-profiles)
+- [Mood Catalog (tone, 18 Profiles)](#mood-catalog-tone-18-profiles)
 - [Narrative Genre Catalog (12 Profiles)](#narrative-genre-catalog-12-profiles)
 - [Content Format Catalog (18 Profiles)](#content-format-catalog-18-profiles)
 - [13-Dimensional Cinematography Controls](#13-dimensional-cinematography-controls)
@@ -52,7 +52,9 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 
 ---
 
-## Visual Language Catalog (53 Profiles)
+## Visual Language Catalog (61 Profiles)
+
+Visual Language describes rendering and production vocabulary; it does not imply narrative Genre or scene-wide Mood. The Studio groups choices by broad family, era/technique, and variant. Names remain brand-safe: they describe periods and craft instead of studios, artists, franchises, or look-alike substitutes. Every profile carries a `must_not_invent` guard so the rendering choice cannot add its usual subject matter, plot, dialogue, or audio.
 
 | ID | Description |
 |---|---|
@@ -70,6 +72,15 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 | `anime_shonen` | Hand-authored 2D action anime with clean cel fills, decisive contours, model-sheet construction, and anticipation-action-impact rhythm. |
 | `anime_ultradetailed_cinematic` | High-density feature-animation layouts with exact perspective, deep multi-plane staging, and complex painted background transitions. |
 | `anime_retro_dramatic` | Serious 1970s–80s cel animation with angular facial lines, hard-edged shadow bands, and disciplined key poses. |
+| `vintage_rubberhose_2d` | Early theatrical ink-and-cel construction with rounded graphic forms, variable contours, and readable elastic spacing. |
+| `cable_angular_graphic_comedy` | Late-1990s-to-2000s angular television graphics with flat saturated shapes, selective replacement drawings, and dry holds. |
+| `contemporary_vector_2d` | Contemporary Bézier-authored animation with modular articulation, crisp scalable edges, controlled easing, and layered vector depth. |
+| `manga_monochrome_print` | Monochrome ink, screentone, hatching, and white-space composition adapted to stable moving illustration without page furniture. |
+| `anime_1960s70s_limited_cel` | Early Japanese television cel with a short palette, economical model sheets, purposeful body holds, and selective facial replacement. |
+| `mecha_super_robot_cel` | Classic mechanical cel vocabulary applied only when supplied machinery exists, with legible joints, bold silhouettes, and strict no-invention guards. |
+| `anime_ova_mechanical_detail` | 1980s OVA-like fine line hierarchy, multi-band cel shadows, material detail, and controlled high-detail redraws. |
+| `anime_1990s_broadcast_cel` | Late broadcast cel, warm telecined color, airbrushed background transitions, compact shadow bands, and economical replacement drawings. |
+| `anime_digital_compositing` | Contemporary digital anime linework, controlled gradients, painted layers, and restrained 2.5D parallax without gratuitous particles or glow. |
 | `pixel_art_16bit` | Native integer-grid pixel art with hard nearest-neighbor clusters, indexed palette, and grid-aligned motion. |
 | `stop_motion_handcrafted` | Physical handcrafted animation with miniature-scale optics, tactile clay/silicone/fabric textures, and replacement-like timing. |
 | `rotoscope_animation` | Animation traced over filmed live action: natural human weight under a boiling line with flat painted fills. |
@@ -78,7 +89,7 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 | `cel_shaded_3d` | Stable modeled 3D with clean two/three-band toon shading, attached outlines, and volumetric parallax. |
 | `clean_commercial` | Premium exposure, precise hierarchy, stable product geometry, and controlled specular highlights. |
 
-*(Includes 32 additional specialized profiles such as `tokusatsu_sentai`, `kaiju_suitmation`, `supermarionation`, `graphic_noir`, `low_poly_3d`, etc.)*
+*(Includes additional specialized profiles such as `tokusatsu_sentai`, `kaiju_suitmation`, `supermarionation`, `graphic_noir`, `low_poly_3d`, etc.)*
 
 ---
 
@@ -97,7 +108,9 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 
 ---
 
-## Emotional Tone Catalog (18 Profiles)
+## Mood Catalog (tone, 18 Profiles)
+
+Mood is scene-wide: it shapes staging, camera, light, performance, and mix without adding facts or dialogue. It is separate from **Delivery** and **Voice color**, which describe how one quoted line sounds in the node's prompt toolbar.
 
 `epic`, `intimate`, `dark`, `tense`, `hopeful`, `melancholic`, `playful`, `restrained`, `serene`, `eerie`, `whimsical`, `surreal`, `clinical`, `raw`, `kinetic`, `pulp_heightened`, `stoic`, `none`.
 
@@ -132,6 +145,8 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 | **`lens_effects`** | `clean`, `subtle_diffusion`, `restrained_halation` | Optical bloom and highlight halation. |
 | **`motion_rendering`**| `crisp`, `natural_blur`, `energetic_blur` | Shutter speed and motion blur emulation. |
 | **`shot_scale`** | `extreme_wide`, `wide`, `medium_wide`, `medium`, `medium_close_up`, `close_up`, `extreme_close_up` | Framing proximity. |
+
+Creative Treatment and Cinematography are authored as schema v2 documents. Their normative schemas are [`creative_treatment_v2.schema.json`](schemas/creative_treatment_v2.schema.json) and [`cinematography_v2.schema.json`](schemas/cinematography_v2.schema.json). The runtime accepts legacy v1 inputs for saved-workflow compatibility, normalizes them to v2 in memory, and never rewrites the source JSON.
 
 ---
 

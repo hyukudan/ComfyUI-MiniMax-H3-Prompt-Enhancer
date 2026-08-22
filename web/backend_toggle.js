@@ -1,5 +1,24 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import {
+    CINEMATOGRAPHY_WIDGET,
+    CREATIVE_PANEL_WIDGET,
+    CREATIVE_TREATMENT_WIDGET,
+    SHOT_PLAN_WIDGET,
+    STRUCTURED_SCHEMA_VERSIONS,
+    nativeStructuredDocumentView,
+} from "./studio/catalogs.js";
+import { hideCanonicalJsonWidget } from "./studio/storage_visibility.js";
+import {
+    closeStudioDrawer,
+    createPanelElement,
+    createStudioDashboard,
+    refreshStudioDrawer,
+} from "./studio/drawer.js";
+import { applySafeActionDocuments } from "./studio/coach_actions.js";
+import { effectiveH3Resolution, formatResolutionLabel } from "./studio/media_resolution.js";
+import { parseMediaProject } from "./studio/schema.js";
+import { getWidgetStore } from "./studio/widget_store.js";
 
 const NODE_NAME = "MiniMaxH3PromptEnhancer";
 const CREATIVE_NODE_NAMES = new Set([
@@ -97,7 +116,7 @@ const DISPLAY_LABELS = {
     voice_performance: "Voice performance",
     aspect_ratio: "Aspect ratio",
     visual_style_preset: "Visual style preset",
-    target_megapixels: "Target Megapixels (0.0 = auto)",
+    target_megapixels: "Resolution budget",
     media_manifest: "Media metadata JSON (optional)",
     multishot_shot_count: "Multishot count",
     frame_count: "Exact frames (0 = use duration)",
@@ -109,6 +128,9 @@ const DISPLAY_LABELS = {
     keep_server_loaded: "Keep local model loaded",
     show_advanced_controls: "Advanced settings",
     delivery_target: "Prompt delivery target",
+    always_re_enhance: "Re-enhance on every run",
+    editing_intent: "Editing intent (Ref2VA)",
+    lora_trigger_words: "LoRA trigger words",
 };
 const DISPLAY_PLACEHOLDERS = {
     basic_prompt: "Describe the video you want: subject, action, setting, camera, dialogue and sound…",
@@ -142,13 +164,16 @@ const DEFAULT_MULTILINE_HEIGHTS = {
     multishot_setting_lock: 110,
 };
 const FIELD_STYLE_ID = "minimax-h3-field-styles";
-const CREATIVE_TREATMENT_WIDGET = "creative_treatment_json";
-const SHOT_PLAN_WIDGET = "shot_plan_json";
-const CINEMATOGRAPHY_WIDGET = "cinematography_json";
-const CREATIVE_PANEL_WIDGET = "MiniMax H3 creative direction";
-const CREATIVE_SCHEMA_VERSION = 1;
-const SHOT_PLAN_SCHEMA_VERSION = 1;
-const CINEMATOGRAPHY_SCHEMA_VERSION = 1;
+const CREATIVE_SCHEMA_VERSION = STRUCTURED_SCHEMA_VERSIONS.creativeTreatment;
+const SHOT_PLAN_SCHEMA_VERSION = STRUCTURED_SCHEMA_VERSIONS.shotPlan;
+const CINEMATOGRAPHY_SCHEMA_VERSION = STRUCTURED_SCHEMA_VERSIONS.cinematography;
+const MEDIA_PROJECT_WIDGET = "media_manifest";
+const STUDIO_JSON_STORAGE_WIDGETS = new Set([
+    CREATIVE_TREATMENT_WIDGET,
+    SHOT_PLAN_WIDGET,
+    CINEMATOGRAPHY_WIDGET,
+    MEDIA_PROJECT_WIDGET,
+]);
 const MAX_SHOTS = 64;
 const DEFAULT_EXACT_SHOT_DURATION = 1;
 // Look presets live in the browser profile, not in the workflow: they are a
@@ -205,10 +230,19 @@ const CREATIVE_CHOICES = {
         ["anime_shojo_pastel", "Classic luminous shōjo anime"],
         ["anime_retro_dramatic", "Retro dramatic cel anime"],
         ["anime_retro_gag_family", "Retro family gag anime"],
+        ["manga_monochrome_print", "Classic monochrome manga print"],
+        ["anime_1960s70s_limited_cel", "1960s–70s limited cel anime"],
+        ["mecha_super_robot_cel", "Super-robot mecha cel"],
+        ["anime_ova_mechanical_detail", "1980s OVA mechanical detail"],
+        ["anime_1990s_broadcast_cel", "1990s broadcast cel anime"],
+        ["anime_digital_compositing", "Contemporary digital-compositing anime"],
         ["animation_2d", "General 2D animation"],
+        ["vintage_rubberhose_2d", "Vintage rubber-hose 2D"],
         ["heroic_limited_cel_tv", "Heroic limited cel television"],
         ["midcentury_graphic_cel_comedy", "Mid-century graphic cel comedy"],
         ["classic_morning_adventure_cel", "Classic morning adventure cel"],
+        ["cable_angular_graphic_comedy", "Cable-era angular graphic comedy"],
+        ["contemporary_vector_2d", "Contemporary vector animation"],
         ["painterly_2d", "Painterly 2D animation"],
         ["watercolor_2d", "Watercolor 2D animation"],
         ["gouache_2d", "Gouache 2D animation"],
@@ -290,7 +324,7 @@ const CREATIVE_CHOICES = {
         ["clinical", "Clinical"],
         ["raw", "Raw"],
         ["kinetic", "Kinetic"],
-        ["pulp_heightened", "Pulp heightened"],
+        ["pulp_heightened", "Heightened (pulp)"],
         ["stoic", "Stoic"],
     ],
     titleScreenStyle: [
@@ -306,9 +340,9 @@ const CREATIVE_CHOICES = {
     ],
 };
 const VISUAL_LANGUAGE_GROUPS = [
-    ["Anime", ["anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family"]],
-    ["Classic television cel", ["heroic_limited_cel_tv", "midcentury_graphic_cel_comedy", "classic_morning_adventure_cel"]],
-    ["Drawn & painted 2D", ["animation_2d", "painterly_2d", "watercolor_2d", "gouache_2d", "japanese_print_animation"]],
+    ["Anime", ["manga_monochrome_print", "japanese_print_animation", "anime_1960s70s_limited_cel", "anime_retro_dramatic", "anime_retro_gag_family", "mecha_super_robot_cel", "anime_ova_mechanical_detail", "anime_1990s_broadcast_cel", "anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo", "anime_shojo_pastel", "anime_digital_compositing"]],
+    ["Classic television cel", ["animation_2d", "vintage_rubberhose_2d", "heroic_limited_cel_tv", "midcentury_graphic_cel_comedy", "classic_morning_adventure_cel", "cable_angular_graphic_comedy", "contemporary_vector_2d"]],
+    ["Drawn & painted 2D", ["painterly_2d", "watercolor_2d", "gouache_2d"]],
     ["Graphic & pixel styles", ["american_comic_pastel", "graphic_novel", "graphic_noir", "pixel_art_16bit"]],
     ["3D animation", ["stylized_3d_animation", "cel_shaded_3d", "low_poly_3d"]],
     ["Game cinematics", ["game_3d_cinematic", "game_3d_nextgen"]],
@@ -376,8 +410,8 @@ const CREATIVE_FIELD_DEFINITIONS = [
     },
     {
         key: "tone",
-        label: "Tone",
-        title: "Guides intensity, composition, performance, and mix. It does not change facts, dialogue, or content.",
+        label: "Mood (tone)",
+        title: "Scene-wide mood: staging, camera, light, performance, mix. For how a spoken line sounds, use Delivery under the prompt.",
     },
     {
         key: "titleScreenStyle",
@@ -385,6 +419,12 @@ const CREATIVE_FIELD_DEFINITIONS = [
         title: "Styles only a title screen/card/intertitle explicitly requested in the Basic prompt. Quote the exact visible title text; this control never invents words or creates a title screen.",
     },
 ];
+const CREATIVE_NEUTRAL_VALUES = Object.freeze(Object.fromEntries(
+    CREATIVE_FIELD_DEFINITIONS.map(({ key }) => [key, "none"]),
+));
+const CINEMATOGRAPHY_NEUTRAL_VALUES = Object.freeze(Object.fromEntries(
+    CINEMATOGRAPHY_FIELDS.map(([key]) => [key, ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none"]),
+));
 
 function ensureFieldTitleStyles() {
     if (document.getElementById(FIELD_STYLE_ID)) return;
@@ -515,7 +555,7 @@ function ensureFieldTitleStyles() {
         .minimax-h3-setting-field > span {
             overflow: hidden;
             color: var(--descrip-text, #aaa);
-            font-size: 10.5px;
+            font-size: 11.5px;
             font-weight: 600;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -538,6 +578,40 @@ function ensureFieldTitleStyles() {
         .minimax-h3-setting-field textarea {
             min-height: 72px;
             resize: vertical;
+        }
+        .minimax-h3-resolution-budget {
+            padding: 7px;
+            border: 1px solid color-mix(in srgb, var(--border-color, #666) 72%, transparent);
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--comfy-input-bg, #222) 58%, transparent);
+        }
+        .minimax-h3-resolution-controls {
+            display: grid;
+            grid-template-columns: minmax(130px, 0.72fr) minmax(150px, 1fr);
+            gap: 7px;
+        }
+        .minimax-h3-resolution-subfield {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .minimax-h3-resolution-subfield > span,
+        .minimax-h3-resolution-effective-label {
+            color: var(--descrip-text, #aaa);
+            font-size: 11.5px;
+            font-weight: 600;
+        }
+        .minimax-h3-resolution-effective {
+            margin: 1px 0 0;
+            color: var(--input-text, #ddd);
+            font-variant-numeric: tabular-nums;
+        }
+        .minimax-h3-resolution-help {
+            margin: 0;
+            color: var(--descrip-text, #aaa);
+            font-size: 11px;
+            line-height: 1.35;
         }
         .minimax-h3-setting-toggle {
             display: flex;
@@ -581,7 +655,7 @@ function ensureFieldTitleStyles() {
         .minimax-h3-shot-summary {
             margin: 0;
             color: var(--descrip-text, #aaa);
-            font-size: 10.5px;
+            font-size: 11.5px;
             line-height: 1.35;
         }
         .minimax-h3-panel-status {
@@ -615,7 +689,7 @@ function ensureFieldTitleStyles() {
         .minimax-h3-timing-label {
             overflow: hidden;
             color: var(--descrip-text, #aaa);
-            font-size: 10.5px;
+            font-size: 11.5px;
             font-weight: 600;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -753,7 +827,7 @@ function ensureFieldTitleStyles() {
             display: none;
             margin: 0;
             color: var(--descrip-text, #aaa);
-            font-size: 10.5px;
+            font-size: 11.5px;
         }
         .minimax-h3-select-search-status[data-visible="true"] {
             display: block;
@@ -962,7 +1036,7 @@ function ensureFieldTitleStyles() {
         .minimax-h3-look-field > span {
             overflow: hidden;
             color: var(--descrip-text, #aaa);
-            font-size: 10.5px;
+            font-size: 11.5px;
             font-weight: 600;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -989,7 +1063,7 @@ function ensureFieldTitleStyles() {
             min-height: 64px;
             padding: 4px 6px;
             resize: vertical;
-            font-size: 10.5px;
+            font-size: 11.5px;
             line-height: 1.35;
         }
         .minimax-h3-look-transfer[hidden] {
@@ -1015,6 +1089,9 @@ function ensureFieldTitleStyles() {
             }
             .minimax-h3-settings-grid .minimax-h3-wide {
                 grid-column: auto;
+            }
+            .minimax-h3-resolution-controls {
+                grid-template-columns: minmax(0, 1fr);
             }
         }
     `;
@@ -1279,9 +1356,11 @@ function preservedCreativeValue(value, fallback = "none") {
     return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function sanitizeCreativeTreatment(value) {
+function sanitizeCreativeTreatment(value, { allowLegacy = false } = {}) {
     const parsed = parseJsonObject(value);
-    if (!parsed || parsed.schemaVersion !== CREATIVE_SCHEMA_VERSION) return defaultCreativeTreatment();
+    const supported = parsed?.schemaVersion === CREATIVE_SCHEMA_VERSION
+        || (allowLegacy && parsed?.schemaVersion === 1);
+    if (!supported) return defaultCreativeTreatment();
     return {
         schemaVersion: CREATIVE_SCHEMA_VERSION,
         contentFormat: preservedCreativeValue(parsed.contentFormat),
@@ -1317,10 +1396,13 @@ function allowedCinematographyValue(key, value) {
     return typeof value === "string" && values.includes(value) ? value : fallback;
 }
 
-function sanitizeCinematography(value) {
+function sanitizeCinematography(value, { allowLegacy = false } = {}) {
     const parsed = parseJsonObject(value);
-    if (!parsed || parsed.schemaVersion !== CINEMATOGRAPHY_SCHEMA_VERSION) return defaultCinematography();
-    const legacy = LEGACY_CAMERA_MOTIONS[parsed.cameraMotion] ?? null;
+    const isLegacy = allowLegacy && parsed?.schemaVersion === 1;
+    if (!parsed || (parsed.schemaVersion !== CINEMATOGRAPHY_SCHEMA_VERSION && !isLegacy)) {
+        return defaultCinematography();
+    }
+    const legacy = isLegacy ? (LEGACY_CAMERA_MOTIONS[parsed.cameraMotion] ?? null) : null;
     const state = { schemaVersion: CINEMATOGRAPHY_SCHEMA_VERSION };
     for (const [key] of CINEMATOGRAPHY_FIELDS) {
         state[key] = allowedCinematographyValue(key, legacy?.[key] ?? parsed[key]);
@@ -1444,6 +1526,31 @@ function serializeCinematography(state) {
     return JSON.stringify(result);
 }
 
+function importNativeStructuredSource(node, widgetName, raw) {
+    const source = parseJsonObject(raw);
+    if (!source) return { ok: false, message: "Expected a JSON object." };
+    if (![1, 2].includes(source.schemaVersion)) {
+        return { ok: false, message: "Only schemaVersion 1 or 2 can be imported here." };
+    }
+    let serialized;
+    if (widgetName === CREATIVE_TREATMENT_WIDGET) {
+        serialized = serializeCreativeTreatment(sanitizeCreativeTreatment(source, { allowLegacy: true }));
+    } else if (widgetName === CINEMATOGRAPHY_WIDGET) {
+        serialized = serializeCinematography(sanitizeCinematography(source, { allowLegacy: true }));
+    } else {
+        return { ok: false, message: "This structured source is not importable here." };
+    }
+    const widget = node.widgets?.find((candidate) => candidate.name === widgetName);
+    const store = structuredWidgetStore(node, widgetName);
+    if (!widget || !store) return { ok: false, message: "The target storage widget is unavailable." };
+    writeJsonStorage(node, widget, serialized);
+    store.hydrate(serialized);
+    hydrateCreativeDirectionPanel(node);
+    node.__minimaxStudioDashboard?.refresh();
+    refreshStudioDrawer(node.id);
+    return { ok: true, fromVersion: source.schemaVersion, schemaVersion: 2 };
+}
+
 function serializeShotPlan(state) {
     const sanitized = sanitizeShotPlan(JSON.stringify({
         schemaVersion: SHOT_PLAN_SCHEMA_VERSION,
@@ -1481,13 +1588,18 @@ function sanitizeLookEnvelope(value, fallbackName = "") {
     const name = normalizeLookName(parsed.name) || normalizeLookName(fallbackName);
     if (!name) return null;
     if (parsed.creativeTreatment === undefined && parsed.cinematography === undefined) return null;
+    for (const source of [parsed.creativeTreatment, parsed.cinematography]) {
+        if (source === undefined) continue;
+        const document = parseJsonObject(source);
+        if (!document || ![1, 2].includes(document.schemaVersion)) return null;
+    }
     const savedAt = Number(parsed.savedAt);
     return {
         name,
         schemaVersion: LOOK_SCHEMA_VERSION,
         savedAt: Number.isFinite(savedAt) && savedAt > 0 ? savedAt : Date.now(),
-        creativeTreatment: sanitizeCreativeTreatment(parsed.creativeTreatment),
-        cinematography: sanitizeCinematography(parsed.cinematography),
+        creativeTreatment: sanitizeCreativeTreatment(parsed.creativeTreatment, { allowLegacy: true }),
+        cinematography: sanitizeCinematography(parsed.cinematography, { allowLegacy: true }),
     };
 }
 
@@ -1547,7 +1659,7 @@ function lookEnvelopeFromNode(node, name) {
 
 function serializeLookEnvelope(envelope) {
     return JSON.stringify({
-        name: envelope?.name ?? "",
+        name: normalizeLookName(envelope?.name),
         schemaVersion: LOOK_SCHEMA_VERSION,
         creativeTreatment: sanitizeCreativeTreatment(envelope?.creativeTreatment),
         cinematography: sanitizeCinematography(envelope?.cinematography),
@@ -1555,24 +1667,15 @@ function serializeLookEnvelope(envelope) {
 }
 
 function hideJsonStorageWidget(widget) {
-    if (!widget) return;
-    if (!widget.__minimaxJsonStorageHidden) {
-        widget.__minimaxJsonStorageHidden = true;
-        widget.__minimaxJsonStorageComputeSize = widget.computeSize;
-    }
-    if (!widget.options) widget.options = {};
-    widget.hidden = true;
-    widget.options.hidden = true;
-    // Keep the original widget type and serialization contract intact. Only
-    // collapse its presentation; changing it to converted-widget can make API
-    // prompt serialization treat the value as a linked input.
-    widget.computeSize = () => [0, -4];
-    if (widget.inputEl?.style) widget.inputEl.style.display = "none";
-    if (widget.element?.style) widget.element.style.display = "none";
+    return hideCanonicalJsonWidget(widget);
 }
 
 function writeJsonStorage(node, widget, serializedValue) {
-    if (!widget || Object.is(widget.value, serializedValue)) return false;
+    if (!widget) return false;
+    if (Object.is(widget.value, serializedValue)) {
+        if (STUDIO_JSON_STORAGE_WIDGETS.has(widget.name)) hideJsonStorageWidget(widget);
+        return false;
+    }
     node.__minimaxWritingCreativeStorage = true;
     try {
         widget.value = serializedValue;
@@ -1581,10 +1684,63 @@ function writeJsonStorage(node, widget, serializedValue) {
         widget.callback?.(serializedValue);
     } finally {
         node.__minimaxWritingCreativeStorage = false;
+        if (STUDIO_JSON_STORAGE_WIDGETS.has(widget.name)) hideJsonStorageWidget(widget);
     }
     node.graph?.setDirtyCanvas?.(true, true);
     node.setDirtyCanvas?.(true, true);
+    if (node.__minimaxDiagnostics) node.__minimaxDiagnostics.stale = true;
+    node.__minimaxStudioDashboard?.refresh();
     return true;
+}
+
+function structuredWidgetStore(node, widgetName) {
+    return getWidgetStore(node, widgetName, {
+        supportedVersions: [1, 2],
+        allowLegacyBlankScalars: widgetName === SHOT_PLAN_WIDGET,
+    });
+}
+
+function nativeDocumentViewForWidget(widgetName, documentState) {
+    if (widgetName === CREATIVE_TREATMENT_WIDGET) {
+        return nativeStructuredDocumentView(documentState, CREATIVE_NEUTRAL_VALUES);
+    }
+    if (widgetName === CINEMATOGRAPHY_WIDGET) {
+        return nativeStructuredDocumentView(documentState, CINEMATOGRAPHY_NEUTRAL_VALUES);
+    }
+    return documentState;
+}
+
+function nativeStructuredDocumentIsEditable(store, widgetName) {
+    return ["blank", "v2"].includes(nativeDocumentViewForWidget(widgetName, store?.document)?.kind);
+}
+
+function nativeLookTargetsAreEditable(node) {
+    return [CREATIVE_TREATMENT_WIDGET, CINEMATOGRAPHY_WIDGET]
+        .every((widgetName) => nativeStructuredDocumentIsEditable(structuredWidgetStore(node, widgetName), widgetName));
+}
+
+function commitStructuredStorage(node, widgetName, serializedValue) {
+    const widget = node.widgets?.find((candidate) => candidate.name === widgetName);
+    const store = structuredWidgetStore(node, widgetName);
+    if (!widget || !store) return false;
+    return store.commit(serializedValue, (raw) => writeJsonStorage(node, widget, raw));
+}
+
+function commitNativeStructuredStorage(node, widgetName, serializedValue) {
+    const widget = node.widgets?.find((candidate) => candidate.name === widgetName);
+    const store = structuredWidgetStore(node, widgetName);
+    if (!widget || !store || !nativeStructuredDocumentIsEditable(store, widgetName)) return false;
+    if (["blank", "v2"].includes(store.document?.kind)) {
+        return store.commit(serializedValue, (raw) => writeJsonStorage(node, widget, raw));
+    }
+    // A semantically blank legacy scalar/v1 source is observational during
+    // hydration. Its first explicit edit replaces the exact raw source with v2.
+    const changed = writeJsonStorage(node, widget, serializedValue);
+    if (changed !== false) {
+        store.hydrate(serializedValue);
+        store.document.dirty = true;
+    }
+    return changed;
 }
 
 function markPanelWidgetNonPersistent(widget) {
@@ -1593,13 +1749,6 @@ function markPanelWidgetNonPersistent(widget) {
     if (!widget.options) widget.options = {};
     widget.options.serialize = false;
     widget.serializeValue = () => undefined;
-}
-
-function createPanelElement(tagName, className, textContent = "") {
-    const element = document.createElement(tagName);
-    if (className) element.className = className;
-    if (textContent) element.textContent = textContent;
-    return element;
 }
 
 function accordionState(node, key, fallback = false) {
@@ -1684,6 +1833,86 @@ function createWidgetProxy(node, name, label, { wide = false, multiline = false,
     return { field, control, widget };
 }
 
+function createResolutionBudgetControl(node) {
+    const widget = node.widgets?.find((candidate) => candidate.name === "target_megapixels");
+    if (!widget) return null;
+    const field = createPanelElement("div", "minimax-h3-setting-field minimax-h3-wide minimax-h3-resolution-budget");
+    field.appendChild(createPanelElement("span", "", "Resolution budget"));
+    const controls = createPanelElement("div", "minimax-h3-resolution-controls");
+    const modeField = createPanelElement("label", "minimax-h3-resolution-subfield");
+    modeField.appendChild(createPanelElement("span", "", "Sizing"));
+    const mode = createPanelElement("select", "");
+    addSelectOptions(mode, [["auto", "Auto"], ["custom", "Custom"]]);
+    mode.setAttribute("aria-label", "Resolution budget mode");
+    mode.title = "Auto follows the standard H3 dimensions for the selected aspect ratio. Custom targets a megapixel budget.";
+    modeField.appendChild(mode);
+    const customField = createPanelElement("label", "minimax-h3-resolution-subfield");
+    customField.appendChild(createPanelElement("span", "", "Custom budget (MP)"));
+    const custom = createPanelElement("input", "");
+    custom.type = "number";
+    custom.min = String(Math.max(0.05, Number(widget.options?.step) || 0.05));
+    custom.max = String(Number.isFinite(widget.options?.max) ? widget.options.max : 8);
+    custom.step = String(Number.isFinite(widget.options?.step) ? widget.options.step : 0.05);
+    custom.setAttribute("aria-label", "Custom resolution budget in megapixels");
+    custom.title = "Choose the approximate pixel budget. The effective aligned output is shown below.";
+    customField.appendChild(custom);
+    controls.append(modeField, customField);
+    const effectiveLabel = createPanelElement("span", "minimax-h3-resolution-effective-label", "Effective output");
+    const effective = createPanelElement("output", "minimax-h3-resolution-effective");
+    effective.setAttribute("aria-live", "polite");
+    effective.setAttribute("aria-atomic", "true");
+    const help = createPanelElement(
+        "p",
+        "minimax-h3-resolution-help",
+        "Auto uses the standard H3 size for the selected aspect ratio. Custom aims for an MP budget; final dimensions snap to 16-pixel steps.",
+    );
+    field.append(controls, effectiveLabel, effective, help);
+
+    const aspectRatio = () => String(node.widgets?.find((candidate) => candidate.name === "aspect_ratio")?.value ?? "auto");
+    const automaticBudget = () => effectiveH3Resolution(aspectRatio(), 0).megapixels;
+    const suggestedBudget = () => Math.max(0.05, Math.round(automaticBudget() * 100) / 100);
+    let lastCustom = Number(widget.value) > 0 ? Number(widget.value) : null;
+    const sync = () => {
+        const budget = Number(widget.value);
+        const automatic = !Number.isFinite(budget) || budget <= 0;
+        mode.value = automatic ? "auto" : "custom";
+        customField.classList.toggle("minimax-h3-section-hidden", automatic);
+        if (!automatic) {
+            lastCustom = budget;
+            custom.value = String(budget);
+        } else {
+            custom.value = String(lastCustom ?? suggestedBudget());
+        }
+        effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), automatic ? 0 : budget));
+    };
+    mode.addEventListener("change", () => {
+        if (mode.value === "auto") {
+            const current = Number(widget.value);
+            if (Number.isFinite(current) && current > 0) lastCustom = current;
+            setCanonicalValue(node, widget, 0);
+        } else {
+            const minimum = Number(custom.min) || 0.05;
+            const next = Number.isFinite(lastCustom) && lastCustom > 0 ? lastCustom : Math.max(minimum, suggestedBudget());
+            setCanonicalValue(node, widget, Math.max(minimum, next));
+        }
+        sync();
+    });
+    custom.addEventListener("change", () => {
+        const minimum = Number(custom.min) || 0.05;
+        const maximum = Number(custom.max) || 8;
+        const requested = Number(custom.value);
+        const fallback = Number.isFinite(lastCustom) && lastCustom > 0
+            ? lastCustom
+            : Math.max(minimum, suggestedBudget());
+        const next = Number.isFinite(requested) ? Math.min(maximum, Math.max(minimum, requested)) : fallback;
+        lastCustom = next;
+        setCanonicalValue(node, widget, next);
+        sync();
+    });
+    sync();
+    return { field, control: custom, modeControl: mode, effective, widget, sync };
+}
+
 function appendProxy(grid, proxy) {
     if (proxy?.field) grid.appendChild(proxy.field);
     return proxy;
@@ -1691,6 +1920,10 @@ function appendProxy(grid, proxy) {
 
 function syncWidgetProxy(proxy) {
     if (!proxy?.control || !proxy?.widget) return;
+    if (typeof proxy.sync === "function") {
+        proxy.sync();
+        return;
+    }
     if (proxy.control.type === "checkbox") proxy.control.checked = Boolean(proxy.widget.value);
     else proxy.control.value = String(proxy.widget.value ?? "");
 }
@@ -1698,7 +1931,7 @@ function syncWidgetProxy(proxy) {
 function syncSettingsPanelProxies(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel) return;
-    for (const section of [panel.modelSetup, panel.chainedSettings, panel.advancedSettings]) {
+    for (const section of [panel.audioSettings, panel.modelSetup, panel.chainedSettings, panel.advancedSettings]) {
         for (const proxy of Object.values(section?.proxies ?? {})) syncWidgetProxy(proxy);
     }
     if (panel.modelSetup?.backendControl) {
@@ -1706,7 +1939,9 @@ function syncSettingsPanelProxies(node) {
             ? "remote" : "local";
         panel.modelSetup.updateBackend?.();
     }
+    panel.audioSettings?.refreshSummary?.();
     panel.advancedSettings?.refreshSummary?.();
+    panel.advancedSettings?.updateVisibility?.();
 }
 
 function addSelectOptions(select, choices) {
@@ -1716,147 +1951,6 @@ function addSelectOptions(select, choices) {
         option.textContent = label;
         select.appendChild(option);
     }
-}
-
-function addVisualLanguageOptions(select, visibleValues = null) {
-    const labels = new Map(CREATIVE_CHOICES.visualLanguage);
-    addSelectOptions(select, [["none", labels.get("none")]]);
-    for (const [groupLabel, values] of VISUAL_LANGUAGE_GROUPS) {
-        const visible = visibleValues ? values.filter((value) => visibleValues.has(value)) : values;
-        if (!visible.length) continue;
-        const group = document.createElement("optgroup");
-        group.label = groupLabel;
-        addSelectOptions(group, visible.map((value) => [value, labels.get(value)]));
-        select.appendChild(group);
-    }
-}
-
-function normalizedSearchText(value) {
-    return String(value ?? "")
-        .normalize("NFKD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[_-]+/g, " ")
-        .toLocaleLowerCase();
-}
-
-function createVisualLanguageSearch(node, select, label) {
-    const container = createPanelElement("div", "minimax-h3-searchable-select");
-    const trigger = createPanelElement("button", "minimax-h3-searchable-select-trigger");
-    trigger.type = "button";
-    trigger.setAttribute("role", "combobox");
-    trigger.setAttribute("aria-haspopup", "listbox");
-    trigger.setAttribute("aria-expanded", "false");
-    const popover = createPanelElement("div", "minimax-h3-searchable-select-popover");
-    popover.hidden = true;
-    const search = createPanelElement("div", "minimax-h3-select-search");
-    const icon = createPanelElement("span", "minimax-h3-select-search-icon", "🔍");
-    icon.setAttribute("aria-hidden", "true");
-    const input = createPanelElement("input", "");
-    input.type = "search";
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    input.placeholder = "Search visual styles…";
-    input.setAttribute("aria-label", `Search ${label}`);
-    const list = createPanelElement("div", "minimax-h3-searchable-select-options");
-    list.id = `${select.id}-options`;
-    list.setAttribute("role", "listbox");
-    input.setAttribute("aria-controls", list.id);
-    trigger.setAttribute("aria-controls", list.id);
-    const clear = createPanelElement("button", "minimax-h3-select-search-clear", "×");
-    clear.type = "button";
-    clear.disabled = true;
-    clear.title = "Clear style search";
-    clear.setAttribute("aria-label", "Clear visual style search");
-    const status = createPanelElement("p", "minimax-h3-select-search-status");
-    status.setAttribute("aria-live", "polite");
-    search.append(icon, input, clear);
-
-    const labels = new Map(CREATIVE_CHOICES.visualLanguage);
-    const groups = new Map(VISUAL_LANGUAGE_GROUPS.flatMap(([group, values]) => (
-        values.map((value) => [value, group])
-    )));
-    const searchable = CREATIVE_CHOICES.visualLanguage.slice(1).map(([value, choiceLabel]) => ({
-        value,
-        text: normalizedSearchText(`${choiceLabel} ${value} ${groups.get(value) ?? ""}`),
-    }));
-
-    const render = (selectedValue = select.value || "none") => {
-        const terms = normalizedSearchText(input.value).trim().split(/\s+/).filter(Boolean);
-        const matches = searchable.filter(({ text }) => terms.every((term) => text.includes(term)));
-        const visibleValues = new Set(matches.map(({ value }) => value));
-        trigger.textContent = `${labels.get(selectedValue) ?? `Unavailable — ${selectedValue}`}  ▾`;
-        list.replaceChildren();
-        const addChoice = (value) => {
-            const option = createPanelElement("button", "minimax-h3-searchable-select-option", labels.get(value));
-            option.type = "button";
-            option.dataset.value = value;
-            option.setAttribute("role", "option");
-            option.setAttribute("aria-selected", value === selectedValue ? "true" : "false");
-            option.addEventListener("click", () => {
-                select.value = value;
-                select.dispatchEvent(new Event("change", { bubbles: true }));
-                render(value);
-                close();
-                trigger.focus();
-            });
-            list.appendChild(option);
-        };
-        if (!terms.length || normalizedSearchText(labels.get("none")).includes(terms.join(" "))) addChoice("none");
-        for (const [groupLabel, values] of VISUAL_LANGUAGE_GROUPS) {
-            const visible = values.filter((value) => visibleValues.has(value));
-            if (!visible.length) continue;
-            list.appendChild(createPanelElement("div", "minimax-h3-searchable-select-group", groupLabel));
-            visible.forEach(addChoice);
-        }
-        clear.disabled = !input.value;
-        const noMatches = terms.length > 0 && !list.querySelector("[role='option']");
-        status.textContent = noMatches ? "No matching styles. Clear the search to browse all styles." : "";
-        status.dataset.visible = noMatches ? "true" : "false";
-        scheduleCreativePanelLayout(node);
-    };
-    const open = () => {
-        popover.hidden = false;
-        trigger.setAttribute("aria-expanded", "true");
-        input.value = "";
-        render();
-        input.focus();
-    };
-    const close = () => {
-        popover.hidden = true;
-        trigger.setAttribute("aria-expanded", "false");
-        scheduleCreativePanelLayout(node);
-    };
-    const clearSearch = () => {
-        if (!input.value) return;
-        input.value = "";
-        render();
-        input.focus();
-    };
-    input.addEventListener("input", () => render());
-    input.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            if (input.value) clearSearch();
-            else {
-                close();
-                trigger.focus();
-            }
-        } else if (event.key === "ArrowDown" || event.key === "Enter") {
-            event.preventDefault();
-            list.querySelector("[role='option']")?.focus();
-        }
-    });
-    clear.addEventListener("click", clearSearch);
-    trigger.addEventListener("click", () => popover.hidden ? open() : close());
-    container.addEventListener("focusout", () => setTimeout(() => {
-        if (!container.contains(document.activeElement)) close();
-    }, 0));
-    popover.append(search, status, list);
-    container.append(trigger, popover);
-    select.hidden = true;
-    select.setAttribute("aria-hidden", "true");
-    render();
-    return { container, status, trigger, popover, sync: render };
 }
 
 function ensureUnavailableOption(select, value) {
@@ -1918,6 +2012,7 @@ function installCreativePanelCollapseGuard(node) {
     node.collapse = function () {
         const result = originalCollapse?.apply(this, arguments);
         syncCreativePanelSuspension(this);
+        if (this.flags?.collapsed) closeStudioDrawer(this.id);
         return result;
     };
     const originalConfigure = node.onConfigure;
@@ -1934,6 +2029,10 @@ function updateCreativePanelHeight(node) {
     if (!panel) return;
     syncCreativePanelSuspension(node);
     let preferredHeight = 12;
+    for (const child of panel.root.children) {
+        if (child.tagName === "DETAILS" || child.classList.contains("minimax-h3-section-hidden")) continue;
+        preferredHeight += Math.max(0, child.scrollHeight ?? 0) + 8;
+    }
     for (const details of panel.root.querySelectorAll(":scope > details")) {
         if (details.classList.contains("minimax-h3-section-hidden")) continue;
         const body = details.querySelector(":scope > .minimax-h3-panel-body");
@@ -1975,6 +2074,7 @@ function observeCreativePanelLayout(node) {
 }
 
 function releaseCreativeDirectionPanel(node) {
+    closeStudioDrawer(node.id);
     node.__minimaxPanelResizeObserver?.disconnect?.();
     node.__minimaxPanelResizeObserver = null;
     const panel = node.__minimaxCreativePanel;
@@ -1998,6 +2098,8 @@ function releaseCreativeDirectionPanel(node) {
     node.__minimaxProxyManagedWidgets = null;
     node.__minimaxInstrumentalStyleProxy = null;
     node.__minimaxCreativeLayoutPending = false;
+    node.__minimaxStudioController = null;
+    node.__minimaxStudioDashboard = null;
 }
 
 function installCreativePanelCleanup(node) {
@@ -2018,6 +2120,16 @@ function updateCreativePanelMode(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel) return;
     const chained = node.widgets?.find((widget) => widget.name === "mode")?.value === "chained_multishot";
+    panel.advancedSettings?.updateVisibility?.();
+    if (panel.compactOnly) {
+        if (panel.chainedSettings) {
+            panel.chainedSettings.details.classList.toggle("minimax-h3-section-hidden", !chained);
+            const count = Number(node.widgets?.find((widget) => widget.name === "multishot_shot_count")?.value ?? 0);
+            panel.chainedSettings.summary.textContent = `Chained multishot · ${count > 0 ? `${count} segments` : "Automatic count"}`;
+        }
+        updateCreativePanelHeight(node);
+        return;
+    }
     panel.addShotButton.textContent = chained ? "+ Add independent segment" : "+ Add shot";
     panel.addShotButton.title = panel.addShotButton.disabled
         ? `Limit reached: ${MAX_SHOTS} rows.`
@@ -2044,6 +2156,10 @@ function handleCreativePanelModeChange(node) {
     const currentMode = String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto");
     const previousMode = node.__minimaxCreativePanelMode;
     node.__minimaxCreativePanelMode = currentMode;
+    if (node.__minimaxCreativePanel?.compactOnly) {
+        updateCreativePanelMode(node);
+        return;
+    }
     if (previousMode !== undefined && previousMode !== currentMode
         && node.__minimaxShotPlanState?.timingMode === "exact") {
         rebalanceExactDurations(node);
@@ -2056,6 +2172,7 @@ function handleCreativePanelModeChange(node) {
 }
 
 function handleEffectiveDurationChange(node) {
+    if (node.__minimaxCreativePanel?.compactOnly) return;
     if (node.__minimaxShotPlanState?.timingMode !== "exact") return;
     rebalanceExactDurations(node);
     commitShotPlan(node);
@@ -2065,6 +2182,7 @@ function handleEffectiveDurationChange(node) {
 function updateCreativePanelEnhancementState(node) {
     const panel = node.__minimaxCreativePanel;
     if (!panel) return;
+    if (panel.compactOnly) return;
     const widgetValue = node.widgets?.find((widget) => widget.name === "creative_latitude")?.value;
     const enabled = widgetValue === undefined || widgetValue !== "conservative_grounded";
     panel.treatmentBody.classList.toggle("minimax-h3-treatment-disabled", !enabled);
@@ -2074,6 +2192,10 @@ function updateCreativePanelEnhancementState(node) {
         return known ? [] : [`${label}: ${value}`];
     });
     const messages = [];
+    const document = node.__minimaxStructuredDocuments?.[CREATIVE_TREATMENT_WIDGET];
+    if (document && ["malformed", "future"].includes(document.kind)) {
+        messages.push(`Raw creative treatment is ${document.kind} and is read-only; its exact JSON is preserved.`);
+    }
     if (!enabled) messages.push("Treatment is saved but will not be applied while Enhance description is disabled.");
     if (unavailable.length) {
         messages.push(`Unavailable in the loaded catalog (${unavailable.join(", ")}). Restart/update ComfyUI or choose a replacement.`);
@@ -2083,15 +2205,23 @@ function updateCreativePanelEnhancementState(node) {
 }
 
 function commitCreativeTreatment(node) {
-    const widget = node.widgets?.find((candidate) => candidate.name === CREATIVE_TREATMENT_WIDGET);
-    writeJsonStorage(node, widget, serializeCreativeTreatment(node.__minimaxCreativeTreatmentState));
-    updateCreativeTreatmentSummary(node);
+    const committed = commitNativeStructuredStorage(
+        node,
+        CREATIVE_TREATMENT_WIDGET,
+        serializeCreativeTreatment(node.__minimaxCreativeTreatmentState),
+    );
+    if (committed !== false) updateCreativeTreatmentSummary(node);
+    return committed;
 }
 
 function commitCinematography(node) {
-    const widget = node.widgets?.find((candidate) => candidate.name === CINEMATOGRAPHY_WIDGET);
-    writeJsonStorage(node, widget, serializeCinematography(node.__minimaxCinematographyState));
-    updateCinematographySummary(node);
+    const committed = commitNativeStructuredStorage(
+        node,
+        CINEMATOGRAPHY_WIDGET,
+        serializeCinematography(node.__minimaxCinematographyState),
+    );
+    if (committed !== false) updateCinematographySummary(node);
+    return committed;
 }
 
 // Both halves go through the same canonical write path the selects use
@@ -2106,36 +2236,19 @@ function applyLookEnvelope(node, envelope) {
     // Applied verbatim: serializeCreativeTreatment preserves values that this
     // build's catalog does not know, so hydration can flag them through
     // ensureUnavailableOption instead of silently rewriting the workflow.
-    writeJsonStorage(node, creativeWidget, serializeCreativeTreatment(envelope.creativeTreatment));
-    writeJsonStorage(node, cinematographyWidget, serializeCinematography(envelope.cinematography));
+    if (!nativeLookTargetsAreEditable(node)) return false;
+    commitNativeStructuredStorage(
+        node,
+        CREATIVE_TREATMENT_WIDGET,
+        serializeCreativeTreatment(envelope.creativeTreatment),
+    );
+    commitNativeStructuredStorage(
+        node,
+        CINEMATOGRAPHY_WIDGET,
+        serializeCinematography(envelope.cinematography),
+    );
     hydrateCreativeDirectionPanel(node);
     return true;
-}
-
-function setLookStatus(node, message, invalid = false) {
-    const status = node.__minimaxCreativePanel?.looks?.status;
-    if (!status) return;
-    status.textContent = message ?? "";
-    status.dataset.visible = message ? "true" : "false";
-    status.dataset.invalid = invalid ? "true" : "false";
-    scheduleCreativePanelLayout(node);
-}
-
-function refreshLookPresets(node) {
-    const looks = node.__minimaxCreativePanel?.looks;
-    if (!looks) return {};
-    const presets = readLookPresets();
-    const names = sortedLookNames(presets);
-    const previous = looks.select.value;
-    looks.select.replaceChildren();
-    if (names.length) addSelectOptions(looks.select, names.map((name) => [name, name]));
-    else addSelectOptions(looks.select, [["", "No saved looks yet"]]);
-    looks.select.value = names.includes(previous) ? previous : (names[0] ?? "");
-    looks.select.disabled = !names.length;
-    looks.applyButton.disabled = !names.length;
-    looks.deleteButton.disabled = !names.length;
-    looks.summary.textContent = `Looks · ${names.length ? `${names.length} saved` : "None saved"}`;
-    return presets;
 }
 
 function randomFrom(values) {
@@ -2180,20 +2293,15 @@ function exploreLookEnvelope(node, { includeCinematography = false } = {}) {
     };
 }
 
-function runCreativeExplore(node, fullCinematography) {
-    applyLookEnvelope(node, exploreLookEnvelope(node, { includeCinematography: fullCinematography }));
-    setLookStatus(
-        node,
-        fullCinematography
-            ? "Explore · new creative direction and full cinematography. The shot plan was left untouched."
-            : "Explore · new creative direction and color palette. Shift-click to also roll the cinematography.",
-    );
-}
-
 function updateCinematographySummary(node) {
     const panel = node.__minimaxCreativePanel;
     const state = node.__minimaxCinematographyState;
     if (!panel?.cinematographySummary || !state) return;
+    const document = node.__minimaxStructuredDocuments?.[CINEMATOGRAPHY_WIDGET];
+    if (document && ["malformed", "future"].includes(document.kind)) {
+        panel.cinematographySummary.textContent = `Cinematography · ${document.kind} raw JSON preserved`;
+        return;
+    }
     const active = CINEMATOGRAPHY_FIELDS
         .map(([key]) => [key, state[key]])
         .filter(([key, value]) => !(["cameraAmplitude", "cameraSpeed"].includes(key) ? value === "auto" : value === "none"))
@@ -2214,7 +2322,7 @@ function updateCinematographySummary(node) {
 function updateCreativeTreatmentSummary(node) {
     const panel = node.__minimaxCreativePanel;
     const state = node.__minimaxCreativeTreatmentState;
-    if (!panel || !state) return;
+    if (!panel?.treatmentSummary || !state) return;
     const active = CREATIVE_FIELD_DEFINITIONS
         .map(({ key }) => [key, state[key]])
         .filter(([, value]) => value && value !== "none")
@@ -2229,15 +2337,21 @@ function updateCreativeTreatmentSummary(node) {
 }
 
 function commitShotPlan(node) {
-    const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
     const serialized = serializeShotPlan(node.__minimaxShotPlanState);
-    writeJsonStorage(node, widget, serialized);
+    commitStructuredStorage(node, SHOT_PLAN_WIDGET, serialized);
 }
 
 function updateShotSummary(node) {
     const panel = node.__minimaxCreativePanel;
     const state = node.__minimaxShotPlanState;
     if (!panel || !state) return;
+    const document = node.__minimaxStructuredDocuments?.[SHOT_PLAN_WIDGET];
+    if (document && ["malformed", "future"].includes(document.kind)) {
+        panel.shotSummaryLabel.textContent = `Shot plan · ${document.kind}`;
+        panel.shotSummary.dataset.invalid = "true";
+        panel.shotSummary.textContent = "The raw JSON is read-only and has been preserved without changes.";
+        return;
+    }
     const count = state.shots.length;
     if (!count) {
         panel.shotSummaryLabel.textContent = node.widgets?.find((widget) => widget.name === "mode")?.value === "chained_multishot"
@@ -2489,20 +2603,67 @@ function hydrateCreativeDirectionPanel(node) {
     const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
     const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
     const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
+    const mediaProjectWidget = node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET);
     if (!creativeWidget || !shotWidget || !cinematographyWidget) return;
 
     hideJsonStorageWidget(creativeWidget);
     hideJsonStorageWidget(shotWidget);
     hideJsonStorageWidget(cinematographyWidget);
-    const creative = sanitizeCreativeTreatment(creativeWidget.value);
-    const shots = sanitizeShotPlan(shotWidget.value);
-    const cinematography = sanitizeCinematography(cinematographyWidget.value);
+    hideJsonStorageWidget(mediaProjectWidget);
+    const creativeDocument = nativeDocumentViewForWidget(
+        CREATIVE_TREATMENT_WIDGET,
+        structuredWidgetStore(node, CREATIVE_TREATMENT_WIDGET).hydrate(creativeWidget.value),
+    );
+    const shotDocument = structuredWidgetStore(node, SHOT_PLAN_WIDGET).hydrate(shotWidget.value);
+    const cinematographyDocument = nativeDocumentViewForWidget(
+        CINEMATOGRAPHY_WIDGET,
+        structuredWidgetStore(node, CINEMATOGRAPHY_WIDGET).hydrate(cinematographyWidget.value),
+    );
+    const creative = creativeDocument.kind === "v2"
+        ? sanitizeCreativeTreatment(creativeDocument.value)
+        : defaultCreativeTreatment();
+    const shots = shotDocument.kind === "v1"
+        ? sanitizeShotPlan(shotDocument.value)
+        : defaultShotPlan();
+    const cinematography = cinematographyDocument.kind === "v2"
+        ? sanitizeCinematography(cinematographyDocument.value)
+        : defaultCinematography();
     node.__minimaxCreativeTreatmentState = creative;
     node.__minimaxShotPlanState = shots;
     node.__minimaxCinematographyState = cinematography;
-    writeJsonStorage(node, creativeWidget, serializeCreativeTreatment(creative));
-    writeJsonStorage(node, shotWidget, JSON.stringify(shots));
-    writeJsonStorage(node, cinematographyWidget, serializeCinematography(cinematography));
+    node.__minimaxStructuredDocuments = {
+        [CREATIVE_TREATMENT_WIDGET]: creativeDocument,
+        [SHOT_PLAN_WIDGET]: shotDocument,
+        [CINEMATOGRAPHY_WIDGET]: cinematographyDocument,
+    };
+    if (panel.compactOnly) {
+        syncSettingsPanelProxies(node);
+        node.__minimaxCreativePanelMode = String(
+            node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto",
+        );
+        updateCreativePanelMode(node);
+        return;
+    }
+    const creativeReadOnly = !structuredWidgetStore(node, CREATIVE_TREATMENT_WIDGET).canEdit();
+    // The compact legacy row editor owns v1 only. Prompt Studio owns v2; keeping
+    // this panel inert prevents an old row edit from downgrading a v2 plan.
+    const shotsReadOnly = !["blank", "v1"].includes(shotDocument.kind);
+    const cinematographyReadOnly = !structuredWidgetStore(node, CINEMATOGRAPHY_WIDGET).canEdit();
+    panel.treatmentBody.inert = creativeReadOnly;
+    panel.cinematographyBody.inert = cinematographyReadOnly;
+    panel.shotBody.inert = shotsReadOnly;
+    panel.treatmentDetails.dataset.structuredState = creativeDocument.kind;
+    panel.cinematographyDetails.dataset.structuredState = cinematographyDocument.kind;
+    panel.shotDetails.dataset.structuredState = shotDocument.kind;
+    panel.treatmentDetails.title = creativeReadOnly
+        ? `Raw ${CREATIVE_TREATMENT_WIDGET} is ${creativeDocument.kind} and has been preserved without changes.`
+        : panel.treatmentSummary.title;
+    panel.cinematographyDetails.title = cinematographyReadOnly
+        ? `Raw ${CINEMATOGRAPHY_WIDGET} is ${cinematographyDocument.kind} and has been preserved without changes.`
+        : "";
+    panel.shotDetails.title = shotsReadOnly
+        ? `Raw ${SHOT_PLAN_WIDGET} is ${shotDocument.kind} and has been preserved without changes.`
+        : "";
     for (const definition of CREATIVE_FIELD_DEFINITIONS) {
         ensureUnavailableOption(panel.creativeSelects[definition.key], creative[definition.key]);
         const filter = panel.creativeFilters?.[definition.key];
@@ -2683,43 +2844,47 @@ function createChainedSettingsDetails(node) {
     return { details, summary, body, canonicalNames, proxies };
 }
 
-function createAdvancedSettingsDetails(node) {
+function createAudioSettingsDetails(node) {
     const fields = [
-        ["temperature", "Temperature"],
-        ["max_tokens", "Maximum output tokens"],
-        ["timeout_seconds", "Request timeout"],
-        ["request_timeout", "Request timeout"],
-        ["repair_attempts", "Repair attempts"],
-        ["delivery_target", "Prompt delivery target"],
-        ["disable_thinking", "Disable model thinking", { wide: true }],
-        ["frame_count", "Exact frames (0 = use duration)"],
-        ["media_manifest", "Media metadata JSON", { wide: true, multiline: true }],
+        ["ambience_foley_policy", "Scene sounds"],
+        ["background_score_policy", "Background score"],
+        ["instrumental_style", "Music genre / style"],
+        ["instrumental_description", "Instrumental description", { wide: true, multiline: true }],
+        ["voice_performance", "Voice performance"],
+        ["acoustic_space", "Acoustic space"],
+        ["dialogue_coverage", "Dialogue coverage"],
+        ["dialogue_language", "Dialogue language"],
     ];
     const available = fields.filter(([name]) => node.widgets?.some((widget) => widget.name === name));
     if (!available.length) return null;
-    const details = createPanelElement("details", "minimax-h3-advanced-details");
-    details.open = accordionState(node, "advancedSettings")
-        || node.widgets?.find((widget) => widget.name === "show_advanced_controls")?.value === true;
-    const summary = createPanelElement("summary", "", "Advanced settings · Defaults");
+    const details = createPanelElement("details", "minimax-h3-audio-details");
+    details.open = accordionState(node, "audioSettings");
+    const summary = createPanelElement("summary", "", "Audio · Defaults");
     const body = createPanelElement("div", "minimax-h3-panel-body");
-    const help = createPanelElement("p", "minimax-h3-panel-help", "Exact timing, structured media metadata, and language-model tuning. Most workflows can keep these defaults.");
+    const help = createPanelElement("p", "minimax-h3-panel-help", "Scene sound, score, dialogue framing and voice performance. These controls never invent a sound source or spoken line.");
     const grid = createPanelElement("div", "minimax-h3-settings-grid");
-    const canonicalNames = ["show_advanced_controls"];
+    const canonicalNames = [];
     const proxies = {};
     for (const [name, label, options] of available) {
         const proxy = appendProxy(grid, createWidgetProxy(node, name, label, options));
-        if (proxy) {
-            canonicalNames.push(name);
-            proxies[name] = proxy;
-        }
+        if (!proxy) continue;
+        canonicalNames.push(name);
+        proxies[name] = proxy;
     }
     const refreshSummary = () => {
-        const frames = Number(node.widgets?.find((widget) => widget.name === "frame_count")?.value ?? 0);
-        const manifest = String(node.widgets?.find((widget) => widget.name === "media_manifest")?.value ?? "").trim();
+        const value = (name) => node.widgets?.find((widget) => widget.name === name)?.value;
         const active = [];
-        if (frames > 0) active.push(`Exact frames: ${frames}`);
-        if (manifest) active.push("Media metadata active");
-        summary.textContent = `Advanced settings · ${active.length ? active.join(" · ") : "Defaults"}`;
+        if (value("ambience_foley_policy") && value("ambience_foley_policy") !== "auto") active.push("scene sounds");
+        if (value("background_score_policy") && value("background_score_policy") !== "follow_prompt") active.push("score");
+        if (value("voice_performance") && value("voice_performance") !== "audible") active.push("voice");
+        if (value("acoustic_space") && value("acoustic_space") !== "none") active.push("space");
+        if (value("dialogue_coverage") === "on") active.push("dialogue framing");
+        summary.textContent = `Audio · ${active.length ? active.join(" · ") : "Defaults"}`;
+        const scoreEnabled = value("background_score_policy") === "add_instrumental";
+        for (const name of ["instrumental_style", "instrumental_description"]) {
+            proxies[name]?.field.classList.toggle("minimax-h3-section-hidden", !scoreEnabled);
+        }
+        updateCreativePanelHeight(node);
     };
     grid.addEventListener("input", refreshSummary);
     grid.addEventListener("change", refreshSummary);
@@ -2729,428 +2894,296 @@ function createAdvancedSettingsDetails(node) {
     return { details, summary, body, canonicalNames, proxies, refreshSummary };
 }
 
+function createAdvancedSettingsDetails(node) {
+    const fields = [
+        ["target_megapixels", "Resolution budget"],
+        ["frame_count", "Exact frames (0 = use duration)"],
+        ["always_re_enhance", "Re-enhance on every run", { wide: true }],
+        ["editing_intent", "Editing intent (Ref2VA)"],
+        ["lora_trigger_words", "LoRA trigger words", { wide: true }],
+        ["reference_context", "Reference notes", { wide: true, multiline: true }],
+        ["delivery_target", "Prompt delivery target"],
+        ["temperature", "Temperature"],
+        ["max_tokens", "Maximum output tokens"],
+        ["timeout_seconds", "Request timeout"],
+        ["request_timeout", "Request timeout"],
+        ["repair_attempts", "Repair attempts"],
+        ["disable_thinking", "Disable model thinking", { wide: true }],
+    ];
+    const available = fields.filter(([name]) => node.widgets?.some((widget) => widget.name === name));
+    if (!available.length) return null;
+    const details = createPanelElement("details", "minimax-h3-advanced-details");
+    details.open = accordionState(node, "advancedSettings")
+        || node.widgets?.find((widget) => widget.name === "show_advanced_controls")?.value === true;
+    const summary = createPanelElement("summary", "", "Advanced settings · Defaults");
+    const body = createPanelElement("div", "minimax-h3-panel-body");
+    const help = createPanelElement("p", "minimax-h3-panel-help", "Output sizing, Ref2VA editing, verbatim LoRA triggers and language-model tuning. Most workflows can keep these defaults.");
+    const grid = createPanelElement("div", "minimax-h3-settings-grid");
+    const canonicalNames = ["show_advanced_controls"];
+    const proxies = {};
+    for (const [name, label, options] of available) {
+        const proxy = appendProxy(grid, name === "target_megapixels"
+            ? createResolutionBudgetControl(node)
+            : createWidgetProxy(node, name, label, options));
+        if (proxy) {
+            canonicalNames.push(name);
+            proxies[name] = proxy;
+        }
+    }
+    const refreshSummary = () => {
+        const frames = Number(node.widgets?.find((widget) => widget.name === "frame_count")?.value ?? 0);
+        const megapixels = Number(node.widgets?.find((widget) => widget.name === "target_megapixels")?.value ?? 0);
+        const aspectRatio = String(node.widgets?.find((widget) => widget.name === "aspect_ratio")?.value ?? "auto");
+        const editingIntent = String(node.widgets?.find((widget) => widget.name === "editing_intent")?.value ?? "none");
+        const triggers = String(node.widgets?.find((widget) => widget.name === "lora_trigger_words")?.value ?? "").trim();
+        proxies.target_megapixels?.sync?.();
+        const active = [formatResolutionLabel(effectiveH3Resolution(aspectRatio, megapixels))];
+        if (frames > 0) active.push(`Exact frames: ${frames}`);
+        if (editingIntent !== "none") active.push("Editing intent");
+        if (triggers) active.push("LoRA triggers");
+        summary.textContent = `Advanced settings · ${active.join(" · ")}`;
+    };
+    const updateVisibility = () => {
+        const mode = String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto");
+        proxies.editing_intent?.field.classList.toggle("minimax-h3-section-hidden", mode !== "ref2va");
+    };
+    grid.addEventListener("input", refreshSummary);
+    grid.addEventListener("change", refreshSummary);
+    refreshSummary();
+    updateVisibility();
+    body.append(help, grid);
+    details.append(summary, body);
+    return { details, summary, body, canonicalNames, proxies, refreshSummary, updateVisibility };
+}
+
 // Looks section: save / apply / delete / share the reusable half of the panel.
 // Everything it owns lives inside the existing DOM widget, so no node widget is
 // created and widgets_values cannot move.
-function createLooksDetails(node) {
-    const details = createPanelElement("details", "minimax-h3-looks-details");
-    details.open = accordionState(node, "looks");
-    const summary = createPanelElement("summary", "", "Looks · None saved");
-    summary.title = "Reusable presets: creative direction + cinematography. The shot plan stays scene-specific and is never stored in a look.";
-    const body = createPanelElement("div", "minimax-h3-panel-body");
-    const help = createPanelElement(
-        "p",
-        "minimax-h3-panel-help",
-        `Saved in this browser (up to ${MAX_LOOK_PRESETS} looks; saving beyond that drops the oldest one). A look stores creative direction and cinematography, never the shot plan.`,
-    );
-
-    const saveRow = createPanelElement("div", "minimax-h3-look-row");
-    const nameField = createPanelElement("label", "minimax-h3-look-field");
-    nameField.appendChild(createPanelElement("span", "", "Look name"));
-    const nameInput = createPanelElement("input", "");
-    nameInput.type = "text";
-    nameInput.maxLength = MAX_LOOK_NAME_LENGTH;
-    nameInput.placeholder = "Name this look…";
-    nameInput.setAttribute("aria-label", "Look name");
-    nameInput.title = "Name the current creative direction + cinematography, then press Enter or Save.";
-    nameField.appendChild(nameInput);
-    const saveActions = createPanelElement("div", "minimax-h3-look-actions");
-    const saveButton = createPanelElement("button", "minimax-h3-look-button", "Save current look…");
-    saveButton.type = "button";
-    saveButton.setAttribute("aria-label", "Save the current look");
-    saveButton.title = "Stores the current creative direction and cinematography under the name on the left.";
-    saveActions.appendChild(saveButton);
-    saveRow.append(nameField, saveActions);
-
-    const presetRow = createPanelElement("div", "minimax-h3-look-row");
-    const presetField = createPanelElement("label", "minimax-h3-look-field");
-    presetField.appendChild(createPanelElement("span", "", "Saved looks"));
-    const select = createPanelElement("select", "");
-    select.setAttribute("aria-label", "Saved looks");
-    select.title = "Pick a saved look, then Apply. Enter applies the selected look.";
-    presetField.appendChild(select);
-    const presetActions = createPanelElement("div", "minimax-h3-look-actions");
-    const applyButton = createPanelElement("button", "minimax-h3-look-button", "Apply");
-    applyButton.type = "button";
-    applyButton.setAttribute("aria-label", "Apply the selected look");
-    applyButton.title = "Overwrites creative direction and cinematography with the selected look.";
-    const deleteButton = createPanelElement("button", "minimax-h3-look-button", "Delete");
-    deleteButton.type = "button";
-    deleteButton.setAttribute("aria-label", "Delete the selected look");
-    deleteButton.title = "Removes the selected look from this browser.";
-    presetActions.append(applyButton, deleteButton);
-    presetRow.append(presetField, presetActions);
-
-    const transferActions = createPanelElement("div", "minimax-h3-setting-actions");
-    const copyButton = createPanelElement("button", "minimax-h3-look-button", "Copy look");
-    copyButton.type = "button";
-    copyButton.setAttribute("aria-label", "Copy the look as JSON");
-    copyButton.title = "Copies the selected look (or the current panel state) to the clipboard as JSON.";
-    const pasteButton = createPanelElement("button", "minimax-h3-look-button", "Paste look");
-    pasteButton.type = "button";
-    pasteButton.setAttribute("aria-label", "Paste a look from JSON");
-    pasteButton.title = "Reads a look from the clipboard, or opens a box to paste the JSON into.";
-    transferActions.append(copyButton, pasteButton);
-
-    const transfer = createPanelElement("textarea", "minimax-h3-look-transfer");
-    transfer.hidden = true;
-    transfer.spellcheck = false;
-    transfer.setAttribute("aria-label", "Look JSON");
-    const status = createPanelElement("p", "minimax-h3-panel-status minimax-h3-look-status");
-    status.setAttribute("role", "status");
-    status.dataset.visible = "false";
-    status.dataset.invalid = "false";
-
-    body.append(help, saveRow, presetRow, transferActions, transfer, status);
-    details.append(summary, body);
-
-    const hideTransfer = () => {
-        transfer.hidden = true;
-        transfer.value = "";
-        delete transfer.dataset.mode;
-        scheduleCreativePanelLayout(node);
-    };
-    const showTransfer = (mode, value) => {
-        transfer.hidden = false;
-        transfer.dataset.mode = mode;
-        transfer.readOnly = mode === "copy";
-        transfer.value = value;
-        transfer.setAttribute("aria-label", mode === "copy" ? "Look JSON to copy" : "Look JSON to import");
-        scheduleCreativePanelLayout(node);
-        if (mode === "copy") {
-            transfer.focus();
-            transfer.select();
-        } else {
-            transfer.focus();
-        }
-    };
-
-    const saveLook = () => {
-        const name = normalizeLookName(nameInput.value) || normalizeLookName(select.value);
-        if (!name) {
-            setLookStatus(node, "Name the look before saving it.", true);
-            nameInput.focus();
-            return;
-        }
-        const presets = readLookPresets();
-        const existed = Object.prototype.hasOwnProperty.call(presets, name);
-        presets[name] = lookEnvelopeFromNode(node, name);
-        const evicted = evictOldestLooks(presets);
-        if (!writeLookPresets(presets)) {
-            setLookStatus(node, "This browser refused to store the look (private mode or full storage).", true);
-            return;
-        }
-        refreshLookPresets(node);
-        select.value = name;
-        nameInput.value = "";
-        const evictionNote = evicted.length ? ` Oldest look removed: “${evicted.join("”, “")}”.` : "";
-        setLookStatus(node, `${existed ? "Updated" : "Saved"} “${name}” (creative direction + cinematography).${evictionNote}`);
-    };
-
-    const applyLook = () => {
-        const name = select.value;
-        const presets = refreshLookPresets(node);
-        const envelope = presets[name];
-        if (!envelope) {
-            setLookStatus(node, "That look is no longer stored in this browser.", true);
-            return;
-        }
-        select.value = name;
-        if (!applyLookEnvelope(node, envelope)) {
-            setLookStatus(node, "This node has no creative-direction storage to write to.", true);
-            return;
-        }
-        setLookStatus(node, `Applied “${name}”. The shot plan was left untouched.`);
-    };
-
-    const deleteLook = () => {
-        const name = select.value;
-        const presets = readLookPresets();
-        if (!Object.prototype.hasOwnProperty.call(presets, name)) {
-            refreshLookPresets(node);
-            setLookStatus(node, "That look is no longer stored in this browser.", true);
-            return;
-        }
-        delete presets[name];
-        if (!writeLookPresets(presets)) {
-            setLookStatus(node, "This browser refused to update the stored looks.", true);
-            return;
-        }
-        refreshLookPresets(node);
-        setLookStatus(node, `Deleted “${name}”. The applied direction is unchanged.`);
-    };
-
-    const importLookText = (text) => {
-        const raw = String(text ?? "").trim();
-        if (!raw) {
-            setLookStatus(node, "There is nothing to import.", true);
-            return;
-        }
-        if (raw.length > MAX_LOOK_PAYLOAD_LENGTH) {
-            setLookStatus(node, "That payload is too large to be a look.", true);
-            return;
-        }
-        const envelope = sanitizeLookEnvelope(raw, "Imported look");
-        if (!envelope) {
-            setLookStatus(node, "That text is not a valid look. Expected JSON with name, creativeTreatment and cinematography.", true);
-            return;
-        }
-        if (!applyLookEnvelope(node, envelope)) {
-            setLookStatus(node, "This node has no creative-direction storage to write to.", true);
-            return;
-        }
-        nameInput.value = envelope.name;
-        hideTransfer();
-        setLookStatus(node, `Imported “${envelope.name}” and applied it. Use “Save current look…” to keep it in this browser.`);
-    };
-
-    const copyLook = async () => {
-        const presets = readLookPresets();
-        const selected = presets[select.value];
-        const envelope = selected ?? lookEnvelopeFromNode(node, normalizeLookName(nameInput.value) || "Current look");
-        const payload = serializeLookEnvelope(envelope);
-        const source = selected ? `saved look “${envelope.name}”` : "current panel state";
-        let copied = false;
-        if (navigator.clipboard?.writeText) {
-            try {
-                await navigator.clipboard.writeText(payload);
-                copied = true;
-            } catch {
-                copied = false;
+function createStudioController(node) {
+    const controller = {
+        shotUiState: { selectedId: null, plan: null },
+        projectUiState: { sourceRaw: null, project: null },
+        resolvedDiagnosticFingerprints: new Set(),
+        shotDocument() {
+            const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
+            return structuredWidgetStore(node, SHOT_PLAN_WIDGET)?.hydrate(widget?.value);
+        },
+        commitShotPlan(raw) {
+            const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
+            const store = structuredWidgetStore(node, SHOT_PLAN_WIDGET);
+            if (!widget || !store?.commit(raw, (value) => writeJsonStorage(node, widget, value))) return false;
+            hydrateCreativeDirectionPanel(node);
+            node.__minimaxStudioDashboard?.refresh();
+            return true;
+        },
+        replaceShotRaw(raw) {
+            const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
+            if (!widget) return false;
+            writeJsonStorage(node, widget, raw);
+            structuredWidgetStore(node, SHOT_PLAN_WIDGET)?.hydrate(raw);
+            hydrateCreativeDirectionPanel(node);
+            refreshStudioDrawer(node.id);
+            return true;
+        },
+        projectDocument() {
+            const widget = node.widgets?.find((candidate) => candidate.name === "media_manifest");
+            return parseMediaProject(widget?.value ?? "");
+        },
+        commitProject(raw) {
+            const widget = node.widgets?.find((candidate) => candidate.name === "media_manifest");
+            if (!widget) return false;
+            const changed = writeJsonStorage(node, widget, raw);
+            node.__minimaxStudioDashboard?.refresh();
+            return changed;
+        },
+        replaceProjectRaw(raw) {
+            const changed = this.commitProject(raw);
+            if (changed) refreshStudioDrawer(node.id);
+            return changed;
+        },
+        generationIds() {
+            const documentState = this.projectDocument();
+            if (documentState.kind !== "v2") return ["g1"];
+            const ids = documentState.value.generations?.map((generation) => generation.id).filter(Boolean) ?? [];
+            return ids.length ? ids : ["g1"];
+        },
+        cameraFields() {
+            return CINEMATOGRAPHY_FIELDS.map(([key, label]) => [key, label, CINEMATOGRAPHY_CHOICES[key]]);
+        },
+        cinematographyDocument() {
+            const widget = node.widgets?.find((candidate) => candidate.name === CINEMATOGRAPHY_WIDGET);
+            return nativeDocumentViewForWidget(
+                CINEMATOGRAPHY_WIDGET,
+                structuredWidgetStore(node, CINEMATOGRAPHY_WIDGET)?.hydrate(widget?.value),
+            );
+        },
+        cameraValue(key) {
+            return node.__minimaxCinematographyState?.[key]
+                ?? (["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none");
+        },
+        commitCamera(key, value) {
+            if (!node.__minimaxCinematographyState) return false;
+            if (!["blank", "v2"].includes(this.cinematographyDocument()?.kind)) return false;
+            const previous = node.__minimaxCinematographyState[key];
+            node.__minimaxCinematographyState[key] = allowedCinematographyValue(key, value);
+            if (commitCinematography(node) === false) {
+                node.__minimaxCinematographyState[key] = previous;
+                return false;
             }
-        }
-        if (copied) {
-            hideTransfer();
-            setLookStatus(node, `Copied the ${source} to the clipboard.`);
-            return;
-        }
-        showTransfer("copy", payload);
-        setLookStatus(node, `The clipboard is unavailable. The ${source} is selected in the box below — copy it with Ctrl/Cmd+C.`);
-    };
-
-    const pasteLook = async () => {
-        if (transfer.dataset.mode === "paste" && transfer.value.trim()) {
-            importLookText(transfer.value);
-            return;
-        }
-        let text = "";
-        if (navigator.clipboard?.readText) {
-            try {
-                text = String((await navigator.clipboard.readText()) ?? "");
-            } catch {
-                text = "";
+            node.__minimaxStudioDashboard?.refresh();
+            return true;
+        },
+        creativeFields() {
+            return CREATIVE_FIELD_DEFINITIONS.map(({ key, label }) => [key, label, CREATIVE_CHOICES[key]]);
+        },
+        visualLanguageGroups() {
+            const labels = new Map(CREATIVE_CHOICES.visualLanguage);
+            return VISUAL_LANGUAGE_GROUPS.map(([group, values]) => [
+                group,
+                values.map((value) => [value, labels.get(value) ?? value]),
+            ]);
+        },
+        creativeValue(key) {
+            return node.__minimaxCreativeTreatmentState?.[key] ?? "none";
+        },
+        creativeDocument() {
+            const widget = node.widgets?.find((candidate) => candidate.name === CREATIVE_TREATMENT_WIDGET);
+            return nativeDocumentViewForWidget(
+                CREATIVE_TREATMENT_WIDGET,
+                structuredWidgetStore(node, CREATIVE_TREATMENT_WIDGET)?.hydrate(widget?.value),
+            );
+        },
+        commitCreative(key, value) {
+            if (!node.__minimaxCreativeTreatmentState) return false;
+            if (!["blank", "v2"].includes(this.creativeDocument()?.kind)) return false;
+            const previous = node.__minimaxCreativeTreatmentState[key];
+            node.__minimaxCreativeTreatmentState[key] = allowedCreativeValue(key, value);
+            if (commitCreativeTreatment(node) === false) {
+                node.__minimaxCreativeTreatmentState[key] = previous;
+                return false;
             }
-        }
-        if (!text.trim()) {
-            showTransfer("paste", "");
-            setLookStatus(node, "Paste the look JSON into the box below, then press “Paste look” again.");
-            return;
-        }
-        importLookText(text);
+            node.__minimaxStudioDashboard?.refresh();
+            return true;
+        },
+        importCreativeSource(raw) {
+            return importNativeStructuredSource(node, CREATIVE_TREATMENT_WIDGET, raw);
+        },
+        importCinematographySource(raw) {
+            return importNativeStructuredSource(node, CINEMATOGRAPHY_WIDGET, raw);
+        },
+        replaceStructuredRaw(widgetName, raw) {
+            if (widgetName === CREATIVE_TREATMENT_WIDGET) return this.importCreativeSource(raw).ok;
+            if (widgetName === CINEMATOGRAPHY_WIDGET) return this.importCinematographySource(raw).ok;
+            const widget = node.widgets?.find((candidate) => candidate.name === widgetName);
+            if (!widget) return false;
+            writeJsonStorage(node, widget, raw);
+            structuredWidgetStore(node, widgetName)?.hydrate(raw);
+            hydrateCreativeDirectionPanel(node);
+            refreshStudioDrawer(node.id);
+            return true;
+        },
+        lookNames() {
+            return sortedLookNames(readLookPresets());
+        },
+        saveLook(name) {
+            const normalizedName = normalizeLookName(name);
+            if (!normalizedName) return { ok: false, message: "Name the look before saving." };
+            if (!nativeLookTargetsAreEditable(node)) {
+                return { ok: false, message: "Import legacy creative sources as v2 before saving the current Look." };
+            }
+            const presets = readLookPresets();
+            presets[normalizedName] = lookEnvelopeFromNode(node, normalizedName);
+            const evicted = evictOldestLooks(presets);
+            if (!writeLookPresets(presets)) return { ok: false, message: "This browser refused to store the look." };
+            return { ok: true, name: normalizedName, evicted };
+        },
+        applyLook(name) {
+            const envelope = readLookPresets()[name];
+            return envelope ? applyLookEnvelope(node, envelope) : false;
+        },
+        deleteLook(name) {
+            const presets = readLookPresets();
+            if (!Object.prototype.hasOwnProperty.call(presets, name)) return false;
+            delete presets[name];
+            return writeLookPresets(presets);
+        },
+        exportLook(name = "") {
+            const normalizedName = normalizeLookName(name);
+            const presets = readLookPresets();
+            if (normalizedName && !Object.prototype.hasOwnProperty.call(presets, normalizedName)) {
+                return { ok: false, message: "That look is no longer stored in this browser." };
+            }
+            if (!normalizedName && !nativeLookTargetsAreEditable(node)) {
+                return { ok: false, message: "Import legacy creative sources as v2 before exporting the current Look." };
+            }
+            const envelope = normalizedName
+                ? presets[normalizedName]
+                : lookEnvelopeFromNode(node, "Current look");
+            return {
+                ok: true,
+                name: envelope.name,
+                source: normalizedName ? "saved" : "current",
+                payload: serializeLookEnvelope(envelope),
+            };
+        },
+        importLook(payload) {
+            const raw = String(payload ?? "").trim();
+            if (!raw) return { ok: false, message: "There is no Look JSON to import." };
+            if (raw.length > MAX_LOOK_PAYLOAD_LENGTH) {
+                return { ok: false, message: "That payload is too large to be a Look." };
+            }
+            const parsed = parseJsonObject(raw);
+            if (!parsed) return { ok: false, message: "That text is not valid Look JSON." };
+            if (parsed.schemaVersion !== undefined && parsed.schemaVersion !== LOOK_SCHEMA_VERSION) {
+                return { ok: false, message: `Look schema ${parsed.schemaVersion} is not supported by this version.` };
+            }
+            const envelope = sanitizeLookEnvelope(parsed, "Imported look");
+            if (!envelope) {
+                return { ok: false, message: "Expected a v1 Look with creativeTreatment or cinematography." };
+            }
+            if (!applyLookEnvelope(node, envelope)) {
+                return { ok: false, message: "Creative direction is read-only in this node." };
+            }
+            node.__minimaxStudioDashboard?.refresh();
+            return { ok: true, name: envelope.name };
+        },
+        exploreLook(fullCinematography = false) {
+            return applyLookEnvelope(node, exploreLookEnvelope(node, { includeCinematography: Boolean(fullCinematography) }));
+        },
+        applySafeAction(action, fingerprint = "") {
+            const shotDocument = this.shotDocument();
+            const projectDocument = this.projectDocument();
+            const camera = Object.fromEntries(this.cameraFields().map(([key]) => [key, this.cameraValue(key)]));
+            const result = applySafeActionDocuments(action, {
+                shotPlan: shotDocument?.kind === "v2" ? shotDocument.value : null,
+                project: projectDocument?.kind === "v2" ? projectDocument.value : null,
+                camera,
+            });
+            if (!result.changed) return false;
+            if (result.shotPlan && ["clear_shot_camera", "align_transition_from_state"].includes(action.kind)) {
+                this.commitShotPlan(JSON.stringify(result.shotPlan));
+            }
+            if (result.project && ["activate_resource", "add_binding"].includes(action.kind)) {
+                this.commitProject(JSON.stringify(result.project));
+                this.projectUiState.sourceRaw = null;
+            }
+            for (const [key, value] of Object.entries(result.cameraUpdates)) this.commitCamera(key, value);
+            if (fingerprint) this.resolvedDiagnosticFingerprints.add(fingerprint);
+            refreshStudioDrawer(node.id);
+            return true;
+        },
+        diagnostics() {
+            return node.__minimaxDiagnostics ?? { diagnostics: [], stale: false };
+        },
     };
-
-    saveButton.addEventListener("click", saveLook);
-    applyButton.addEventListener("click", applyLook);
-    deleteButton.addEventListener("click", deleteLook);
-    copyButton.addEventListener("click", () => {
-        // Never let a rejected clipboard promise reach the console.
-        copyLook().catch(() => setLookStatus(node, "The look could not be copied.", true));
-    });
-    pasteButton.addEventListener("click", () => {
-        pasteLook().catch(() => setLookStatus(node, "The look could not be read from the clipboard.", true));
-    });
-    nameInput.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        saveLook();
-    });
-    select.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        applyLook();
-    });
-
-    return {
-        details,
-        summary,
-        body,
-        nameInput,
-        select,
-        saveButton,
-        applyButton,
-        deleteButton,
-        copyButton,
-        pasteButton,
-        transfer,
-        status,
-    };
+    return controller;
 }
 
-function addCreativeDirectionPanel(node) {
-    const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
-    const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
-    const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
-    if (!creativeWidget || !shotWidget || !cinematographyWidget || typeof node.addDOMWidget !== "function") return;
-    hideJsonStorageWidget(creativeWidget);
-    hideJsonStorageWidget(shotWidget);
-    hideJsonStorageWidget(cinematographyWidget);
-    wrapJsonStorageCallback(node, creativeWidget);
-    wrapJsonStorageCallback(node, shotWidget);
-    wrapJsonStorageCallback(node, cinematographyWidget);
-    if (node.__minimaxCreativePanel) {
-        hydrateCreativeDirectionPanel(node);
-        return;
-    }
-
-    ensureFieldTitleStyles();
-    const root = createPanelElement("div", "minimax-h3-creative-panel");
-    root.addEventListener("pointerdown", (event) => event.stopPropagation());
-
-    const isValidator = node.__minimaxCreativeNodeName === "MiniMaxH3PromptValidator";
-    const modelSetup = createModelSetupDetails(node);
-    const chainedSettings = createChainedSettingsDetails(node);
-    const treatmentDetails = createPanelElement("details", "minimax-h3-treatment-details");
-    treatmentDetails.open = accordionState(node, "creativeDirection");
-    const treatmentSummary = createPanelElement("summary", "");
-    // The label lives in its own span so the summary can also host the Explore
-    // button: updateCreativeTreatmentSummary rewrites the span, never the
-    // summary element, which would otherwise wipe the button.
-    const exploreButton = createPanelElement("button", "minimax-h3-explore-button", "🎲 Explore");
-    exploreButton.type = "button";
-    exploreButton.setAttribute("aria-label", "Explore: random creative direction");
-    exploreButton.title = "Rolls a random genre, visual language, world and tone (plus a color palette). Content format and title screen stay unchanged. Shift-click also rolls the full cinematography set.";
-    const treatmentSummaryLabel = createPanelElement(
-        "span",
-        "minimax-h3-summary-label",
-        isValidator ? "Creative direction context" : "Creative direction · No preferences",
-    );
-    treatmentSummary.append(exploreButton, treatmentSummaryLabel);
-    treatmentSummary.title = isValidator
-        ? "Parses the expected treatment and enables supported literal contract checks; it cannot score aesthetic adherence."
-        : "Adds creative direction without rewriting the story or creating cuts.";
-    const treatmentBody = createPanelElement("div", "minimax-h3-panel-body");
-    const treatmentControls = createPanelElement("div", "minimax-h3-treatment-controls");
-    const treatmentHelp = createPanelElement(
-        "p",
-        "minimax-h3-panel-help",
-        isValidator
-            ? "Supply the treatment used to build the prompt. The Validator checks configuration and supported literal invariants, not whether the prose aesthetically realizes the style."
-            : "Adds directing emphasis for the LLM. It never invents story, dialogue, characters, actions, or cuts.",
-    );
-    const treatmentGrid = createPanelElement("div", "minimax-h3-treatment-grid");
-    const creativeSelects = {};
-    const creativeFilters = {};
-    for (const definition of CREATIVE_FIELD_DEFINITIONS) {
-        const field = createPanelElement(
-            definition.key === "visualLanguage" ? "div" : "label",
-            "minimax-h3-treatment-field",
-        );
-        field.title = definition.title;
-        field.appendChild(createPanelElement("span", "", definition.label));
-        const select = createPanelElement("select", "");
-        select.setAttribute("aria-label", definition.label);
-        select.title = definition.title;
-        if (definition.key === "visualLanguage") {
-            field.classList.add("minimax-h3-wide");
-            select.id = `minimax-h3-visual-language-${Math.random().toString(36).slice(2)}`;
-            addVisualLanguageOptions(select);
-            const filter = createVisualLanguageSearch(node, select, definition.label);
-            creativeFilters[definition.key] = filter;
-            field.append(filter.container);
-        } else {
-            addSelectOptions(select, CREATIVE_CHOICES[definition.key]);
-        }
-        select.addEventListener("change", () => {
-            node.__minimaxCreativeTreatmentState[definition.key] = allowedCreativeValue(definition.key, select.value);
-            commitCreativeTreatment(node);
-        });
-        creativeSelects[definition.key] = select;
-        field.appendChild(select);
-        treatmentGrid.appendChild(field);
-    }
-    const treatmentStatus = createPanelElement("p", "minimax-h3-panel-status");
-    treatmentControls.append(treatmentHelp, treatmentGrid);
-    treatmentBody.append(treatmentControls, treatmentStatus);
-    treatmentDetails.append(treatmentSummary, treatmentBody);
-
-    const cinematographyDetails = createPanelElement("details", "minimax-h3-cinematography-details");
-    cinematographyDetails.open = accordionState(node, "cinematography");
-    const cinematographySummary = createPanelElement("summary", "", "Cinematography · No preferences");
-    cinematographySummary.title = "Explicit H3-oriented camera, color, optics, focus, texture, and motion-rendering controls.";
-    const cinematographyBody = createPanelElement("div", "minimax-h3-panel-body");
-    const cinematographyHelp = createPanelElement(
-        "p",
-        "minimax-h3-panel-help",
-        isValidator
-            ? "Supply the Cinematography configuration used to build the prompt. The Validator checks its schema and supported literal invariants, not rendered or aesthetic adherence."
-            : "Optional explicit presentation controls. H3 camera movement follows motion type + amplitude + speed. Source facts, references, shot rows, and explicit colors remain authoritative.",
-    );
-    const cinematographyGrid = createPanelElement("div", "minimax-h3-treatment-grid");
-    const cinematographySelects = {};
-    for (const [key, label] of CINEMATOGRAPHY_FIELDS) {
-        const field = createPanelElement("label", "minimax-h3-treatment-field");
-        field.appendChild(createPanelElement("span", "", label));
-        const select = createPanelElement("select", "");
-        select.setAttribute("aria-label", label);
-        addSelectOptions(select, CINEMATOGRAPHY_CHOICES[key]);
-        select.addEventListener("change", () => {
-            const state = node.__minimaxCinematographyState;
-            if (!state) return;
-            state[key] = allowedCinematographyValue(key, select.value);
-            if (key === "cameraMotion" && isStillMotion(state.cameraMotion)) {
-                state.cameraAmplitude = "auto";
-                state.cameraSpeed = "auto";
-                cinematographySelects.cameraAmplitude.value = "auto";
-                cinematographySelects.cameraSpeed.value = "auto";
-            }
-            commitCinematography(node);
-        });
-        cinematographySelects[key] = select;
-        field.appendChild(select);
-        cinematographyGrid.appendChild(field);
-    }
-    cinematographyBody.append(cinematographyHelp, cinematographyGrid);
-    cinematographyDetails.append(cinematographySummary, cinematographyBody);
-
-    const shotDetails = createPanelElement("details", "minimax-h3-shot-details");
-    shotDetails.open = accordionState(node, "shotPlan");
-    const shotSummaryLabel = createPanelElement("summary", "", "Shot plan · No shots");
-    shotSummaryLabel.title = "When rows are present, their count and order are authoritative and the LLM cannot create extra cuts.";
-    const shotBody = createPanelElement("div", "minimax-h3-panel-body");
-    const shotHelp = createPanelElement(
-        "p",
-        "minimax-h3-panel-help",
-        isValidator
-            ? "Optional. Each row defines the expected plan that the prompt must follow. Empty means no explicit plan is required."
-            : "Optional. Each row fixes one shot and its order. Empty lets the enhancer decide; rows do not clutter the main description.",
-    );
-    const toolbar = createPanelElement("div", "minimax-h3-shot-toolbar");
-    const timingField = createPanelElement("label", "minimax-h3-timing-field");
-    timingField.appendChild(createPanelElement("span", "minimax-h3-timing-label", "Timing"));
-    const timingSelect = createPanelElement("select", "");
-    timingSelect.setAttribute("aria-label", "Shot timing mode");
-    timingSelect.title = "Auto distributes the duration. Exact requires a positive duration for every row.";
-    addSelectOptions(timingSelect, [["auto", "Auto-distribute"], ["exact", "Set duration per shot"]]);
-    timingField.appendChild(timingSelect);
-    const addShotButton = createPanelElement("button", "minimax-h3-add-shot", "+ Add shot");
-    addShotButton.type = "button";
-    toolbar.append(timingField, addShotButton);
-    const shotList = createPanelElement("div", "minimax-h3-shot-list");
-    shotList.setAttribute("aria-live", "polite");
-    const shotSummary = createPanelElement("p", "minimax-h3-shot-summary");
-    shotBody.append(shotHelp, toolbar, shotList, shotSummary);
-    shotDetails.append(shotSummaryLabel, shotBody);
-    const advancedSettings = createAdvancedSettingsDetails(node);
-    // A look is treatment + cinematography, so the section sits right after the
-    // two accordions it captures. It exists wherever the creative-direction
-    // section exists, i.e. on every node type that owns the JSON storage
-    // widgets, without any extra node-type gate.
-    const looks = createLooksDetails(node);
+function mountCompactCreativePanel(node, root, { audioSettings, modelSetup, chainedSettings, advancedSettings }) {
+    if (audioSettings) root.appendChild(audioSettings.details);
     if (modelSetup) root.appendChild(modelSetup.details);
     if (chainedSettings) root.appendChild(chainedSettings.details);
-    root.append(treatmentDetails, cinematographyDetails, looks.details, shotDetails);
     if (advancedSettings) root.appendChild(advancedSettings.details);
-
     const panelWidget = node.addDOMWidget(
         CREATIVE_PANEL_WIDGET,
         "minimaxH3CreativeDirection",
@@ -3161,112 +3194,81 @@ function addCreativeDirectionPanel(node) {
     node.__minimaxCreativePanel = {
         root,
         widget: panelWidget,
-        treatmentDetails,
-        treatmentSummary,
-        treatmentSummaryLabel,
-        exploreButton,
-        looks,
-        treatmentBody,
-        treatmentStatus,
-        creativeSelects,
-        creativeFilters,
-        cinematographyDetails,
-        cinematographySummary,
-        cinematographySelects,
-        shotDetails,
-        shotSummaryLabel,
-        timingSelect,
-        addShotButton,
-        shotList,
-        shotSummary,
+        compactOnly: true,
+        audioSettings,
         modelSetup,
         chainedSettings,
         advancedSettings,
     };
-    observeCreativePanelLayout(node);
-    installCreativePanelCleanup(node);
-    installCreativePanelCollapseGuard(node);
-    syncCreativePanelSuspension(node);
     const managedNames = new Set([
+        "visual_style_preset",
+        ...(audioSettings?.canonicalNames ?? []),
         ...(modelSetup?.canonicalNames ?? []),
         ...(chainedSettings?.canonicalNames ?? []),
         ...(advancedSettings?.canonicalNames ?? []),
     ]);
     node.__minimaxProxyManagedWidgets = managedNames;
-    for (const name of managedNames) {
-        setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false);
-    }
+    for (const name of managedNames) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false);
 
     const bindAccordion = (details, key) => {
         if (!details) return;
         details.addEventListener("toggle", () => {
             persistAccordionState(node, key, details.open);
             if (key === "advancedSettings") {
-                setCanonicalValue(
-                    node,
-                    node.widgets?.find((widget) => widget.name === "show_advanced_controls"),
-                    details.open,
-                );
+                setCanonicalValue(node, node.widgets?.find((widget) => widget.name === "show_advanced_controls"), details.open);
             }
             updateCreativePanelHeight(node);
         });
     };
+    bindAccordion(audioSettings?.details, "audioSettings");
     bindAccordion(modelSetup?.details, "modelSetup");
     bindAccordion(chainedSettings?.details, "chainedMultishot");
-    bindAccordion(treatmentDetails, "creativeDirection");
-    bindAccordion(cinematographyDetails, "cinematography");
-    bindAccordion(looks.details, "looks");
-    bindAccordion(shotDetails, "shotPlan");
-    // The library is shared by every panel in the tab, so re-read it whenever
-    // the section is opened instead of on every hydration.
-    looks.details.addEventListener("toggle", () => {
-        if (looks.details.open) refreshLookPresets(node);
-    });
-    exploreButton.addEventListener("click", (event) => {
-        // Inside a <summary>: without this the click would also toggle the
-        // accordion, both for pointer and for keyboard activation.
-        event.preventDefault();
-        event.stopPropagation();
-        runCreativeExplore(node, Boolean(event.shiftKey));
-    });
-    exploreButton.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-    });
     bindAccordion(advancedSettings?.details, "advancedSettings");
-    timingSelect.addEventListener("change", () => {
-        const state = node.__minimaxShotPlanState;
-        if (!state) return;
-        if (timingSelect.value === "exact") {
-            state.timingMode = "exact";
-            rebalanceExactDurations(node, state);
-        } else {
-            state.timingMode = "auto";
-            for (const shot of state.shots) delete shot.durationSeconds;
-        }
-        commitShotPlan(node);
-        renderShotRows(node);
-    });
-    addShotButton.addEventListener("click", () => {
-        const state = node.__minimaxShotPlanState;
-        if (!state || state.shots.length >= MAX_SHOTS) return;
-        const shot = {
-            id: nextShotId(state.shots),
-            description: "",
-        };
-        if (state.timingMode === "exact") shot.durationSeconds = DEFAULT_EXACT_SHOT_DURATION;
-        state.shots.push(shot);
-        rebalanceExactDurations(node, state);
-        commitShotPlan(node);
-        renderShotRows(node);
-        requestAnimationFrame(() => {
-            root.querySelector(`[data-shot-id="${shot.id}"] textarea`)?.focus?.();
-            shotList.scrollTop = shotList.scrollHeight;
-        });
-    });
-
-    refreshLookPresets(node);
+    observeCreativePanelLayout(node);
+    installCreativePanelCleanup(node);
+    installCreativePanelCollapseGuard(node);
+    syncCreativePanelSuspension(node);
     hydrateCreativeDirectionPanel(node);
     scheduleCreativePanelLayout(node);
+}
+
+function addCreativeDirectionPanel(node) {
+    const creativeWidget = node.widgets?.find((widget) => widget.name === CREATIVE_TREATMENT_WIDGET);
+    const shotWidget = node.widgets?.find((widget) => widget.name === SHOT_PLAN_WIDGET);
+    const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
+    const mediaProjectWidget = node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET);
+    if (!creativeWidget || !shotWidget || !cinematographyWidget || typeof node.addDOMWidget !== "function") return;
+    hideJsonStorageWidget(creativeWidget);
+    hideJsonStorageWidget(shotWidget);
+    hideJsonStorageWidget(cinematographyWidget);
+    hideJsonStorageWidget(mediaProjectWidget);
+    wrapJsonStorageCallback(node, creativeWidget);
+    wrapJsonStorageCallback(node, shotWidget);
+    wrapJsonStorageCallback(node, cinematographyWidget);
+    if (node.__minimaxCreativePanel) {
+        hydrateCreativeDirectionPanel(node);
+        return;
+    }
+
+    ensureFieldTitleStyles();
+    const root = createPanelElement("div", "minimax-h3-creative-panel");
+    const studioController = createStudioController(node);
+    node.__minimaxStudioController = studioController;
+    const studioDashboard = createStudioDashboard(node, studioController);
+    node.__minimaxStudioDashboard = studioDashboard;
+    root.appendChild(studioDashboard.root);
+    root.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+    const audioSettings = createAudioSettingsDetails(node);
+    const modelSetup = createModelSetupDetails(node);
+    const chainedSettings = createChainedSettingsDetails(node);
+    const compactAdvancedSettings = createAdvancedSettingsDetails(node);
+    mountCompactCreativePanel(node, root, {
+        audioSettings,
+        modelSetup,
+        chainedSettings,
+        advancedSettings: compactAdvancedSettings,
+    });
 }
 
 function configureCreativeDirectionNode(node, nodeName = node.comfyClass ?? node.type ?? "") {
@@ -3276,6 +3278,14 @@ function configureCreativeDirectionNode(node, nodeName = node.comfyClass ?? node
     wrapRefreshCallback(node, "creative_latitude", updateCreativePanelEnhancementState);
     wrapRefreshCallback(node, "duration_seconds", handleEffectiveDurationChange);
     wrapRefreshCallback(node, "frame_count", handleEffectiveDurationChange);
+    const refreshResolutionBudget = (target) => target.__minimaxCreativePanel?.advancedSettings?.refreshSummary?.();
+    wrapRefreshCallback(node, "aspect_ratio", refreshResolutionBudget);
+    wrapRefreshCallback(node, "target_megapixels", refreshResolutionBudget);
+    wrapRefreshCallback(node, nodeName === "MiniMaxH3PromptValidator" ? "prompt" : "basic_prompt", (target) => {
+        if (target.__minimaxDiagnostics) target.__minimaxDiagnostics.stale = true;
+        target.__minimaxStudioDashboard?.refresh();
+        refreshStudioDrawer(target.id);
+    });
     hydrateCreativeDirectionPanel(node);
 }
 
@@ -3477,8 +3487,10 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     sanitizeEnumWidget(node, "aspect_ratio", ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "auto");
     sanitizeEnumWidget(node, "visual_style_preset", [
         "none", "1970s_new_hollywood", "american_comic_pastel", "animation_2d", "anime_general",
-        "anime_retro_dramatic", "anime_retro_gag_family", "anime_shojo", "anime_shojo_pastel", "anime_shonen",
-        "anime_ultradetailed_cinematic", "cel_shaded_3d", "classic_morning_adventure_cel", "clean_commercial",
+        "anime_1960s70s_limited_cel", "anime_1990s_broadcast_cel", "anime_digital_compositing",
+        "anime_ova_mechanical_detail", "anime_retro_dramatic", "anime_retro_gag_family", "anime_shojo",
+        "anime_shojo_pastel", "anime_shonen", "anime_ultradetailed_cinematic", "cable_angular_graphic_comedy",
+        "cel_shaded_3d", "classic_morning_adventure_cel", "clean_commercial", "contemporary_vector_2d",
         "documentary_observational", "game_3d_cinematic", "game_3d_nextgen", "giallo", "gouache_2d",
         "graphic_noir", "graphic_novel", "heroic_limited_cel_tv", "home_camcorder_1990s",
         "japanese_print_animation", "kaiju_suitmation", "live_action_1950s_studio_color",
@@ -3487,10 +3499,11 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "live_action_classic_western", "live_action_expressionist", "live_action_gritty",
         "live_action_latin_american_telenovela", "live_action_midcentury_technicolor_epic",
         "live_action_naturalistic", "live_action_revisionist_western", "live_action_visceral_horror",
-        "low_poly_3d", "midcentury_graphic_cel_comedy", "mockumentary_talking_head", "painterly_2d",
+        "low_poly_3d", "manga_monochrome_print", "mecha_super_robot_cel", "midcentury_graphic_cel_comedy",
+        "mockumentary_talking_head", "painterly_2d",
         "pixel_art_16bit", "rotoscope_animation", "silent_era_1920s", "stop_motion_handcrafted",
         "storybook_symmetrical", "stylized_3d_animation", "supermarionation", "surveillance_found_footage",
-        "tokusatsu_sentai", "watercolor_2d",
+        "tokusatsu_sentai", "vintage_rubberhose_2d", "watercolor_2d",
     ], "none");
     sanitizeEnumWidget(node, "editing_intent", [
         "none", "character_swap", "wardrobe_transfer", "voice_dialogue_swap",
@@ -3553,13 +3566,17 @@ function enforceConditionalVisibility(node) {
         }
         const advanced = node.widgets?.find((widget) => widget.name === "show_advanced_controls")?.value === true;
         const reference = node.widgets?.find((widget) => widget.name === "reference_context");
-        const manifest = node.widgets?.find((widget) => widget.name === "media_manifest");
+        const manifest = node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET);
         const frames = node.widgets?.find((widget) => widget.name === "frame_count");
+        const editingIntent = node.widgets?.find((widget) => widget.name === "editing_intent");
         const hasReferenceNotes = String(reference?.value ?? "").trim().length > 0;
-        const hasManifest = String(manifest?.value ?? "").trim().length > 0;
         setWidgetVisible(reference, modeWidget.value === "ref2va" || advanced || hasReferenceNotes);
-        setWidgetVisible(manifest, !managed.has("media_manifest") && (advanced || hasManifest));
+        // Project v2 is edited and inspected only in Prompt Studio. Keep its
+        // canonical widget persistent for workflow/API serialization, but never
+        // surface the raw JSON textarea on the compact node after a commit.
+        hideJsonStorageWidget(manifest);
         setWidgetVisible(frames, !managed.has("frame_count") && (advanced || Number(frames?.value ?? 0) > 0));
+        setWidgetVisible(editingIntent, !managed.has("editing_intent") && modeWidget.value === "ref2va");
     }
     for (const name of managed) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false);
 }
@@ -3578,7 +3595,6 @@ function conditionalVisibilitySignature(node) {
         String(value("background_score_policy")),
         String(value("show_advanced_controls")),
         String(value("reference_context") ?? "").trim() ? 1 : 0,
-        String(value("media_manifest") ?? "").trim() ? 1 : 0,
         Number(value("frame_count") ?? 0) > 0 ? 1 : 0,
     ].join("|");
 }
@@ -3638,14 +3654,16 @@ function refreshInstrumentalWidget(node) {
     const style = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
     const styleProxy = node.__minimaxInstrumentalStyleProxy;
     const active = score?.value === "add_instrumental";
-    setWidgetVisible(description, score?.value === "add_instrumental");
-    setWidgetVisible(style, active && !styleProxy);
+    const panelManaged = node.__minimaxProxyManagedWidgets?.has(INSTRUMENTAL_STYLE_WIDGET);
+    setWidgetVisible(description, active && !node.__minimaxProxyManagedWidgets?.has(INSTRUMENTAL_WIDGET));
+    setWidgetVisible(style, active && !styleProxy && !panelManaged);
     if (styleProxy) {
         setWidgetVisible(style, false);
-        setWidgetVisible(styleProxy.widget, active);
+        setWidgetVisible(styleProxy.widget, active && !panelManaged);
         styleProxy.widget.value = styleProxy.valueToLabel.get(String(style?.value ?? "none"))
             ?? INSTRUMENTAL_STYLE_CHOICES[0][1];
     }
+    node.__minimaxCreativePanel?.audioSettings?.refreshSummary?.();
     fitNodeToVisibleWidgets(node);
 }
 
@@ -3714,6 +3732,7 @@ function wrapRefreshCallback(node, widgetName, refresh) {
 
 function configureAudioNode(node) {
     applyMultilineTitles(node);
+    hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET));
     applyLabels(node);
     protectApiKeyWidget(node);
     normalizeMigratedRuntimeWidgets(node);
@@ -3742,6 +3761,23 @@ function applyRuntimeWidgetState(node) {
     normalizeMigratedRuntimeWidgets(node, true);
     enforceConditionalVisibility(node);
 }
+
+api.addEventListener("executed", (event) => {
+    const nodeId = event.detail?.node;
+    const payload = event.detail?.output?.minimax_h3_diagnostics?.[0];
+    if (payload === undefined) return;
+    const node = app.graph?.getNodeById?.(nodeId);
+    if (!node) return;
+    try {
+        node.__minimaxDiagnostics = typeof payload === "string" ? JSON.parse(payload) : payload;
+    } catch {
+        node.__minimaxDiagnostics = { diagnostics: [], stale: false };
+    }
+    node.__minimaxDiagnostics.stale = false;
+    node.__minimaxStudioController?.resolvedDiagnosticFingerprints?.clear?.();
+    node.__minimaxStudioDashboard?.refresh();
+    refreshStudioDrawer(node.id);
+});
 
 app.registerExtension({
     name: "MiniMaxH3PromptEnhancer.BackendToggle",

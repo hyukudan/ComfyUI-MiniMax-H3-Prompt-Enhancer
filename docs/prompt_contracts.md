@@ -12,6 +12,10 @@ This document provides the complete structural specification for MiniMax H3 prom
 - [Image Alignment Modes (I2VA, FL2VA, L2VA)](#image-alignment-modes-i2va-fl2va-l2va)
 - [Chained Multishot Mode](#chained-multishot-mode)
 - [Multi-Shot Timeline Formatting](#multi-shot-timeline-formatting)
+- [Structured Planning Contracts](#structured-planning-contracts)
+- [Camera Authority Contract](#camera-authority-contract)
+- [Diagnostics and Prompt Coach](#diagnostics-and-prompt-coach)
+- [Compatibility and No-Clobber Rules](#compatibility-and-no-clobber-rules)
 - [Frame Grid Math & Duration Conventions](#frame-grid-math--duration-conventions)
 - [Adaptive Description Budget](#adaptive-description-budget)
 
@@ -29,6 +33,16 @@ MiniMax H3 is an audiovisual diffusion model trained on strictly segmented, sect
 | `fl2va` | Exact first & last frames | First-and-last-frame alignment sentence + 3 base sections |
 | `l2va` | Exact last frame | Last-frame alignment sentence + 3 base sections |
 | `chained_multishot` | Any / none | Canonical JSON array of autonomous prompts: `{"prompts": [...]}` |
+
+The rendered H3 prompt remains section-based prose. Structured planning is a separate authoring layer:
+
+- `media_manifest` v2 defines logical assets, subjects, appearance states, environments, generations, activation, and physical bindings;
+- `shot_plan_json` v2 defines opening/action allocation, presence, reference uses, camera phases, and state transitions over time;
+- `creative_treatment_json` v2 defines the canonical editable creative-treatment selection;
+- `cinematography_json` v2 defines global camera/look defaults;
+- `validation_report.diagnosticReport` reports typed configuration, output-quality, and Coach findings.
+
+These layers do not add sections to the prompt sent to H3. They compile deterministically into the existing mode contract.
 
 ---
 
@@ -132,6 +146,8 @@ For workflows where reference images act as literal frame anchors:
 
 - Each prompt item is standalone English prose without section headers or timestamps.
 - Continuity locks (`multishot_identity_lock`, `multishot_voice_lock`, `multishot_setting_lock`) repeat identity and style descriptions verbatim in every segment to maintain seamless visual continuity across generations.
+- In a v2 project, shots are grouped by `generationId`. Every generated array item remains autonomous, but each generation receives only its active logical references, physical input map, and resolved initial state.
+- A v2 `shotsPackage` stores generation-level input/state/authority digests once and links shots to them by `generationId`; `MiniMaxH3ShotSelector` accepts both package v1 and v2.
 
 ---
 
@@ -148,6 +164,111 @@ MiniMax H3 requires sequential shot headers with strictly increasing timestamps:
 - **Shot 1** never carries a timestamp.
 - Subsequent shots use the exact syntax `[Shot N] At MM:SS.mmm, `.
 - Transition cuts are phrased as `"the camera cuts to"`, `"the shot transitions to"`, or `"the shot switches to"`.
+
+Timeline formatting is the rendered output contract, not the shot-plan storage format. Shot-plan v1 keeps its established `description`, timing, transition, scale, angle, and motion fields. Shot-plan v2 uses `openingState` plus `action`, groups timing per generation, and stores `cameraEnd` as a sparse delta from `cameraStart`. Both compile into the same required H3 timeline syntax.
+
+---
+
+## Structured Planning Contracts
+
+### Media project v2
+
+`media_manifest` v2 is the canonical project library. Stable logical IDs are never replaced by physical H3 labels. A binding derives `<Picture N>`, `<Video N>`, or `<Audio N>` independently for each generation.
+
+The manifest is metadata, not a media transport. **Add reference** registers a logical reference but does not upload a file or produce a tensor. The physical picture, video, or audio must be connected to the H3 generation node through its normal media input; the generation binding declares which logical reference that physical slot fulfills. The enhancer continues to output prompt text and metadata only, with no media output port.
+
+The project contains:
+
+- logical `assets` with type, availability, description/analysis, transcript, audio mode, and optional explicit video-camera transfer;
+- `subjects` with stable H3 index, identity facts/assets, a base appearance state, and an acyclic appearance-state graph;
+- `environments` with permanent facts, bounded-role picture views, a default state, and an acyclic temporary-state graph;
+- ordered `generations` with automatic/explicit activation, exclusions, physical bindings, and initial subject/environment state policies.
+
+Activation and dependency closure are deterministic. A subject activates required identity assets and its active appearance source. An environment activates selected views. A referenced soundtrack or camera-transfer video activates its required media. Excluding a mandatory dependency is an error rather than permission to drop it.
+
+The active asset set and binding set must match within a valid generation. Per-type slots and limits are enforced; the same physical slot can be reused by a different asset in another generation.
+
+See the normative [`media_manifest_v2.schema.json`](schemas/media_manifest_v2.schema.json) and the operational [Prompt Studio guide](prompt_studio.md).
+
+### Shot plan v2
+
+`shot_plan_json` v2 is the temporal source of truth and supports up to 64 shots. Each shot has a stable ID, a valid `generationId`, and an `action`; optional structured fields include:
+
+- `openingState`;
+- automatic or exact per-generation duration;
+- transition and cut context;
+- complete subject presence/blocking;
+- environment and view selection;
+- role-bounded `referenceUses`;
+- `cameraStart`, `cameraPath`, and sparse `cameraEnd`;
+- appearance and environment transitions with exact from/to state IDs, timing, trigger, and mechanism.
+
+`openingState` describes the visible first frame. `action` describes what changes during the shot. The validator does not infer this split from generated prose or from shot-plan v1.
+
+In exact mode, duration is required and checked within each generation. In automatic mode, per-shot `durationSeconds` is prohibited. An omitted End property inherits Start; a fully identical End is omitted from canonical JSON.
+
+See the normative [`shot_plan_v2.schema.json`](schemas/shot_plan_v2.schema.json).
+
+### Appearance and environment continuity
+
+Identity, appearance, and environment geometry are independent authority domains. An appearance state controls only its declared dimensions and cannot change identity. A temporary environment state cannot redefine permanent geography, architecture, scale, or fixed elements.
+
+Generation initial state uses explicit, carry, or reset policy. The first generation cannot carry unknown prior state. A reset points to the subject base or environment default and requires a reason. Shot transitions must begin at the state resolved on entry, target a different valid state, and involve a present subject or the active environment. State and dependency resolution is deterministic; an LLM does not choose carry, IDs, activation, or physical slots.
+
+---
+
+## Camera Authority Contract
+
+Camera ownership is resolved by `(shot, phase, aspect)`, not as one global camera flag.
+
+- Phases: `start`, `path`, `end`, `whole_shot`.
+- Aspects: `motion`, `framing`, `angle`, `viewpoint`, `composition`, `focus`, `distance`, `stability`, `lens`, `parallax`.
+
+| Source | Rank |
+|---|---:|
+| Explicit source-prompt fact | 100 |
+| Explicit, active, bound video camera transfer used by the shot | 90 |
+| Shot plan | 80 |
+| Global cinematography | 60 |
+| Generated prose | 40 |
+| Creative treatment | 20 |
+
+Equal or compatible claims merge provenance. Incompatible source/video/shot/global owners follow the explicit-conflict matrix. A shot-plan value normally shadows global cinematography for only that shot; it is not a diagnostic. Global cinematography shadows treatment guidance. Start and End are separate phases and never conflict merely because they differ.
+
+A video owns no camera aspect by connection, editing mode, or reuse mode alone. The video must declare `cameraTransfer.enabled=true`, role `camera_reference`, and named aspects; it must be active and bound in the generation; and the shot must include a `camera_transfer` reference use requesting a subset of those aspects.
+
+When no source claims an aspect, the compiler creates no aesthetic default.
+
+---
+
+## Diagnostics and Prompt Coach
+
+`validation_report` retains `valid`, `qualityValid`, `errors`, `warnings`, and the three coverage-gap arrays. It adds `diagnosticReport` schema v1 with a catalog version, counts, and structured diagnostics.
+
+Each diagnostic carries a stable code and structured policy: severity, category, confidence, evidence basis, valid/quality blocking flags, repair eligibility and priority, message, location, related resource IDs, suggestions, allowlisted actions, data, and a fingerprint. The fingerprint does not depend on the English message.
+
+The Prompt Coach operates only on shot-plan v2 structured fields. It is advisory, bounded, and never enters the LLM repair request. Coach findings therefore do not change `valid`, `qualityValid`, or user text. Lexical rules run conservatively for supported English/Spanish input; weak-cut and duplicate-opening checks require their full structured preconditions rather than guessing from final prose.
+
+The normative report schema is [`diagnostic_report_v1.schema.json`](schemas/diagnostic_report_v1.schema.json).
+
+---
+
+## Compatibility and No-Clobber Rules
+
+The enhancer retains its existing input order and eight output ports. Prompt Studio stores no duplicate subjects/environments widget and adds no Coach output. Diagnostics reach the drawer through an ephemeral ComfyUI UI payload while the direct Python `enhance()` tuple remains unchanged.
+
+Structured JSON is classified before editing as `blank`, `v1`, `v2`, `malformed`, or `future`:
+
+- hydration never writes;
+- untouched blank and v1 values remain byte-identical;
+- historical `false`/`null` placeholders in creative treatment or cinematography, and boolean/`null` placeholders in shot-plan storage, are treated as neutral blank values without rewriting their raw bytes;
+- the first structured shot-plan v1 edit migrates atomically to v2;
+- legacy creative-treatment and cinematography v1 values remain read-only in the Studio until explicit import validates and writes v2;
+- legacy media manifests remain supported and read-only in the v2 entity editor rather than being guessed into a new project;
+- malformed input remains raw and cannot be replaced by an editor default;
+- a future version remains raw/read-only and is never downgraded.
+
+The runtime still reads existing v1 manifest, creative-treatment, cinematography, shot-plan, and `shotsPackage` inputs so old workflows can generate. Creative-treatment and cinematography parsers normalize v1 to the canonical v2 model in memory and never rewrite the source value. New defaults and persisted edits use v2. `referenceSemanticsVersion` describes resolved output semantics, not the input manifest schema. See [Prompt Studio](prompt_studio.md) for UI behavior and migration details.
 
 ---
 
@@ -183,13 +304,15 @@ This guarantees rich physical conditioning without attention overflow or drift.
 
 ## Proportional Resolution & Megapixel Math
 
-MiniMax H3 prompt enhancer nodes output aligned integer dimensions (`width` and `height`) that calculate proportional pixel counts aligned to multiples of 16 for downstream video samplers:
+MiniMax H3 prompt enhancer nodes expose two separate decisions: **Aspect Ratio** selects frame shape, while **Resolution Budget** selects approximate pixel area. Their `width` and `height` outputs are aligned to multiples of 16 for downstream video samplers.
+
+**Auto** uses the established H3-oriented dimensions for each shape. **Custom MP** calculates proportional dimensions from a requested area:
 
 $$\text{Total Pixels} = \text{target\_megapixels} \times 1,000,000$$
 $$\text{Height } (H) = \sqrt{\frac{\text{Total Pixels}}{r}} \quad \text{and} \quad \text{Width } (W) = H \times r$$
 $$\text{Aligned Dimension} = \max\left(16, \text{round}\left(\frac{\text{dim}}{16}\right) \times 16\right)$$
 
-| Aspect Ratio ($r$) | `0.2` MP (Draft) | `0.3` MP (Light) | `0.5` MP (540p) | `0.0` (Default 720p) | `1.0` MP | `2.0` MP (1080p) |
+| Aspect Ratio ($r$) | `0.2` MP (Draft) | `0.3` MP (Light) | `0.5` MP | **Auto** | `1.0` MP | `2.0` MP |
 |---|---|---|---|---|---|---|
 | **`16:9`** ($1.778$) | `592 × 336` | `736 × 416` | `944 × 528` | **`1280 × 720`** | `1328 × 752` | `1888 × 1056` |
 | **`9:16`** ($0.5625$) | `336 × 592` | `416 × 736` | `528 × 944` | **`720 × 1280`** | `752 × 1328` | `1056 × 1888` |
@@ -197,4 +320,3 @@ $$\text{Aligned Dimension} = \max\left(16, \text{round}\left(\frac{\text{dim}}{1
 | **`4:3`** ($1.333$) | `512 × 384` | `640 × 480` | `816 × 608` | **`960 × 720`** | `1152 × 864` | `1632 × 1216` |
 | **`3:4`** ($0.75$) | `384 × 512` | `480 × 640` | `608 × 816` | **`720 × 960`** | `864 × 1152` | `1216 × 1632` |
 | **`21:9`** ($2.333$) | `688 × 288` | `832 × 352` | `1088 × 464` | **`1680 × 720`** | `1536 × 656` | `2160 × 928` |
-

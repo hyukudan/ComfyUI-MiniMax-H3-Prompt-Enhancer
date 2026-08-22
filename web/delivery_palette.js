@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// One-click delivery shorthand under basic_prompt.
-//
-// H3 has no emotion-tag syntax: its published skill puts delivery in prose OUTSIDE <d> and allows
-// only the language tag plus the exact words inside it. So these emoji never reach the model --
-// prompt_guides.py resolves each one into the documented prose form and strips it from both the
-// spoken words and the echoed prompt. The palette is purely an authoring affordance; the meaning
-// lives in DELIVERY_EMOJI on the Python side, and the two lists must stay in step.
+// One-click delivery shorthand under basic_prompt. Tokens stay unchanged; Python resolves them to
+// plain H3 prose and strips them from both spoken words and the echoed prompt.
 import { app } from "/scripts/app.js";
+import { deliveryStatus, insertDeliveryToken, rovingIndex } from "./delivery_palette_model.js";
 
 const PROMPT_WIDGET = "basic_prompt";
 const TARGET_NODES = new Set([
@@ -15,45 +11,41 @@ const TARGET_NODES = new Set([
     "MiniMaxH3PromptGuideBuilder",
 ]);
 
-// tier "verb" marks the ones the official guide spells out as vocal verbs, which is why they are
-// listed first: a documented verb is a safer instruction than an invented adverb.
+// Keep the literal `{ emoji, tier` prefix: the frontend/backend sync guard parses this array.
 const DELIVERY_EMOJI = [
-    // Row 1, always visible: the marks that resolve to a verb the H3 skill documents, plus the
-    // pause. These carry a text label because an emoji alone sends you hunting through tooltips,
-    // and because a 1px green border — the old way of marking them as the safest — was invisible
-    // against a dark canvas.
-    { emoji: "💬", tier: "verb", label: "says — neutral", text: "says" },
-    { emoji: "🤫", tier: "verb", label: "whispers", text: "whisper" },
-    { emoji: "😡", tier: "verb", label: "shouts", text: "shout" },
-    { emoji: "❓", tier: "verb", label: "asks", text: "ask" },
-    { emoji: "🎤", tier: "verb", label: "sings", text: "sing" },
-    { emoji: "🎙️", tier: "verb", label: "off-screen voiceover (lips stay closed)", text: "V.O." },
-    { emoji: "⏸️", tier: "pause", label: "pause (our convention: H3 documents none)", text: "pause" },
-    // Row 2, collapsed behind "+ tone": fourteen faces that read as one yellow wall at 20px, so
-    // they are grouped by family and kept out of the way until asked for.
-    { emoji: "😠", tier: "prose", group: "hard", label: "hard, angry voice" },
-    { emoji: "😲", tier: "prose", group: "hard", label: "stunned, words coming late" },
-    { emoji: "😨", tier: "prose", group: "hard", label: "thin, frightened voice" },
-    { emoji: "😢", tier: "prose", group: "soft", label: "low, unsteady, close to tears" },
-    { emoji: "😭", tier: "prose", group: "soft", label: "through tears" },
-    { emoji: "🥺", tier: "prose", group: "soft", label: "pleading, high and wavering" },
-    { emoji: "🥰", tier: "prose", group: "soft", label: "tender, low and unhurried" },
-    { emoji: "😀", tier: "prose", group: "warm", label: "bright, warm voice" },
-    { emoji: "😂", tier: "prose", group: "warm", label: "through laughter" },
-    { emoji: "😏", tier: "prose", group: "cool", label: "flat, sardonic tone" },
-    { emoji: "😐", tier: "prose", group: "cool", label: "cold, level voice" },
-    { emoji: "🥱", tier: "prose", group: "cool", label: "slow, weary voice" },
-    { emoji: "⚡", tier: "prose", group: "urgent", label: "quick, urgent, pitch raised" },
-    { emoji: "🫢", tier: "prose", group: "urgent", label: "hushed, conspiratorial" },
-    // 📢 stays mapped in the backend for anything already typed, but is off the palette: people
-    // reach for it meaning "announces", and 🎙️ reads as voiceover without the ambiguity.
+    { emoji: "💬", tier: "verb", segment: "delivery", label: "says", text: "says", title: "Neutral, composed delivery — an explicit choice, not the absence of one. Official H3 verb." },
+    { emoji: "🤫", tier: "verb", segment: "delivery", label: "whispers", text: "whispers", title: "Breath-light and close. Official H3 verb." },
+    { emoji: "😡", tier: "verb", segment: "delivery", label: "shouts", text: "shouts", title: "Loud and forceful. For an angry shout, add “angry” from Voice color. Official H3 verb." },
+    { emoji: "❓", tier: "verb", segment: "delivery", label: "asks", text: "asks", title: "Rising pitch, gaze held on the listener. Official H3 verb." },
+    { emoji: "🎤", tier: "verb", segment: "delivery", label: "sings", text: "sings", title: "Sustained pitch, phrasing shaped by breath. Official H3 verb." },
+    { emoji: "🎙️", tier: "verb", segment: "channel", label: "V.O.", text: "V.O.", title: "Off-screen voiceover. Lips stay closed; the scene keeps moving under the voice." },
+    { emoji: "⏸️", tier: "pause", segment: "timing", label: "pause", text: "pause", title: "A held beat, written as “…” inside the quote. Our convention — H3 has no pause syntax." },
+    { emoji: "😠", tier: "prose", group: "Angry & hard", label: "angry, held back" },
+    { emoji: "😲", tier: "prose", group: "Shaken", label: "stunned" },
+    { emoji: "😨", tier: "prose", group: "Shaken", label: "frightened" },
+    { emoji: "😢", tier: "prose", group: "Sad & breaking", label: "near tears" },
+    { emoji: "😭", tier: "prose", group: "Sad & breaking", label: "through tears" },
+    { emoji: "🥺", tier: "prose", group: "Sad & breaking", label: "pleading" },
+    { emoji: "🥰", tier: "prose", group: "Warm & bright", label: "tender" },
+    { emoji: "😀", tier: "prose", group: "Warm & bright", label: "bright" },
+    { emoji: "😂", tier: "prose", group: "Warm & bright", label: "through laughter" },
+    { emoji: "😏", tier: "prose", group: "Flat & dry", label: "sardonic" },
+    { emoji: "😐", tier: "prose", group: "Flat & dry", label: "cold, level" },
+    { emoji: "🥱", tier: "prose", group: "Flat & dry", label: "weary" },
+    { emoji: "⚡", tier: "prose", group: "Pressed", label: "urgent" },
+    { emoji: "🫢", tier: "prose", group: "Pressed", label: "conspiratorial", title: "Hushed but not a whisper verb — combine with says or asks." },
+    // 📢 remains supported by Python for saved prompts, but is intentionally absent here.
 ];
 
+const DELIVERY_TOKENS = DELIVERY_EMOJI.map(({ emoji }) => emoji);
+let paletteSequence = 0;
+
+function promptWidget(node) {
+    return node.widgets?.find((item) => item.name === PROMPT_WIDGET) ?? null;
+}
+
 function promptTextarea(node) {
-    // The multiline widget is not itself a textarea: element and inputEl are both DIV wrappers
-    // with the real control nested inside. Requiring a textarea at the top level made every click
-    // a silent no-op, so search downward and only then give up.
-    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    const widget = promptWidget(node);
     if (!widget) return null;
     for (const candidate of [widget.element, widget.inputEl]) {
         if (!candidate) continue;
@@ -64,204 +56,312 @@ function promptTextarea(node) {
     return null;
 }
 
-// Padding matters: marks bind to a line by proximity on the Python side, so a bare token glued to
-// the previous word would read as part of it.
-function padded(token, before, after) {
-    const lead = before && !/\s$/.test(before) ? " " : "";
-    const tail = after && !/^\s/.test(after) ? " " : "";
-    return `${lead}${token}${tail}`;
+function setStatus(state, value, confirmation = "") {
+    const next = deliveryStatus(value, DELIVERY_TOKENS, confirmation);
+    state.status.dataset.kind = next.kind;
+    state.status.style.color = next.kind === "warning" ? "var(--h3-warning, #f4c36a)" : "#aeb5bf";
+    state.status.textContent = next.text;
 }
 
-function insert(node, token) {
-    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+function existingVerbOnLine(value, caret, incoming) {
+    const start = value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
+    const end = value.indexOf("\n", caret);
+    const line = value.slice(start, end < 0 ? value.length : end);
+    return DELIVERY_EMOJI.some((mark) => mark.tier === "verb" && mark.emoji !== incoming && line.includes(mark.emoji));
+}
+
+function insert(node, state, mark) {
+    const widget = promptWidget(node);
     if (!widget) return;
     const textarea = promptTextarea(node);
     if (!textarea) {
-        // Still better than doing nothing: append to the widget value so the mark is at least
-        // usable, even on a frontend whose DOM we cannot walk.
         const current = String(widget.value ?? "");
-        widget.value = current + padded(token, current, "");
-        widget.callback?.(widget.value);
+        const result = insertDeliveryToken(current, current.length, current.length, mark.emoji);
+        widget.value = result.value;
         node.setDirtyCanvas?.(true, true);
+        setStatus(state, result.value, "Added at the end of the prompt.");
         return;
     }
     const start = textarea.selectionStart ?? textarea.value.length;
     const end = textarea.selectionEnd ?? start;
-    const before = textarea.value.slice(0, start);
-    const after = textarea.value.slice(end);
-    const injected = padded(token, before, after);
-    textarea.value = `${before}${injected}${after}`;
-    widget.value = textarea.value;
-    const caret = start + injected.length;
-    textarea.setSelectionRange(caret, caret);
+    const alreadyHasVerb = mark.tier === "verb" && existingVerbOnLine(textarea.value, start, mark.emoji);
+    const result = insertDeliveryToken(textarea.value, start, end, mark.emoji);
+    textarea.value = result.value;
+    widget.value = result.value;
+    textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
     textarea.focus();
-    // The Vue-backed widget syncs from this input event and fires widget.callback itself; calling
-    // it here as well ran every extension-wrapped callback twice.
+    state.suppressNextInputStatus = true;
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const confirmation = alreadyHasVerb
+        ? "This line already has a Delivery verb. Keep one verb per line."
+        : `${mark.emoji} ${mark.label} added — will be written as prose, not shown in the final prompt.`;
+    setStatus(state, result.value, confirmation);
 }
 
-function makeButton(node, mark) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.title = mark.tier === "verb" ? `${mark.label}  (official H3 verb)` : mark.label;
-    button.setAttribute("aria-label", mark.label);
-    button.textContent = mark.emoji;
-    if (mark.text) {
-        const caption = document.createElement("span");
-        caption.textContent = mark.text;
-        caption.style.cssText = "font-size:11px;color:#cfe9d6;";
-        button.appendChild(caption);
-    }
-    // Green marks a documented H3 vocal verb. The pause is neither verb nor emotion -- and is our
-    // own convention, not a documented one -- so it must not borrow the reliability signal.
-    const accent = mark.tier === "verb"
-        ? "background:rgba(74,222,128,0.10);border:2px solid #4ade80;"
-        : "background:#2a2a2e;border:1px solid #3a3a40;";
-    button.style.cssText =
-        // 32px minimum: the old buttons were ~26px, below a comfortable pointer target.
-        "min-height:32px;min-width:32px;display:inline-flex;align-items:center;gap:4px;" +
-        "padding:2px 8px;border-radius:6px;color:#ddd;font-size:14px;line-height:1;cursor:pointer;" +
-        accent;
+function focusRing(button) {
     button.addEventListener("focus", () => {
-        // ComfyUI resets the default outline, so focus would otherwise be invisible.
-        button.style.outline = "2px solid #7ab8ff";
+        button.style.outline = "2px solid var(--h3-focus, #7ab8ff)";
         button.style.outlineOffset = "1px";
     });
     button.addEventListener("blur", () => { button.style.outline = "none"; });
+    button.addEventListener("pointerdown", (event) => event.stopPropagation());
+}
+
+function markButton(node, state, mark, compact = false) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.title = mark.title ?? mark.label;
+    button.setAttribute("aria-label", mark.label);
+    button.style.cssText =
+        "min-height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;" +
+        `padding:3px ${compact ? "7px" : "8px"};border-radius:6px;color:#ddd;font-size:13px;line-height:1.15;cursor:pointer;` +
+        (mark.tier === "verb"
+            ? "background:rgba(74,222,128,.10);border:2px solid var(--h3-success, #4ade80);"
+            : "background:var(--h3-surface, #2a2a2e);border:1px solid #3a3a40;");
+    const emoji = document.createElement("span");
+    emoji.setAttribute("aria-hidden", "true");
+    emoji.textContent = mark.emoji;
+    const label = document.createElement("span");
+    label.textContent = mark.text ?? mark.label;
+    label.style.cssText = `font-size:${compact ? "11px" : "12px"};color:${mark.tier === "verb" ? "#cfe9d6" : "#ddd"};`;
+    button.append(emoji, label);
+    focusRing(button);
     button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        insert(node, mark.emoji);
+        insert(node, state, mark);
     });
-    // Without this the canvas swallows the press and starts dragging the node instead.
-    button.addEventListener("pointerdown", (event) => event.stopPropagation());
     return button;
 }
 
-function separator() {
-    const line = document.createElement("span");
-    line.style.cssText = "width:1px;height:20px;background:#444;margin:0 2px;";
-    return line;
+function segment(label, buttons) {
+    const group = document.createElement("div");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", label);
+    group.style.cssText = "display:flex;flex-wrap:wrap;max-width:100%;align-items:flex-end;gap:4px;padding-right:4px;border-right:1px solid #444;";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    caption.style.cssText = "align-self:center;font-size:9px;line-height:1;color:#999;text-transform:uppercase;letter-spacing:.05em;";
+    group.append(caption, ...buttons);
+    return group;
+}
+
+function installRoving(buttons, columns = 1) {
+    buttons.forEach((button, index) => {
+        button.tabIndex = index === 0 ? 0 : -1;
+        button.addEventListener("focus", () => {
+            buttons.forEach((candidate) => { candidate.tabIndex = candidate === button ? 0 : -1; });
+        });
+        button.addEventListener("keydown", (event) => {
+            const next = rovingIndex(index, event.key, buttons.length, columns);
+            if (next === index || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            buttons[next].focus();
+        });
+    });
 }
 
 function buildPaletteRoot(node) {
+    const cleanup = [];
     const root = document.createElement("div");
-    root.style.cssText = "position:relative;display:flex;flex-direction:column;gap:4px;padding:4px 2px 0;flex:0 0 auto;";
-
+    root.style.cssText = "position:relative;display:flex;flex-direction:column;gap:5px;padding:5px 2px 0;flex:0 0 auto;";
+    const heading = document.createElement("strong");
+    heading.textContent = "Delivery";
+    heading.style.cssText = "font-size:11px;color:#bbb;font-weight:600;";
     const primary = document.createElement("div");
-    primary.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;align-items:center;";
+    primary.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;align-items:flex-end;";
     primary.setAttribute("role", "toolbar");
-    primary.setAttribute("aria-label", "Vocal delivery");
-    for (const mark of DELIVERY_EMOJI.filter((m) => m.tier !== "prose")) {
-        primary.appendChild(makeButton(node, mark));
-    }
+    primary.setAttribute("aria-label", "Delivery marks");
+    const status = document.createElement("p");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+    status.style.cssText = "min-height:14px;margin:0;font-size:10px;line-height:1.3;color:#aeb5bf;";
+    const state = { root, status, cleanup, timers: new Set() };
 
-    // Parented to document.body, not to the palette. The prompt widget's wrapper is
-    // overflow:hidden and the palette already sits flush against its bottom edge, so anything
-    // expanding inside it is clipped away -- which is what happened to this panel and to the
-    // second button row before it. position:fixed against the viewport escapes that entirely.
-    const tones = document.createElement("div");
-    tones.style.cssText =
-        "display:none;position:fixed;z-index:2000;flex-wrap:wrap;gap:4px;align-items:center;" +
-        "max-width:340px;padding:6px;border-radius:8px;background:#1e1e22;" +
-        "border:1px solid #3a3a40;box-shadow:0 6px 20px rgba(0,0,0,0.55);";
-    document.body.appendChild(tones);
-    tones.setAttribute("role", "toolbar");
-    tones.setAttribute("aria-label", "Emotional tone");
-    let previousGroup = null;
-    for (const mark of DELIVERY_EMOJI.filter((m) => m.tier === "prose")) {
-        if (previousGroup && mark.group !== previousGroup) tones.appendChild(separator());
-        previousGroup = mark.group;
-        tones.appendChild(makeButton(node, mark));
-    }
+    const delivery = DELIVERY_EMOJI.filter((mark) => mark.segment === "delivery").map((mark) => markButton(node, state, mark, true));
+    const channel = DELIVERY_EMOJI.filter((mark) => mark.segment === "channel").map((mark) => markButton(node, state, mark, true));
+    const timing = DELIVERY_EMOJI.filter((mark) => mark.segment === "timing").map((mark) => markButton(node, state, mark, true));
+    const primaryMarks = [...delivery, ...channel, ...timing];
+    primary.append(segment("Verbs", delivery), segment("Channel", channel), segment("Timing", timing));
+    installRoving(primaryMarks);
 
-    // Built by hand rather than through makeButton: that helper wires a click handler that inserts
-    // its mark, and this button inserts nothing.
+    const dialog = document.createElement("div");
+    dialog.id = `minimax-h3-voice-color-${++paletteSequence}`;
+    dialog.hidden = true;
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-label", "Voice color");
+    dialog.style.cssText =
+        "display:none;position:fixed;z-index:2000;width:min(340px,calc(100vw - 16px));max-height:70vh;overflow:auto;" +
+        "padding:10px;border-radius:9px;background:var(--h3-surface, #1e1e22);border:1px solid #3a3a40;" +
+        "box-shadow:0 6px 20px rgba(0,0,0,.55);color:#ddd;";
+    document.body.appendChild(dialog);
+    const dialogHeader = document.createElement("div");
+    dialogHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;";
+    const dialogTitle = document.createElement("strong");
+    dialogTitle.textContent = "Voice color";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close Voice color");
+    close.style.cssText = "min-width:32px;min-height:32px;background:transparent;border:0;color:#ddd;font-size:20px;cursor:pointer;";
+    focusRing(close);
+    dialogHeader.append(dialogTitle, close);
+    const library = document.createElement("div");
+    library.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+    const voiceButtons = [];
+    const groups = [...new Set(DELIVERY_EMOJI.filter((mark) => mark.tier === "prose").map((mark) => mark.group))];
+    for (const groupName of groups) {
+        const family = document.createElement("section");
+        family.setAttribute("aria-label", groupName);
+        const familyTitle = document.createElement("strong");
+        familyTitle.textContent = groupName;
+        familyTitle.style.cssText = "display:block;margin-bottom:4px;font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:.05em;";
+        const items = document.createElement("div");
+        items.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+        for (const mark of DELIVERY_EMOJI.filter((candidate) => candidate.group === groupName)) {
+            const control = markButton(node, state, mark);
+            control.style.width = "100%";
+            voiceButtons.push(control);
+            items.appendChild(control);
+        }
+        family.append(familyTitle, items);
+        library.appendChild(family);
+    }
+    installRoving(voiceButtons, 2);
+    const footer = document.createElement("p");
+    footer.textContent = "Combines with any Delivery verb. One or two colors read best.";
+    footer.style.cssText = "margin:9px 0 0;padding-top:8px;border-top:1px solid #3a3a40;font-size:10px;color:#aaa;";
+    dialog.append(dialogHeader, library, footer);
+
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.textContent = "+ tone";
-    toggle.title = "Show the emotional tone marks";
+    toggle.textContent = "Voice…";
+    toggle.title = "Add a voice color to a line";
+    toggle.setAttribute("aria-haspopup", "dialog");
     toggle.setAttribute("aria-expanded", "false");
-    toggle.style.cssText =
-        "min-height:32px;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:12px;" +
-        "background:#2a2a2e;border:1px dashed #55555c;color:#bbb;";
-    toggle.addEventListener("focus", () => {
-        toggle.style.outline = "2px solid #7ab8ff";
-        toggle.style.outlineOffset = "1px";
-    });
-    toggle.addEventListener("blur", () => { toggle.style.outline = "none"; });
+    toggle.setAttribute("aria-controls", dialog.id);
+    toggle.style.cssText = "min-height:32px;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;background:#2a2a2e;border:1px dashed #666;color:#ddd;";
+    focusRing(toggle);
+    primary.appendChild(toggle);
+
+    const positionDialog = () => {
+        const anchor = toggle.getBoundingClientRect();
+        dialog.hidden = false;
+        dialog.style.display = "block";
+        dialog.style.visibility = "hidden";
+        const rect = dialog.getBoundingClientRect();
+        const left = Math.max(8, Math.min(anchor.left, window.innerWidth - rect.width - 8));
+        const below = anchor.bottom + 4;
+        const top = below + rect.height > window.innerHeight
+            ? Math.max(8, anchor.top - rect.height - 4)
+            : below;
+        dialog.style.left = `${left}px`;
+        dialog.style.top = `${top}px`;
+        dialog.style.visibility = "visible";
+    };
+    const closeDialog = (restoreFocus = false) => {
+        if (dialog.hidden) return;
+        dialog.hidden = true;
+        dialog.style.display = "none";
+        toggle.setAttribute("aria-expanded", "false");
+        if (restoreFocus) toggle.focus();
+    };
+    const openDialog = () => {
+        positionDialog();
+        toggle.setAttribute("aria-expanded", "true");
+        voiceButtons[0]?.focus();
+    };
     toggle.addEventListener("pointerdown", (event) => event.stopPropagation());
     toggle.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const open = tones.style.display === "none";
-        if (open) {
-            // Viewport coordinates, since the panel hangs off document.body. Flip above the
-            // button when there is no room below.
-            const anchor = toggle.getBoundingClientRect();
-            tones.style.visibility = "hidden";
-            tones.style.display = "flex";
-            const height = tones.getBoundingClientRect().height;
-            tones.style.left = `${Math.min(anchor.left, window.innerWidth - 356)}px`;
-            const below = anchor.bottom + 4;
-            tones.style.top = `${below + height > window.innerHeight ? anchor.top - height - 4 : below}px`;
-            tones.style.visibility = "visible";
+        if (dialog.hidden) openDialog(); else closeDialog(true);
+    });
+    close.addEventListener("click", () => closeDialog(true));
+    voiceButtons.forEach((button) => button.addEventListener("click", () => closeDialog(false)));
+    dialog.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeDialog(true);
+            return;
         }
-        tones.style.display = open ? "flex" : "none";
-        toggle.setAttribute("aria-expanded", String(open));
-        toggle.textContent = open ? "− tone" : "+ tone";
-        toggle.title = open ? "Hide the emotional tone marks" : "Show the emotional tone marks";
+        if (event.key !== "Tab") return;
+        const focusable = [close, ...voiceButtons];
+        const current = focusable.indexOf(document.activeElement);
+        const next = event.shiftKey
+            ? (current <= 0 ? focusable.length - 1 : current - 1)
+            : (current >= focusable.length - 1 ? 0 : current + 1);
+        event.preventDefault();
+        focusable[next].focus();
     });
-    primary.appendChild(separator());
-    primary.appendChild(toggle);
-
-    const closeTones = () => {
-        if (tones.style.display === "none") return;
-        tones.style.display = "none";
-        toggle.setAttribute("aria-expanded", "false");
-        toggle.textContent = "+ tone";
+    const outside = (event) => {
+        if (!root.contains(event.target) && !dialog.contains(event.target)) {
+            closeDialog(dialog.contains(document.activeElement));
+        }
     };
-    // Picking a tone is the end of the interaction, so the panel gets out of the way by itself.
-    tones.addEventListener("click", (event) => {
-        if (event.target.closest("button")) closeTones();
-    });
-    // And a click anywhere else dismisses it, the way any floating panel is expected to behave.
-    document.addEventListener("pointerdown", (event) => {
-        if (!root.contains(event.target)) closeTones();
-    });
+    const viewportDismiss = () => closeDialog(dialog.contains(document.activeElement));
+    document.addEventListener("pointerdown", outside);
+    window.addEventListener("scroll", viewportDismiss, true);
+    window.addEventListener("resize", viewportDismiss);
+    cleanup.push(
+        () => document.removeEventListener("pointerdown", outside),
+        () => window.removeEventListener("scroll", viewportDismiss, true),
+        () => window.removeEventListener("resize", viewportDismiss),
+        () => dialog.remove(),
+    );
 
-    root.appendChild(primary);
-    return root;
+    const help = document.createElement("details");
+    help.style.cssText = "font-size:10px;color:#aaa;";
+    const helpSummary = document.createElement("summary");
+    helpSummary.textContent = "Marks resolve to plain prose — they never appear in the final prompt.";
+    helpSummary.style.cursor = "pointer";
+    const helpBody = document.createElement("p");
+    helpBody.textContent = "Place a mark next to the line it belongs to — beside or inside the quotes. One delivery verb per line; colors combine freely.";
+    helpBody.style.cssText = "margin:4px 0 0;line-height:1.35;";
+    help.append(helpSummary, helpBody);
+    root.append(heading, primary, help, status);
+
+    const textarea = promptTextarea(node);
+    if (textarea) {
+        let debounce = null;
+        const input = () => {
+            if (state.suppressNextInputStatus) {
+                state.suppressNextInputStatus = false;
+                return;
+            }
+            clearTimeout(debounce);
+            debounce = setTimeout(() => setStatus(state, textarea.value), 180);
+        };
+        textarea.addEventListener("input", input);
+        cleanup.push(() => {
+            clearTimeout(debounce);
+            textarea.removeEventListener("input", input);
+        });
+    }
+    state.destroy = () => {
+        cleanup.splice(0).forEach((dispose) => dispose());
+        state.timers.forEach(clearTimeout);
+        state.timers.clear();
+        root.remove();
+    };
+    return state;
 }
 
-// Mounted INSIDE the prompt widget's own wrapper, below the textarea, rather than as a sibling
-// widget. The frontend positions and sizes that wrapper every frame, so the palette inherits both
-// for free. As a sibling it needed four separate repairs: a splice to sit next to the prompt on a
-// 47-input node, a measured computeSize once the buttons wrapped onto two rows and overlapped the
-// widgets below, a ResizeObserver because the row count changes with node width, and a grow-only
-// guard after feeding computeSize() back into setSize() collapsed the node and discarded manual
-// resizes. Living in the wrapper removes all four, and the observer leak with them.
-// Idempotent: safe to call from any hook, and re-mounts if a frontend re-render evicts it.
 function mountPalette(node) {
-    const widget = node.widgets?.find((item) => item.name === PROMPT_WIDGET);
+    if (node.__minimaxDeliveryPaletteDestroyed) return false;
+    const widget = promptWidget(node);
     const textarea = promptTextarea(node);
     if (!widget || !textarea) return false;
-
     const wrapper = [widget.element, widget.inputEl].find(
         (element) => element && element !== textarea && element.contains(textarea),
     ) ?? textarea.parentElement;
     if (!wrapper) return false;
-
-    node.__minimaxDeliveryPalette ??= { root: buildPaletteRoot(node) };
+    node.__minimaxDeliveryPalette ??= buildPaletteRoot(node);
     const root = node.__minimaxDeliveryPalette.root;
     if (root.parentElement === wrapper) return true;
-
-    // Stack vertically and let the textarea absorb whatever height the buttons leave.
     wrapper.style.display = "flex";
     wrapper.style.flexDirection = "column";
-    // The wrapper ships as overflow:hidden and the palette sits flush against its bottom edge, so
-    // a button row that wrapped onto a second line was simply cut off. The textarea keeps its own
-    // scrolling; this only stops the wrapper from clipping its children.
     wrapper.style.overflow = "visible";
     textarea.style.flex = "1 1 auto";
     textarea.style.minHeight = "0";
@@ -276,11 +376,15 @@ app.registerExtension({
         const hook = (name) => {
             const original = nodeType.prototype[name];
             nodeType.prototype[name] = function () {
+                this.__minimaxDeliveryPaletteDestroyed = false;
                 const result = original?.apply(this, arguments);
-                // The prompt widget's DOM is built lazily, so retry briefly until it exists.
                 let attempts = 0;
                 const attempt = () => {
-                    if (!mountPalette(this) && ++attempts < 10) setTimeout(attempt, 100);
+                    if (this.__minimaxDeliveryPaletteDestroyed) return;
+                    if (!mountPalette(this) && ++attempts < 10) {
+                        const timer = setTimeout(attempt, 100);
+                        this.__minimaxDeliveryPalette?.timers?.add(timer);
+                    }
                 };
                 setTimeout(attempt, 0);
                 return result;
@@ -288,5 +392,16 @@ app.registerExtension({
         };
         hook("onNodeCreated");
         hook("onConfigure");
+        const originalRemoved = nodeType.prototype.onRemoved;
+        nodeType.prototype.onRemoved = function () {
+            this.__minimaxDeliveryPaletteDestroyed = true;
+            const state = this.__minimaxDeliveryPalette;
+            if (state) {
+                state.destroyed = true;
+                state.destroy?.();
+                this.__minimaxDeliveryPalette = null;
+            }
+            return originalRemoved?.apply(this, arguments);
+        };
     },
 });

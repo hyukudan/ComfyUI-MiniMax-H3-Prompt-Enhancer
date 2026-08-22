@@ -86,6 +86,12 @@ A crucial distinction in the enhancer is separating **on-screen visual text** fr
 
 ## Speaker IDs & Vocal Attribution
 
+### Delivery and Voice color authoring
+
+The toolbar below `basic_prompt` separates five **Delivery** verbs from the **V.O.** channel and the **pause** timing convention. The **Voice…** button opens a labelled Voice color library for line-level vocal shades. These controls insert authoring marks beside the caret; the marks resolve to plain prose and never appear in the final prompt.
+
+Put a mark beside or inside the quoted line it belongs to, keep one Delivery verb per line, and combine Voice colors when useful. If marks are present without quoted dialogue, the UI shows a non-blocking warning because those marks cannot be attached and will be dropped. This line-level Voice color is separate from the scene-wide **Mood (tone)** in Look.
+
 Every audible speaking character receives a stable speaker identifier: `(S1)`, `(S2)`, `(S3)`...
 
 1. **Visible Dialogue**: The character ID, vocal verb, delivery description, and `<d>` tag reside in the same sentence:

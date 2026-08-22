@@ -22,6 +22,14 @@ from prompt_guides import build_user_request
 
 FIXTURE = Path(__file__).with_name("fixtures") / "legacy_node_inputs_v050.json"
 FRONTEND = Path(__file__).parents[1] / "web" / "backend_toggle.js"
+FRONTEND_ROOT = FRONTEND.parent
+
+
+def _all_frontend_source() -> str:
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(FRONTEND_ROOT.rglob("*.js"))
+    )
 README = Path(__file__).parents[1] / "README.md"
 NEW_FIELDS = [
     "creative_treatment_json", "shot_plan_json", "cinematography_json", "instrumental_style",
@@ -289,9 +297,10 @@ def test_guide_builder_forwards_both_new_fields_to_the_request_contract():
 
 def test_frontend_panel_is_non_persistent_while_both_json_storage_widgets_remain_persistent():
     source = FRONTEND.read_text(encoding="utf-8")
-    assert 'const CREATIVE_TREATMENT_WIDGET = "creative_treatment_json"' in source
-    assert 'const SHOT_PLAN_WIDGET = "shot_plan_json"' in source
-    assert 'const CINEMATOGRAPHY_WIDGET = "cinematography_json"' in source
+    all_source = _all_frontend_source()
+    assert 'const CREATIVE_TREATMENT_WIDGET = "creative_treatment_json"' in all_source
+    assert 'const SHOT_PLAN_WIDGET = "shot_plan_json"' in all_source
+    assert 'const CINEMATOGRAPHY_WIDGET = "cinematography_json"' in all_source
     assert '"MiniMaxH3PromptEnhancer"' in source
     assert '"MiniMaxH3GGUFPromptEnhancer"' in source
     assert '"MiniMaxH3PromptGuideBuilder"' in source
@@ -354,7 +363,9 @@ def test_frontend_contract_uses_canonical_choices_and_safe_shot_editor_controls(
     )
     positions = [source.index(label) for label in family_labels]
     assert positions == sorted(positions)
-    assert 'document.createElement("optgroup")' in source
+    camera_look = (FRONTEND_ROOT / "studio" / "tab_camera_look.js").read_text(encoding="utf-8")
+    assert "controller.visualLanguageGroups?.()" in camera_look
+    assert 'heading.className = "minimax-h3-searchable-select-group"' in camera_look
     assert "Unavailable in loaded catalog" in source
 
 
@@ -384,24 +395,21 @@ def test_frontend_mirrors_the_new_camera_axes_and_legacy_motion_migration():
     assert '"underwater_muffled",' in source
 
 
-def test_frontend_uses_collapsed_non_persistent_accordions_and_keeps_advanced_last():
+def test_frontend_uses_compact_non_persistent_accordions_and_keeps_advanced_last():
     source = FRONTEND.read_text(encoding="utf-8")
     assert 'const ACCORDION_STATE_PROPERTY = "minimaxH3AccordionState"' in source
     assert 'details.open = accordionState(node, "modelSetup")' in source
-    assert 'treatmentDetails.open = accordionState(node, "creativeDirection")' in source
-    assert 'shotDetails.open = accordionState(node, "shotPlan")' in source
+    assert 'details.open = accordionState(node, "audioSettings")' in source
+    assert 'details.open = accordionState(node, "chainedMultishot")' in source
     assert 'details.open = accordionState(node, "advancedSettings")' in source
-    assert "No preferences" in source
-    assert "Auto-distribute" in source
-    assert "Set duration per shot" in source
     assert "Prompt model backend" in source
-    append_block = source.split("if (modelSetup) root.appendChild", 1)[1].split(
-        "const panelWidget", 1,
+    append_block = source.split("function mountCompactCreativePanel", 1)[1].split(
+        "function addCreativeDirectionPanel", 1,
     )[0]
-    assert append_block.index("modelSetup.details") < append_block.index("treatmentDetails")
-    assert append_block.index("treatmentDetails") < append_block.index("cinematographyDetails")
-    assert append_block.index("cinematographyDetails") < append_block.index("shotDetails")
-    assert append_block.index("shotDetails") < append_block.index("advancedSettings.details")
+    assert append_block.index("audioSettings.details") < append_block.index("modelSetup.details")
+    assert append_block.index("modelSetup.details") < append_block.index("chainedSettings.details")
+    assert append_block.index("chainedSettings.details") < append_block.index("advancedSettings.details")
+    assert "createStudioDashboard(node, studioController)" in source
     assert "node.__minimaxProxyManagedWidgets = managedNames" in source
     assert "setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false)" in source
 

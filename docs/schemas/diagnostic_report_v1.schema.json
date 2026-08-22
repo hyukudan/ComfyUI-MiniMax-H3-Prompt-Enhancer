@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minimax-h3-prompt-enhancer.local/schemas/diagnostic-report-v1.json",
+  "title": "MiniMax H3 Diagnostic Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "catalogVersion", "summary", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "catalogVersion": { "type": "integer", "minimum": 1 },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors", "warnings", "advice", "info", "suppressedCoach", "valid", "qualityValid"],
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "advice": { "type": "integer", "minimum": 0 },
+        "info": { "type": "integer", "minimum": 0 },
+        "suppressedCoach": { "type": "integer", "minimum": 0 },
+        "valid": { "type": "boolean" },
+        "qualityValid": { "type": "boolean" }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "field"],
+      "properties": {
+        "scope": { "enum": ["input", "configuration", "output"] },
+        "generationId": { "type": "string" },
+        "shotId": { "type": "string" },
+        "shotIndex": { "type": "integer", "minimum": 0 },
+        "section": { "type": "string" },
+        "field": { "type": "string", "minLength": 1 },
+        "startOffset": { "type": "integer", "minimum": 0 },
+        "endOffset": { "type": "integer", "minimum": 0 },
+        "excerpt": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "enum": ["asset", "subject", "environment", "generation", "shot", "camera_claim", "diagnostic"]
+        },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "priority"],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "instruction": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "safeAction": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "shotId", "aspects"],
+          "properties": {
+            "kind": { "const": "clear_shot_camera" },
+            "label": { "type": "string", "minLength": 1 },
+            "shotId": { "type": "string", "minLength": 1 },
+            "aspects": { "$ref": "#/$defs/cameraAspects" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "aspects"],
+          "properties": {
+            "kind": { "const": "clear_global_camera" },
+            "label": { "type": "string", "minLength": 1 },
+            "aspects": { "$ref": "#/$defs/cameraAspects" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "generationId", "resource"],
+          "properties": {
+            "kind": { "const": "activate_resource" },
+            "label": { "type": "string", "minLength": 1 },
+            "generationId": { "type": "string", "minLength": 1 },
+            "resource": { "$ref": "#/$defs/resource" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "generationId", "assetId", "slotIndex"],
+          "properties": {
+            "kind": { "const": "add_binding" },
+            "label": { "type": "string", "minLength": 1 },
+            "generationId": { "type": "string", "minLength": 1 },
+            "assetId": { "type": "string", "minLength": 1 },
+            "slotIndex": { "type": "integer", "minimum": 1, "maximum": 9 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "label", "shotId", "entityKind", "entityId", "stateId"],
+          "properties": {
+            "kind": { "const": "align_transition_from_state" },
+            "label": { "type": "string", "minLength": 1 },
+            "shotId": { "type": "string", "minLength": 1 },
+            "entityKind": { "enum": ["subject", "environment"] },
+            "entityId": { "type": "string", "minLength": 1 },
+            "stateId": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "cameraAspects": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"]
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "category", "confidence", "basis", "blocks", "repair", "message", "location", "related", "suggestions", "actions", "data", "fingerprint"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
+        "severity": { "enum": ["error", "warning", "advice", "info"] },
+        "category": { "enum": ["schema", "configuration", "structure", "fidelity", "camera", "appearance", "environment", "reference", "timing", "style", "coach"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "basis": { "enum": ["contract", "configuration", "derived", "heuristic"] },
+        "blocks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valid", "quality"],
+          "properties": {
+            "valid": { "type": "boolean" },
+            "quality": { "type": "boolean" }
+          }
+        },
+        "repair": { "$ref": "#/$defs/repair" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "location": { "$ref": "#/$defs/location" },
+        "related": { "type": "array", "items": { "$ref": "#/$defs/resource" } },
+        "suggestions": { "type": "array", "maxItems": 3, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/safeAction" } },
+        "data": { "type": "object" },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

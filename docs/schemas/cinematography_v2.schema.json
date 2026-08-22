@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minimax-h3-prompt-enhancer.local/schemas/cinematography-v2.json",
+  "title": "MiniMax H3 Cinematography v2",
+  "description": "Canonical editable cinematography document. Legacy v1 is accepted by the runtime parser only and normalizes in memory to this v2 contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "colorPalette": {"enum": ["none", "natural", "warm", "cool", "restrained", "vibrant", "monochrome", "midcentury_dye_transfer", "two_color_process", "bleach_bypass", "teal_orange", "cross_processed", "sepia", "saturated_slide_film", "classic_western_earth_sky", "revisionist_western_earth", "telenovela_broadcast_color", "cold_steel_blue", "sterile_white_cyan", "neon_cyan_magenta", "soft_pastel", "day_for_night", "infrared_aerochrome"]},
+    "exposureContrast": {"enum": ["none", "high_key", "balanced", "low_key", "high_contrast", "soft_contrast"]},
+    "shotScale": {"enum": ["none", "extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide", "extreme_wide"]},
+    "cameraAngle": {"enum": ["none", "eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye"]},
+    "cameraViewpoint": {"enum": ["none", "pov", "over_the_shoulder", "mirror_or_reflection"]},
+    "cameraMotion": {"enum": ["none", "static", "zoom_in", "zoom_out", "push_in", "pull_out", "pan_left", "pan_right", "truck_left", "truck_right", "tilt_up", "tilt_down", "pedestal_up", "pedestal_down", "arc", "tracking", "shake", "roll_clockwise", "roll_counterclockwise"]},
+    "cameraAmplitude": {"enum": ["auto", "small", "medium", "large"]},
+    "cameraSpeed": {"enum": ["auto", "slow", "normal", "fast"]},
+    "optics": {"enum": ["none", "wide_perspective", "natural_perspective", "compressed_telephoto", "lens_18mm", "lens_35mm", "lens_50mm", "lens_85mm_compressed"]},
+    "depthOfField": {"enum": ["none", "deep", "balanced", "shallow"]},
+    "imageTexture": {"enum": ["none", "clean_digital", "subtle_stable_grain", "film_16mm", "film_35mm", "vhs_analog_video", "early_digital_dv"]},
+    "lensEffects": {"enum": ["none", "clean", "subtle_diffusion", "restrained_halation"]},
+    "motionRendering": {"enum": ["none", "crisp", "natural_blur", "energetic_blur"]}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"cameraMotion": {"enum": ["none", "static"]}},
+        "required": ["cameraMotion"]
+      },
+      "then": {
+        "properties": {
+          "cameraAmplitude": {"const": "auto"},
+          "cameraSpeed": {"const": "auto"}
+        }
+      }
+    }
+  ]
+}

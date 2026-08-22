@@ -19,10 +19,31 @@ VOICE_LOCK_PLACEHOLDER = "Voice, language and delivery every chained prompt must
 SETTING_LOCK_PLACEHOLDER = "Location, lighting and continuity every chained prompt must preserve…"
 SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dialogue and visible text…"
 VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
-CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":1,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
+
+
+def _diagnostic_ui_payload(report: dict | str | None) -> list[str]:
+    if isinstance(report, str):
+        try:
+            report = json.loads(report)
+        except json.JSONDecodeError:
+            report = {}
+    report = report if isinstance(report, dict) else {}
+    structured = report.get("diagnosticReport", report)
+    if not isinstance(structured, dict):
+        structured = {}
+    compact = {
+        "schemaVersion": structured.get("schemaVersion", 1),
+        "summary": structured.get("summary", {
+            "valid": bool(report.get("valid", False)),
+            "qualityValid": bool(report.get("qualityValid", report.get("valid", False))),
+        }),
+        "diagnostics": structured.get("diagnostics", ()),
+    }
+    return [json.dumps(compact, ensure_ascii=False, separators=(",", ":"))]
+CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":2,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 LORA_TRIGGER_PLACEHOLDER = "Trigger tokens for any LoRA in the graph, e.g. g0r3_style, ultrarealistic_v2…"
 SHOT_PLAN_PLACEHOLDER = '{"schemaVersion":1,"timingMode":"auto","shots":[{"id":"s1","description":"..."}]}'
-CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":1,"colorPalette":"none","cameraMotion":"none"}'
+CINEMATOGRAPHY_PLACEHOLDER = '{"schemaVersion":2,"colorPalette":"none","cameraMotion":"none"}'
 ALWAYS_RE_ENHANCE_INPUT = {"default": False,
                            "tooltip": "Re-run the LLM on every queue even when the inputs are unchanged. "
                                       "Disabled reuses the cached enhancement, so requeueing an unchanged "
@@ -65,9 +86,9 @@ try:
         enhance_prompt_with_gguf_server,
         unload_cached_server,
     )
-    from .creative_treatments import VISUAL_LANGUAGE_PROFILES
+    from .creative_treatments import CREATIVE_TREATMENT_SCHEMA_VERSION, VISUAL_LANGUAGE_PROFILES
     from .prompt_enhancer import enhance_prompt
-    from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
+    from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest, parse_media_project
     from .prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
@@ -76,9 +97,9 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         enhance_prompt_with_gguf_server,
         unload_cached_server,
     )
-    from creative_treatments import VISUAL_LANGUAGE_PROFILES
+    from creative_treatments import CREATIVE_TREATMENT_SCHEMA_VERSION, VISUAL_LANGUAGE_PROFILES
     from prompt_enhancer import enhance_prompt
-    from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest
+    from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest, parse_media_project
     from prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
 
 
@@ -196,11 +217,16 @@ def _merge_visual_style_preset(creative_treatment_json: str, visual_style_preset
     if preset in ("none", ""):
         return creative_treatment_json or ""
     if not creative_treatment_json or not str(creative_treatment_json).strip():
-        return json.dumps({"schemaVersion": 1, "visualLanguage": preset})
+        return json.dumps({"schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION, "visualLanguage": preset})
     try:
         data = json.loads(creative_treatment_json)
+        if data is None or data is False:
+            return json.dumps({"schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION, "visualLanguage": preset})
         if isinstance(data, dict):
             if data.get("visualLanguage", "none") in ("none", ""):
+                source_version = data.get("schemaVersion")
+                if type(source_version) is int and source_version in (1, CREATIVE_TREATMENT_SCHEMA_VERSION):
+                    data["schemaVersion"] = CREATIVE_TREATMENT_SCHEMA_VERSION
                 data["visualLanguage"] = preset
                 return json.dumps(data)
     except Exception:
@@ -240,9 +266,9 @@ class MiniMaxH3PromptGuideBuilder:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
-            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for the four optional creative-treatment selectors. Blank is neutral."}),
-            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
-            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v2 storage for the optional creative-treatment selectors. Legacy v1 remains runtime-compatible; blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional authoritative shot plan. Schema v1 remains compatible; v2 adds generations, presence, states, environments and start/path/end camera. Blank preserves automatic planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v2 manual color, camera, optics, focus, texture, and motion-rendering controls. Legacy v1 remains runtime-compatible; blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
@@ -297,7 +323,7 @@ class MiniMaxH3PromptGuideBuilder:
 
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
-    FUNCTION = "enhance"
+    FUNCTION = "enhance_with_ui"
     RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
@@ -347,9 +373,9 @@ class MiniMaxH3PromptEnhancer:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
-            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
-            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
-            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v2 storage for genre, visual language, world aesthetic, and tone. Legacy v1 remains runtime-compatible; blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional authoritative shot plan. Schema v1 remains compatible; v2 adds generations, presence, states, environments and start/path/end camera. Blank preserves automatic planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v2 manual color, camera, optics, focus, texture, and motion-rendering controls. Legacy v1 remains runtime-compatible; blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
@@ -461,10 +487,17 @@ class MiniMaxH3PromptEnhancer:
             height,
         )
 
+    def enhance_with_ui(self, *args, **kwargs):
+        result = self.enhance(*args, **kwargs)
+        return {
+            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1])},
+            "result": result,
+        }
+
 
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
-    FUNCTION = "enhance"
+    FUNCTION = "enhance_with_ui"
     RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
@@ -510,9 +543,9 @@ class MiniMaxH3GGUFPromptEnhancer:
             "multishot_voice_lock": ("STRING", {"multiline": True, "default": "", "placeholder": VOICE_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "multishot_setting_lock": ("STRING", {"multiline": True, "default": "", "placeholder": SETTING_LOCK_PLACEHOLDER, "dynamicPrompts": False}),
             "show_advanced_controls": ("BOOLEAN", {"default": False, "tooltip": "Show structured reference metadata and exact frame controls"}),
-            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v1 storage for genre, visual language, world aesthetic, and tone. Blank is neutral."}),
-            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 authoritative shot plan. Blank preserves automatic shot planning."}),
-            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v1 manual color, camera, optics, focus, texture, and motion-rendering controls. Blank is neutral."}),
+            "creative_treatment_json": ("STRING", {"multiline": True, "default": "", "placeholder": CREATIVE_TREATMENT_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Stable schema-v2 storage for genre, visual language, world aesthetic, and tone. Legacy v1 remains runtime-compatible; blank is neutral."}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "placeholder": SHOT_PLAN_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional authoritative shot plan. Schema v1 remains compatible; v2 adds generations, presence, states, environments and start/path/end camera. Blank preserves automatic planning."}),
+            "cinematography_json": ("STRING", {"multiline": True, "default": "", "placeholder": CINEMATOGRAPHY_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Optional schema-v2 manual color, camera, optics, focus, texture, and motion-rendering controls. Legacy v1 remains runtime-compatible; blank is neutral."}),
             "instrumental_style": (list(INSTRUMENTAL_STYLE_CHOICES), {"default": "none", "tooltip": "When instrumental score is enabled, adapt its arrangement to this musical language while preserving compatible user direction."}),
             "acoustic_space": (list(ACOUSTIC_SPACE_CHOICES), {"default": "none", "tooltip": "Diegetic sound space for the permitted ambience, foley, and voices. It renders existing sounds; it never adds a source."}),
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
@@ -587,6 +620,13 @@ class MiniMaxH3GGUFPromptEnhancer:
             height,
         )
 
+    def enhance_with_ui(self, *args, **kwargs):
+        result = self.enhance(*args, **kwargs)
+        return {
+            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1])},
+            "result": result,
+        }
+
 
 class MiniMaxH3UnloadGGUFServer:
     CATEGORY = "MiniMax H3/Prompting"
@@ -626,10 +666,29 @@ class MiniMaxH3MediaManifestValidator:
 
     def validate(self, media_manifest):
         parsed = parse_media_manifest(media_manifest)
-        normalized = json.dumps({key: value for key, value in parsed.items() if key not in {"warnings", "errors"}}, ensure_ascii=False, indent=2)
-        report = {"valid": not parsed["errors"], "errors": parsed["errors"], "warnings": parsed["warnings"], "counts": parsed.get("counts", {})}
+        compiled = parse_media_project(media_manifest)
+        normalized = (
+            compiled.get("canonicalJson", "")
+            if compiled.get("schemaVersion") == 2 else
+            json.dumps({key: value for key, value in parsed.items() if key not in {"warnings", "errors"}}, ensure_ascii=False, indent=2)
+        )
+        report = {
+            "valid": bool(compiled.get("valid", not parsed["errors"])),
+            "errors": list(compiled.get("errors", parsed["errors"])),
+            "warnings": list(compiled.get("warnings", parsed["warnings"])),
+            "counts": parsed.get("counts", {}),
+        }
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
-        return {"ui": {"text": [report_text]}, "result": (normalized, report["valid"], report_text, manifest_context(media_manifest))}
+        return {
+            "ui": {
+                "text": [report_text],
+                "minimax_h3_diagnostics": _diagnostic_ui_payload({
+                    **report,
+                    "diagnostics": compiled.get("diagnostics", ()),
+                }),
+            },
+            "result": (normalized, report["valid"], report_text, manifest_context(media_manifest)),
+        }
 
 
 class MiniMaxH3ChainedMultishotOutput:
@@ -703,8 +762,8 @@ class MiniMaxH3ShotSelector:
         if not isinstance(data, dict):
             raise ValueError("Enhancement manifest/shotsPackage must be a JSON object")
         package = data.get("shotsPackage", data)
-        if not isinstance(package, dict) or package.get("schemaVersion") != 1:
-            raise ValueError("No schema-v1 shotsPackage was found")
+        if not isinstance(package, dict) or package.get("schemaVersion") not in {1, 2}:
+            raise ValueError("No supported schema-v1/v2 shotsPackage was found")
         shots = package.get("shots")
         if not isinstance(shots, list) or not shots:
             raise ValueError("shotsPackage contains no selectable shots")
@@ -806,6 +865,9 @@ class MiniMaxH3PromptValidator:
         )
         report_text = json.dumps(report, ensure_ascii=False, indent=2)
         return {
-            "ui": {"text": [str(prompt), report_text]},
+            "ui": {
+                "text": [str(prompt), report_text],
+                "minimax_h3_diagnostics": _diagnostic_ui_payload(report),
+            },
             "result": (str(prompt), bool(report["valid"]), report_text),
         }

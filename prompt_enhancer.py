@@ -17,13 +17,15 @@ from urllib.request import Request, urlopen
 try:
     from .content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from .creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
-    from .media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from .media_manifest import generation_profile, parse_media_manifest, parse_media_project
+    from .planning_context import compile_planning_context
+    from .prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _build_user_request_compiled, _validate_prompt_compiled, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, planning_manifest_context, resolve_mode, strip_markdown_fence, system_prompt_for_mode
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from content_formats import CONTENT_FORMAT_CATALOG_VERSION, resolve_content_format
     from creative_treatments import build_shots_package, normalize_title_screen_style_signature, parse_cinematography, parse_creative_treatment, parse_shot_plan, resolve_treatment_conflicts, resolve_visual_style, title_screen_requested, title_screen_roles, title_screen_text_authorized, treatment_warnings
-    from media_manifest import generation_profile, manifest_context, parse_media_manifest
-    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, build_user_request, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, resolve_mode, strip_markdown_fence, system_prompt_for_mode, validate_prompt
+    from media_manifest import generation_profile, parse_media_manifest, parse_media_project
+    from planning_context import compile_planning_context
+    from prompt_guides import INSTRUMENTAL_STYLE_CATALOG_VERSION, append_lora_trigger_words, INSTRUMENTAL_STYLE_CONTRACTS, _build_user_request_compiled, _validate_prompt_compiled, _LANGUAGE_ALIASES, _detect_language, _dialogue_authoring_request, _dialogue_lexical_key, _source_dialogue_contracts, instrumental_style_digest, instrumental_style_signature, normalize_audio_policy, normalize_audio_section_sentence_limits, normalize_content_format_signature, normalize_dialogue_tags, normalize_first_shot_marker, normalize_instrumental_style_signature, normalize_multishot_audio_policy, normalize_multishot_output, normalize_reference_definitions, normalize_section_headers, normalize_shot_timeline, normalize_shot_timestamps, normalize_source_dialogue, normalize_unassigned_subjects, normalize_visual_medium_anchor, normalize_visual_style_signature, planning_manifest_context, resolve_mode, strip_markdown_fence, system_prompt_for_mode
 
 
 def _api_root(endpoint: str) -> str:
@@ -351,8 +353,10 @@ def enhance_prompt_with_completion(
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
     parsed_manifest_preflight = parse_media_manifest(media_manifest)
-    if parsed_manifest_preflight.get("errors"):
-        raise ValueError("Invalid media_manifest: " + "; ".join(parsed_manifest_preflight["errors"]))
+    compiled_media_project = parse_media_project(media_manifest)
+    preflight_errors = compiled_media_project.get("errors", parsed_manifest_preflight.get("errors", ()))
+    if preflight_errors:
+        raise ValueError("Invalid media_manifest: " + "; ".join(preflight_errors))
     resolved_mode = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
     generation = generation_profile(duration_seconds, aspect_ratio, frame_count)
     effective_duration = generation["effectiveDurationSeconds"]
@@ -363,6 +367,16 @@ def enhance_prompt_with_completion(
     explicit_shot_plan = parse_shot_plan(
         shot_plan_json, effective_duration, 0, resolved_mode,
     )
+    compiled_planning = compile_planning_context(
+        compiled_media_project, explicit_shot_plan, effective_duration, mode=resolved_mode,
+    )
+    if compiled_planning.get("applied") and not compiled_planning.get("valid"):
+        messages = [
+            item.get("message", item.get("code", "Invalid planning configuration"))
+            for item in compiled_planning.get("diagnosticReport", {}).get("diagnostics", ())
+            if item.get("blocks", {}).get("valid")
+        ]
+        raise ValueError("Invalid media/shot planning configuration: " + "; ".join(messages))
     treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
     opening_format_selected = creative_treatment.get("contentFormat") == "opening_title_sequence"
     if (creative_treatment.get("titleScreenStyle") != "none"
@@ -396,7 +410,7 @@ def enhance_prompt_with_completion(
     dialogue_authoring, resolved_dialogue_language = _dialogue_authoring_request(
         basic_prompt, override_language=dialogue_language
     )
-    user_request = build_user_request(
+    user_request = _build_user_request_compiled(
         basic_prompt, mode, duration_seconds, reference_context, enhance_description,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
@@ -405,6 +419,7 @@ def enhance_prompt_with_completion(
         acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
         editing_intent=editing_intent,
         invent_scene=invent_scene,
+        compiled_planning_context=compiled_planning,
     )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
@@ -414,14 +429,14 @@ def enhance_prompt_with_completion(
             resolved_dialogue_language,
             effective_duration,
             (
-                explicit_shot_plan["shotCount"]
+                explicit_shot_plan.get("generationCount", explicit_shot_plan["shotCount"])
                 if resolved_mode == "chained_multishot" and explicit_shot_plan["provided"]
                 else multishot_shot_count if resolved_mode == "chained_multishot" else 1
             ),
             completion,
             repair_attempts,
         )
-        user_request = build_user_request(
+        user_request = _build_user_request_compiled(
             basic_prompt, mode, duration_seconds, reference_context, enhance_description,
             ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
@@ -430,9 +445,19 @@ def enhance_prompt_with_completion(
             acoustic_space, dialogue_coverage, dialogue_language=dialogue_language,
             editing_intent=editing_intent,
             invent_scene=invent_scene,
+            compiled_planning_context=compiled_planning,
         )
     effective_reference_context = "\n".join(
-        part for part in (str(reference_context).strip(), manifest_context(media_manifest)) if part
+        part for part in (
+            str(reference_context).strip(),
+            "\n\n".join(
+                str(item.get("context", ""))
+                for item in compiled_planning.get("generations", {}).values()
+                if item.get("context")
+            ) if compiled_planning.get("applied") else planning_manifest_context(
+                media_manifest, explicit_shot_plan,
+            ),
+        ) if part
     )
     base_messages = [
         {"role": "system", "content": system_prompt_for_mode(
@@ -497,7 +522,7 @@ def enhance_prompt_with_completion(
         return normalize_audio_section_sentence_limits(value, resolved_mode)
 
     enhanced = normalize_candidate(completion(messages))
-    validation = validate_prompt(
+    validation = _validate_prompt_compiled(
         enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
         ambience_foley_policy, background_score_policy, voice_performance,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
@@ -509,11 +534,18 @@ def enhance_prompt_with_completion(
         dialogue_language=dialogue_language,
         editing_intent=editing_intent,
         invent_scene=invent_scene,
+        compiled_planning_context=compiled_planning,
     )
     best_enhanced = enhanced
     best_validation = validation
 
     def repair_issues(report: dict) -> list[str]:
+        structured = report.get("diagnosticReport", {}).get("diagnostics", ())
+        structured_repairs = [
+            item.get("repair", {}).get("instruction")
+            for item in structured
+            if item.get("repair", {}).get("eligible") and item.get("repair", {}).get("instruction")
+        ]
         official_shape_warnings = [
             warning for warning in report.get("warnings", ())
             if str(warning) in {
@@ -523,6 +555,7 @@ def enhance_prompt_with_completion(
             or "repeats the same descriptive sentence three or more times" in str(warning)
         ]
         return [
+            *structured_repairs,
             *report.get("errors", ()),
             *report.get("coverageGaps", ()),
             *report.get("styleCoverageGaps", ()),
@@ -530,19 +563,29 @@ def enhance_prompt_with_completion(
             *official_shape_warnings,
         ]
 
-    def candidate_score(report: dict) -> tuple[int, int, int]:
-        errors = report.get("errors", ())
-        critical_markers = (
-            "Explicit ", "Quoted source", "Required spoken dialogue", "invented reference labels",
-            "Planned dialogue", "outside the planned ledger", "missing from output", "must remain",
-            "terminal consequence",
+    def candidate_score(report: dict) -> tuple[int, int, int, int]:
+        diagnostics = report.get("diagnosticReport", {}).get("diagnostics", ())
+        valid_blockers = sum(
+            max(1, int(item.get("repair", {}).get("priority", 0)))
+            for item in diagnostics if item.get("blocks", {}).get("valid")
         )
-        weighted_errors = sum(
-            10 if any(marker.casefold() in str(error).casefold() for marker in critical_markers) else 1
-            for error in errors
+        quality_blockers = sum(
+            max(1, int(item.get("repair", {}).get("priority", 0)))
+            for item in diagnostics if item.get("blocks", {}).get("quality")
         )
-        quality_gaps = len(report.get("coverageGaps", ())) + len(report.get("styleCoverageGaps", ()))
-        return (weighted_errors, quality_gaps, len(report.get("warnings", ())))
+        # Legacy validators remain authoritative during the staged migration,
+        # but their score no longer depends on English message substrings.
+        valid_blockers += 100 * len(report.get("errors", ()))
+        quality_blockers += 50 * (
+            len(report.get("coverageGaps", ()))
+            + len(report.get("styleCoverageGaps", ()))
+            + len(report.get("contentFormatCoverageGaps", ()))
+        )
+        contract_warnings = sum(
+            item.get("severity") == "warning" and item.get("category") != "coach"
+            for item in diagnostics
+        ) + len(report.get("warnings", ()))
+        return valid_blockers, quality_blockers, contract_warnings, len(diagnostics)
 
     attempts = 0
     while repair_issues(validation) and attempts < int(repair_attempts):
@@ -580,7 +623,7 @@ def enhance_prompt_with_completion(
             )},
         ]
         enhanced = normalize_candidate(completion(messages))
-        validation = validate_prompt(
+        validation = _validate_prompt_compiled(
             enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
@@ -591,6 +634,7 @@ def enhance_prompt_with_completion(
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
             editing_intent=editing_intent,
             invent_scene=invent_scene,
+            compiled_planning_context=compiled_planning,
         )
         if candidate_score(validation) < candidate_score(best_validation):
             best_enhanced = enhanced
@@ -603,6 +647,17 @@ def enhance_prompt_with_completion(
     shots_package = build_shots_package(
         enhanced, resolved_mode, explicit_shot_plan, bool(validation.get("qualityValid")),
     )
+    if shots_package.get("schemaVersion") == 2 and compiled_planning.get("applied"):
+        for generation_id, generation in shots_package.get("generations", {}).items():
+            planned_generation = compiled_planning.get("generations", {}).get(generation_id, {})
+            generation.update({
+                "inputMap": planned_generation.get("inputMap", {}),
+                "activeAssetIds": planned_generation.get("activeAssetIds", []),
+                "stateDigest": planned_generation.get("stateDigest", generation.get("stateDigest", "")),
+                "authorityDigest": planned_generation.get(
+                    "authorityDigest", generation.get("authorityDigest", ""),
+                ),
+            })
     result_manifest = {
         **manifest,
         "mode": validation["mode"],
@@ -613,7 +668,7 @@ def enhance_prompt_with_completion(
         "qualityValid": bool(validation.get("qualityValid")),
         "deliveryTarget": delivery_target,
         "apiCompatible": bool(validation.get("apiCompatible")),
-        "referenceSemanticsVersion": 2,
+        "referenceSemanticsVersion": 3 if compiled_media_project.get("schemaVersion") == 2 else 2,
         "audioPolicyVersion": 1,
         "promptContractVersion": 3,
         "creativeTreatmentSchemaVersion": creative_treatment["schemaVersion"],
@@ -632,10 +687,20 @@ def enhance_prompt_with_completion(
         "cinematographyCatalogVersion": cinematography["catalogVersion"],
         "shotPlanSchemaVersion": explicit_shot_plan["schemaVersion"],
         "shotsPackageSchemaVersion": shots_package.get("schemaVersion", 1),
-        "mediaManifestSchemaVersion": 1,
-        "mediaManifestDigest": (
+        "mediaManifestSchemaVersion": compiled_media_project.get("schemaVersion", 1),
+        "mediaManifestDigest": compiled_media_project.get("digest", "") or (
             hashlib.sha256(str(media_manifest).encode("utf-8")).hexdigest()
             if str(media_manifest).strip() else ""
+        ),
+        "diagnosticsDigest": validation.get("diagnosticsDigest", ""),
+        "planningDigest": compiled_planning.get("digest", ""),
+        "planningSummary": (
+            compiled_planning.get("planningSummary", {})
+            if compiled_planning.get("applied") else {
+                "generationCount": len(compiled_media_project.get("generations", ())),
+                "shotCount": explicit_shot_plan.get("shotCount", 0),
+                "diagnosticCount": len(validation.get("diagnosticReport", {}).get("diagnostics", ())),
+            }
         ),
         "aspectRatio": aspect_ratio,
         "multishotPromptCount": validation.get("promptCount", 0),

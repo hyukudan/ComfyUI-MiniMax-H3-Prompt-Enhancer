@@ -21,7 +21,7 @@ This document describes how to connect, define, and validate multimodal referenc
 The enhancer does not read pixel tensors directly; it receives metadata explaining to MiniMax H3 how connected assets should be utilized during generation:
 
 1. **`reference_context`**: Quick, plain-text descriptions for manual node wiring.
-2. **`media_manifest`**: Strict, typed JSON for automated pipelines and programmatic workflows.
+2. **`media_manifest`**: Legacy manifests and versioned logical media projects for automated pipelines.
 
 ---
 
@@ -42,6 +42,12 @@ The enhancer parses these references and automatically constructs the official `
 ## Structured Media Manifest JSON (`media_manifest`)
 
 For programmatic workflows or upstream vision analysis nodes, supply a structured JSON manifest:
+
+The unversioned `items` form below remains byte-compatible for existing workflows. New projects should use
+`schemaVersion: 2`; its normative Draft 2020-12 schema is
+[`schemas/media_manifest_v2.schema.json`](schemas/media_manifest_v2.schema.json). V2 separates stable logical
+asset IDs from generation-local physical labels, and adds subjects, appearance-state graphs, environments with
+role-scoped views, temporary environment states, activation, bindings, and explicit carry/reset policies.
 
 ### Minimal Schema
 
@@ -77,6 +83,33 @@ For programmatic workflows or upstream vision analysis nodes, supply a structure
 | `audio_mode` | Video Item | Soundtrack routing: `"off"` (default), `"paired"`, or `"alone"`. |
 | `transcript` | Audio Item | Transcript string or object (`{"language": "...", "text": "..."}`). |
 | `sources` | Subject | Assigned canonical labels (e.g. `["<Picture 1>", "<Video 1>"]`). |
+
+### Logical project v2
+
+Prompt Studio uses a two-step media workflow. **+ Add reference** registers a logical reference in the project
+library; it stores metadata and never uploads or connects a file. The physical picture, video, or audio must be
+connected in the generation node and assigned to that generation's binding. A logical record without a matching
+physical binding is not presented to H3 as connected media.
+
+Each v2 generation independently resolves an active dependency closure and an `inputMap`. A logical asset such
+as `ana.identity` can therefore be `<Picture 1>` in one generation while that same physical slot is reused by a
+different asset in another. Logical IDs are authoritative; `<Picture N>`, `<Video N>`, and `<Audio N>` are derived
+labels, never persistent identity.
+
+Activation may be `auto`, or `explicit` with logical roots. Required dependencies include subject identity
+pictures, the source of the selected appearance state, selected environment views, and enabled video
+soundtracks. Excluding a required dependency is an error. Every active asset needs exactly one binding and an
+inactive asset cannot retain one. Slot collisions and per-generation H3 media quotas are validated
+deterministically.
+
+Appearance state inheritance and environment state inheritance are acyclic, have a maximum depth of eight, and
+remain separate from permanent identity or geometry. The first generation cannot use `carry`; later generations
+may carry, explicitly select, or reset to the declared base/default state. A discontinuous explicit selection
+requires a reason.
+
+Backend callers use `parse_media_project()` and `manifest_context_for_generation()`. The latter emits only the
+active definitions and bindings for the requested generation, preventing reference bleed. `parse_media_manifest()`
+and `manifest_context()` remain the legacy compatibility APIs.
 
 ---
 
@@ -124,9 +157,14 @@ Every Ref2VA prompt includes a `retention_analysis:` block assigning an official
 
 ## Media Manifest Validator Node
 
-The **MiniMax H3 Media Manifest Validator** node validates JSON manifests upstream before LLM execution:
+The **MiniMax H3 Media Manifest Validator** node validates manifests upstream before LLM execution. Legacy
+manifests use the original compatibility checks; v2 projects use strict structural and cross-reference validation:
 
-- Checks schema version and type correctness.
+- Checks version, allowed fields, types and required fields.
 - Validates media count and duration limits.
 - Verifies subject-to-source label mappings.
 - Outputs `manifest_is_valid` (boolean), `validated_manifest_json`, and detailed error logs.
+
+For v2, normalized output must use the parser's `canonicalJson`, which contains only the supplied project data in
+stable key order. Computed activation closures, physical maps, state resolutions, and digests are intentionally
+not written back into the manifest.

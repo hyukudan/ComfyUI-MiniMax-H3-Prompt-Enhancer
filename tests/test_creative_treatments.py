@@ -51,7 +51,10 @@ CANONICAL_CHOICES = {
         "crime", "western", "sports_competition",
     ),
     "visual_language": (
-        "none", "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
+        "none", "vintage_rubberhose_2d", "cable_angular_graphic_comedy", "contemporary_vector_2d",
+        "manga_monochrome_print", "anime_1960s70s_limited_cel", "mecha_super_robot_cel",
+        "anime_ova_mechanical_detail", "anime_1990s_broadcast_cel", "anime_digital_compositing",
+        "anime_general", "anime_retro_dramatic", "anime_retro_gag_family",
         "japanese_print_animation", "anime_ultradetailed_cinematic",
         "anime_shonen", "anime_shojo", "anime_shojo_pastel",
         "american_comic_pastel",
@@ -639,10 +642,13 @@ def test_retro_serious_and_family_gag_anime_are_distinct_standalone_contracts():
 def test_japanese_print_animation_is_separate_from_retro_family_gag_anime():
     treatment = compose_creative_treatment(visual_language="japanese_print_animation")
     instruction = creative_treatment_instruction(treatment)
-    assert treatment["profileVersions"] == {"visual_language:japanese_print_animation": 1}
-    assert "moving Japanese woodblock-print-inspired graphic animation" in instruction
-    assert "carved-looking variable contours" in instruction
+    assert treatment["profileVersions"] == {"visual_language:japanese_print_animation": 2}
+    assert "non-photorealistic moving Japanese woodblock print" in instruction
+    assert "carved ink contours" in instruction
+    assert "flat bounded registered pigment planes" in instruction
+    assert "rather than modeled shading" in instruction
     assert "instead of converting the story into historical Japan" in instruction
+    assert "mere woodblock post-process filter" in instruction
     assert "Edo-period settings" in instruction
 
 
@@ -1010,7 +1016,7 @@ def test_selected_profiles_are_not_applied_when_description_enhancement_is_disab
     (
         ("{", "valid JSON"),
         ("[]", "JSON object"),
-        ('{"schemaVersion":2}', "schemaVersion"),
+        ('{"schemaVersion":3}', "schemaVersion"),
         ('{"schemaVersion":"1"}', "schemaVersion"),
         ('{"schemaVersion":1,"genre":"action","genre":"horror"}', "duplicate key"),
         ('{"schemaVersion":1,"genre":7}', "genre must be a string"),
@@ -1087,7 +1093,7 @@ def _plan(shots, timing_mode="auto"):
     (
         ("{", "valid JSON"),
         ("[]", "JSON object"),
-        ('{"schemaVersion":2,"timingMode":"auto","shots":[]}', "schemaVersion"),
+        ('{"schemaVersion":3,"timingMode":"auto","shots":[]}', "schemaVersion"),
         ('{"schemaVersion":true,"timingMode":"auto","shots":[]}', "schemaVersion"),
         ('{"schemaVersion":1,"timingMode":"auto","shots":[],"shots":[]}', "duplicate key"),
         ('{"schemaVersion":1,"timingMode":"sometimes","shots":[]}', "timingMode"),
