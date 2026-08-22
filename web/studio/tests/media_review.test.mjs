@@ -455,7 +455,7 @@ test("legacy scalar and neutral v1 Creative/Camera sources are semantic blanks w
     const cameraNeutrals = {
         colorPalette: "none", cameraMotion: "none", cameraAmplitude: "auto", cameraSpeed: "auto",
     };
-    for (const raw of ["false", "null", "  false  "]) {
+    for (const raw of ["false", "False", " FALSE ", "null", "NULL", "None", "  false  "]) {
         const source = { kind: "malformed", raw, value: null, version: null, errors: ["legacy"] };
         const view = nativeStructuredDocumentView(source, creativeNeutrals);
         assert.equal(view.kind, "blank");

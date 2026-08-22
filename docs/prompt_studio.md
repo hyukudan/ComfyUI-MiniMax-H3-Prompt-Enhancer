@@ -96,7 +96,7 @@ When all structured widgets are blank, Overview also offers three small editable
 Resolution has two independent controls. **Aspect Ratio** selects the shape of the frame. **Resolution Budget** selects its approximate area.
 
 - **Auto** uses `1280×720` for 16:9, `720×1280` for 9:16, `1080×1080` for 1:1, `960×720` for 4:3, `720×960` for 3:4, and `1680×720` for 21:9.
-- **Custom MP** targets a megapixel budget while preserving the selected shape. Final width and height are aligned to 16-pixel steps and shown live on the node.
+- **Custom MP** enables and focuses the always-visible MP field, then persists valid values while you edit. It targets a megapixel budget while preserving the selected shape; final width and height are aligned to 16-pixel steps and shown live on the node.
 
 Changing the aspect ratio is a composition decision; changing the resolution budget is a pixel-area/performance decision. Neither control changes the shot count or carries media.
 

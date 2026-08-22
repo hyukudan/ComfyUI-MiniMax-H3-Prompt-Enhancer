@@ -60,7 +60,7 @@ def test_blank_sources_create_neutral_v2_models_without_claiming_a_migration(par
     assert json.loads(parsed["canonicalJson"])["schemaVersion"] == 2
 
 
-@pytest.mark.parametrize("legacy_blank", (False, "false", " null "))
+@pytest.mark.parametrize("legacy_blank", (False, "false", "False", " FALSE ", " null ", "NULL", "None"))
 @pytest.mark.parametrize("parser", (parse_creative_treatment, parse_cinematography))
 def test_legacy_false_and_null_storage_values_are_neutral_v2_without_writes(parser, legacy_blank):
     parsed = parser(legacy_blank)

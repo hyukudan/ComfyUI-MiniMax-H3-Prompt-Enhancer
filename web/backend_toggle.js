@@ -1898,7 +1898,8 @@ function createResolutionBudgetControl(node) {
         const budget = Number(widget.value);
         const automatic = !Number.isFinite(budget) || budget <= 0;
         mode.value = automatic ? "auto" : "custom";
-        customField.classList.toggle("minimax-h3-section-hidden", automatic);
+        custom.disabled = automatic;
+        customField.dataset.mode = automatic ? "auto" : "custom";
         if (!automatic) {
             lastCustom = budget;
             custom.value = String(budget);
@@ -1918,11 +1919,16 @@ function createResolutionBudgetControl(node) {
             setCanonicalValue(node, widget, Math.max(minimum, next));
         }
         sync();
+        if (mode.value === "custom") requestAnimationFrame(() => {
+            custom.focus();
+            custom.select();
+        });
     });
-    custom.addEventListener("change", () => {
+    const commitCustomBudget = ({ clamp = false } = {}) => {
         const minimum = Number(custom.min) || 0.05;
         const maximum = Number(custom.max) || 8;
         const requested = Number(custom.value);
+        if (!clamp && (!Number.isFinite(requested) || requested < minimum || requested > maximum)) return;
         const fallback = Number.isFinite(lastCustom) && lastCustom > 0
             ? lastCustom
             : Math.max(minimum, suggestedBudget());
@@ -1930,7 +1936,9 @@ function createResolutionBudgetControl(node) {
         lastCustom = next;
         setCanonicalValue(node, widget, next);
         sync();
-    });
+    };
+    custom.addEventListener("input", () => commitCustomBudget());
+    custom.addEventListener("change", () => commitCustomBudget({ clamp: true }));
     sync();
     return { field, control: custom, modeControl: mode, effective, widget, sync };
 }

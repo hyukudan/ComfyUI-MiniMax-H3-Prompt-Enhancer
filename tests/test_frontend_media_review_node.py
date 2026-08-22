@@ -42,6 +42,9 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
     assert "Target Megapixels (0.0 = auto)" not in source
     assert "function createResolutionBudgetControl" in source
     assert 'addSelectOptions(mode, [["auto", "Auto"], ["custom", "Custom"]])' in source
+    assert "custom.disabled = automatic" in source
+    assert 'custom.addEventListener("input"' in source
+    assert 'custom.focus()' in source
     assert 'name === "target_megapixels"' in source
     assert "formatResolutionLabel(effectiveH3Resolution(aspectRatio, megapixels))" in source
     assert 'wrapRefreshCallback(node, "aspect_ratio", refreshResolutionBudget)' in source

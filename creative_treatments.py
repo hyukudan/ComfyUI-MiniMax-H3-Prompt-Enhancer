@@ -2545,6 +2545,19 @@ def _strict_json_loads(value: str, field_name: str) -> Any:
         raise ValueError(f"{field_name} must be valid JSON: {exc.msg}") from exc
 
 
+def _legacy_blank_storage_value(value: Any) -> bool:
+    """Recognize old boolean-widget values without weakening JSON parsing.
+
+    Some ComfyUI workflow versions serialized a former BOOLEAN widget into the
+    replacement string slot as ``"False"`` rather than JSON ``false``. These
+    exact neutral tokens mean "no structured value"; every other non-JSON
+    string remains an error.
+    """
+    if value is None or value is False:
+        return True
+    return isinstance(value, str) and value.strip().casefold() in {"", "false", "null", "none"}
+
+
 def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[str, Any]:
     """Parse native v2 cinematography, accepting v1 as a read-only runtime source.
 
@@ -2552,7 +2565,7 @@ def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[s
     and null storage placeholders are neutral blanks. This parser never writes the
     normalized value back to the caller's workflow or source mapping.
     """
-    if value is None or value is False or (isinstance(value, str) and not value.strip()):
+    if _legacy_blank_storage_value(value):
         raw: dict[str, Any] = {}
     elif isinstance(value, str):
         if len(value) > 32768:
@@ -3022,7 +3035,7 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
     Blank input, including historical false/null storage placeholders, is the
     neutral backwards-compatible state.
     """
-    if value is None or value is False or (isinstance(value, str) and not value.strip()):
+    if _legacy_blank_storage_value(value):
         raw: dict[str, Any] = {}
     elif isinstance(value, str):
         if len(value) > 16384:
