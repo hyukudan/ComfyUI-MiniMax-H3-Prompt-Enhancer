@@ -6,6 +6,7 @@ import {
     clearDeliveryMarksOnLine,
     deliveryStatus,
     editDeliveryMark,
+    filterVoiceColorMarks,
     hasQuotedDialogue,
     insertDeliveryToken,
     rovingIndex,
@@ -88,4 +89,14 @@ test("clear removes only known marks from the caret line", () => {
 test("Recent Voice colors dedupe, promote and cap at three", () => {
     assert.deepEqual(updateRecentDeliveryMarks(["🥰", "⚡", "😐"], "⚡"), ["⚡", "🥰", "😐"]);
     assert.deepEqual(updateRecentDeliveryMarks(["🥰", "⚡", "😐"], "😢"), ["😢", "🥰", "⚡"]);
+});
+
+test("Voice color search indexes labels, groups and localized aliases", () => {
+    const marks = [
+        { emoji: "😌", label: "calm, steady", group: "Calm & steady", aliases: ["tranquilo", "serena"] },
+        { emoji: "😰", label: "trembling", group: "Shaken", aliases: ["temblorosa"] },
+    ];
+    assert.deepEqual(filterVoiceColorMarks(marks, "steady").map(({ emoji }) => emoji), ["😌"]);
+    assert.deepEqual(filterVoiceColorMarks(marks, "shaken").map(({ emoji }) => emoji), ["😰"]);
+    assert.deepEqual(filterVoiceColorMarks(marks, "temblórosa").map(({ emoji }) => emoji), ["😰"]);
 });

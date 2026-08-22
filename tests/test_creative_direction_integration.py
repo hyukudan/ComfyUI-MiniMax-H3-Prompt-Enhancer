@@ -109,7 +109,7 @@ non_diegetic_music: N/A"""
     assert legacy[1] == explicit[1]
     manifest = explicit[2]
     assert manifest["creativeTreatmentSchemaVersion"] == 2
-    assert manifest["creativeProfileCatalogVersion"] == 22
+    assert manifest["creativeProfileCatalogVersion"] == 23
     assert manifest["cinematographySchemaVersion"] == 2
     assert manifest["cinematographyCatalogVersion"] == 6
     assert manifest["shotPlanSchemaVersion"] == 1

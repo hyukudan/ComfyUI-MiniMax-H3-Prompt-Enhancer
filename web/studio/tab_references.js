@@ -1,5 +1,9 @@
 import { assetUsage, generationMediaModel, MEDIA_LIMITS, nextAvailableSlot } from "./media_model.js";
 import { commitProject, labeledInput, labeledSelect, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
+import {
+    bindingPlanDiagnostics, createPlanningContext, createPurposeBinding, mediaPurpose,
+    MEDIA_BINDING_PURPOSES, MEDIA_RECIPES,
+} from "./media_workflows.js";
 
 const CAMERA_TRANSFER_ASPECTS = ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"];
 const PROJECT_MODES = [["auto", "Auto"], ["t2va", "T2VA"], ["i2va", "I2VA"], ["fl2va", "FL2VA"], ["l2va", "L2VA"], ["ref2va", "Ref2VA"], ["chained_multishot", "Chained"]];
@@ -115,6 +119,140 @@ function renderMediaOnboarding() {
 function commitAndRender(container, controller) {
     commitProject(controller);
     renderReferencesTab(container, controller);
+}
+
+function workflowSelection(project, controller, purposeId = "continuity") {
+    const generation = selectedGeneration(project, controller);
+    const shots = controller.shotDocument()?.value?.shots ?? [];
+    const shot = shots.find((item) => item.id === controller.shotUiState?.selectedId && item.generationId === generation.id)
+        ?? shots.find((item) => item.generationId === generation.id) ?? null;
+    const purpose = mediaPurpose(purposeId);
+    return {
+        purposeId,
+        generationId: generation.id,
+        shotId: shot?.id ?? "",
+        relationId: purpose?.relation === "subject" ? project.subjects[0]?.id ?? ""
+            : purpose?.relation === "environment" ? project.environments[0]?.id ?? "" : "",
+        name: purpose?.label ?? "Reference",
+    };
+}
+
+function renderPlanningContextExport(controller) {
+    const details = document.createElement("details");
+    details.className = "minimax-h3-inspector-block minimax-h3-planning-context";
+    const summary = document.createElement("summary");
+    summary.textContent = "Export LLM planning context";
+    const body = document.createElement("div");
+    body.className = "minimax-h3-studio-editor";
+    body.appendChild(helpText("Creates a versioned, read-only context package for discussing this plan with an LLM. Prompt Studio never imports or applies its response automatically."));
+    const output = document.createElement("textarea");
+    output.readOnly = true;
+    output.setAttribute("aria-label", "LLM planning context JSON");
+    const feedback = helpText("No physical files or hidden prompts are included.", "minimax-h3-source-feedback");
+    const prepare = () => {
+        output.value = JSON.stringify(createPlanningContext({
+            projectDocument: controller.projectDocument(), shotDocument: controller.shotDocument(),
+        }), null, 2);
+    };
+    details.addEventListener("toggle", () => { if (details.open) prepare(); });
+    const copy = actionButton("Copy context JSON", async () => {
+        prepare();
+        try {
+            if (!globalThis.navigator?.clipboard?.writeText) throw new Error("Clipboard unavailable");
+            await globalThis.navigator.clipboard.writeText(output.value);
+            feedback.textContent = "Copied. Review any LLM suggestions manually; this file is not importable.";
+            feedback.dataset.valid = "true";
+        } catch {
+            output.focus(); output.select();
+            feedback.textContent = "Context prepared. Copy it from the field above.";
+        }
+    }, "minimax-h3-button minimax-h3-button-secondary");
+    body.append(output, copy, feedback);
+    details.append(summary, body);
+    return details;
+}
+
+function renderPurposeAssistant(container, project, controller) {
+    const state = controller.projectUiState.mediaAssistant;
+    if (!state) return null;
+    const panel = document.createElement("section");
+    panel.className = "minimax-h3-media-assistant minimax-h3-purpose-assistant";
+    const heading = document.createElement("div");
+    heading.className = "minimax-h3-media-assistant-heading";
+    const title = document.createElement("strong"); title.textContent = "Plan one reference by purpose";
+    const cancel = actionButton("Cancel", () => { delete controller.projectUiState.mediaAssistant; renderReferencesTab(container, controller); });
+    heading.append(title, cancel); panel.appendChild(heading);
+    const set = (key, value) => { state[key] = value; renderReferencesTab(container, controller); };
+    const activePurpose = mediaPurpose(state.purposeId);
+    const purposes = [
+        ...(activePurpose && !MEDIA_BINDING_PURPOSES.some((item) => item.id === activePurpose.id) ? [[activePurpose.id, activePurpose.label]] : []),
+        ...MEDIA_BINDING_PURPOSES.map((item) => [item.id, item.label]),
+    ];
+    panel.appendChild(labeledSelect("Purpose", state.purposeId, purposes, (value) => {
+        controller.projectUiState.mediaAssistant = workflowSelection(project, controller, value);
+        renderReferencesTab(container, controller);
+    }));
+    const generations = project.generations.map((item) => [item.id, `Generation ${item.order ?? item.id}`]);
+    panel.appendChild(labeledSelect("Generation", state.generationId, generations, (value) => {
+        state.generationId = value;
+        state.shotId = (controller.shotDocument()?.value?.shots ?? []).find((item) => item.generationId === value)?.id ?? "";
+        renderReferencesTab(container, controller);
+    }));
+    const shots = (controller.shotDocument()?.value?.shots ?? []).filter((item) => item.generationId === state.generationId);
+    panel.appendChild(labeledSelect("Shot", state.shotId, shots.map((item) => [item.id, item.action || item.id]), (value) => set("shotId", value)));
+    const purpose = mediaPurpose(state.purposeId);
+    if (purpose?.relation === "subject") panel.appendChild(labeledSelect("Subject", state.relationId, project.subjects.map((item) => [item.id, item.name]), (value) => set("relationId", value)));
+    if (purpose?.relation === "environment") panel.appendChild(labeledSelect("Environment", state.relationId, project.environments.map((item) => [item.id, item.name]), (value) => set("relationId", value)));
+    panel.appendChild(labeledInput("Reference name", state.name, (value) => { state.name = value; }));
+    if (purpose) panel.appendChild(helpText(`${purpose.help} The physical ${purpose.type} still connects on the generator node.`));
+    const planInput = { project, shotPlan: controller.shotDocument()?.value, ...state };
+    const issues = bindingPlanDiagnostics(planInput);
+    const status = helpText(issues.length ? issues.join(" ") : "Ready: this will create the logical reference, its relationship, shot use and generation file-slot binding together.", "minimax-h3-source-feedback");
+    status.dataset.valid = String(!issues.length);
+    const apply = actionButton("Create complete binding", () => {
+        const result = createPurposeBinding(planInput);
+        if (!result.ok) return;
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+        if (!committed?.ok) { status.textContent = committed?.message ?? "Atomic Media + Shot update is unavailable."; status.dataset.valid = "false"; return; }
+        controller.projectUiState.selectedAssetId = result.assetId;
+        controller.projectUiState.selectedGenerationId = state.generationId;
+        if (controller.shotUiState) controller.shotUiState.selectedId = state.shotId;
+        delete controller.projectUiState.mediaAssistant;
+        renderReferencesTab(container, controller);
+    }, "minimax-h3-button minimax-h3-button-primary");
+    apply.disabled = issues.length > 0 || typeof controller.replaceProjectBundleAtomically !== "function";
+    panel.append(status, apply);
+    return panel;
+}
+
+function renderMediaWorkflowTools(container, project, controller) {
+    const section = document.createElement("section");
+    section.className = "minimax-h3-media-workflows";
+    const header = document.createElement("div"); header.className = "minimax-h3-studio-toolbar";
+    const title = document.createElement("div"); title.innerHTML = "<strong>Plan by outcome</strong><span>Start with what you want to preserve or transfer</span>";
+    const start = actionButton("+ Plan reference", () => {
+        controller.projectUiState.mediaAssistant = workflowSelection(project, controller);
+        renderReferencesTab(container, controller);
+    }, "minimax-h3-button minimax-h3-button-primary");
+    header.append(title, start); section.appendChild(header);
+    const recipes = document.createElement("div"); recipes.className = "minimax-h3-starter-grid minimax-h3-media-recipes";
+    for (const recipe of MEDIA_RECIPES) {
+        const selection = workflowSelection(project, controller, recipe.purpose);
+        const issues = bindingPlanDiagnostics({ project, shotPlan: controller.shotDocument()?.value, ...selection });
+        const card = actionButton("", () => {
+            const purpose = recipe.purpose;
+            controller.projectUiState.mediaAssistant = { ...selection, purposeId: purpose, name: recipe.label };
+            renderReferencesTab(container, controller);
+        }, "minimax-h3-starter-card");
+        const name = document.createElement("strong"); name.textContent = recipe.label;
+        const description = document.createElement("span"); description.textContent = recipe.description;
+        const state = document.createElement("em"); state.textContent = issues.length ? `Needs: ${issues[0]}` : "Set up recipe";
+        card.append(name, description, state); recipes.appendChild(card);
+    }
+    const assistant = renderPurposeAssistant(container, project, controller);
+    if (assistant) section.appendChild(assistant);
+    section.append(recipes, renderPlanningContextExport(controller));
+    return section;
 }
 
 function selectedAsset(project, controller) {
@@ -608,7 +746,7 @@ export function renderReferencesTab(container, controller) {
     const title = document.createElement("div");
     title.innerHTML = "<strong>Media references</strong><span>Describe logical references and map them to generator inputs</span>";
     toolbar.append(title, labeledSelect("Project mode", project.mode, PROJECT_MODES, (value) => { project.mode = value; commitProject(controller); }));
-    container.append(toolbar, renderMediaOnboarding());
+    container.append(toolbar, renderMediaOnboarding(), renderMediaWorkflowTools(container, project, controller));
 
     const assetArea = document.createElement("div");
     assetArea.className = "minimax-h3-master-detail minimax-h3-media-assets";

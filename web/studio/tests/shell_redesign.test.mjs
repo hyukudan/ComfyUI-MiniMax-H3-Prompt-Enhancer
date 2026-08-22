@@ -211,6 +211,25 @@ test("Overview density adapts across the 720, 820 and 920 drawer defaults", () =
     assert.match(stylesSource, /\.minimax-h3-overview-health\s*\{[^}]*flex-direction:\s*column/);
 });
 
+test("Review budget and dismissal controls stay responsive without horizontal overflow", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    assert.match(stylesSource, /\.minimax-h3-review-budget-rows\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
+    assert.match(stylesSource, /@container h3-studio \(max-width: 559px\)[\s\S]*?\.minimax-h3-review-budget-rows\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(stylesSource, /\.minimax-h3-review-dismiss-toggle\s*\{[^}]*white-space:\s*nowrap/s);
+    assert.match(stylesSource, /\.minimax-h3-review-card header\s*\{[^}]*minmax\(0, 1fr\)/s);
+});
+
+test("Shots keeps a distinct 16px inter-card rhythm at the 820px drawer default", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    const shotsSource = readFileSync(new URL("../tab_shots.js", import.meta.url), "utf8");
+    const tokensSource = readFileSync(new URL("../tokens.js", import.meta.url), "utf8");
+    assert.equal(defaultDrawerWidth(2560, 1440), 820);
+    assert.match(shotsSource, /minimax-h3-shot-inspector/);
+    assert.match(stylesSource, /\.minimax-h3-section-shots \.minimax-h3-shot-inspector\s*\{[^}]*row-gap:\s*var\(--h3-space-4\)/s);
+    assert.match(tokensSource, /--h3-space-4:\s*16px/);
+    assert.match(stylesSource, /\.minimax-h3-shot-inspector > \.minimax-h3-shot-camera-summary\s*\{[^}]*margin-block:\s*0/s);
+});
+
 test("ported visual-language navigation keeps an explicit pointer affordance", () => {
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     assert.match(stylesSource, /\.minimax-h3-searchable-select-popover button:not\(:disabled\)\s*\{\s*cursor:\s*pointer/);
@@ -235,6 +254,14 @@ test("Media shell keeps cards separated and dense editors inside the panel", () 
     assert.match(stylesSource, /\.minimax-h3-chip-picker\s*\{[^}]*max-width:\s*100%;[^}]*flex-wrap:\s*wrap/s);
     assert.match(stylesSource, /\.minimax-h3-segmented\s*\{[^}]*max-width:\s*100%;[^}]*flex-wrap:\s*wrap/s);
     assert.match(stylesSource, /\.minimax-h3-media-steps\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+    assert.match(stylesSource, /\.minimax-h3-media-workflows\s*\{[^}]*display:\s*grid;[^}]*gap:\s*var\(--h3-space-4\)/s);
+    assert.match(stylesSource, /\.minimax-h3-media-recipes\s*\{[^}]*column-gap:\s*var\(--h3-space-2\);[^}]*row-gap:\s*var\(--h3-space-3\)/s);
+    assert.match(stylesSource, /\.minimax-h3-media-recipes \+ \.minimax-h3-planning-context\s*\{[^}]*margin-top:\s*var\(--h3-space-1\)/s);
+    for (const width of [720, 820, 920]) {
+        const columns = width <= 799 ? 2 : 3;
+        const rows = Math.ceil(4 / columns);
+        assert.equal(rows, 2, `${width}px keeps the second recipe row separated by the declared row gap`);
+    }
     assert.match(mediaSource, /\+ Add reference/);
     assert.match(mediaSource, /Reference setup · 2 steps/);
     assert.match(mediaSource, /actual files stay connected to the generator node/);

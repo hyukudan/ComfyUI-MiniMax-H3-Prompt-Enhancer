@@ -56,6 +56,8 @@ MiniMax H3 responds to concrete physical descriptors rather than abstract labels
 
 Visual Language describes rendering and production vocabulary; it does not imply narrative Genre or scene-wide Mood. The Studio groups choices by broad family, era/technique, and variant. Names remain brand-safe: they describe periods and craft instead of studios, artists, franchises, or look-alike substitutes. Every profile carries a `must_not_invent` guard so the rendering choice cannot add its usual subject matter, plot, dialogue, or audio.
 
+For compatible drawn, pixel, stop-motion, marionette, and rotoscoped profiles, the optional experimental `animationCadence` field can request exposure timing on ones, twos, or threes. This is authored-pose rhythm only: it never changes FPS, duration, frame count, interpolation, camera speed, motion blur, actions, or shot boundaries. Incompatible visual languages preserve the selection without applying it and report a warning.
+
 | ID | Description |
 |---|---|
 | `live_action_cinematic` | Composed 35mm live-action craft with deliberate narrative coverage, natural key-to-fill falloff, protected skin tones, and physical camera operation. |

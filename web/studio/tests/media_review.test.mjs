@@ -11,7 +11,7 @@ import {
     renderCameraLookTab,
     visualLanguagePopoverGeometry,
 } from "../tab_camera_look.js";
-import { diagnosticLocationLabel, groupDiagnosticsBySeverity, reviewReportState } from "../tab_coach.js";
+import { diagnosticLocationLabel, diagnosticSection, groupDiagnosticsBySeverity, reviewReportState } from "../tab_coach.js";
 import { bindingSuggestion, renderReferencesTab } from "../tab_references.js";
 
 class FakeElement {
@@ -154,23 +154,66 @@ test("Visual language popover stays inside 720, 820 and 920 viewports", () => {
     assert.ok(720 - above.bottom - above.maxHeight >= 8);
 });
 
-test("Media renders populated assets and two generations without crossing generation scope", () => {
+test("Media opens the purpose assistant inline without writing project data", async () => {
     const previousDocument = globalThis.document;
     globalThis.document = { createElement: (tagName) => new FakeElement(tagName) };
     try {
         const project = projectFixture();
         const raw = JSON.stringify(project);
+        let writes = 0;
         const controller = {
             projectUiState: { sourceRaw: null, project: null },
+            shotUiState: { selectedId: null },
             projectDocument: () => ({ kind: "v2", raw, value: project }),
             shotDocument: () => ({ kind: "v2", value: { shots: [] } }),
-            commitProject: () => true,
+            commitProject: () => { writes += 1; return true; },
         };
         const container = new FakeElement();
         renderReferencesTab(container, controller);
         assert.ok(container.children.length >= 4);
         assert.equal(controller.projectUiState.selectedGenerationId, "g1");
         assert.equal(controller.projectUiState.selectedAssetId, "portrait");
+        const labels = descendants(container).map((element) => element.textContent).filter(Boolean);
+        assert.ok(labels.includes("+ Plan reference"));
+        assert.ok(labels.includes("Export LLM planning context"));
+        for (const recipe of ["Targeted edit", "Relight", "Performance transfer", "Continuation"]) assert.ok(labels.includes(recipe));
+        const open = descendants(container).find((element) => element.textContent === "+ Plan reference");
+        await open.dispatch("click");
+        const openedLabels = descendants(container).map((element) => element.textContent).filter(Boolean);
+        assert.ok(openedLabels.includes("Plan one reference by purpose"));
+        assert.ok(openedLabels.includes("Cancel"));
+        assert.equal(writes, 0, "opening the assistant is UI-only");
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test("blank Project v2 mounts the assistant directly below its trigger after click", async () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = { createElement: (tagName) => new FakeElement(tagName) };
+    try {
+        const project = {
+            schemaVersion: 2, mode: "auto", assets: [], subjects: [], environments: [],
+            generations: [{ id: "g1", order: 1, activation: { mode: "auto" }, bindings: [], subjectStates: [], environmentStates: [] }],
+        };
+        const raw = JSON.stringify(project);
+        let writes = 0;
+        const controller = {
+            projectUiState: { sourceRaw: null, project: null }, shotUiState: { selectedId: null },
+            projectDocument: () => ({ kind: "v2", raw, value: project }),
+            shotDocument: () => ({ kind: "blank", raw: "", value: null }),
+            commitProject: () => { writes += 1; return true; },
+        };
+        const container = new FakeElement();
+        renderReferencesTab(container, controller);
+        await descendants(container).find((element) => element.textContent === "+ Plan reference").dispatch("click");
+        const workflows = descendants(container).find((element) => element.className === "minimax-h3-media-workflows");
+        const assistantIndex = workflows.children.findIndex((element) => element.className.includes("minimax-h3-purpose-assistant"));
+        const recipesIndex = workflows.children.findIndex((element) => element.className.includes("minimax-h3-media-recipes"));
+        assert.equal(assistantIndex, 1, "assistant follows the trigger instead of mounting below recipes/export");
+        assert.ok(assistantIndex < recipesIndex);
+        assert.ok(descendants(workflows).some((element) => element.textContent === "Cancel"));
+        assert.equal(writes, 0);
     } finally {
         globalThis.document = previousDocument;
     }
@@ -221,6 +264,8 @@ test("camera provenance rows and Review grouping expose usable locations", () =>
     const diagnostics = [{ severity: "advice" }, { severity: "error" }, { severity: "warning" }, { severity: "error" }];
     assert.deepEqual(groupDiagnosticsBySeverity(diagnostics).map((group) => [group.severity, group.items.length]), [["error", 2], ["warning", 1], ["advice", 1]]);
     assert.equal(diagnosticLocationLabel({ generationId: "g2", shotId: "s3", field: "camera" }), "g2 · Shot s3 · camera");
+    assert.equal(diagnosticSection({ category: "camera", location: { shotId: "s3", field: "shot_plan_json.shots[2].cameraPath" } }), "camera");
+    assert.equal(diagnosticSection({ category: "camera", location: { shotId: "s3", field: "cinematography_json.cameraMotion" } }), "look");
 });
 
 test("Review distinguishes an untouched panel from a completed clean run", () => {

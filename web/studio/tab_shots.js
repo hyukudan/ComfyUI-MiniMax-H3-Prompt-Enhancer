@@ -565,7 +565,7 @@ export function renderShotsTab(container, controller) {
         const [moved] = state.plan.shots.splice(sourceIndex, 1); state.plan.shots.splice(targetIndex, 0, moved); commit(); rerender();
     };
     renderShotList(list, state, (id) => { state.selectedId = id; rerender(); }, reorder); grid.appendChild(list);
-    const editor = element("div", "minimax-h3-studio-editor minimax-h3-inspector");
+    const editor = element("div", "minimax-h3-studio-editor minimax-h3-inspector minimax-h3-shot-inspector");
     const shot = state.plan.shots.find((candidate) => candidate.id === state.selectedId);
     const entryStates = resolveEntryStates(project, state.plan).byShot.get(shot.id) ?? { subjects: {}, environments: {} };
     const header = element("div", "minimax-h3-studio-toolbar");

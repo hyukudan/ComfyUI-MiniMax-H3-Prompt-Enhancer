@@ -37,3 +37,26 @@ def test_diagnostic_ui_payload_is_compact_and_tolerates_invalid_text():
     decoded = json.loads(payload[0])
     assert decoded["diagnostics"] == []
     assert "\n" not in payload[0]
+
+
+def test_diagnostic_ui_payload_measures_real_prompt_sections_without_mutating_report():
+    report = {
+        "deliveryTarget": "api_v2",
+        "sections": ["summary", "detailed_description", "overall_soundscape"],
+        "descriptionBudget": {"actualWords": 42, "softMinWords": 30},
+        "diagnosticReport": {"schemaVersion": 1, "summary": {"valid": True}, "diagnostics": []},
+    }
+    prompt = (
+        "summary:\nA fox transforms.\n\n"
+        "detailed_description:\n[Shot 1] The fox howls.\n\n"
+        "overall_soundscape:\nA distant wind."
+    )
+    original = json.loads(json.dumps(report))
+    decoded = json.loads(_diagnostic_ui_payload(report, prompt, {"schemaVersion": 2})[0])
+    budget = decoded["promptBudget"]
+    assert budget["source"] == "local_estimate"
+    assert budget["totalCharacters"] == len(prompt)
+    assert budget["limitCharacters"] == 7000
+    assert sum(section["characters"] for section in budget["sections"]) == len(prompt)
+    assert budget["descriptionBudget"]["actualWords"] == 42
+    assert report == original

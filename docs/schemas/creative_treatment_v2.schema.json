@@ -13,7 +13,11 @@
     "visualLanguage": {"$ref": "#/$defs/catalogChoice"},
     "worldAesthetic": {"$ref": "#/$defs/catalogChoice"},
     "tone": {"$ref": "#/$defs/catalogChoice"},
-    "titleScreenStyle": {"$ref": "#/$defs/catalogChoice"}
+    "titleScreenStyle": {"$ref": "#/$defs/catalogChoice"},
+    "animationCadence": {
+      "description": "Experimental authored-pose exposure rhythm. Adaptive or omission emits no cadence request and never changes FPS.",
+      "enum": ["adaptive", "ones", "twos", "threes"]
+    }
   },
   "$defs": {
     "catalogChoice": {

@@ -376,6 +376,19 @@ export function ensureStudioStyles() {
         .minimax-h3-media-assistant > button { justify-self: start; max-width: 100%; white-space: normal; text-align: left; }
         .minimax-h3-media-assistant-assignments { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; }
         .minimax-h3-media-assistant-assignments span { border: 1px solid var(--h3-border); border-radius: 999px; padding: 4px 7px; background: var(--h3-input-bg); color: var(--h3-text-muted); font-size: 11px; }
+        .minimax-h3-media-workflows {
+            display: grid;
+            min-width: 0;
+            align-content: start;
+            gap: var(--h3-space-4);
+        }
+        .minimax-h3-media-recipes {
+            min-width: 0;
+            margin: 0;
+            column-gap: var(--h3-space-2);
+            row-gap: var(--h3-space-3);
+        }
+        .minimax-h3-media-recipes + .minimax-h3-planning-context { margin-top: var(--h3-space-1); }
         @container h3-studio-panel (min-width: 600px) {
             .minimax-h3-media-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
@@ -900,6 +913,16 @@ export function ensureStudioStyles() {
         .minimax-h3-master-row small { color: var(--h3-text-muted); }
         .minimax-h3-inspector,
         .minimax-h3-inspector-body { display: grid; align-content: start; gap: var(--h3-space-3); }
+        /* Shot sections need a larger inter-card rhythm than their 12px internal
+           rhythm. 16px keeps Story, beats, timing, presence, place, references,
+           camera and transitions visually distinct without inflating card bodies. */
+        .minimax-h3-section-shots .minimax-h3-shot-inspector {
+            row-gap: var(--h3-space-4);
+        }
+        .minimax-h3-section-shots .minimax-h3-shot-inspector > .minimax-h3-inspector-section,
+        .minimax-h3-section-shots .minimax-h3-shot-inspector > .minimax-h3-shot-camera-summary {
+            margin-block: 0;
+        }
         .minimax-h3-inspector-section,
         .minimax-h3-inspector-block {
             overflow: hidden;
@@ -1261,6 +1284,7 @@ export function ensureStudioStyles() {
         .minimax-h3-review-content > .minimax-h3-studio-toolbar > div { display: grid; }
         .minimax-h3-review-content > .minimax-h3-studio-toolbar span { color: var(--h3-text-muted); font-size: 11.5px; }
         .minimax-h3-review-summary { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .minimax-h3-review-dismiss-toggle { margin-left: auto; white-space: nowrap; }
         .minimax-h3-review-group { display: grid; gap: var(--h3-space-2); }
         .minimax-h3-review-group > h3 { margin: var(--h3-space-2) 0 0; font-size: 14px; }
         .minimax-h3-review-card {
@@ -1277,9 +1301,11 @@ export function ensureStudioStyles() {
         .minimax-h3-review-card[data-severity="advice"] { border-left-color: var(--h3-tip); }
         .minimax-h3-review-card[data-stale="true"] { opacity: .68; }
         .minimax-h3-review-card[data-resolved="true"] { border-left-color: var(--h3-success); }
-        .minimax-h3-review-card header { display: flex; justify-content: space-between; gap: var(--h3-space-2); }
+        .minimax-h3-review-card[data-dismissed="true"] { opacity: .58; border-left-color: var(--h3-readonly); }
+        .minimax-h3-review-card header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--h3-space-2); }
         .minimax-h3-review-card header span,
         .minimax-h3-review-card footer { color: var(--h3-text-muted); font-size: 11px; }
+        .minimax-h3-review-dismiss { min-height: 24px !important; border: 0; padding: 2px 6px; background: transparent; color: var(--h3-text-muted); text-decoration: underline; cursor: pointer; }
         .minimax-h3-review-message { margin: 0; }
         .minimax-h3-review-card blockquote { margin: 0; border-left: 2px solid var(--h3-border-strong); padding-left: var(--h3-space-2); color: var(--h3-text-muted); font-style: italic; }
         .minimax-h3-review-card ul { margin: 0; padding-left: var(--h3-space-6); }
@@ -1294,6 +1320,16 @@ export function ensureStudioStyles() {
             color: var(--h3-text-muted);
             cursor: pointer;
         }
+        .minimax-h3-review-budget { display: grid; gap: var(--h3-space-2); border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: var(--h3-space-3); background: var(--h3-surface-raised); }
+        .minimax-h3-review-budget > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--h3-space-2); }
+        .minimax-h3-review-budget > header span { color: var(--h3-text-muted); font-size: 11px; }
+        .minimax-h3-review-budget > p { margin: 0; font-variant-numeric: tabular-nums; }
+        .minimax-h3-review-budget-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px var(--h3-space-4); }
+        .minimax-h3-review-budget-rows > div { display: flex; min-width: 0; justify-content: space-between; gap: var(--h3-space-2); border-top: 1px solid var(--h3-border); padding: 5px 0; }
+        .minimax-h3-review-budget-rows span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+        .minimax-h3-review-budget-rows strong { white-space: nowrap; font-size: 11px; font-variant-numeric: tabular-nums; }
+        .minimax-h3-diagnostic-target { outline: 2px solid var(--h3-accent); outline-offset: 3px; border-radius: var(--h3-radius-sm); animation: minimax-h3-diagnostic-pulse .8s ease-out 2; }
+        @keyframes minimax-h3-diagnostic-pulse { 50% { outline-color: color-mix(in srgb, var(--h3-accent) 35%, transparent); } }
 
         @container h3-studio (max-width: 799px) {
             .minimax-h3-overview-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1316,6 +1352,12 @@ export function ensureStudioStyles() {
             .minimax-h3-header-state { width: 100%; justify-content: flex-end; }
             .minimax-h3-header-state { gap: 2px; }
             .minimax-h3-review-label { max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .minimax-h3-review-content > .minimax-h3-studio-toolbar { align-items: flex-start; }
+            .minimax-h3-review-summary { order: 2; }
+            .minimax-h3-review-dismiss-toggle { order: 3; flex-basis: 100%; margin-left: 0; }
+            .minimax-h3-review-budget-rows { grid-template-columns: 1fr; }
+            .minimax-h3-review-card header { grid-template-columns: minmax(0, 1fr) auto; }
+            .minimax-h3-review-card header > span { grid-column: 1; }
             .minimax-h3-action-beat-dialogue { grid-template-columns: minmax(0, 1fr); }
         }
         @container h3-studio (max-width: 479px) {

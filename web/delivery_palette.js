@@ -6,6 +6,7 @@ import {
     clearDeliveryMarksOnLine,
     deliveryStatus,
     editDeliveryMark,
+    filterVoiceColorMarks,
     rovingIndex,
     updateRecentDeliveryMarks,
 } from "./delivery_palette_model.js";
@@ -24,21 +25,24 @@ const DELIVERY_EMOJI = [
     { emoji: "😡", tier: "verb", segment: "delivery", label: "shouts", text: "shouts", title: "Loud and forceful. For an angry shout, add “angry” from Voice color. Official H3 verb." },
     { emoji: "❓", tier: "verb", segment: "delivery", label: "asks", text: "asks", title: "Rising pitch, gaze held on the listener. Official H3 verb." },
     { emoji: "🎤", tier: "verb", segment: "delivery", label: "sings", text: "sings", title: "Sustained pitch, phrasing shaped by breath. Official H3 verb." },
+    { emoji: "🗣️", tier: "verb", segment: "delivery", label: "calls out", text: "calls out", title: "Projected and clear, aimed at someone farther away. Use shouts for force rather than distance." },
     { emoji: "🎙️", tier: "verb", segment: "channel", label: "V.O.", text: "V.O.", title: "Off-screen voiceover. Lips stay closed; the scene keeps moving under the voice." },
     { emoji: "⏸️", tier: "pause", segment: "timing", label: "pause", text: "pause", title: "A held beat, written as “…” inside the quote. Our convention — H3 has no pause syntax." },
-    { emoji: "😠", tier: "prose", group: "Angry & hard", label: "angry, held back" },
+    { emoji: "😠", tier: "prose", group: "Angry & hard", label: "angry, held back", aliases: ["angry", "enfadado", "enfadada", "furioso"] },
     { emoji: "😲", tier: "prose", group: "Shaken", label: "stunned" },
-    { emoji: "😨", tier: "prose", group: "Shaken", label: "frightened" },
-    { emoji: "😢", tier: "prose", group: "Sad & breaking", label: "near tears" },
-    { emoji: "😭", tier: "prose", group: "Sad & breaking", label: "through tears" },
+    { emoji: "😨", tier: "prose", group: "Shaken", label: "frightened", aliases: ["afraid", "miedo"] },
+    { emoji: "😰", tier: "prose", group: "Shaken", label: "trembling", aliases: ["trembling", "temblando", "tembloroso", "temblorosa"] },
+    { emoji: "😢", tier: "prose", group: "Sad & breaking", label: "near tears", aliases: ["sad", "triste"] },
+    { emoji: "😭", tier: "prose", group: "Sad & breaking", label: "through tears", aliases: ["crying", "llorando"] },
     { emoji: "🥺", tier: "prose", group: "Sad & breaking", label: "pleading" },
     { emoji: "🥰", tier: "prose", group: "Warm & bright", label: "tender" },
-    { emoji: "😀", tier: "prose", group: "Warm & bright", label: "bright" },
-    { emoji: "😂", tier: "prose", group: "Warm & bright", label: "through laughter" },
-    { emoji: "😏", tier: "prose", group: "Flat & dry", label: "sardonic" },
+    { emoji: "😀", tier: "prose", group: "Warm & bright", label: "bright", aliases: ["happy", "alegre"] },
+    { emoji: "😂", tier: "prose", group: "Warm & bright", label: "through laughter", aliases: ["laughing", "riendo"] },
+    { emoji: "😏", tier: "prose", group: "Flat & dry", label: "sardonic", aliases: ["sarcastic", "sarcastico", "sarcástico"] },
     { emoji: "😐", tier: "prose", group: "Flat & dry", label: "cold, level" },
-    { emoji: "🥱", tier: "prose", group: "Flat & dry", label: "weary" },
-    { emoji: "⚡", tier: "prose", group: "Pressed", label: "urgent" },
+    { emoji: "🥱", tier: "prose", group: "Flat & dry", label: "weary", aliases: ["tired", "cansado"] },
+    { emoji: "😌", tier: "prose", group: "Calm & steady", label: "calm, steady", aliases: ["calm", "steady", "tranquilo", "tranquila", "sereno", "serena"] },
+    { emoji: "⚡", tier: "prose", group: "Pressed", label: "urgent", aliases: ["urgent", "urgente"] },
     { emoji: "🫢", tier: "prose", group: "Pressed", label: "conspiratorial", title: "Hushed but not a whisper verb — combine with says or asks." },
     // 📢 remains supported by Python for saved prompts, but is intentionally absent here.
 ];
@@ -225,10 +229,12 @@ function installRoving(buttons, columns = 1) {
             buttons.forEach((candidate) => { candidate.tabIndex = candidate === button ? 0 : -1; });
         });
         button.addEventListener("keydown", (event) => {
-            const next = rovingIndex(index, event.key, buttons.length, columns);
-            if (next === index || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+            const navigable = buttons.filter((candidate) => !candidate.hidden && !candidate.closest("section")?.hidden);
+            const current = navigable.indexOf(button);
+            const next = rovingIndex(current, event.key, navigable.length, columns);
+            if (next === current || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
-            buttons[next].focus();
+            navigable[next]?.focus();
         });
     });
 }
@@ -298,9 +304,26 @@ function buildPaletteRoot(node) {
     close.style.cssText = "min-width:32px;min-height:32px;background:transparent;border:0;color:#ddd;font-size:20px;cursor:pointer;";
     focusRing(close);
     dialogHeader.append(dialogTitle, close);
+    const searchLabel = document.createElement("label");
+    searchLabel.textContent = "Find a Voice color";
+    searchLabel.style.cssText = "display:flex;flex-direction:column;gap:4px;margin-bottom:8px;font-size:10px;color:#aaa;";
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Search Voice colors…";
+    search.setAttribute("aria-label", "Search Voice colors");
+    search.style.cssText = "width:100%;min-height:32px;padding:5px 8px;border:1px solid #50545c;border-radius:6px;background:#18191d;color:#eee;";
+    searchLabel.appendChild(search);
+    const searchStatus = document.createElement("p");
+    searchStatus.setAttribute("role", "status");
+    searchStatus.setAttribute("aria-live", "polite");
+    searchStatus.style.cssText = "margin:0 0 7px;font-size:10px;color:#aeb5bf;";
     const library = document.createElement("div");
-    library.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+    library.id = `minimax-h3-voice-results-${paletteSequence}`;
+    library.setAttribute("aria-label", "Voice color results");
+    library.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-height:52vh;overflow:auto;";
+    search.setAttribute("aria-controls", library.id);
     const voiceButtons = [];
+    const familyEntries = [];
     const groups = [...new Set(DELIVERY_EMOJI.filter((mark) => mark.tier === "prose").map((mark) => mark.group))];
     for (const groupName of groups) {
         const family = document.createElement("section");
@@ -318,6 +341,7 @@ function buildPaletteRoot(node) {
         }
         family.append(familyTitle, items);
         library.appendChild(family);
+        familyEntries.push({ family, controls: [...items.children] });
     }
     installRoving(voiceButtons, 2);
     const footer = document.createElement("div");
@@ -330,7 +354,37 @@ function buildPaletteRoot(node) {
     clearLine.style.cssText = "min-height:30px;align-self:flex-end;padding:3px 9px;border:1px solid #50545c;border-radius:5px;background:#292b30;color:#ddd;cursor:pointer;";
     focusRing(clearLine);
     footer.append(footerCopy, clearLine);
-    dialog.append(dialogHeader, library, footer);
+    const filterVoiceColors = () => {
+        const matches = new Set(filterVoiceColorMarks(
+            DELIVERY_EMOJI.filter((mark) => mark.tier === "prose"),
+            search.value,
+        ).map((mark) => mark.emoji));
+        let visible = 0;
+        for (const { family, controls } of familyEntries) {
+            let familyVisible = 0;
+            for (const control of controls) {
+                const isMatch = matches.has(control.dataset.deliveryToken);
+                control.hidden = !isMatch;
+                if (isMatch) familyVisible += 1;
+            }
+            family.hidden = familyVisible === 0;
+            visible += familyVisible;
+        }
+        searchStatus.textContent = visible ? `${visible} Voice ${visible === 1 ? "color" : "colors"}` : "No matching Voice colors.";
+        return visible;
+    };
+    search.addEventListener("input", filterVoiceColors);
+    search.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+            const first = voiceButtons.find((button) => !button.hidden && !button.closest("section")?.hidden);
+            if (first) {
+                event.preventDefault();
+                first.focus();
+            }
+        }
+    });
+    filterVoiceColors();
+    dialog.append(dialogHeader, searchLabel, searchStatus, library, footer);
 
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -400,9 +454,11 @@ function buildPaletteRoot(node) {
     };
     const openDialog = () => {
         closeHelp(false);
+        search.value = "";
+        filterVoiceColors();
         positionDialog();
         toggle.setAttribute("aria-expanded", "true");
-        voiceButtons[0]?.focus();
+        search.focus();
     };
     toggle.addEventListener("pointerdown", (event) => event.stopPropagation());
     toggle.addEventListener("click", (event) => {
@@ -419,11 +475,17 @@ function buildPaletteRoot(node) {
     dialog.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
             event.preventDefault();
+            if (search.value) {
+                search.value = "";
+                filterVoiceColors();
+                search.focus();
+                return;
+            }
             closeDialog(true);
             return;
         }
         if (event.key !== "Tab") return;
-        const focusable = [close, ...voiceButtons, clearLine];
+        const focusable = [close, search, ...voiceButtons.filter((button) => !button.hidden && !button.closest("section")?.hidden), clearLine];
         const current = focusable.indexOf(document.activeElement);
         const next = event.shiftKey
             ? (current <= 0 ? focusable.length - 1 : current - 1)

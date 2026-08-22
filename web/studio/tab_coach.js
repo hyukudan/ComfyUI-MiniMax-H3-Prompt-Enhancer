@@ -1,5 +1,27 @@
 const SEVERITY_ORDER = ["error", "warning", "advice", "info"];
 const SEVERITY_LABELS = { error: "Errors", warning: "Warnings", advice: "Tips", info: "Information" };
+export const REVIEW_DISMISSALS_KEY = "minimax_h3_review_dismissals_v1";
+const REVIEW_DISMISSALS_VERSION = 1;
+
+export function readReviewDismissals(storage = null) {
+    try {
+        const parsed = JSON.parse(storage?.getItem(REVIEW_DISMISSALS_KEY) ?? "null");
+        if (parsed?.version !== REVIEW_DISMISSALS_VERSION || !Array.isArray(parsed.fingerprints)) return new Set();
+        return new Set(parsed.fingerprints.filter((value) => typeof value === "string" && value.length <= 128).slice(-500));
+    } catch {
+        return new Set();
+    }
+}
+
+export function writeReviewDismissals(fingerprints, storage = null) {
+    try {
+        const values = [...fingerprints].filter((value) => typeof value === "string" && value.length <= 128).slice(-500);
+        storage?.setItem(REVIEW_DISMISSALS_KEY, JSON.stringify({ version: REVIEW_DISMISSALS_VERSION, fingerprints: values }));
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 export function groupDiagnostics(diagnostics) {
     const groups = new Map();
@@ -46,7 +68,10 @@ function button(label, action) {
     return control;
 }
 
-function diagnosticSection(diagnostic) {
+export function diagnosticSection(diagnostic) {
+    const field = String(diagnostic.location?.field ?? "").toLowerCase();
+    if (field.startsWith("cinematography_json.")) return "look";
+    if (/camerapath|camerastart|cameraend/.test(field)) return "camera";
     if (diagnostic.location?.shotId || Number.isInteger(diagnostic.location?.shotIndex)) return "shots";
     const locatedSection = String(diagnostic.location?.section ?? "").toLowerCase();
     if (locatedSection.includes("subject") || locatedSection.includes("appearance")) return "subjects";
@@ -60,12 +85,19 @@ function diagnosticSection(diagnostic) {
     return "overview";
 }
 
-function navigateDiagnostic(controller, diagnostic) {
-    if (diagnostic.location?.shotId) controller.shotUiState.selectedId = diagnostic.location.shotId;
-    controller.navigateStudio?.(diagnosticSection(diagnostic));
+function reviewStorage(controller) {
+    if (controller.reviewDismissalStorage !== undefined) return controller.reviewDismissalStorage;
+    try { return globalThis.localStorage ?? null; } catch { return null; }
 }
 
-function renderDiagnostic(diagnostic, report, controller) {
+function navigateDiagnostic(controller, diagnostic) {
+    if (diagnostic.location?.shotId) controller.shotUiState.selectedId = diagnostic.location.shotId;
+    const section = diagnosticSection(diagnostic);
+    if (controller.navigateStudioLocation) controller.navigateStudioLocation(section, diagnostic.location ?? {});
+    else controller.navigateStudio?.(section);
+}
+
+function renderDiagnostic(diagnostic, report, controller, { dismissed = false, onDismiss = () => {} } = {}) {
     const card = document.createElement("article");
     card.className = "minimax-h3-review-card";
     card.dataset.severity = diagnostic.severity ?? "info";
@@ -73,13 +105,17 @@ function renderDiagnostic(diagnostic, report, controller) {
     if (report.stale) card.dataset.stale = "true";
     const resolved = controller.resolvedDiagnosticFingerprints?.has(diagnostic.fingerprint);
     if (resolved) card.dataset.resolved = "true";
+    if (dismissed) card.dataset.dismissed = "true";
 
     const header = document.createElement("header");
     const title = document.createElement("strong");
     title.textContent = `${diagnostic.severity === "advice" ? "Tip" : diagnostic.severity ?? "Info"} · ${diagnostic.category ?? "configuration"}`;
     const confidence = document.createElement("span");
     confidence.textContent = diagnostic.basis === "heuristic" ? "heuristic" : diagnostic.basis ?? "derived";
-    header.append(title, confidence);
+    const dismiss = button(dismissed ? "Restore" : "Dismiss", () => onDismiss(diagnostic.fingerprint, !dismissed));
+    dismiss.className = "minimax-h3-review-dismiss";
+    dismiss.title = dismissed ? "Return this finding to the active review" : "Hide this fingerprint in this browser only";
+    header.append(title, confidence, dismiss);
     const message = document.createElement("p");
     message.className = "minimax-h3-review-message";
     message.textContent = diagnostic.message ?? "";
@@ -87,7 +123,7 @@ function renderDiagnostic(diagnostic, report, controller) {
 
     const location = button(diagnosticLocationLabel(diagnostic.location), () => navigateDiagnostic(controller, diagnostic));
     location.className = "minimax-h3-location-chip";
-    location.title = "Open this location in Prompt Studio";
+    location.title = "Open the closest matching control; output-only findings open their related section";
     card.appendChild(location);
     if (diagnostic.location?.excerpt) {
         const excerpt = document.createElement("blockquote");
@@ -125,9 +161,46 @@ function renderDiagnostic(diagnostic, report, controller) {
     return card;
 }
 
+function renderPromptBudget(report) {
+    const budget = report?.promptBudget;
+    if (!budget || !Number.isFinite(Number(budget.totalCharacters))) return null;
+    const section = document.createElement("section");
+    section.className = "minimax-h3-review-budget";
+    const header = document.createElement("header");
+    const title = document.createElement("strong");
+    title.textContent = "Prompt budget";
+    const source = document.createElement("span");
+    source.textContent = budget.source === "local_estimate" ? "Local estimate from enhanced prompt" : "Reported";
+    header.append(title, source);
+    const total = document.createElement("p");
+    const limit = Number(budget.limitCharacters);
+    total.textContent = Number.isFinite(limit) && limit > 0
+        ? `${Number(budget.totalCharacters).toLocaleString()} / ${limit.toLocaleString()} characters`
+        : `${Number(budget.totalCharacters).toLocaleString()} characters · no active API limit reported`;
+    section.append(header, total);
+    const rows = document.createElement("div");
+    rows.className = "minimax-h3-review-budget-rows";
+    for (const item of budget.sections ?? []) {
+        if (!item?.name || !Number.isFinite(Number(item.characters))) continue;
+        const row = document.createElement("div");
+        row.append(
+            Object.assign(document.createElement("span"), { textContent: String(item.name).replaceAll("_", " ") }),
+            Object.assign(document.createElement("strong"), { textContent: `${Number(item.characters).toLocaleString()} chars` }),
+        );
+        rows.appendChild(row);
+    }
+    section.appendChild(rows);
+    return section;
+}
+
 export function renderCoachTab(container, controller) {
     container.replaceChildren();
     const report = controller.diagnostics();
+    const dismissedStorage = reviewStorage(controller);
+    const dismissed = readReviewDismissals(dismissedStorage);
+    const diagnostics = report?.diagnostics ?? [];
+    const dismissedCount = diagnostics.filter((item) => dismissed.has(item?.fingerprint)).length;
+    controller.reviewUiState ??= { showDismissed: false };
     const header = document.createElement("div");
     header.className = "minimax-h3-studio-toolbar";
     const heading = document.createElement("div");
@@ -139,6 +212,14 @@ export function renderCoachTab(container, controller) {
         ? `${summary.errors ?? 0} errors · ${summary.warnings ?? 0} warnings · ${summary.advice ?? 0} tips`
         : `${report?.diagnostics?.length ?? 0} findings`;
     header.append(heading, status);
+    if (dismissedCount) {
+        const toggle = button(
+            controller.reviewUiState.showDismissed ? `Hide dismissed (${dismissedCount})` : `Show dismissed (${dismissedCount})`,
+            () => { controller.reviewUiState.showDismissed = !controller.reviewUiState.showDismissed; renderCoachTab(container, controller); },
+        );
+        toggle.className = "minimax-h3-button minimax-h3-button-secondary minimax-h3-review-dismiss-toggle";
+        header.appendChild(toggle);
+    }
     container.appendChild(header);
     if (report?.stale) {
         const stale = document.createElement("div");
@@ -147,6 +228,8 @@ export function renderCoachTab(container, controller) {
         stale.textContent = "This review was written before your latest changes. Run the node again to refresh it; the previous findings stay visible for context.";
         container.appendChild(stale);
     }
+    const budget = renderPromptBudget(report);
+    if (budget) container.appendChild(budget);
     if (!report?.diagnostics?.length) {
         const empty = document.createElement("div");
         empty.className = "minimax-h3-empty-state";
@@ -168,14 +251,30 @@ export function renderCoachTab(container, controller) {
         container.appendChild(empty);
         return;
     }
-    for (const group of groupDiagnosticsBySeverity(report.diagnostics)) {
+    const visibleDiagnostics = diagnostics.filter((item) => controller.reviewUiState.showDismissed || !dismissed.has(item?.fingerprint));
+    if (!visibleDiagnostics.length) {
+        const locallyEmpty = document.createElement("div");
+        locallyEmpty.className = "minimax-h3-empty-state";
+        locallyEmpty.textContent = "All current findings are dismissed in this browser. Use Show dismissed to restore any of them.";
+        container.appendChild(locallyEmpty);
+        return;
+    }
+    const onDismiss = (fingerprint, shouldDismiss) => {
+        if (!fingerprint) return;
+        if (shouldDismiss) dismissed.add(fingerprint); else dismissed.delete(fingerprint);
+        writeReviewDismissals(dismissed, dismissedStorage);
+        renderCoachTab(container, controller);
+    };
+    for (const group of groupDiagnosticsBySeverity(visibleDiagnostics)) {
         const section = document.createElement("section");
         section.className = "minimax-h3-review-group";
         section.dataset.severity = group.severity;
         const title = document.createElement("h3");
         title.textContent = `${SEVERITY_LABELS[group.severity]} · ${group.items.length}`;
         section.appendChild(title);
-        for (const diagnostic of group.items) section.appendChild(renderDiagnostic(diagnostic, report, controller));
+        for (const diagnostic of group.items) section.appendChild(renderDiagnostic(diagnostic, report, controller, {
+            dismissed: dismissed.has(diagnostic.fingerprint), onDismiss,
+        }));
         container.appendChild(section);
     }
 }

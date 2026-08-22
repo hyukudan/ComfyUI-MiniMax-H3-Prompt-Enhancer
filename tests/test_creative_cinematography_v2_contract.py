@@ -159,6 +159,7 @@ def test_published_v2_schemas_match_runtime_keys_and_cinematography_catalogs():
         "worldAesthetic",
         "tone",
         "titleScreenStyle",
+        "animationCadence",
     }
     assert cinematography_schema["properties"]["schemaVersion"] == {"const": 2}
     for external, internal in CINEMATOGRAPHY_JSON_KEYS.items():

@@ -142,6 +142,42 @@ def test_emoji_resolves_to_a_documented_verb_where_one_exists():
     assert guides.DELIVERY_EMOJI["\U0001f4e2"][0].startswith("says in an off-screen voiceover")
 
 
+def test_advanced_delivery_marks_have_actionable_voice_and_face_direction():
+    expected = {
+        "🗣️": ("verb", "calls out", "distant listener"),
+        "😌": ("prose", "calm, steady voice", "shoulders easing"),
+        "😰": ("prose", "trembling, breath-thin voice", "lower lip trembling"),
+    }
+    for emoji, (kind, voice_fragment, face_fragment) in expected.items():
+        prose, actual_kind = guides.DELIVERY_EMOJI[emoji]
+        assert actual_kind == kind
+        assert voice_fragment in prose
+        assert prose.count(",") >= 2
+        assert face_fragment in guides.DELIVERY_FACE[emoji]
+
+
+def test_advanced_aliases_resolve_to_the_same_multi_axis_prose():
+    for source, expected in (
+        ("[steady] Hello", "in a calm, steady voice, pitch level and the pace measured"),
+        ("[temblorosa] Hello", "in a trembling, breath-thin voice, pitch wavering and words unevenly paced"),
+        ("[calls out] Hello", "calls out, voice projected clear and bright, pitch carried forward"),
+    ):
+        cleaned, marks = guides.extract_delivery_marks(source)
+        assert cleaned == "Hello"
+        assert marks and marks[0].startswith(expected)
+
+
+def test_advanced_marks_never_leak_and_calls_out_owns_only_its_line():
+    source = 'A: 🗣️ "Over here"\nB: 😰 "I cannot"\nC: 😌 "Breathe"'
+    contract = guides._delivery_marks_contract(source)
+    assert '"Over here" → calls out' in contract
+    assert '"I cannot" → in a trembling, breath-thin voice' in contract
+    assert '"Breathe" → in a calm, steady voice' in contract
+    request = guides.build_user_request(source, "t2va", 5.0)
+    for emoji in ("🗣️", "😰", "😌"):
+        assert emoji not in request
+
+
 def test_every_mark_names_more_than_one_vocal_axis():
     """A bare verb or a lone adjective is a label, not direction.
 

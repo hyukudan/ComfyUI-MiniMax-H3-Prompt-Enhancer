@@ -327,6 +327,12 @@ const CREATIVE_CHOICES = {
         ["pulp_heightened", "Heightened (pulp)"],
         ["stoic", "Stoic"],
     ],
+    animationCadence: [
+        ["adaptive", "Adaptive (no cadence request)"],
+        ["ones", "On ones · fluid full exposure"],
+        ["twos", "On twos · classic stepped cadence"],
+        ["threes", "On threes · strongly stepped cadence"],
+    ],
     titleScreenStyle: [
         ["none", "No title-screen treatment"],
         ["minimal_cinematic", "Minimal cinematic title"],
@@ -353,6 +359,14 @@ const VISUAL_LANGUAGE_GROUPS = [
     ["Non-cinema cameras", ["surveillance_found_footage", "home_camcorder_1990s"]],
     ["Commercial & presentation", ["clean_commercial"]],
 ];
+const ANIMATION_CADENCE_COMPATIBLE_VISUAL_LANGUAGES = new Set(
+    VISUAL_LANGUAGE_GROUPS
+        .filter(([group]) => [
+            "Anime", "Classic television cel", "Drawn & painted 2D",
+            "Graphic & pixel styles", "Physical animation",
+        ].includes(group))
+        .flatMap(([, values]) => values),
+);
 const CINEMATOGRAPHY_CHOICES = {
     colorPalette: [["none", "No preference"], ["natural", "Natural"], ["warm", "Warm"], ["cool", "Cool"], ["restrained", "Restrained chroma"], ["vibrant", "Vibrant"], ["monochrome", "Monochrome"], ["midcentury_dye_transfer", "Mid-century dye-transfer color"], ["two_color_process", "Early two-color process"], ["bleach_bypass", "Bleach bypass"], ["teal_orange", "Teal–orange separation"], ["cross_processed", "Cross-processed color"], ["sepia", "Sepia monochrome"], ["saturated_slide_film", "Saturated slide-film color"], ["classic_western_earth_sky", "Classic western earth & sky"], ["revisionist_western_earth", "Revisionist western muted earth"], ["telenovela_broadcast_color", "Telenovela broadcast color"], ["cold_steel_blue", "Cold steel-blue sci-fi"], ["sterile_white_cyan", "Sterile white–cyan sci-fi"], ["neon_cyan_magenta", "Neon cyan–magenta"], ["soft_pastel", "Soft pastel grade"], ["day_for_night", "Day-for-night moonlight"], ["infrared_aerochrome", "Infrared Aerochrome false color"]],
     exposureContrast: [["none", "No preference"], ["high_key", "High-key"], ["balanced", "Balanced"], ["low_key", "Low-key"], ["high_contrast", "High contrast"], ["soft_contrast", "Soft contrast"]],
@@ -418,9 +432,14 @@ const CREATIVE_FIELD_DEFINITIONS = [
         label: "Title screen",
         title: "Styles only a title screen/card/intertitle explicitly requested in the Basic prompt. Quote the exact visible title text; this control never invents words or creates a title screen.",
     },
+    {
+        key: "animationCadence",
+        label: "Animation cadence · Experimental",
+        title: "Requests pose/drawing exposure rhythm for compatible 2D, pixel, stop-motion or marionette styles. It never changes FPS, duration, frame count, interpolation, camera speed or motion blur, and model adherence is not guaranteed.",
+    },
 ];
 const CREATIVE_NEUTRAL_VALUES = Object.freeze(Object.fromEntries(
-    CREATIVE_FIELD_DEFINITIONS.map(({ key }) => [key, "none"]),
+    CREATIVE_FIELD_DEFINITIONS.map(({ key }) => [key, key === "animationCadence" ? "adaptive" : "none"]),
 ));
 const CINEMATOGRAPHY_NEUTRAL_VALUES = Object.freeze(Object.fromEntries(
     CINEMATOGRAPHY_FIELDS.map(([key]) => [key, ["cameraAmplitude", "cameraSpeed"].includes(key) ? "auto" : "none"]),
@@ -1306,6 +1325,7 @@ function defaultCreativeTreatment() {
         worldAesthetic: "none",
         tone: "none",
         titleScreenStyle: "none",
+        animationCadence: "adaptive",
     };
 }
 
@@ -1349,7 +1369,8 @@ function parseJsonObject(value) {
 
 function allowedCreativeValue(key, value) {
     const values = CREATIVE_CHOICES[key]?.map(([token]) => token) ?? [];
-    return typeof value === "string" && values.includes(value) ? value : "none";
+    const fallback = key === "animationCadence" ? "adaptive" : "none";
+    return typeof value === "string" && values.includes(value) ? value : fallback;
 }
 
 function preservedCreativeValue(value, fallback = "none") {
@@ -1369,6 +1390,7 @@ function sanitizeCreativeTreatment(value, { allowLegacy = false } = {}) {
         worldAesthetic: preservedCreativeValue(parsed.worldAesthetic),
         tone: preservedCreativeValue(parsed.tone),
         titleScreenStyle: preservedCreativeValue(parsed.titleScreenStyle),
+        animationCadence: preservedCreativeValue(parsed.animationCadence, "adaptive"),
     };
 }
 
@@ -2266,8 +2288,8 @@ function randomCatalogValue(choices, neutral) {
 function exploreLookEnvelope(node, { includeCinematography = false } = {}) {
     const creativeTreatment = sanitizeCreativeTreatment(node.__minimaxCreativeTreatmentState);
     for (const { key } of CREATIVE_FIELD_DEFINITIONS) {
-        if (["contentFormat", "titleScreenStyle"].includes(key)) continue;
-        creativeTreatment[key] = randomCatalogValue(CREATIVE_CHOICES[key], "none");
+        if (["contentFormat", "titleScreenStyle", "animationCadence"].includes(key)) continue;
+        creativeTreatment[key] = randomCatalogValue(CREATIVE_CHOICES[key], CREATIVE_NEUTRAL_VALUES[key]);
     }
     const cinematography = sanitizeCinematography(node.__minimaxCinematographyState);
     // Colour is part of the gamble on every roll; roughly a third of the rolls
@@ -3037,7 +3059,7 @@ function createStudioController(node) {
             return true;
         },
         creativeFields() {
-            return CREATIVE_FIELD_DEFINITIONS.map(({ key, label }) => [key, label, CREATIVE_CHOICES[key]]);
+            return CREATIVE_FIELD_DEFINITIONS.map(({ key, label, title }) => [key, label, CREATIVE_CHOICES[key], title]);
         },
         visualLanguageGroups() {
             const labels = new Map(CREATIVE_CHOICES.visualLanguage);
@@ -3046,8 +3068,11 @@ function createStudioController(node) {
                 values.map((value) => [value, labels.get(value) ?? value]),
             ]);
         },
+        animationCadenceCompatible() {
+            return ANIMATION_CADENCE_COMPATIBLE_VISUAL_LANGUAGES.has(this.creativeValue("visualLanguage"));
+        },
         creativeValue(key) {
-            return node.__minimaxCreativeTreatmentState?.[key] ?? "none";
+            return node.__minimaxCreativeTreatmentState?.[key] ?? CREATIVE_NEUTRAL_VALUES[key] ?? "none";
         },
         creativeDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === CREATIVE_TREATMENT_WIDGET);

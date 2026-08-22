@@ -125,6 +125,21 @@ export function updateRecentDeliveryMarks(recent, token, limit = 3) {
     return [token, ...recent.filter((candidate) => candidate !== token)].slice(0, limit);
 }
 
+export function normalizedDeliverySearchText(value) {
+    return String(value ?? "")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase();
+}
+
+export function filterVoiceColorMarks(marks, query) {
+    const needle = normalizedDeliverySearchText(query).trim();
+    if (!needle) return [...marks];
+    return marks.filter((mark) => normalizedDeliverySearchText(
+        [mark.label, mark.group, ...(mark.aliases ?? [])].join(" "),
+    ).includes(needle));
+}
+
 export function hasQuotedDialogue(value) {
     const source = String(value ?? "");
     return /<d>\s*\[[^\]]+\]/i.test(source)

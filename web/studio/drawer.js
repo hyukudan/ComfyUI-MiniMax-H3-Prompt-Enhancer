@@ -36,6 +36,52 @@ export function normalizeStudioSection(section) {
     return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "overview";
 }
 
+export function diagnosticFieldLabels(field) {
+    const parts = String(field ?? "").replaceAll("[", ".").replaceAll("]", "").split(".").filter(Boolean);
+    const leaf = parts.at(-1) ?? "";
+    const aliases = {
+        action: ["Action", "Action / reaction"], openingState: ["Opening state"],
+        cutContext: ["Describe cut context"], durationSeconds: ["Duration (seconds)"], transitionIn: ["Transition in"],
+        cameraMotion: ["Camera motion"], cameraStart: ["Framing", "Angle", "Viewpoint"], cameraEnd: ["Framing", "Angle", "Viewpoint"],
+        framing: ["Framing"], angle: ["Angle"], viewpoint: ["Viewpoint"], composition: ["Composition"], focus: ["Focus"],
+        optics: ["Optics"], lensEffects: ["Lens effects"], bindings: ["File slot", "Reference"], activation: ["Activation"],
+        dialogue: ["Spoken words", "Dialogue at this beat"], text: ["Spoken words"],
+        subjectId: ["Subject"], environmentId: ["Environment"], toStateId: ["To"],
+        trigger: ["Trigger"], mechanism: ["Mechanism"], stateId: ["State"],
+    };
+    return aliases[leaf] ?? (leaf ? [leaf.replace(/([a-z])([A-Z])/g, "$1 $2")] : []);
+}
+
+export function focusDiagnosticLocation(panel, location = {}) {
+    if (String(location.scope ?? "").toLowerCase() === "output") {
+        return { found: false, reason: "This finding refers to generated output, not an editable Studio control." };
+    }
+    const fieldName = String(location.field ?? "");
+    let target = null;
+    if (/\.action$|\]\.action$/.test(fieldName)) target = panel.querySelector?.("[data-shot-action]");
+    if (!target && /cameraPath/.test(fieldName)) target = panel.querySelector?.(".minimax-h3-camera-planner, .minimax-h3-spatial-camera-editor");
+    const wanted = new Set(diagnosticFieldLabels(fieldName).map((value) => value.toLowerCase()));
+    if (!target && wanted.size) {
+        for (const wrapper of panel.querySelectorAll?.(".minimax-h3-studio-field") ?? []) {
+            const label = String(wrapper.firstElementChild?.textContent ?? "").trim().toLowerCase();
+            if (!wanted.has(label)) continue;
+            target = wrapper.querySelector?.("input, textarea, select, button, [tabindex]") ?? wrapper;
+            break;
+        }
+    }
+    if (!target) return { found: false, reason: "Opened the related section, but this report location has no exact editable control." };
+    for (let ancestor = target.parentElement; ancestor && ancestor !== panel; ancestor = ancestor.parentElement) {
+        if (ancestor.tagName === "DETAILS") ancestor.open = true;
+    }
+    const highlight = target.closest?.(".minimax-h3-studio-field, .minimax-h3-inspector-section") ?? target;
+    highlight.classList?.add("minimax-h3-diagnostic-target");
+    target.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    target.focus?.({ preventScroll: true });
+    const timeout = globalThis.setTimeout?.(() => highlight.classList?.remove("minimax-h3-diagnostic-target"), 2600);
+    timeout?.unref?.();
+    return { found: true, target };
+}
+
 export function defaultDrawerWidth(
     viewportWidth = globalThis.innerWidth ?? 2560,
     viewportHeight = globalThis.innerHeight ?? Math.round(viewportWidth * 9 / 16),
@@ -507,7 +553,19 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     drawer.append(resizer, header.header, body);
     document.body.appendChild(drawer);
     const previousNavigateStudio = controller.navigateStudio;
+    const previousNavigateStudioLocation = controller.navigateStudioLocation;
     controller.navigateStudio = render;
+    const navigateStudioLocation = (section, location = {}) => {
+        render(section);
+        queueMicrotask(() => {
+            const result = focusDiagnosticLocation(panel, location);
+            if (result.found) return;
+            const feedback = createPanelElement("div", "minimax-h3-studio-status", result.reason);
+            feedback.dataset.kind = "navigation-fallback";
+            panel.prepend(feedback);
+        });
+    };
+    controller.navigateStudioLocation = navigateStudioLocation;
     const cleanup = () => {
         globalThis.removeEventListener("pointermove", onPointerMove);
         globalThis.removeEventListener("pointerup", onPointerUp);
@@ -515,6 +573,10 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
         if (controller.navigateStudio === render) {
             if (previousNavigateStudio === undefined) delete controller.navigateStudio;
             else controller.navigateStudio = previousNavigateStudio;
+        }
+        if (controller.navigateStudioLocation === navigateStudioLocation) {
+            if (previousNavigateStudioLocation === undefined) delete controller.navigateStudioLocation;
+            else controller.navigateStudioLocation = previousNavigateStudioLocation;
         }
         if (controller.studioDetailMode === prefs.detailMode) {
             if (previousDetailMode === undefined) delete controller.studioDetailMode;

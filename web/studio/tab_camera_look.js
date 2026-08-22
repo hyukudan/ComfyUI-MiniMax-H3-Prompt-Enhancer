@@ -141,12 +141,12 @@ export function renderCameraLookTab(container, controller) {
         creative.body.appendChild(toolbar);
         const fields = controller.creativeFields();
         const guided = (controller.studioDetailMode ?? "guided") !== "advanced";
-        const advancedKeys = new Set(["contentFormat", "titleScreenStyle"]);
+        const advancedKeys = new Set(["contentFormat", "titleScreenStyle", "animationCadence"]);
         const renderFields = (definitions) => {
             const grid = document.createElement("div");
             grid.className = "minimax-h3-studio-columns";
-            for (const [key, label, choices] of definitions) {
-                grid.appendChild(key === "visualLanguage"
+            for (const [key, label, choices, title] of definitions) {
+                const control = key === "visualLanguage"
                     ? visualLanguageField(
                         label,
                         controller.creativeValue(key),
@@ -156,7 +156,21 @@ export function renderCameraLookTab(container, controller) {
                     )
                     : key === "tone"
                         ? moodField(label, controller.creativeValue(key), choices, (value) => controller.commitCreative(key, value))
-                    : choiceField(label, controller.creativeValue(key), choices, (value) => controller.commitCreative(key, value)));
+                        : choiceField(label, controller.creativeValue(key), choices, (value) => controller.commitCreative(key, value), false, title);
+                if (key === "animationCadence") {
+                    const wrapper = document.createElement("div");
+                    wrapper.className = "minimax-h3-cadence-field";
+                    const hint = document.createElement("p");
+                    hint.className = "minimax-h3-field-hint";
+                    const requested = controller.creativeValue(key) !== "adaptive";
+                    const compatible = controller.animationCadenceCompatible?.() ?? false;
+                    hint.dataset.status = requested && !compatible ? "inactive" : "experimental";
+                    hint.textContent = requested && !compatible
+                        ? "Inactive for the current visual language. The value is preserved, but no cadence prose will be emitted. FPS and duration remain unchanged."
+                        : "Experimental request for compatible drawn, pixel, stop-motion or marionette styles. It changes neither FPS nor duration, and H3 adherence is not guaranteed.";
+                    wrapper.append(control, hint);
+                    grid.appendChild(wrapper);
+                } else grid.appendChild(control);
             }
             return grid;
         };
@@ -165,7 +179,10 @@ export function renderCameraLookTab(container, controller) {
             creative.body.appendChild(renderFields(fields.filter(([key]) => !advancedKeys.has(key))));
             const advancedFields = fields.filter(([key]) => advancedKeys.has(key));
             if (advancedFields.length) {
-                const active = advancedFields.filter(([key]) => !["", "none", null, undefined].includes(controller.creativeValue(key))).length;
+                const active = advancedFields.filter(([key]) => {
+                    const value = controller.creativeValue(key);
+                    return key === "animationCadence" ? value !== "adaptive" : !["", "none", null, undefined].includes(value);
+                }).length;
                 const disclosure = document.createElement("details");
                 disclosure.className = "minimax-h3-progressive-disclosure";
                 disclosure.open = active > 0;
@@ -173,7 +190,7 @@ export function renderCameraLookTab(container, controller) {
                 summary.textContent = `Advanced creative options · ${active ? `${active} active` : "defaults"}`;
                 const note = document.createElement("p");
                 note.className = "minimax-h3-field-hint";
-                note.textContent = "Content format and title treatment stay stored when this section is collapsed.";
+                note.textContent = "Content format, title treatment and experimental animation cadence stay stored when this section is collapsed.";
                 disclosure.append(summary, note, renderFields(advancedFields));
                 creative.body.appendChild(disclosure);
             }

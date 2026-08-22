@@ -4,6 +4,7 @@ import test from "node:test";
 import { renderEnvironmentsTab } from "../tab_environments.js";
 import { renderCameraTab } from "../tab_camera.js";
 import { renderCoachTab } from "../tab_coach.js";
+import { diagnosticFieldLabels, focusDiagnosticLocation } from "../drawer.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
 import { createWidgetStore } from "../widget_store.js";
@@ -153,6 +154,7 @@ for (const [name, render] of [["Shots", renderShotsTab], ["Subjects", renderSubj
         assert.ok(container.children.length > 0);
         assert.doesNotMatch(container.textContent, /JSON array|comma-separated|Picture asset ID/);
         if (name === "Shots") {
+            assert.ok(findByClass(container, "minimax-h3-shot-inspector"));
             for (const label of ["Opening state", "Action beats", "Full presence declared", "Edit camera", "Appearance changes", "Environment changes"]) {
                 assert.match(container.textContent, new RegExp(label));
             }
@@ -191,6 +193,55 @@ test("Review renders successful checked families only after a clean execution", 
     renderCoachTab(untouched, { diagnostics: () => ({ diagnostics: [], stale: false }) });
     assert.match(untouched.textContent, /Review has not run yet/);
     assert.doesNotMatch(untouched.textContent, /Review passed/);
+});
+
+test("Review dismissals persist locally, remain reversible and do not mutate the report", () => {
+    const entries = new Map();
+    const storage = { getItem: (key) => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, value) };
+    const diagnostic = { fingerprint: "fingerprint-1", severity: "warning", category: "coach", code: "coach.test", message: "Clarify this action.", location: { scope: "configuration", shotId: "s1", field: "shot_plan_json.shots[0].action" } };
+    const report = { schemaVersion: 1, stale: false, summary: { warnings: 1 }, diagnostics: [diagnostic] };
+    const controller = { diagnostics: () => report, shotUiState: {}, reviewDismissalStorage: storage };
+    const container = new TestElement("section");
+    renderCoachTab(container, controller);
+    findByClass(container, "minimax-h3-review-dismiss").click();
+    assert.deepEqual(report.diagnostics, [diagnostic]);
+    assert.match(entries.values().next().value, /"version":1.*fingerprint-1/);
+    assert.match(container.textContent, /All current findings are dismissed/);
+    findByClass(container, "minimax-h3-review-dismiss-toggle").click();
+    assert.match(container.textContent, /Restore/);
+    findByClass(container, "minimax-h3-review-dismiss").click();
+    assert.doesNotMatch(entries.values().next().value, /fingerprint-1/);
+});
+
+test("Review shows measured prompt sections and deep-links with an honest exact-location contract", () => {
+    let navigation = null;
+    const controller = {
+        shotUiState: {}, reviewDismissalStorage: { getItem: () => null, setItem() {} },
+        navigateStudioLocation: (section, location) => { navigation = { section, location }; },
+        diagnostics: () => ({
+            schemaVersion: 1, summary: { warnings: 1 },
+            promptBudget: { source: "local_estimate", totalCharacters: 1200, limitCharacters: 7000, sections: [{ name: "detailed_description", characters: 900 }] },
+            diagnostics: [{ fingerprint: "f2", severity: "warning", category: "coach", code: "coach.test", message: "Clarify.", location: { scope: "configuration", shotId: "s1", field: "shot_plan_json.shots[0].action" } }],
+        }),
+    };
+    const container = new TestElement("section");
+    renderCoachTab(container, controller);
+    assert.match(container.textContent, /Local estimate from enhanced prompt/);
+    assert.match(container.textContent, /detailed description900 chars/);
+    findByClass(container, "minimax-h3-location-chip").click();
+    assert.equal(controller.shotUiState.selectedId, "s1");
+    assert.deepEqual(navigation, { section: "shots", location: { scope: "configuration", shotId: "s1", field: "shot_plan_json.shots[0].action" } });
+    assert.deepEqual(diagnosticFieldLabels("shot_plan_json.shots[0].action"), ["Action", "Action / reaction"]);
+    assert.match(focusDiagnosticLocation({ querySelector: () => null, querySelectorAll: () => [] }, { scope: "output", field: "prompt" }).reason, /generated output/);
+    const details = { tagName: "DETAILS", open: false, parentElement: null };
+    const highlighted = { classList: { add() { this.added = true; }, remove() {} } };
+    const target = { parentElement: details, closest: () => highlighted, scrollIntoView() { this.scrolled = true; }, focus() { this.focused = true; } };
+    const panel = { querySelector: (selector) => selector === "[data-shot-action]" ? target : null, querySelectorAll: () => [] };
+    details.parentElement = panel;
+    assert.equal(focusDiagnosticLocation(panel, { scope: "configuration", field: "shot_plan_json.shots[0].action" }).found, true);
+    assert.equal(details.open, true);
+    assert.equal(target.focused, true);
+    assert.equal(highlighted.classList.added, true);
 });
 
 test("Shots renders legacy boolean/null as an untouched empty plan and first edit writes v2", () => {

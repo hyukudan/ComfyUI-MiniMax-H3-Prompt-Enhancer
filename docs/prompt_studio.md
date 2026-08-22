@@ -138,6 +138,12 @@ A temporary state does not own permanent geometry. A detail view does not become
 
 The Reference library describes logical references; generation cards describe activation and physical bindings. Logical IDs remain stable while H3 labels such as `<Picture 1>` or `<Video 2>` are derived per generation.
 
+**Plan by outcome** provides an inline, cancelable first-binding assistant for subject identity, environment view, performance, camera, voice, and continuity. It chooses only from existing shots, generations, subjects, and environments, then prepares the logical asset, its subject/environment relationship when required, a shot-scoped `referenceUse`, and the generation binding as one atomic Media + Shot Plan update. It never connects or uploads the physical file. If a shot belongs to another generation, a required relationship is absent, or the matching physical slot quota is full, the assistant reports that prerequisite deterministically and writes nothing.
+
+The adjacent user-first recipes are contract-safe starting points rather than new schema objects: **Targeted edit** uses an appearance-scoped picture, **Relight** uses a lighting-scoped picture, **Performance transfer** uses a performance-scoped video, and **Continuation** uses a continuity-scoped video. The cards explain what is missing before setup and remain editable through the ordinary asset, shot-use, and binding controls afterward.
+
+**Export LLM planning context** emits `minimax-h3-planning-context` format version 1. It is a read-only discussion artifact containing the current v2 Media Project and Shot Plan plus explicit instructions to preserve IDs and generation boundaries. It contains no physical files, performs no network request, has no import action, and never applies an LLM response automatically.
+
 Media setup is deliberately two steps:
 
 1. Choose **+ Add reference** to register the logical reference, its type, identity, analysis, transcript, or camera-transfer intent. This creates metadata only; Prompt Studio does not upload or connect a file.
@@ -177,15 +183,19 @@ Every option has preview-card infrastructure, but this repository intentionally 
 
 Remote URLs, missing provenance, unsupported kinds, and invalid digests fall back to the honest placeholder. A sample illustrates the catalog vocabulary only; it must not be described as a predicted or guaranteed H3 output.
 
-### Experimental animation cadence — design only
+### Experimental animation cadence
 
-Animation cadence is **not** currently stored or emitted. Creative Treatment v2 is a closed schema and its frontend sanitizer and Python parser accept only the existing six fields, so adding cadence without a schema revision would either lose the value or break validation.
+Creative Treatment v2 optionally stores `animationCadence: "adaptive" | "ones" | "twos" | "threes"`; omission is equivalent to `adaptive`. The control lives under **Advanced creative options** and requests the exposure rhythm of authored poses or drawings for compatible 2D, pixel, stop-motion, marionette, and rotoscoped visual languages. `On ones` asks for a refreshed pose/drawing each output frame, while `On twos` and `On threes` request deliberate two- or three-frame holds.
 
-The proposed additive contract is `animationCadence: "adaptive" | "ones" | "twos" | "threes"`, with absent values interpreted as `adaptive`. A future UI must label it **Experimental**, keep it separate from output FPS, show it only for compatible drawn/stop-motion families or under Advanced, and state that it requests a timing vocabulary rather than guaranteeing model adherence. It should ship only with a schema/parser/compiler update, compatibility tests, prompt-budget tests, and generation evals; no current workflow contains this field.
+Cadence is intentionally separate from output FPS and cinematography motion rendering. It never changes duration, frame count, interpolation, camera speed, motion blur, action timing, shot boundaries, or narrative holds. An incompatible live-action or 3D selection preserves the requested value but does not emit cadence prose and produces a warning. The UI and prompt both label the feature **Experimental** because model adherence is not guaranteed; `Adaptive` remains the safe default.
 
 ### Coach
 
-The Coach consumes the ephemeral `minimax_h3_diagnostics` UI payload returned when the node executes. It groups diagnostics by stable code. Editing any canonical widget marks the cached report stale; run the node again before treating it as current.
+The Coach consumes the ephemeral `minimax_h3_diagnostics` UI payload returned when the node executes. It groups diagnostics by stable code. Editing any canonical widget marks the cached report stale; run the node again before treating it as current. A location chip first selects the related shot, then opens the owning section, expands the relevant disclosure, and focuses and briefly highlights the closest exact control. Output-only or obsolete locations never pretend to be editable: Review opens the related section and shows an explicit fallback message instead.
+
+**Dismiss** hides one stable diagnostic fingerprint in this browser only. Dismissals use a bounded, versioned local preference containing fingerprints—not report content or project data—and never mutate `validation_report`, `diagnosticReport`, the workflow, or backend suppression policy. **Show dismissed** exposes those cards with **Restore**, so the action is always reversible.
+
+After an enhancer or validator execution, Review also shows the exact total character count and a deterministic per-section character breakdown derived from that emitted `enhanced_prompt`. Because this display is computed for the UI rather than supplied as a normative backend budget object, it is labeled **Local estimate from enhanced prompt**. The 7,000-character denominator appears only when the real validation report says `deliveryTarget: "api_v2"`; local delivery does not invent a limit. When no prompt was returned, Review omits the budget card instead of guessing.
 
 Coach advice is conservative and bounded to two items per shot and twelve globally. It can flag:
 

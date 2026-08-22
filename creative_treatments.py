@@ -43,7 +43,7 @@ CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS = (
     CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION,
     CREATIVE_TREATMENT_SCHEMA_VERSION,
 )
-CREATIVE_PROFILE_CATALOG_VERSION = 22
+CREATIVE_PROFILE_CATALOG_VERSION = 23
 TITLE_SCREEN_STYLE_CATALOG_VERSION = 2
 CINEMATOGRAPHY_LEGACY_SCHEMA_VERSION = 1
 CINEMATOGRAPHY_SCHEMA_VERSION = 2
@@ -63,6 +63,38 @@ CREATIVE_JSON_KEYS = {
     "worldAesthetic": "world_aesthetic",
     "tone": "tone",
 }
+ANIMATION_CADENCE_CHOICES = {
+    "adaptive": "",
+    "ones": (
+        "For compatible drawn or stop-motion imagery, request a full-exposure cadence on ones: refresh the "
+        "authored pose or drawing every output frame so existing motion reads continuously fluid and precisely spaced."
+    ),
+    "twos": (
+        "For compatible drawn or stop-motion imagery, request a deliberate cadence on twos: hold each authored "
+        "pose or drawing for two output frames, using stable exposures and purposeful spacing without accidental stutter."
+    ),
+    "threes": (
+        "For compatible drawn or stop-motion imagery, request a strongly stepped cadence on threes: hold each "
+        "authored pose or drawing for three output frames, preserving readable silhouettes and intentional pose changes."
+    ),
+}
+ANIMATION_CADENCE_COMPATIBLE_VISUAL_LANGUAGES = frozenset({
+    "anime_general", "anime_ultradetailed_cinematic", "anime_shonen", "anime_shojo",
+    "anime_shojo_pastel", "anime_retro_dramatic", "anime_retro_gag_family",
+    "manga_monochrome_print", "anime_1960s70s_limited_cel", "mecha_super_robot_cel",
+    "anime_ova_mechanical_detail", "anime_1990s_broadcast_cel", "anime_digital_compositing",
+    "animation_2d", "vintage_rubberhose_2d", "heroic_limited_cel_tv",
+    "midcentury_graphic_cel_comedy", "classic_morning_adventure_cel",
+    "cable_angular_graphic_comedy", "contemporary_vector_2d", "painterly_2d",
+    "watercolor_2d", "gouache_2d", "japanese_print_animation", "american_comic_pastel",
+    "graphic_novel", "graphic_noir", "pixel_art_16bit", "stop_motion_handcrafted",
+    "supermarionation", "rotoscope_animation",
+})
+ANIMATION_CADENCE_GUARDRAIL = (
+    "Animation cadence controls only the requested exposure rhythm of compatible authored poses or drawings. "
+    "It must not change output FPS, duration, frame count, interpolation, camera speed, motion blur, action timing, "
+    "shot boundaries, or narrative holds. Model adherence is not guaranteed."
+)
 PROFILE_DIMENSIONS = (
     "editing_and_pacing",
     "camera_and_framing",
@@ -3007,7 +3039,9 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
     else:
         raise ValueError("creative_treatment_json must be blank, a JSON object string, or a mapping")
 
-    allowed_keys = {"schemaVersion", "contentFormat", "titleScreenStyle", *CREATIVE_JSON_KEYS}
+    allowed_keys = {
+        "schemaVersion", "contentFormat", "titleScreenStyle", "animationCadence", *CREATIVE_JSON_KEYS,
+    }
     unknown_keys = sorted(set(raw) - allowed_keys)
     if unknown_keys:
         raise ValueError(f"creative_treatment_json contains unsupported keys: {unknown_keys}")
@@ -3026,6 +3060,8 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
             "creative_treatment_json schemaVersion must be one of: "
             + ", ".join(str(version) for version in CREATIVE_TREATMENT_SUPPORTED_SCHEMA_VERSIONS)
         )
+    if creative_schema == CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION and "animationCadence" in raw:
+        raise ValueError("creative_treatment_json animationCadence is available only in native schema v2")
     selections = {}
     for external, internal in CREATIVE_JSON_KEYS.items():
         selected = raw.get(external, "none")
@@ -3061,6 +3097,17 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
             f"Unsupported content format {content_format!r}; choose one of: "
             + ", ".join(allowed_content_formats)
         )
+    animation_cadence = raw.get("animationCadence", "adaptive")
+    if animation_cadence in (None, ""):
+        animation_cadence = "adaptive"
+    if not isinstance(animation_cadence, str):
+        raise ValueError("creative_treatment_json animationCadence must be a string")
+    animation_cadence = animation_cadence.strip().lower()
+    if animation_cadence not in ANIMATION_CADENCE_CHOICES:
+        raise ValueError(
+            f"Unsupported animation cadence {animation_cadence!r}; choose one of: "
+            + ", ".join(ANIMATION_CADENCE_CHOICES)
+        )
     dimensions = {dimension: [] for dimension in PROFILE_DIMENSIONS}
     profile_ids = []
     profile_versions = {}
@@ -3074,7 +3121,13 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
         for dimension in PROFILE_DIMENSIONS:
             dimensions[dimension].extend(resolved[dimension])
     dimensions = {key: _dedupe(values) for key, values in dimensions.items()}
-    requested = bool(profile_ids or title_screen_style != "none")
+    cadence_compatible = selections["visual_language"] in ANIMATION_CADENCE_COMPATIBLE_VISUAL_LANGUAGES
+    cadence_applied = animation_cadence != "adaptive" and cadence_compatible
+    if cadence_applied:
+        dimensions["editing_and_pacing"].append(ANIMATION_CADENCE_CHOICES[animation_cadence])
+        dimensions["must_not_invent"].append(ANIMATION_CADENCE_GUARDRAIL)
+        dimensions = {key: _dedupe(values) for key, values in dimensions.items()}
+    requested = bool(profile_ids or title_screen_style != "none" or animation_cadence != "adaptive")
     canonical = {
         "schemaVersion": CREATIVE_TREATMENT_SCHEMA_VERSION,
         "contentFormat": content_format,
@@ -3083,6 +3136,7 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
         "worldAesthetic": selections["world_aesthetic"],
         "tone": selections["tone"],
         "titleScreenStyle": title_screen_style,
+        "animationCadence": animation_cadence,
     }
     digest_payload = {
         "catalogVersion": CREATIVE_PROFILE_CATALOG_VERSION,
@@ -3104,6 +3158,11 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
         "titleScreenStyleCatalogVersion": TITLE_SCREEN_STYLE_CATALOG_VERSION,
         "titleScreenStyleVersion": int(TITLE_SCREEN_STYLE_PROFILES[title_screen_style]["version"]),
         "titleScreenDeliveryLock": TITLE_SCREEN_STYLE_PROFILES[title_screen_style]["deliveryLock"],
+        "animationCadenceApplied": cadence_applied,
+        "animationCadenceCompatible": cadence_compatible,
+        "warnings": ([
+            "Animation cadence is inactive because the selected visual language is not a compatible drawn or stop-motion family."
+        ] if animation_cadence != "adaptive" and not cadence_compatible else []),
         "dimensions": dimensions,
         "digest": _canonical_digest(digest_payload),
         "canonicalJson": json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -3719,6 +3778,7 @@ def treatment_warnings(treatment: Mapping[str, Any],
     """Collect every human-readable note these selections produce, in a stable order."""
     _resolved, conflicts = resolve_treatment_conflicts(treatment, cinematography)
     return [
+        *treatment.get("warnings", ()),
         *(cinematography or {}).get("warnings", ()),
         *(shot_plan or {}).get("warnings", ()),
         *(item["message"] for item in conflicts),

@@ -21,7 +21,52 @@ SOURCE_PROMPT_PLACEHOLDER = "Original request used to check preserved facts, dia
 VALIDATION_PROMPT_PLACEHOLDER = "Paste the complete H3 prompt to validate…"
 
 
-def _diagnostic_ui_payload(report: dict | str | None) -> list[str]:
+def _prompt_budget_ui(enhanced_prompt: str | None, report: dict, manifest: dict | str | None = None) -> dict | None:
+    text = str(enhanced_prompt or "")
+    if not text:
+        return None
+    parsed_manifest = manifest
+    if isinstance(parsed_manifest, str):
+        try:
+            parsed_manifest = json.loads(parsed_manifest)
+        except json.JSONDecodeError:
+            parsed_manifest = {}
+    section_names = report.get("sections", ())
+    if not isinstance(section_names, (list, tuple)):
+        section_names = ()
+    starts = []
+    for name in section_names:
+        label = str(name or "").strip()
+        marker = f"{label}:"
+        line_offset = text.find(f"\n{marker}")
+        offset = 0 if text.startswith(marker) else line_offset + 1 if line_offset >= 0 else -1
+        if label and offset >= 0:
+            starts.append((offset, label))
+    starts.sort()
+    sections = []
+    if starts and starts[0][0] > 0:
+        sections.append({"name": "Unsectioned", "characters": starts[0][0]})
+    for index, (offset, label) in enumerate(starts):
+        end = starts[index + 1][0] if index + 1 < len(starts) else len(text)
+        sections.append({"name": label, "characters": end - offset})
+    if not sections:
+        sections = [{"name": "Full prompt", "characters": len(text)}]
+    description_budget = report.get("descriptionBudget")
+    return {
+        "source": "local_estimate",
+        "totalCharacters": len(text),
+        "limitCharacters": 7000 if report.get("deliveryTarget") == "api_v2" else None,
+        "sections": sections,
+        "descriptionBudget": description_budget if isinstance(description_budget, dict) else None,
+        "manifestAvailable": isinstance(parsed_manifest, dict) and bool(parsed_manifest),
+    }
+
+
+def _diagnostic_ui_payload(
+    report: dict | str | None,
+    enhanced_prompt: str | None = None,
+    manifest: dict | str | None = None,
+) -> list[str]:
     if isinstance(report, str):
         try:
             report = json.loads(report)
@@ -39,6 +84,9 @@ def _diagnostic_ui_payload(report: dict | str | None) -> list[str]:
         }),
         "diagnostics": structured.get("diagnostics", ()),
     }
+    prompt_budget = _prompt_budget_ui(enhanced_prompt, report, manifest)
+    if prompt_budget:
+        compact["promptBudget"] = prompt_budget
     return [json.dumps(compact, ensure_ascii=False, separators=(",", ":"))]
 CREATIVE_TREATMENT_PLACEHOLDER = '{"schemaVersion":2,"genre":"none","visualLanguage":"none","worldAesthetic":"none","tone":"none"}'
 LORA_TRIGGER_PLACEHOLDER = "Trigger tokens for any LoRA in the graph, e.g. g0r3_style, ultrarealistic_v2…"
@@ -490,7 +538,7 @@ class MiniMaxH3PromptEnhancer:
     def enhance_with_ui(self, *args, **kwargs):
         result = self.enhance(*args, **kwargs)
         return {
-            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1])},
+            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1], result[0], result[2])},
             "result": result,
         }
 
@@ -623,7 +671,7 @@ class MiniMaxH3GGUFPromptEnhancer:
     def enhance_with_ui(self, *args, **kwargs):
         result = self.enhance(*args, **kwargs)
         return {
-            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1])},
+            "ui": {"minimax_h3_diagnostics": _diagnostic_ui_payload(result[1], result[0], result[2])},
             "result": result,
         }
 
@@ -867,7 +915,7 @@ class MiniMaxH3PromptValidator:
         return {
             "ui": {
                 "text": [str(prompt), report_text],
-                "minimax_h3_diagnostics": _diagnostic_ui_payload(report),
+                "minimax_h3_diagnostics": _diagnostic_ui_payload(report, str(prompt)),
             },
             "result": (str(prompt), bool(report["valid"]), report_text),
         }

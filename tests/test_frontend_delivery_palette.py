@@ -35,13 +35,24 @@ def test_voice_color_dialog_has_keyboard_and_lifecycle_contracts():
 
 
 def test_voice_color_is_labelled_and_responsive_at_narrow_widths():
-    for family in ("Angry & hard", "Shaken", "Sad & breaking", "Warm & bright", "Flat & dry", "Pressed"):
+    for family in ("Angry & hard", "Shaken", "Sad & breaking", "Warm & bright", "Flat & dry", "Calm & steady", "Pressed"):
         assert f'group: "{family}"' in SOURCE
     for label in ("angry, held back", "near tears", "through laughter", "cold, level", "conspiratorial"):
         assert f'label: "{label}"' in SOURCE
     assert "flex-wrap:wrap;max-width:100%" in SOURCE
     assert "width:min(340px,calc(100vw - 16px))" in SOURCE
     assert "window.innerWidth - rect.width - 8" in SOURCE
+
+
+def test_expanded_voice_catalog_has_accessible_alias_search():
+    assert '{ emoji: "🗣️", tier: "verb"' in SOURCE
+    assert '{ emoji: "😌", tier: "prose"' in SOURCE
+    assert '{ emoji: "😰", tier: "prose"' in SOURCE
+    assert 'search.type = "search"' in SOURCE
+    assert 'search.placeholder = "Search Voice colors…"' in SOURCE
+    assert 'search.setAttribute("aria-controls", library.id)' in SOURCE
+    assert 'searchStatus.setAttribute("aria-live", "polite")' in SOURCE
+    assert "filterVoiceColorMarks(" in SOURCE
 
 
 def test_delivery_feedback_explains_prose_and_warns_about_unquoted_lines():

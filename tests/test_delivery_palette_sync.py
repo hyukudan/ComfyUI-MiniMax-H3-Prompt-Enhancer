@@ -56,3 +56,11 @@ def test_retired_marks_still_resolve_for_prompts_already_written():
     for emoji in RETIRED_FROM_PALETTE:
         assert emoji in guides.DELIVERY_EMOJI
         assert emoji in guides.DELIVERY_FACE
+
+
+def test_advanced_vocal_marks_are_exposed_with_their_backend_kinds():
+    entries = dict(_palette_entries())
+    assert entries["🗣️"] == "verb"
+    assert entries["😌"] == "prose"
+    assert entries["😰"] == "prose"
+    assert sum(tier == "prose" for _emoji, tier in _palette_entries()) == 16
