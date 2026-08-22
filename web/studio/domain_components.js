@@ -56,12 +56,28 @@ export function field(label, control, hint = "") {
 export function inspectorSection(title, summary = "", open = true) {
     const details = element("details", "minimax-h3-inspector-section");
     details.open = open;
+    details.dataset.disclosureKey = title;
     const heading = element("summary", "minimax-h3-inspector-heading");
     heading.append(element("span", "", title));
     if (summary) heading.append(element("small", "", summary));
     const body = element("div", "minimax-h3-inspector-body");
     details.append(heading, body);
     return { details, body };
+}
+
+export function captureOpenDisclosures(container) {
+    if (typeof container?.querySelectorAll !== "function") return null;
+    return [...container.querySelectorAll("details[data-disclosure-key]")]
+        .filter((details) => details.open)
+        .map((details) => details.dataset.disclosureKey);
+}
+
+export function restoreOpenDisclosures(container, keys) {
+    if (!Array.isArray(keys) || typeof container?.querySelectorAll !== "function") return;
+    const open = new Set(keys);
+    for (const details of container.querySelectorAll("details[data-disclosure-key]")) {
+        details.open = open.has(details.dataset.disclosureKey);
+    }
 }
 
 export function actionButton(label, onClick, { danger = false, disabled = false } = {}) {

@@ -1,6 +1,6 @@
 import {
-    actionButton, bindCommit, checkboxPicker, element, emptyState, field, inspectorSection,
-    selectInput, setOptional, textArea, textInput,
+    actionButton, bindCommit, captureOpenDisclosures, checkboxPicker, element, emptyState, field, inspectorSection,
+    restoreOpenDisclosures, selectInput, setOptional, textArea, textInput,
 } from "./domain_components.js";
 import { resolveEntryStates } from "./derive.js";
 import { projectForController } from "./project_editor.js";
@@ -161,17 +161,36 @@ export function renderFrame(container, shot, key, label, project, provenance, co
     container.appendChild(section.details);
 }
 
-function renderStory(container, shot, commit, rerender) {
+function renderStory(container, shot, commit, rerender, basicPrompt = "") {
     const section = inspectorSection("Story", shot.action || "No action yet", true);
     const opening = textArea(shot.openingState, "What is visible in the first frame");
     bindCommit(opening, (value) => setOptional(shot, "openingState", value.trim()), commit, "blur");
     const action = textArea(shot.action, "What visibly changes during this shot"); action.dataset.shotAction = "true";
+    const inheritsBasicPrompt = !String(shot.action ?? "").trim() && Boolean(String(basicPrompt).trim());
+    if (!String(shot.action ?? "").trim() && !inheritsBasicPrompt) action.setAttribute("aria-invalid", "true");
     bindCommit(action, (value) => { shot.action = value.trim(); }, commit, "blur");
     action.addEventListener("blur", () => rerender());
     section.body.append(
         field("Opening state", opening, "The first visible frame."),
         field("Action", action, "Movement, change and final visible result."),
     );
+    if (!String(shot.action ?? "").trim()) {
+        const required = element(
+            "p", "minimax-h3-studio-status",
+            inheritsBasicPrompt
+                ? "This single Shot uses the Basic prompt as its Action. Save a separate Action only when you want different wording."
+                : "Action is required before this Shot can generate.",
+        );
+        required.dataset.kind = inheritsBasicPrompt ? "info" : "error";
+        section.body.appendChild(required);
+        if (String(basicPrompt).trim()) {
+            section.body.appendChild(actionButton("Use Basic prompt as Action", () => {
+                shot.action = String(basicPrompt).trim();
+                commit();
+                rerender("[data-shot-action]");
+            }));
+        }
+    }
     container.appendChild(section.details);
 }
 
@@ -292,6 +311,7 @@ function renderPresence(container, shot, project, entry, commit, rerender) {
         const row = element("div", "minimax-h3-presence-row");
         const presence = declared.get(subject.id);
         const control = selectInput(presence?.presence ?? "", shot.subjectPresenceComplete ? PRESENCE.slice(1) : PRESENCE, { ariaLabel: `${subject.name} presence` });
+        control.dataset.subjectPresence = subject.id;
         control.addEventListener("change", () => {
             shot.subjects ??= [];
             const index = shot.subjects.findIndex((item) => item.subjectId === subject.id);
@@ -299,7 +319,7 @@ function renderPresence(container, shot, project, entry, commit, rerender) {
             else if (control.value && index >= 0) shot.subjects[index].presence = control.value;
             else if (control.value) shot.subjects.push({ subjectId: subject.id, presence: control.value });
             if (!shot.subjects.length) delete shot.subjects;
-            commit(); rerender();
+            commit(); rerender(`[data-subject-presence="${subject.id}"]`);
         });
         row.append(element("strong", "", subject.name || subject.id), control, element("small", "minimax-h3-state-chip", `Entry: ${entry?.subjects?.[subject.id] ?? subject.baseAppearanceStateId}`));
         if (presence && presence.presence !== "absent") {
@@ -589,7 +609,10 @@ export function renderShotsTab(container, controller) {
     if (!state.selectedId || !plan.shots.some((shot) => shot.id === state.selectedId)) state.selectedId = plan.shots[0]?.id ?? null;
     const commit = () => commitPlan(controller, state);
     const rerender = (focusSelector = "") => {
-        state.panelScroll = container.scrollTop; state.focusSelector = focusSelector; renderShotsTab(container, controller);
+        state.panelScroll = container.scrollTop;
+        state.openDisclosures = captureOpenDisclosures(container);
+        state.focusSelector = focusSelector;
+        renderShotsTab(container, controller);
     };
     const toolbar = element("div", "minimax-h3-studio-toolbar");
     const timing = selectInput(plan.timingMode, [["auto", "Timing: Auto"], ["exact", "Timing: Exact"]], { ariaLabel: "Shot timing mode" });
@@ -601,7 +624,11 @@ export function renderShotsTab(container, controller) {
         commit(); rerender();
     });
     const add = actionButton("+ Add shot", () => {
-        const shot = { id: nextShotId(state.plan.shots), generationId: generationIds(project, controller)[0] ?? "g1", action: "" };
+        const shot = {
+            id: nextShotId(state.plan.shots),
+            generationId: generationIds(project, controller)[0] ?? "g1",
+            action: String(controller.basicPrompt?.() ?? "").trim(),
+        };
         if (state.plan.timingMode === "exact") shot.durationSeconds = 1;
         state.plan.shots.push(shot); state.selectedId = shot.id; commit(); rerender("[data-shot-action]");
     }, { disabled: plan.shots.length >= 64 });
@@ -629,7 +656,7 @@ export function renderShotsTab(container, controller) {
     const generation = selectInput(shot.generationId, generationIds(project, controller).map((id) => [id, id]));
     generation.addEventListener("change", () => { shot.generationId = generation.value; commit(); rerender(); }); header.appendChild(field("Generation", generation));
     editor.appendChild(header);
-    renderStory(editor, shot, commit, rerender); renderActionBeats(editor, shot, project, commit, rerender); renderTiming(editor, shot, state.plan, commit, rerender);
+    renderStory(editor, shot, commit, rerender, controller.basicPrompt?.()); renderActionBeats(editor, shot, project, commit, rerender); renderTiming(editor, shot, state.plan, commit, rerender);
     renderPresence(editor, shot, project, entryStates, commit, rerender);
     renderScaleRelationships(editor, shot, project, commit, rerender);
     renderEnvironment(editor, shot, project, entryStates, commit, rerender);
@@ -658,6 +685,7 @@ export function renderShotsTab(container, controller) {
         state.selectedId = state.plan.shots[Math.min(index, state.plan.shots.length - 1)]?.id ?? null; commit(); rerender();
     }, { danger: true })); editor.appendChild(actions);
     grid.appendChild(editor); container.appendChild(grid);
+    restoreOpenDisclosures(container, state.openDisclosures);
     if (state.panelScroll !== undefined) container.scrollTop = state.panelScroll;
     if (state.focusSelector) {
         const selector = state.focusSelector; state.focusSelector = "";

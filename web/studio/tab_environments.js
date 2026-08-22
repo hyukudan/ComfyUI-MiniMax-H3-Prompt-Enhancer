@@ -1,6 +1,6 @@
 import {
-    actionButton, bindCommit, createMasterDetail, element, emptyState, field, inspectorSection,
-    masterRow, selectInput, setOptional, textArea, textInput, tokenList,
+    actionButton, bindCommit, captureOpenDisclosures, createMasterDetail, element, emptyState, field, inspectorSection,
+    masterRow, restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
 } from "./domain_components.js";
 import { usageIndex } from "./derive.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
@@ -88,7 +88,11 @@ export function renderEnvironmentsTab(container, controller) {
         ui.environmentSelectedId = project.environments[0]?.id ?? null;
     }
     const commit = () => commitProject(controller);
-    const rerender = () => { ui.environmentPanelScroll = container.scrollTop; renderEnvironmentsTab(container, controller); };
+    const rerender = () => {
+        ui.environmentPanelScroll = container.scrollTop;
+        ui.environmentOpenDisclosures = captureOpenDisclosures(container);
+        renderEnvironmentsTab(container, controller);
+    };
     const toolbar = element("div", "minimax-h3-studio-toolbar");
     const addEnvironment = actionButton("+ Environment", () => {
         const environment = newEnvironment(project); project.environments.push(environment); ui.environmentSelectedId = environment.id; commit(); rerender();
@@ -165,5 +169,6 @@ export function renderEnvironmentsTab(container, controller) {
     inspector.appendChild(actions);
     if (environmentUses.length) inspector.appendChild(element("p", "minimax-h3-usage-note", `Cannot delete. Used by: ${environmentUses.join(", ")}`));
     container.appendChild(grid);
+    restoreOpenDisclosures(container, ui.environmentOpenDisclosures);
     if (ui.environmentPanelScroll !== undefined) container.scrollTop = ui.environmentPanelScroll;
 }

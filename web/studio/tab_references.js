@@ -1,5 +1,6 @@
 import { assetUsage, generationMediaModel, MEDIA_LIMITS, nextAvailableSlot } from "./media_model.js";
 import { commitProject, labeledInput, labeledSelect, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
+import { captureOpenDisclosures, restoreOpenDisclosures } from "./domain_components.js";
 import {
     bindingPlanDiagnostics, createPlanningContext, createPurposeBinding, mediaPurpose,
     MEDIA_BINDING_PURPOSES, MEDIA_RECIPES,
@@ -48,6 +49,7 @@ function section(title, summary = "") {
     const details = document.createElement("details");
     details.className = "minimax-h3-inspector-block";
     details.open = true;
+    details.dataset.disclosureKey = title;
     const heading = document.createElement("summary");
     heading.textContent = summary ? `${title} · ${summary}` : title;
     const body = document.createElement("div");
@@ -737,6 +739,8 @@ function renderGenerationInspector(container, project, generation, controller) {
 }
 
 export function renderReferencesTab(container, controller) {
+    const remembered = captureOpenDisclosures(container);
+    if (remembered !== null) controller.projectUiState.mediaOpenDisclosures = remembered;
     container.replaceChildren();
     const documentState = controller.projectDocument();
     const project = projectForController(controller);
@@ -762,4 +766,5 @@ export function renderReferencesTab(container, controller) {
     generationHelp.textContent = "Control availability, match references to physical input slots and define continuity state per generation.";
     generationHeading.append(generationTitle, generationHelp);
     container.append(generationHeading, renderGenerationInspector(container, project, selectedGeneration(project, controller), controller));
+    restoreOpenDisclosures(container, controller.projectUiState.mediaOpenDisclosures);
 }

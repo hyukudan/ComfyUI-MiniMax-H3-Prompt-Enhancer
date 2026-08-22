@@ -5,7 +5,7 @@ import { renderEnvironmentsTab } from "../tab_environments.js";
 import { renderCameraTab } from "../tab_camera.js";
 import { renderCoachTab } from "../tab_coach.js";
 import { diagnosticFieldLabels, focusDiagnosticLocation } from "../drawer.js";
-import { textArea, textInput } from "../domain_components.js";
+import { captureOpenDisclosures, restoreOpenDisclosures, textArea, textInput } from "../domain_components.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
 import { createWidgetStore } from "../widget_store.js";
@@ -92,6 +92,19 @@ test("instructional placeholders clear on focus, return on blur and never become
         assert.match(control.placeholder, /^Describe/);
         assert.equal(control.value, "");
     }
+});
+
+test("disclosure state survives a structural editor rerender", () => {
+    const first = { open: true, dataset: { disclosureKey: "Who's in it" } };
+    const second = { open: false, dataset: { disclosureKey: "Action beats" } };
+    const before = { querySelectorAll: () => [first, second] };
+    const remembered = captureOpenDisclosures(before);
+    assert.deepEqual(remembered, ["Who's in it"]);
+    const replacementFirst = { open: false, dataset: { disclosureKey: "Who's in it" } };
+    const replacementSecond = { open: true, dataset: { disclosureKey: "Action beats" } };
+    restoreOpenDisclosures({ querySelectorAll: () => [replacementFirst, replacementSecond] }, remembered);
+    assert.equal(replacementFirst.open, true);
+    assert.equal(replacementSecond.open, false);
 });
 
 function matches(element, selector) {

@@ -1,6 +1,6 @@
 import {
-    actionButton, bindCommit, checkboxPicker, createMasterDetail, element, emptyState, field,
-    inspectorSection, masterRow, selectInput, setOptional, textArea, textInput, tokenList,
+    actionButton, bindCommit, captureOpenDisclosures, checkboxPicker, createMasterDetail, element, emptyState, field,
+    inspectorSection, masterRow, restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
 } from "./domain_components.js";
 import { usageIndex } from "./derive.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
@@ -26,6 +26,22 @@ function newSubject(project) {
         identityAssetIds: [], baseAppearanceStateId: "base",
         appearanceStates: [{ id: "base", name: "Base", controls: [], attributes: {} }],
     };
+}
+
+export function setSubjectGenerationPromptUse(generation, subjectId, included) {
+    if (!generation || !subjectId) return false;
+    const activation = generation.activation ?? { mode: "auto" };
+    const roots = Array.isArray(activation.roots) ? [...activation.roots] : [];
+    const index = roots.findIndex((root) => root.kind === "subject" && root.id === subjectId);
+    if (included && index < 0) roots.push({ kind: "subject", id: subjectId });
+    if (!included && index >= 0) roots.splice(index, 1);
+    if ((included && index >= 0) || (!included && index < 0)) return false;
+    const exclude = Array.isArray(activation.exclude) && activation.exclude.length
+        ? { exclude: structuredClone(activation.exclude) } : {};
+    generation.activation = roots.length
+        ? { mode: "explicit", roots, ...exclude }
+        : { mode: "auto", ...exclude };
+    return true;
 }
 
 function renderAppearanceState(container, subject, appearance, project, uses, commit, rerender) {
@@ -124,12 +140,19 @@ export function renderSubjectsTab(container, controller) {
     const commit = () => commitProject(controller);
     const rerender = (appearanceId = null) => {
         ui.subjectPanelScroll = container.scrollTop;
+        ui.subjectOpenDisclosures = captureOpenDisclosures(container);
         ui.subjectAppearanceId = appearanceId;
         renderSubjectsTab(container, controller);
     };
     const toolbar = element("div", "minimax-h3-studio-toolbar");
     const addSubject = actionButton("+ Subject", () => {
-        const subject = newSubject(project); project.subjects.push(subject); ui.subjectSelectedId = subject.id; commit(); rerender();
+        const subject = newSubject(project);
+        project.subjects.push(subject);
+        ui.subjectSelectedId = subject.id;
+        const generation = project.generations.find((item) => item.id === ui.selectedGenerationId)
+            ?? project.generations[0];
+        setSubjectGenerationPromptUse(generation, subject.id, true);
+        commit(); rerender();
     }, { disabled: project.subjects.length >= 64 });
     toolbar.append(addSubject, element("span", "minimax-h3-field-hint", `${project.subjects.length}/64 subjects`));
     container.appendChild(toolbar);
@@ -173,6 +196,30 @@ export function renderSubjectsTab(container, controller) {
     }, "Identity picture assets"), "Only picture assets can reinforce identity."));
     inspector.appendChild(identity.details);
 
+    const promptUse = inspectorSection("Use in prompts", "generation casting", true);
+    promptUse.body.appendChild(element(
+        "p", "minimax-h3-field-hint",
+        "A saved identity reaches the LLM when a shot marks it present or when it is included for a generation here.",
+    ));
+    for (const generation of project.generations ?? []) {
+        const rooted = (generation.activation?.roots ?? []).some((root) => root.kind === "subject" && root.id === subject.id);
+        const control = document.createElement("input");
+        control.type = "checkbox";
+        control.checked = rooted;
+        control.addEventListener("change", () => {
+            if (setSubjectGenerationPromptUse(generation, subject.id, control.checked)) commit();
+            rerender();
+        });
+        promptUse.body.appendChild(field(
+            `Always include in Generation ${generation.order ?? generation.id}`,
+            control,
+            rooted
+                ? "Its identity definition and selected appearance are sent even without an explicit shot cast."
+                : "Otherwise, add this subject under Shots → Who’s in it when it appears.",
+        ));
+    }
+    inspector.appendChild(promptUse.details);
+
     const statesHeading = element("div", "minimax-h3-studio-toolbar");
     statesHeading.append(element("strong", "", "Appearance states"), actionButton("+ Appearance state", () => {
         const id = uniqueId(subject.appearanceStates ?? [], "state.");
@@ -195,5 +242,6 @@ export function renderSubjectsTab(container, controller) {
     inspector.appendChild(subjectActions);
     if (subjectUses.length) inspector.appendChild(element("p", "minimax-h3-usage-note", `Cannot delete. Used by: ${subjectUses.join(", ")}`));
     container.appendChild(grid);
+    restoreOpenDisclosures(container, ui.subjectOpenDisclosures);
     if (ui.subjectPanelScroll !== undefined) container.scrollTop = ui.subjectPanelScroll;
 }

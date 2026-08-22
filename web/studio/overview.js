@@ -75,7 +75,7 @@ export function overviewModel(controller) {
         assets: projectValue?.assets?.length ?? 0,
         generations,
         sources: { shot, project, camera, creative },
-        preflight: localPreflight({ shotDocument: shot, projectDocument: project }),
+        preflight: localPreflight({ shotDocument: shot, projectDocument: project, basicPrompt: controller.basicPrompt?.() }),
         diagnostics: diagnosticCounts(report),
         stale: Boolean(report?.stale),
     };

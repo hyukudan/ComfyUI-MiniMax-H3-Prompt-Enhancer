@@ -41,6 +41,8 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
     assert "Target megapixels (0 = auto)" not in source
     assert "Target Megapixels (0.0 = auto)" not in source
     assert "function createResolutionBudgetControl" in source
+    assert 'mode.addEventListener("input", commitMode)' in source
+    assert 'mode.addEventListener("change", commitMode)' in source
     assert 'addSelectOptions(mode, [["auto", "Auto"], ["custom", "Custom"]])' in source
     assert "custom.disabled = automatic" in source
     assert 'custom.addEventListener("input"' in source

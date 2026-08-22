@@ -47,7 +47,7 @@ test("complete presence and empty beats are non-blocking local notes", () => {
             subjects: [], actionBeats: [{}],
         }] }),
         projectDocument: documentState({
-            subjects: [{ id: "ana", description: "Adult woman with short dark hair." }], assets: [], generations: [{ id: "g1", bindings: [] }],
+            subjects: [{ id: "ana", description: "Adult woman with short dark hair." }], assets: [], generations: [{ id: "g1", activation: { mode: "explicit", roots: [{ kind: "subject", id: "ana" }] }, bindings: [] }],
         }),
     });
     assert.equal(result.status, "attention");
@@ -67,6 +67,45 @@ test("dialogue-only beats read the structured dialogue text", () => {
     });
     assert.equal(result.status, "ready");
     assert.equal(result.items.some((item) => item.message.includes("action beat is empty")), false);
+});
+
+test("an unused library subject warns that it will not reach the LLM", () => {
+    const result = localPreflight({
+        shotDocument: documentState({ shots: [] }),
+        projectDocument: documentState({
+            subjects: [{ id: "juan", name: "Juan", description: "Tall man with dark curly hair." }],
+            assets: [], generations: [{ id: "g1", activation: { mode: "auto" }, bindings: [] }],
+        }),
+    });
+    assert.equal(result.status, "attention");
+    assert.ok(result.items.some(({ message }) => message.includes("Juan") && message.includes("will not reach the LLM")));
+});
+
+test("one cast-only Shot inherits the Basic prompt while multiple blank Shots stay blocked", () => {
+    const projectDocument = documentState({
+        subjects: [{ id: "juan", name: "Juan", description: "An older man in a rain coat." }],
+        assets: [], generations: [{ id: "g1", activation: { mode: "auto" }, bindings: [] }],
+    });
+    const single = localPreflight({
+        basicPrompt: "Juan dances in the rain.",
+        shotDocument: documentState({ shots: [{
+            id: "s1", generationId: "g1", action: "",
+            subjects: [{ subjectId: "juan", presence: "present" }],
+        }] }),
+        projectDocument,
+    });
+    assert.equal(single.status, "ready");
+    assert.ok(single.items.some(({ severity, message }) => severity === "info" && message.includes("inherits")));
+
+    const multiple = localPreflight({
+        basicPrompt: "Juan dances in the rain.",
+        shotDocument: documentState({ shots: [
+            { id: "s1", generationId: "g1", action: "" },
+            { id: "s2", generationId: "g1", action: "" },
+        ] }),
+        projectDocument,
+    });
+    assert.equal(multiple.status, "blocked");
 });
 
 test("unfinished identity, dialogue and custom scale drafts are explicit blocking items", () => {

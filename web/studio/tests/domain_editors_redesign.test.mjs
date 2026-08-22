@@ -6,6 +6,7 @@ import { cameraProvenance, resolveEntryStates, slotCapacity, usageIndex } from "
 import { commitProject, editableProject, projectForController } from "../project_editor.js";
 import { editableShotPlan, parseMediaProject, parseStructuredJson } from "../schema.js";
 import { createWidgetStore } from "../widget_store.js";
+import { setSubjectGenerationPromptUse } from "../tab_subjects.js";
 
 const project = {
     schemaVersion: 2,
@@ -40,6 +41,20 @@ const plan = {
         { id: "s2", generationId: "g2", action: "Camera follows", cameraStart: { framing: "medium" }, referenceUses: [{ assetId: "move", role: "camera_transfer", cameraAspects: ["motion", "framing"] }] },
     ],
 };
+
+test("subject prompt use manages explicit generation roots without touching unrelated roots", () => {
+    const generation = { activation: { mode: "auto", exclude: [{ kind: "asset", id: "unused" }] } };
+    assert.equal(setSubjectGenerationPromptUse(generation, "juan", true), true);
+    assert.deepEqual(generation.activation, {
+        mode: "explicit",
+        roots: [{ kind: "subject", id: "juan" }],
+        exclude: [{ kind: "asset", id: "unused" }],
+    });
+    generation.activation.roots.push({ kind: "environment", id: "plaza" });
+    assert.equal(setSubjectGenerationPromptUse(generation, "juan", false), true);
+    assert.deepEqual(generation.activation.roots, [{ kind: "environment", id: "plaza" }]);
+    assert.equal(setSubjectGenerationPromptUse(generation, "juan", false), false);
+});
 
 test("legacy media manifests remain read-only until an external v2 source replaces them", () => {
     const legacy = { kind: "v1", raw: '[{"type":"image"}]', value: [{ type: "image" }] };

@@ -45,6 +45,37 @@ def _require_allowed_endpoint(endpoint: str, allow_remote_endpoint: bool) -> Non
         raise ValueError("Remote LLM endpoints are disabled; enable allow_remote_endpoint explicitly")
 
 
+def _inherit_basic_prompt_for_single_blank_shot(
+    shot_plan: str | dict | None,
+    basic_prompt: str,
+) -> tuple[str | dict | None, bool]:
+    """Use the source prompt as the one-shot action without mutating stored JSON.
+
+    A cast-only single Shot is unambiguous: the Basic prompt already owns the
+    visible event and the Shot contributes cast/camera/state allocation.  With
+    multiple Shots, silently copying the whole prompt into each row would be
+    ambiguous and remains a validation error.
+    """
+    source = shot_plan
+    if isinstance(source, str):
+        try:
+            source = json.loads(source)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return shot_plan, False
+    if not isinstance(source, dict) or source.get("schemaVersion") != 2:
+        return shot_plan, False
+    shots = source.get("shots")
+    if not isinstance(shots, list) or len(shots) != 1 or not isinstance(shots[0], dict):
+        return shot_plan, False
+    if str(shots[0].get("action", "")).strip() or not str(basic_prompt).strip():
+        return shot_plan, False
+    inherited = dict(source)
+    inherited_shot = dict(shots[0])
+    inherited_shot["action"] = str(basic_prompt).strip()
+    inherited["shots"] = [inherited_shot]
+    return inherited, True
+
+
 def _request_json(url: str, payload: dict | None, api_key: str, timeout: int) -> dict:
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Accept": "application/json"}
@@ -364,8 +395,11 @@ def enhance_prompt_with_completion(
         creative_treatment_json, enabled=bool(enhance_description),
     )
     cinematography = parse_cinematography(cinematography_json)
+    effective_shot_plan_json, inherited_basic_action = _inherit_basic_prompt_for_single_blank_shot(
+        shot_plan_json, basic_prompt,
+    )
     explicit_shot_plan = parse_shot_plan(
-        shot_plan_json, effective_duration, 0, resolved_mode,
+        effective_shot_plan_json, effective_duration, 0, resolved_mode,
     )
     compiled_planning = compile_planning_context(
         compiled_media_project, explicit_shot_plan, effective_duration, mode=resolved_mode,
@@ -378,6 +412,10 @@ def enhance_prompt_with_completion(
         ]
         raise ValueError("Invalid media/shot planning configuration: " + "; ".join(messages))
     treatment_notes = treatment_warnings(creative_treatment, cinematography, explicit_shot_plan)
+    if inherited_basic_action:
+        treatment_notes.append(
+            "Shot 1 has no separate Action, so it inherits the Basic prompt for this generation without rewriting the saved Shot Plan."
+        )
     opening_format_selected = creative_treatment.get("contentFormat") == "opening_title_sequence"
     if (creative_treatment.get("titleScreenStyle") != "none"
             and not title_screen_requested(basic_prompt)

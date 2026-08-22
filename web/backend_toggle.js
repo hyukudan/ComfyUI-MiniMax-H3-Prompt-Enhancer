@@ -1879,14 +1879,14 @@ function createResolutionBudgetControl(node) {
     custom.title = "Choose the approximate pixel budget. The effective aligned output is shown below.";
     customField.appendChild(custom);
     controls.append(modeField, customField);
-    const effectiveLabel = createPanelElement("span", "minimax-h3-resolution-effective-label", "Effective output");
+    const effectiveLabel = createPanelElement("span", "minimax-h3-resolution-effective-label", "Enhancer width / height outputs");
     const effective = createPanelElement("output", "minimax-h3-resolution-effective");
     effective.setAttribute("aria-live", "polite");
     effective.setAttribute("aria-atomic", "true");
     const help = createPanelElement(
         "p",
         "minimax-h3-resolution-help",
-        "Auto uses the standard H3 size for the selected aspect ratio. Custom aims for an MP budget; final dimensions snap to 16-pixel steps.",
+        "Auto uses the standard H3 size for the selected aspect ratio. Custom aims for an MP budget; final dimensions snap to 16-pixel steps. Connect the enhancer width and height outputs to the generator; a separate Resolution Selector overrides them.",
     );
     field.append(controls, effectiveLabel, effective, help);
 
@@ -1894,9 +1894,11 @@ function createResolutionBudgetControl(node) {
     const automaticBudget = () => effectiveH3Resolution(aspectRatio(), 0).megapixels;
     const suggestedBudget = () => Math.max(0.05, Math.round(automaticBudget() * 100) / 100);
     let lastCustom = Number(widget.value) > 0 ? Number(widget.value) : null;
+    let committedMode = Number(widget.value) > 0 ? "custom" : "auto";
     const sync = () => {
         const budget = Number(widget.value);
         const automatic = !Number.isFinite(budget) || budget <= 0;
+        committedMode = automatic ? "auto" : "custom";
         mode.value = automatic ? "auto" : "custom";
         custom.disabled = automatic;
         customField.dataset.mode = automatic ? "auto" : "custom";
@@ -1908,8 +1910,11 @@ function createResolutionBudgetControl(node) {
         }
         effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), automatic ? 0 : budget));
     };
-    mode.addEventListener("change", () => {
-        if (mode.value === "auto") {
+    const commitMode = () => {
+        const requestedMode = mode.value;
+        if (requestedMode === committedMode) return;
+        committedMode = requestedMode;
+        if (requestedMode === "auto") {
             const current = Number(widget.value);
             if (Number.isFinite(current) && current > 0) lastCustom = current;
             setCanonicalValue(node, widget, 0);
@@ -1919,11 +1924,16 @@ function createResolutionBudgetControl(node) {
             setCanonicalValue(node, widget, Math.max(minimum, next));
         }
         sync();
-        if (mode.value === "custom") requestAnimationFrame(() => {
+        if (requestedMode === "custom") requestAnimationFrame(() => {
             custom.focus();
             custom.select();
         });
-    });
+    };
+    // Native selects normally emit both events, while some ComfyUI browser
+    // shells only forward input.  Listen to both and deduplicate so Custom
+    // cannot visually snap back to Auto before the canonical widget updates.
+    mode.addEventListener("input", commitMode);
+    mode.addEventListener("change", commitMode);
     const commitCustomBudget = ({ clamp = false } = {}) => {
         const minimum = Number(custom.min) || 0.05;
         const maximum = Number(custom.max) || 8;
@@ -2995,6 +3005,9 @@ function createStudioController(node) {
         projectUiState: { sourceRaw: null, project: null },
         mode() {
             return String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto");
+        },
+        basicPrompt() {
+            return String(node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? "").trim();
         },
         resolvedDiagnosticFingerprints: new Set(),
         shotDocument() {

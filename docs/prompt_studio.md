@@ -98,6 +98,8 @@ Resolution has two independent controls. **Aspect Ratio** selects the shape of t
 - **Auto** uses `1280×720` for 16:9, `720×1280` for 9:16, `1080×1080` for 1:1, `960×720` for 4:3, `720×960` for 3:4, and `1680×720` for 21:9.
 - **Custom MP** enables and focuses the always-visible MP field, then persists valid values while you edit. It targets a megapixel budget while preserving the selected shape; final width and height are aligned to 16-pixel steps and shown live on the node.
 
+Resolution Budget drives the enhancer's `width` and `height` outputs, not creative prose. Connect those outputs to the H3 generator; if a separate Resolution Selector supplies the generator dimensions, that downstream node overrides the Studio budget.
+
 Changing the aspect ratio is a composition decision; changing the resolution budget is a pixel-area/performance decision. Neither control changes the shot count or carries media.
 
 Only one Studio drawer is active at a time. Collapsing or deleting its node closes it.
@@ -109,6 +111,8 @@ Only one Studio drawer is active at a time. Collapsing or deleting its node clos
 The shot list uses fixed 60-pixel, two-line rows and mounts only the visible range plus five-row overscan on either side. A separate editor handles the selected shot, so a 64-shot plan does not create 64 expanded editors.
 
 For shot-plan v2, the editor owns:
+
+- a visible Action for every Shot; a new Shot starts from the current Basic prompt, while one existing empty Shot can inherit that prompt without mutating storage and offers **Use Basic prompt as Action** to make the inheritance explicit. Multiple Shots require individual Actions;
 
 - stable shot and generation IDs;
 - `openingState` and `action` as distinct fields;
@@ -127,6 +131,8 @@ For shot-plan v2, the editor owns:
 ### Subjects
 
 Subjects have a stable logical ID, an H3 subject index, an identity description, identity assets, and a base appearance state. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension.
+
+A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a shot through **Use in prompts → Always include in Generation …**; alternatively, mark them `present`, `enters`, or `exits` under **Shots → Who’s in it**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library subject is neither included in a generation nor cast in a shot, because it will not reach the LLM.
 
 Identity and appearance are separate. An appearance state cannot silently replace facial identity. Copying a state creates a new stable ID. A base or referenced state cannot be deleted silently; the UI shows where it is used.
 

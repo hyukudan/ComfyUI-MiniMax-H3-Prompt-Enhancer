@@ -57,7 +57,7 @@ export function actionBeatIssues(shot) {
     return items;
 }
 
-export function localPreflight({ shotDocument, projectDocument } = {}) {
+export function localPreflight({ shotDocument, projectDocument, basicPrompt = "" } = {}) {
     const items = [];
     for (const candidate of [
         sourceIssue(shotDocument, "Shot plan", "shots"),
@@ -75,11 +75,29 @@ export function localPreflight({ shotDocument, projectDocument } = {}) {
         if (!nonEmpty(subject?.description) || subject.description === "Describe the stable identity.") {
             items.push(issue("error", "subjects", "Describe the stable identity before generating.", subject?.id || "Subject"));
         }
+        const explicitlyIncluded = (project?.generations ?? []).some((generation) =>
+            (generation.activation?.roots ?? []).some((root) => root.kind === "subject" && root.id === subject.id));
+        const usedByShot = shots.some((shot) =>
+            (shot.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent")
+            || (shot.appearanceTransitions ?? []).some((entry) => entry.subjectId === subject.id));
+        if (!explicitlyIncluded && !usedByShot) {
+            items.push(issue(
+                "warning", "subjects",
+                `${subject.name || subject.id} is saved in the identity library but is not used by any generation or shot, so it will not reach the LLM.`,
+                subject.id,
+            ));
+        }
     }
 
     for (const shot of shots) {
         const label = shot?.id || "Shot";
-        if (!nonEmpty(shot?.action)) items.push(issue("error", "shots", "Describe the visible action before generating.", label));
+        if (!nonEmpty(shot?.action)) {
+            if (shots.length === 1 && nonEmpty(basicPrompt)) {
+                items.push(issue("info", "shots", "This single Shot inherits its Action from the Basic prompt.", label));
+            } else {
+                items.push(issue("error", "shots", "Describe the visible action before generating.", label));
+            }
+        }
         if (project && !generations.has(shot?.generationId)) {
             items.push(issue("error", "shots", `Choose an existing generation for ${label}.`, label));
         }
