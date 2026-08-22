@@ -11,7 +11,8 @@ export const STRUCTURED_SCHEMA_VERSIONS = Object.freeze({
 
 function legacyScalarIsBlank(raw) {
     const normalized = String(raw ?? "").trim().toLocaleLowerCase();
-    return normalized === "" || normalized === "false" || normalized === "null" || normalized === "none";
+    return normalized === "" || normalized === "false" || normalized === "true"
+        || normalized === "null" || normalized === "none";
 }
 
 // Creative/Cinema alone may reinterpret legacy neutral storage as an editable

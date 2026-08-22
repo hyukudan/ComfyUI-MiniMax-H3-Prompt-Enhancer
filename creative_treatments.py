@@ -2553,9 +2553,9 @@ def _legacy_blank_storage_value(value: Any) -> bool:
     exact neutral tokens mean "no structured value"; every other non-JSON
     string remains an error.
     """
-    if value is None or value is False:
+    if value is None or isinstance(value, bool):
         return True
-    return isinstance(value, str) and value.strip().casefold() in {"", "false", "null", "none"}
+    return isinstance(value, str) and value.strip().casefold() in {"", "false", "true", "null", "none"}
 
 
 def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[str, Any]:
