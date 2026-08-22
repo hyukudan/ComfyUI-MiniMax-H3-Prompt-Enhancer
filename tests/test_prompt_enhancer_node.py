@@ -101,6 +101,39 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-5:] == ("FLOAT", "STRING", "STRING", "INT", "INT")
 
 
+def test_specialized_gguf_node_accepts_current_comfyui_keyword_inputs(monkeypatch):
+    captured = {}
+
+    def fake_gguf(*args, **kwargs):
+        captured["args"] = args
+        return "local prompt", VALIDATION, {"provider": "managed_llama_server"}
+
+    monkeypatch.setattr(prompt_enhancer_node, "enhance_prompt_with_gguf_server", fake_gguf)
+    result = MiniMaxH3GGUFPromptEnhancer().enhance(
+        basic_prompt="idea",
+        mode="t2va",
+        duration_seconds=5.0,
+        reference_context="",
+        llama_server_path="llama-server.exe",
+        gguf_model_path="model.gguf",
+        registered_model_dirs="",
+        gpu_layers="auto",
+        context_size=16384,
+        threads=0,
+        temperature=0.2,
+        max_tokens=4096,
+        request_timeout=300,
+        startup_timeout=180,
+        repair_attempts=0,
+        disable_thinking=True,
+        creative_latitude="conservative_grounded",
+        keep_server_loaded=False,
+    )
+
+    assert result[0] == "local prompt"
+    assert captured["args"][16:18] == (False, False)
+
+
 def test_empty_multiline_controls_expose_non_serialized_ux_placeholders():
     inputs = MiniMaxH3PromptEnhancer.INPUT_TYPES()
     required = inputs["required"]

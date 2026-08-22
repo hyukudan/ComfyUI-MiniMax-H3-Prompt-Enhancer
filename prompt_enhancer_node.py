@@ -537,7 +537,7 @@ class MiniMaxH3GGUFPromptEnhancer:
     def enhance(self, basic_prompt, mode, duration_seconds, reference_context, llama_server_path,
                 gguf_model_path, registered_model_dirs, gpu_layers, context_size, threads, temperature,
                 max_tokens, request_timeout, startup_timeout, repair_attempts, disable_thinking,
-                enhance_description, keep_server_loaded, ambience_foley_policy="auto",
+                enhance_description=True, keep_server_loaded=False, ambience_foley_policy="auto",
                 background_score_policy="follow_prompt", voice_performance="audible",
                 instrumental_description="", aspect_ratio="auto", media_manifest="",
                 multishot_shot_count=0, frame_count=0, multishot_identity_lock="",
