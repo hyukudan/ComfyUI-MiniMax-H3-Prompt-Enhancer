@@ -62,6 +62,23 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-camera-subject circle { fill: color-mix(in srgb, var(--h3-tip) 24%, var(--h3-surface)); stroke: var(--h3-tip); stroke-width: 2; }
         .minimax-h3-camera-subject path { fill: color-mix(in srgb, var(--h3-tip) 38%, transparent); stroke: var(--h3-tip); stroke-width: 2; }
         .minimax-h3-camera-direction { fill: color-mix(in srgb, var(--h3-accent) 24%, transparent); stroke: var(--h3-accent); stroke-width: 1.5; }
+        .minimax-h3-spatial-aim-line {
+            fill: none;
+            stroke: color-mix(in srgb, var(--h3-tip) 52%, transparent);
+            stroke-width: 1.2;
+            stroke-dasharray: 3 4;
+            pointer-events: none;
+        }
+        .minimax-h3-spatial-aim-line[data-selected="true"] { stroke: var(--h3-tip); stroke-width: 1.8; }
+        .minimax-h3-spatial-aim-target { color: var(--h3-tip); pointer-events: none; }
+        .minimax-h3-spatial-aim-target circle {
+            fill: color-mix(in srgb, var(--h3-surface) 82%, transparent);
+            stroke: currentColor;
+            stroke-width: 1.4;
+        }
+        .minimax-h3-spatial-aim-target path { fill: none; stroke: currentColor; stroke-width: 1.4; }
+        .minimax-h3-spatial-aim-target[data-selected="true"] { color: var(--h3-accent); pointer-events: auto; cursor: grab; }
+        .minimax-h3-spatial-aim-target[data-selected="true"]:active { cursor: grabbing; }
         .minimax-h3-camera-stage-note {
             margin: 0;
             border-top: 1px solid color-mix(in srgb, var(--h3-border) 70%, transparent);

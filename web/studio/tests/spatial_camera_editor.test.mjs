@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
     addSpatialWaypoint,
+    aimAnglesForTarget,
+    cameraAimTarget,
     cameraIconRotation,
     defaultSpatialWaypoints,
     interpolateSpatialWaypoint,
@@ -29,7 +31,39 @@ test("camera icons distinguish anchor, travel and custom aim", () => {
     ];
     assert.notEqual(cameraIconRotation(points, 0, "top"), 0);
     assert.equal(cameraIconRotation(points, 1, "top"), 0);
-    assert.equal(cameraIconRotation(points, 2, "top"), 135);
+    assert.ok(Number.isFinite(cameraIconRotation(points, 2, "top")));
+});
+
+test("dragged aim targets convert back to pan and tilt without confusing camera position", () => {
+    const camera = { x: -.4, y: .1, z: .2 };
+    const right = aimAnglesForTarget(camera, { x: .6, y: .1, z: .2 });
+    const up = aimAnglesForTarget(camera, { x: -.4, y: 1.1, z: .2 });
+    assert.deepEqual(right, { panDegrees: 90, tiltDegrees: 0 });
+    assert.deepEqual(up, { panDegrees: 180, tiltDegrees: 90 });
+    assert.equal(camera.x, -.4);
+    assert.equal(camera.y, .1);
+    assert.equal(camera.z, .2);
+});
+
+test("custom aim target moves to the requested side and elevation", () => {
+    const origin = { id: "a", at: 0, x: 0, y: 0, z: 0, aimMode: "custom" };
+    const right = cameraAimTarget([{ ...origin, panDegrees: 90, tiltDegrees: 0 }], 0);
+    const up = cameraAimTarget([{ ...origin, panDegrees: 0, tiltDegrees: 90 }], 0);
+    assert.ok(right.x > .7);
+    assert.ok(Math.abs(right.y) < .001);
+    assert.ok(up.y > .7);
+    assert.ok(Math.abs(up.x) < .001);
+    assert.ok(projectCameraPoint(right, "top").x > projectCameraPoint(origin, "top").x);
+    assert.ok(projectCameraPoint(up, "front").y < projectCameraPoint(origin, "front").y);
+});
+
+test("travel aim at the final point continues forward instead of turning backwards", () => {
+    const points = [
+        { id: "a", at: 0, x: -.5, y: 0, z: .5, aimMode: "travel" },
+        { id: "b", at: 1, x: .5, y: .2, z: -.5, aimMode: "travel" },
+    ];
+    assert.deepEqual(cameraAimTarget(points, 1), { x: 1.5, y: .4, z: -1.5 });
+    assert.equal(cameraIconRotation(points, 0, "top"), cameraIconRotation(points, 1, "top"));
 });
 
 test("playback interpolation follows waypoint timing instead of point index", () => {

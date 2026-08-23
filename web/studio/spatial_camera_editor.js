@@ -73,19 +73,52 @@ export function spatialPathD(waypoints, view = "perspective", shape = "smooth") 
     return result;
 }
 
+export function cameraAimTarget(waypoints, index) {
+    const point = waypoints[index];
+    if (!point) return null;
+    if (point.aimMode === "anchor") return { x: 0, y: 0, z: 0 };
+    if (point.aimMode === "travel") {
+        if (waypoints[index + 1]) return { ...waypoints[index + 1] };
+        const previous = waypoints[index - 1];
+        if (!previous) return null;
+        return {
+            x: point.x + (point.x - previous.x),
+            y: point.y + (point.y - previous.y),
+            z: point.z + (point.z - previous.z),
+        };
+    }
+    if (point.aimMode !== "custom") return null;
+    const pan = Number(point.panDegrees ?? 0) * Math.PI / 180;
+    const tilt = Number(point.tiltDegrees ?? 0) * Math.PI / 180;
+    const horizontal = Math.cos(tilt);
+    const length = .72;
+    return {
+        x: point.x + Math.sin(pan) * horizontal * length,
+        y: point.y + Math.sin(tilt) * length,
+        z: point.z - Math.cos(pan) * horizontal * length,
+    };
+}
+
+export function aimAnglesForTarget(camera, target) {
+    const dx = Number(target.x) - Number(camera.x);
+    const dy = Number(target.y) - Number(camera.y);
+    const dz = Number(target.z) - Number(camera.z);
+    const horizontal = Math.hypot(dx, dz);
+    if (horizontal < .0001 && Math.abs(dy) < .0001) return null;
+    return {
+        panDegrees: round(Math.atan2(dx, -dz) * 180 / Math.PI),
+        tiltDegrees: round(Math.atan2(dy, horizontal) * 180 / Math.PI),
+    };
+}
+
 export function cameraIconRotation(waypoints, index, view = "perspective") {
     const point = waypoints[index];
-    if (!point) return 0;
-    const projected = waypoints.map((item) => projectCameraPoint(item, view));
-    const here = projected[index];
-    let target;
-    if (point.aimMode === "anchor") target = projectCameraPoint({ x: 0, y: 0, z: 0 }, view);
-    else if (point.aimMode === "travel") target = projected[index + 1] ?? projected[index - 1];
-    else if (point.aimMode === "custom") return Number(point.panDegrees ?? 0);
-    if (!target) return 0;
-    const reverse = point.aimMode === "travel" && !projected[index + 1];
-    const dx = reverse ? here.x - target.x : target.x - here.x;
-    const dy = reverse ? here.y - target.y : target.y - here.y;
+    const targetPoint = cameraAimTarget(waypoints, index);
+    if (!point || !targetPoint) return 0;
+    const here = projectCameraPoint(point, view);
+    const target = projectCameraPoint(targetPoint, view);
+    const dx = target.x - here.x;
+    const dy = target.y - here.y;
     return round(Math.atan2(dy, dx) * 180 / Math.PI);
 }
 
@@ -290,6 +323,50 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
             if (state.view === "perspective" && Math.abs(point.y) >= .01) {
                 const ground = projectCameraPoint({ ...point, y: 0 }, state.view);
                 svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), svgNode("circle", { class: "minimax-h3-spatial-elevation-foot", cx: ground.x, cy: ground.y, r: 4 }));
+            }
+            const aimTarget = cameraAimTarget(path.waypoints, index);
+            if (aimTarget) {
+                const aimPosition = projectCameraPoint(aimTarget, state.view);
+                svg.appendChild(svgNode("path", {
+                    class: "minimax-h3-spatial-aim-line",
+                    "data-selected": String(index === state.selected),
+                    d: `M ${round(position.x)} ${round(position.y)} L ${round(aimPosition.x)} ${round(aimPosition.y)}`,
+                }));
+                const reticle = svgNode("g", {
+                    class: "minimax-h3-spatial-aim-target",
+                    "data-selected": String(index === state.selected),
+                    transform: `translate(${round(aimPosition.x)} ${round(aimPosition.y)})`,
+                    "aria-label": `Aim target for camera position ${index + 1}`,
+                    role: "button",
+                    tabindex: index === state.selected ? "0" : "-1",
+                });
+                reticle.append(
+                    svgNode("circle", { r: index === state.selected ? 8 : 6 }),
+                    svgNode("path", { d: "M -11 0 L -4 0 M 4 0 L 11 0 M 0 -11 L 0 -4 M 0 4 L 0 11" }),
+                );
+                reticle.addEventListener("pointerdown", (event) => {
+                    event.preventDefault(); event.stopPropagation(); state.selected = index;
+                    const move = (moveEvent) => {
+                        const rect = svg.getBoundingClientRect();
+                        const screen = { x: (moveEvent.clientX - rect.left) * 360 / rect.width, y: (moveEvent.clientY - rect.top) * 240 / rect.height };
+                        const currentTarget = cameraAimTarget(path.waypoints, index) ?? { x: 0, y: 0, z: 0 };
+                        const targetPoint = unprojectCameraPoint(screen, currentTarget, state.view);
+                        const angles = aimAnglesForTarget(point, targetPoint);
+                        if (!angles) return;
+                        point.aimMode = "custom";
+                        point.panDegrees = angles.panDegrees;
+                        point.tiltDegrees = angles.tiltDegrees;
+                        renderScene(); renderInspector();
+                    };
+                    const up = () => {
+                        document.removeEventListener("pointermove", move);
+                        document.removeEventListener("pointerup", up);
+                        commit(); rerender();
+                    };
+                    document.addEventListener("pointermove", move);
+                    document.addEventListener("pointerup", up);
+                });
+                svg.appendChild(reticle);
             }
             const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view)})` });
             cameraGlyph.appendChild(svgNode("path", { d: "M 10 -7 L 27 -14 L 27 14 L 10 7 Z" }));
