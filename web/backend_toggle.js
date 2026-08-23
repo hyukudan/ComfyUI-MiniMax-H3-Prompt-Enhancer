@@ -1966,7 +1966,8 @@ function createResolutionBudgetControl(node) {
     const commitCustomBudget = ({ clamp = false } = {}) => {
         const minimum = Number(custom.min) || 0.05;
         const maximum = Number(custom.max) || 8;
-        const requested = Number(custom.value);
+        const raw = custom.value.trim();
+        const requested = raw === "" ? Number.NaN : Number(raw);
         if (!clamp && (!Number.isFinite(requested) || requested < minimum || requested > maximum)) return;
         const fallback = Number.isFinite(lastCustom) && lastCustom > 0
             ? lastCustom
@@ -1976,8 +1977,21 @@ function createResolutionBudgetControl(node) {
         setCanonicalValue(node, widget, next);
         sync();
     };
-    custom.addEventListener("input", () => commitCustomBudget());
+    // Do not commit on every keystroke. A number field necessarily passes
+    // through transient values such as "", "0" or "0." while the user
+    // replaces 0.92 with 0.2; canonical synchronization would otherwise put
+    // the old value back before typing can finish.
+    custom.addEventListener("input", () => {
+        const preview = Number(custom.value);
+        if (custom.value.trim() !== "" && Number.isFinite(preview) && preview >= Number(custom.min) && preview <= Number(custom.max)) {
+            effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), preview));
+        }
+    });
     custom.addEventListener("change", () => commitCustomBudget({ clamp: true }));
+    custom.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") { event.preventDefault(); custom.blur(); }
+        if (event.key === "Escape") { event.preventDefault(); sync(); custom.blur(); }
+    });
     sync();
     return { field, control: custom, modeControl: mode, effective, widget, sync };
 }
