@@ -1715,6 +1715,16 @@ function hideJsonStorageWidget(widget) {
 
 function writeJsonStorage(node, widget, serializedValue) {
     if (!widget) return false;
+    if (widget.name === CINEMATOGRAPHY_WIDGET && typeof serializedValue === "string") {
+        try {
+            const candidate = JSON.parse(serializedValue);
+            if (candidate && typeof candidate === "object" && !Array.isArray(candidate)
+                && (Object.hasOwn(candidate, "shots") || Object.hasOwn(candidate, "timingMode"))) {
+                console.error("MiniMax H3 Prompt Studio refused to write a Shot Plan payload into cinematography_json.");
+                return false;
+            }
+        } catch { /* Malformed/raw sources remain governed by their existing recovery path. */ }
+    }
     if (Object.is(widget.value, serializedValue)) {
         if (STUDIO_JSON_STORAGE_WIDGETS.has(widget.name)) hideJsonStorageWidget(widget);
         return false;
@@ -1901,10 +1911,8 @@ function createResolutionBudgetControl(node) {
     const customField = createPanelElement("label", "minimax-h3-resolution-subfield");
     customField.appendChild(createPanelElement("span", "", "Custom budget (MP)"));
     const custom = createPanelElement("input", "");
-    custom.type = "number";
-    custom.min = String(Math.max(0.05, Number(widget.options?.step) || 0.05));
-    custom.max = String(Number.isFinite(widget.options?.max) ? widget.options.max : 8);
-    custom.step = String(Number.isFinite(widget.options?.step) ? widget.options.step : 0.05);
+    custom.type = "text";
+    custom.inputMode = "decimal";
     custom.setAttribute("aria-label", "Custom resolution budget in megapixels");
     custom.title = "Choose the approximate pixel budget. The effective aligned output is shown below.";
     customField.appendChild(custom);
@@ -1926,6 +1934,12 @@ function createResolutionBudgetControl(node) {
     let lastCustom = Number(widget.value) > 0 ? Number(widget.value) : null;
     let committedMode = Number(widget.value) > 0 ? "custom" : "auto";
     let editingCustom = false;
+    const parseCustomBudget = () => {
+        const raw = custom.value.trim().replace(",", ".");
+        if (raw === "") return Number.NaN;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+    };
     const sync = () => {
         const budget = Number(widget.value);
         const automatic = !Number.isFinite(budget) || budget <= 0;
@@ -1953,9 +1967,8 @@ function createResolutionBudgetControl(node) {
             if (Number.isFinite(current) && current > 0) lastCustom = current;
             setCanonicalValue(node, widget, 0);
         } else {
-            const minimum = Number(custom.min) || 0.05;
-            const next = Number.isFinite(lastCustom) && lastCustom > 0 ? lastCustom : Math.max(minimum, suggestedBudget());
-            setCanonicalValue(node, widget, Math.max(minimum, next));
+            const next = Number.isFinite(lastCustom) && lastCustom > 0 ? lastCustom : suggestedBudget();
+            setCanonicalValue(node, widget, next);
         }
         sync();
         if (requestedMode === "custom") requestAnimationFrame(() => {
@@ -1966,16 +1979,12 @@ function createResolutionBudgetControl(node) {
     for (const [value, button] of Object.entries(modeButtons)) {
         button.addEventListener("click", () => commitMode(value));
     }
-    const commitCustomBudget = ({ clamp = false } = {}) => {
-        const minimum = Number(custom.min) || 0.05;
-        const maximum = Number(custom.max) || 8;
-        const raw = custom.value.trim();
-        const requested = raw === "" ? Number.NaN : Number(raw);
-        if (!clamp && (!Number.isFinite(requested) || requested < minimum || requested > maximum)) return;
+    const commitCustomBudget = () => {
+        const requested = parseCustomBudget();
         const fallback = Number.isFinite(lastCustom) && lastCustom > 0
             ? lastCustom
-            : Math.max(minimum, suggestedBudget());
-        const next = Number.isFinite(requested) ? Math.min(maximum, Math.max(minimum, requested)) : fallback;
+            : suggestedBudget();
+        const next = Number.isFinite(requested) ? requested : fallback;
         lastCustom = next;
         setCanonicalValue(node, widget, next);
         sync();
@@ -1985,13 +1994,13 @@ function createResolutionBudgetControl(node) {
     // replaces 0.92 with 0.2; canonical synchronization would otherwise put
     // the old value back before typing can finish.
     custom.addEventListener("input", () => {
-        const preview = Number(custom.value);
-        if (custom.value.trim() !== "" && Number.isFinite(preview) && preview >= Number(custom.min) && preview <= Number(custom.max)) {
+        const preview = parseCustomBudget();
+        if (Number.isFinite(preview)) {
             effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), preview));
         }
     });
     custom.addEventListener("focus", () => { editingCustom = true; });
-    custom.addEventListener("change", () => commitCustomBudget({ clamp: true }));
+    custom.addEventListener("change", () => commitCustomBudget());
     custom.addEventListener("blur", () => { editingCustom = false; sync(); });
     custom.addEventListener("keydown", (event) => {
         if (event.key === "Enter") { event.preventDefault(); custom.blur(); }
@@ -3603,7 +3612,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
     }
     sanitizeEnumWidget(node, "mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"], "auto");
     sanitizeNumberWidget(node, "duration_seconds", 5, 4, MAX_GENERATION_SECONDS);
-    sanitizeNumberWidget(node, "target_megapixels", 0.0, 0.0, 8.0);
+    sanitizeNumberWidget(node, "target_megapixels", 0.0, 0.0, Number.POSITIVE_INFINITY);
     sanitizeNumberWidget(node, "temperature", 0.2, 0, 2);
     sanitizeIntegerWidget(node, "max_tokens", 4096, 512, 32768);
     sanitizeIntegerWidget(node, "timeout_seconds", 300, 10, 1800);

@@ -159,7 +159,7 @@ See [Prompt Studio](docs/prompt_studio.md) for the complete UI, schema, authorit
 All enhancer nodes output calibrated `width` and `height` integer slots compatible with downstream video samplers and empty latent generators. **Aspect Ratio** selects the frame shape; **Resolution Budget** selects its approximate pixel area.
 
 - **Auto** uses the H3-oriented default for the chosen shape: `1280×720` for 16:9, `720×1280` for 9:16, `1080×1080` for 1:1, `960×720` for 4:3, `720×960` for 3:4, and `1680×720` for 21:9.
-- **Custom MP** targets a megapixel budget while preserving the aspect ratio. Choose **Custom** to enable and focus the always-visible MP field; valid values persist while you edit and update the effective dimensions immediately. Final width and height are aligned to 16-pixel steps and shown live on the node. For 16:9, examples include `0.2 MP → 592×336`, `0.5 MP → 944×528`, and `2.0 MP → 1888×1056`.
+- **Custom MP** targets a megapixel budget while preserving the aspect ratio. Choose **Custom** to enable and focus the always-visible MP field; it accepts any positive finite value, with either a decimal point or comma, and has no artificial minimum or maximum. The effective dimensions update while you edit. Final width and height are aligned to 16-pixel steps and shown live on the node. For 16:9, examples include `0.2 MP → 592×336`, `0.5 MP → 944×528`, and `2.0 MP → 1888×1056`.
 
 Connect the enhancer's `width` and `height` outputs to the H3 generator for this budget to control the rendered video. A separate downstream Resolution Selector remains authoritative if the graph uses it instead; Resolution Budget never adds pixel dimensions to the creative prompt prose.
 

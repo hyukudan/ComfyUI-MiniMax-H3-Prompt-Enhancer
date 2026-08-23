@@ -2582,6 +2582,20 @@ def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[s
     else:
         raise ValueError("cinematography_json must be blank, a JSON object string, or a mapping")
 
+    compatibility_warnings: list[str] = []
+    shot_plan_keys = {"schemaVersion", "timingMode", "shots"}
+    if raw and set(raw).issubset(shot_plan_keys) and ({"timingMode", "shots"} & set(raw)):
+        # A short-lived Prompt Studio frontend bug could mirror the Shot Plan
+        # document into the adjacent cinematography storage widget. The real
+        # Shot Plan input remains authoritative; treating this unmistakable
+        # cross-document payload as neutral camera data restores execution
+        # without inventing or discarding any shot instructions.
+        raw = {}
+        compatibility_warnings.append(
+            "A misplaced Shot Plan payload was ignored in cinematography_json; "
+            "the shot_plan_json input remains authoritative."
+        )
+
     allowed_keys = {"schemaVersion", *CINEMATOGRAPHY_JSON_KEYS}
     unknown = sorted(set(raw) - allowed_keys)
     if unknown:
@@ -2604,7 +2618,7 @@ def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[s
 
     selections: dict[str, str] = {}
     canonical: dict[str, Any] = {"schemaVersion": CINEMATOGRAPHY_SCHEMA_VERSION}
-    warnings: list[str] = []
+    warnings: list[str] = list(compatibility_warnings)
     requested_motion = raw.get("cameraMotion", "")
     legacy_motion = requested_motion.strip().lower() if isinstance(requested_motion, str) else ""
     legacy_overrides = (

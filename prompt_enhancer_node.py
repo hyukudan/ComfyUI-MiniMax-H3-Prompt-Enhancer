@@ -192,7 +192,7 @@ def h3_dimensions_for_aspect_ratio(aspect_ratio: str, target_megapixels: float =
         mp = float(target_megapixels or 0.0)
     except (TypeError, ValueError):
         mp = 0.0
-    if mp <= 0.0:
+    if not math.isfinite(mp) or mp <= 0.0:
         return H3_ASPECT_RATIO_DIMENSIONS.get(ratio_str, (1280, 720))
 
     r = H3_ASPECT_RATIO_VALUES.get(ratio_str, 16.0 / 9.0)
@@ -322,7 +322,7 @@ class MiniMaxH3PromptGuideBuilder:
             "dialogue_coverage": (list(DIALOGUE_COVERAGE_CHOICES), {"default": "off", "tooltip": "Keep every speaking character's mouth and eyes unobstructed, in focus, and framed at medium close-up or tighter for the whole line."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
-            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
@@ -433,7 +433,7 @@ class MiniMaxH3PromptEnhancer:
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
-            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}
@@ -603,7 +603,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "delivery_target": (["local", "api_v2"], {"default": "local", "tooltip": "API v2 makes the 7000-character text-block limit repairable and hard."}),
             "dialogue_language": (list(DIALOGUE_LANGUAGE_CHOICES), {"default": "auto", "tooltip": "Target dialogue language. 'auto' automatically detects language from prompt context/dialogue."}),
             "visual_style_preset": (list(VISUAL_STYLE_PRESET_CHOICES), {"default": "none", "tooltip": "Quick visual style preset. When selected, automatically applies this visual language unless overridden in creative treatment JSON."}),
-            "target_megapixels": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 8.0, "step": 0.05, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard 720p defaults."}),
+            "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
         }}

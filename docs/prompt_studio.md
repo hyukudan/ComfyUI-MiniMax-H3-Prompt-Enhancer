@@ -96,7 +96,7 @@ When all structured widgets are blank, Overview also offers three small editable
 Resolution has two independent controls. **Aspect Ratio** selects the shape of the frame. **Resolution Budget** selects its approximate area.
 
 - **Auto** uses `1280×720` for 16:9, `720×1280` for 9:16, `1080×1080` for 1:1, `960×720` for 4:3, `720×960` for 3:4, and `1680×720` for 21:9.
-- **Custom MP** enables and focuses the always-visible MP field, then persists valid values while you edit. It targets a megapixel budget while preserving the selected shape; final width and height are aligned to 16-pixel steps and shown live on the node.
+- **Custom MP** enables and focuses the always-visible MP field, accepts any positive finite value (decimal point or comma) without an artificial minimum or maximum, and persists it when you leave the field or press Enter. It targets a megapixel budget while preserving the selected shape; final width and height are aligned to 16-pixel steps and shown live on the node.
 
 Resolution Budget drives the enhancer's `width` and `height` outputs, not creative prose. Connect those outputs to the H3 generator; if a separate Resolution Selector supplies the generator dimensions, that downstream node overrides the Studio budget.
 

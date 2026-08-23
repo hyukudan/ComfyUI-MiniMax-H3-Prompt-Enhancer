@@ -53,8 +53,13 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
     assert 'if (event.key === "Escape")' in source
     assert "custom.disabled = automatic" in source
     assert 'custom.addEventListener("input"' in source
+    assert 'custom.type = "text"' in source
+    assert 'custom.inputMode = "decimal"' in source
+    assert 'replace(",", ".")' in source
+    assert 'custom.addEventListener("change", () => commitCustomBudget())' in source
     assert 'custom.focus()' in source
     assert 'name === "target_megapixels"' in source
+    assert "refused to write a Shot Plan payload into cinematography_json" in source
     assert "formatResolutionLabel(effectiveH3Resolution(aspectRatio, megapixels))" in source
     assert 'wrapRefreshCallback(node, "aspect_ratio", refreshResolutionBudget)' in source
     assert "Math.sqrt" in resolution
@@ -63,9 +68,9 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
         specification = node_class.INPUT_TYPES()["optional"]["target_megapixels"]
         assert specification[0] == "FLOAT"
         assert specification[1]["default"] == 0.0
-        assert specification[1]["min"] == 0.0
-        assert specification[1]["max"] == 8.0
-        assert specification[1]["step"] == 0.05
+        assert "min" not in specification[1]
+        assert "max" not in specification[1]
+        assert specification[1]["step"] == 0.01
 
 
 def test_studio_owns_visual_language_search_and_sanitized_look_transfer():
