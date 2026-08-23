@@ -2598,6 +2598,16 @@ def parse_cinematography(value: str | Mapping[str, Any] | bool | None) -> dict[s
             "the shot_plan_json input remains authoritative."
         )
 
+    creative_keys = {
+        "schemaVersion", "contentFormat", "titleScreenStyle", "animationCadence", *CREATIVE_JSON_KEYS,
+    }
+    if raw and set(raw).issubset(creative_keys) and (set(raw) - {"schemaVersion"}):
+        raw = {}
+        compatibility_warnings.append(
+            "A misplaced Creative Treatment payload was ignored in cinematography_json; "
+            "the creative_treatment_json input remains authoritative."
+        )
+
     allowed_keys = {"schemaVersion", *CINEMATOGRAPHY_JSON_KEYS}
     unknown = sorted(set(raw) - allowed_keys)
     if unknown:
@@ -3067,6 +3077,14 @@ def parse_creative_treatment(value: str | Mapping[str, Any] | bool | None,
         raw = dict(value)
     else:
         raise ValueError("creative_treatment_json must be blank, a JSON object string, or a mapping")
+
+    cinematography_keys = {"schemaVersion", *CINEMATOGRAPHY_JSON_KEYS}
+    if raw and set(raw).issubset(cinematography_keys) and (set(raw) - {"schemaVersion"}):
+        raw = {}
+
+    shot_plan_keys = {"schemaVersion", "timingMode", "shots"}
+    if raw and set(raw).issubset(shot_plan_keys) and ({"timingMode", "shots"} & set(raw)):
+        raw = {}
 
     allowed_keys = {
         "schemaVersion", "contentFormat", "titleScreenStyle", "animationCadence", *CREATIVE_JSON_KEYS,
@@ -4336,6 +4354,16 @@ def parse_shot_plan(value: str | Mapping[str, Any] | bool | None, duration_secon
         raw = dict(value)
     else:
         raise ValueError("shot_plan_json must be blank, a JSON object string, or a mapping")
+
+    creative_keys = {
+        "schemaVersion", "contentFormat", "titleScreenStyle", "animationCadence", *CREATIVE_JSON_KEYS,
+    }
+    cinematography_keys = {"schemaVersion", *CINEMATOGRAPHY_JSON_KEYS}
+    if raw and (
+        (set(raw).issubset(creative_keys) and (set(raw) - {"schemaVersion"}))
+        or (set(raw).issubset(cinematography_keys) and (set(raw) - {"schemaVersion"}))
+    ):
+        return empty_shot_plan(duration_seconds, frame_count)
 
     allowed_root = {"schemaVersion", "timingMode", "shots"}
     unknown_root = sorted(set(raw) - allowed_root)

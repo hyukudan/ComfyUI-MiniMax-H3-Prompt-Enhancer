@@ -1678,3 +1678,28 @@ def test_amplitude_without_motion_warns_instead_of_silently_doing_nothing():
 def test_unknown_per_shot_framing_value_is_rejected(key, value):
     with pytest.raises(ValueError, match=key):
         parse_shot_plan(_shot_plan(cameraMotion="push_in", **{key: value}), 8.0)
+
+
+def test_misplaced_creative_treatment_in_cinematography_is_safely_ignored():
+    mirrored_payload = {
+        "contentFormat": "none",
+        "genre": "action",
+        "titleScreenStyle": "none",
+        "tone": "epic",
+        "visualLanguage": "cinematic",
+        "worldAesthetic": "none",
+    }
+    cinematography = parse_cinematography(mirrored_payload)
+    assert cinematography["schemaVersion"] == 2
+    assert any("misplaced Creative Treatment payload was ignored" in w for w in cinematography["warnings"])
+
+
+def test_misplaced_cinematography_in_creative_treatment_is_safely_ignored():
+    mirrored_payload = {
+        "cameraMotion": "push_in",
+        "cameraAngle": "eye_level",
+        "shotScale": "medium_shot",
+    }
+    treatment = parse_creative_treatment(mirrored_payload)
+    assert treatment["schemaVersion"] == 2
+
