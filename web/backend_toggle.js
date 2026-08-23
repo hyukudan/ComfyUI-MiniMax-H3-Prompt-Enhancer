@@ -1715,13 +1715,38 @@ function hideJsonStorageWidget(widget) {
 
 function writeJsonStorage(node, widget, serializedValue) {
     if (!widget) return false;
-    if (widget.name === CINEMATOGRAPHY_WIDGET && typeof serializedValue === "string") {
+    if (typeof serializedValue === "string") {
         try {
             const candidate = JSON.parse(serializedValue);
-            if (candidate && typeof candidate === "object" && !Array.isArray(candidate)
-                && (Object.hasOwn(candidate, "shots") || Object.hasOwn(candidate, "timingMode"))) {
-                console.error("MiniMax H3 Prompt Studio refused to write a Shot Plan payload into cinematography_json.");
-                return false;
+            if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+                const shotKeys = ["shots", "timingMode"];
+                const creativeKeys = ["contentFormat", "genre", "titleScreenStyle", "tone", "visualLanguage", "worldAesthetic", "animationCadence"];
+                const cameraKeys = ["cameraMotion", "cameraAngle", "cameraViewpoint", "optics", "shotScale", "lighting", "motionPacing"];
+
+                if (widget.name === CINEMATOGRAPHY_WIDGET) {
+                    if (shotKeys.some((k) => Object.hasOwn(candidate, k))) {
+                        console.error("MiniMax H3 Prompt Studio refused to write a Shot Plan payload into cinematography_json.");
+                        return false;
+                    }
+                    if (creativeKeys.some((k) => Object.hasOwn(candidate, k))) {
+                        console.error("MiniMax H3 Prompt Studio refused to write a Creative Treatment payload into cinematography_json.");
+                        return false;
+                    }
+                } else if (widget.name === CREATIVE_TREATMENT_WIDGET) {
+                    if (shotKeys.some((k) => Object.hasOwn(candidate, k))) {
+                        console.error("MiniMax H3 Prompt Studio refused to write a Shot Plan payload into creative_treatment_json.");
+                        return false;
+                    }
+                    if (cameraKeys.some((k) => Object.hasOwn(candidate, k))) {
+                        console.error("MiniMax H3 Prompt Studio refused to write a Cinematography payload into creative_treatment_json.");
+                        return false;
+                    }
+                } else if (widget.name === SHOT_PLAN_WIDGET) {
+                    if (creativeKeys.some((k) => Object.hasOwn(candidate, k)) || cameraKeys.some((k) => Object.hasOwn(candidate, k))) {
+                        console.error("MiniMax H3 Prompt Studio refused to write a cross-document payload into shot_plan_json.");
+                        return false;
+                    }
+                }
             }
         } catch { /* Malformed/raw sources remain governed by their existing recovery path. */ }
     }
