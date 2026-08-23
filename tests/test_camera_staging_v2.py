@@ -70,13 +70,24 @@ def test_camera_distance_reaches_the_instruction_even_when_framing_is_explicit()
         "motionType": "tracking", "coordinateSpace": "subject",
         "waypoints": [
             {"id": "near", "at": 0, "x": 0, "y": .8, "z": .2, "framing": "wide"},
-            {"id": "far", "at": 1, "x": 1, "y": .8, "z": 1, "framing": "wide"},
+            {"id": "far", "at": 1, "x": 3, "y": .8, "z": 3, "framing": "wide"},
         ],
     })), 4.0)
     instruction = shot_plan_instruction(plan, "t2va")
     assert "at close distance" in instruction
     assert "at a very far distance" in instruction
     assert instruction.count("framed as wide") == 2
+
+
+def test_expanded_camera_plane_accepts_far_xz_but_keeps_height_bounded():
+    path = {"motionType": "tracking", "waypoints": [
+        {"id": "a", "at": 0, "x": -3, "y": 1, "z": 3},
+        {"id": "b", "at": 1, "x": 3, "y": -1, "z": -3},
+    ]}
+    parsed = parse_shot_plan(_plan(_shot(cameraPath=path)), 4.0)
+    assert parsed["shots"][0]["cameraPath"]["waypoints"] == path["waypoints"]
+    with pytest.raises(ValueError, match=r"cameraPath\.waypoints\[1\]\.x"):
+        parse_shot_plan(_plan(_shot(cameraPath={**path, "waypoints": [path["waypoints"][0], {**path["waypoints"][1], "x": 3.01}]})), 4.0)
 
 
 def test_waypoint_height_changes_compile_as_directed_vertical_motion():

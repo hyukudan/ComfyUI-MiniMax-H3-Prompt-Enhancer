@@ -81,9 +81,9 @@
       "properties": {
         "id": {"$ref": "#/$defs/id"},
         "at": {"type": "number", "minimum": 0, "maximum": 1},
-        "x": {"type": "number", "minimum": -1, "maximum": 1},
+        "x": {"type": "number", "minimum": -3, "maximum": 3, "description": "Horizontal camera-body position relative to the anchor across the expanded camera plane."},
         "y": {"type": "number", "minimum": -1, "maximum": 1, "description": "Camera-body height relative to the path anchor: 0 is the anchor eye line, +1 is far above, and -1 is far below. This does not set lens tilt or shot angle."},
-        "z": {"type": "number", "minimum": -1, "maximum": 1},
+        "z": {"type": "number", "minimum": -3, "maximum": 3, "description": "Camera-body depth relative to the anchor across the expanded camera plane."},
         "framing": {"enum": ["extreme_close_up", "close_up", "medium_close_up", "medium", "medium_wide", "wide", "extreme_wide"]},
         "angle": {"enum": ["eye_level", "low_angle", "high_angle", "overhead", "dutch_static", "worms_eye"]},
         "hold": {"type": "boolean"},

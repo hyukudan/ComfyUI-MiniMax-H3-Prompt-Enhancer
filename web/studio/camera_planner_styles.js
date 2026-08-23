@@ -190,6 +190,7 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-point .minimax-h3-spatial-point-meta { fill: var(--h3-text-muted); font: 600 8px/1 var(--h3-font); text-transform: uppercase; }
         .minimax-h3-spatial-origin-label { fill: var(--h3-text-muted); font: 650 9px/1 var(--h3-font); letter-spacing: .06em; }
         .minimax-h3-spatial-point { cursor: grab; outline: none; }
+        .minimax-h3-spatial-point[data-view="perspective"] { cursor: ns-resize; }
         .minimax-h3-spatial-point:active { cursor: grabbing; }
         .minimax-h3-spatial-point-badge circle { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 1.5; }
         .minimax-h3-spatial-camera-body { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 2; }
@@ -222,7 +223,7 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-aim select,
         .minimax-h3-spatial-select select { width: 100%; min-width: 0; }
         .minimax-h3-spatial-select { display: grid; min-width: 0; gap: 4px; }
-        .minimax-h3-spatial-camera-glyph { pointer-events: none; }
+        .minimax-h3-spatial-camera-glyph { cursor: inherit; }
         .minimax-h3-spatial-inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
         .minimax-h3-spatial-note { margin: 0; color: var(--h3-text-muted); font-size: 9.5px; text-align: right; }
         .minimax-h3-camera-preset-disclosure { margin: 0 var(--h3-space-3); overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-surface) 88%, transparent); }
