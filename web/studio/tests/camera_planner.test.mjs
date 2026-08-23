@@ -6,6 +6,66 @@ import {
     cameraAnnotationLayout, cameraInstructionPreview, cameraSceneModel, parseCameraFragment, setVisualCameraMotion,
     VISUAL_CAMERA_MOTIONS,
 } from "../camera_planner.js";
+import { cameraElevationLabel, cameraVerticalSegment } from "../spatial_camera_editor.js";
+
+test("camera elevation fixture keeps UI bands and segment direction in parity", async () => {
+    const fixture = JSON.parse(await readFile(new URL("../../../docs/fixtures/camera_elevation_bands.json", import.meta.url), "utf8"));
+    for (const row of fixture.bands) assert.equal(cameraElevationLabel(row.value), row.label);
+    for (const row of fixture.segments) {
+        const segment = cameraVerticalSegment(row.from, row.to);
+        assert.equal(segment.kind, row.kind);
+        assert.equal(segment.direction, row.direction);
+        assert.equal(segment.crossedEyeLine, row.crossedEyeLine);
+    }
+});
+
+test("camera height UI exposes semantic accessibility copy instead of only raw numbers", async () => {
+    const editor = await readFile(new URL("../spatial_camera_editor.js", import.meta.url), "utf8");
+    assert.match(editor, /aria-valuetext/);
+    assert.match(editor, /Camera height/);
+    assert.match(editor, /moves the camera body; Aim controls where the lens points/);
+    assert.match(editor, /Very low\s+·\s+Low\s+·\s+Eye level\s+·\s+Elevated\s+·\s+Very elevated/);
+});
+
+test("camera elevation uses understandable bands and is present in the H3 preview", () => {
+    assert.equal(cameraElevationLabel(1), "Very elevated");
+    assert.equal(cameraElevationLabel(0), "Eye level");
+    assert.equal(cameraElevationLabel(-1), "Very low");
+    const preview = cameraInstructionPreview({ cameraPath: {
+        motionType: "tracking", waypoints: [
+            { at: 0, x: 0, y: 1, z: 1 },
+            { at: 1, x: 0, y: -1, z: -1 },
+        ],
+    } });
+    assert.match(preview, /very elevated/);
+    assert.match(preview, /very low/);
+});
+
+test("camera preview states vertical transitions instead of leaving the LLM to infer them", () => {
+    const preview = cameraInstructionPreview({ cameraPath: {
+        motionType: "tracking", waypoints: [
+            { at: 0, x: -.72, y: 1, z: .62 },
+            { at: .5, x: -.2, y: .52, z: -.29 },
+            { at: 1, x: .79, y: -.85, z: -.45 },
+        ],
+    } });
+    assert.match(preview, /descending clearly from very elevated to elevated/);
+    assert.match(preview, /continuing to descend steeply from elevated to very low/);
+    assert.doesNotMatch(preview, /rising/);
+});
+
+test("camera preview changes direction when a later waypoint rises again", () => {
+    const preview = cameraInstructionPreview({ cameraPath: {
+        motionType: "tracking", waypoints: [
+            { at: 0, x: 0, y: .8, z: 0 },
+            { at: .5, x: 0, y: -.4, z: 0 },
+            { at: 1, x: 0, y: .2, z: 0 },
+        ],
+    } });
+    assert.match(preview, /descending steeply from very elevated to low/);
+    assert.match(preview, /rising clearly from low to elevated/);
+    assert.doesNotMatch(preview, /continuing to descend/);
+});
 
 test("visual camera catalog covers every shot-plan v2 motion without brand vocabulary", () => {
     const tokens = VISUAL_CAMERA_MOTIONS.flatMap((group) => group.items.map(([token]) => token));

@@ -1,6 +1,6 @@
 import { actionButton, element, selectInput } from "./domain_components.js";
 import { ensureCameraPlannerStyles } from "./camera_planner_styles.js";
-import { renderSpatialCameraEditor } from "./spatial_camera_editor.js";
+import { cameraElevationLabel, cameraVerticalSegment, renderSpatialCameraEditor } from "./spatial_camera_editor.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MOTION_LABELS = Object.freeze({
@@ -116,14 +116,27 @@ export function cameraInstructionPreview(shot = {}, project = {}) {
         const anchor = path.anchorTarget ? ` around ${targetLabel(path.anchorTarget, project)}` : "";
         let spatial = "";
         if (Array.isArray(path.waypoints)) {
-            const positions = path.waypoints.map((point) => {
+            let previousDirection = null;
+            const positions = path.waypoints.map((point, index) => {
                 const horizontal = point.x <= -.25 ? "frame left" : point.x >= .25 ? "frame right" : "near center";
                 const depth = point.z <= -.3 ? "behind" : point.z >= .3 ? "in front" : "at mid-depth";
+                let height = cameraElevationLabel(point.y).toLowerCase();
+                if (index) {
+                    const segment = cameraVerticalSegment(path.waypoints[index - 1].y, point.y);
+                    if (segment.kind === "hold") height = `holding ${height}`;
+                    else {
+                        const direction = segment.direction === "ascend" ? "rising" : "descending";
+                        const continuing = previousDirection === direction ? `continuing to ${segment.direction === "ascend" ? "rise" : "descend"}` : direction;
+                        const intensity = segment.kind === "sweep" ? " steeply" : segment.kind === "move" ? " clearly" : " gently";
+                        height = `${continuing}${intensity} from ${cameraElevationLabel(path.waypoints[index - 1].y).toLowerCase()} to ${height}`;
+                        previousDirection = direction;
+                    }
+                }
                 let aim = point.aimMode === "target" ? `, aiming at ${targetLabel(point.aimTarget, project)}`
                     : point.aimMode === "anchor" ? `, keeping ${targetLabel(path.anchorTarget, project)} in frame`
                     : point.aimMode === "travel" ? ", looking along the travel direction"
                     : point.aimMode === "custom" ? ", with a custom viewing direction" : "";
-                return `${progressWord(point.at)} ${horizontal} and ${depth}${aim}`;
+                return `${progressWord(point.at)} ${horizontal}, ${height}, and ${depth}${aim}`;
             });
             spatial = ` The camera follows a ${title(path.pathShape || "smooth").toLowerCase()} route${anchor}: ${positions.join("; ")}.`;
         }
@@ -132,6 +145,7 @@ export function cameraInstructionPreview(shot = {}, project = {}) {
     parts.push(`End${endBits.length ? `: ${endBits.join(", ")}` : ": inherits the start"}.`);
     return parts.join(" ");
 }
+
 
 export function setVisualCameraMotion(shot, motionType) {
     if (!motionType) {
@@ -402,6 +416,6 @@ export function renderVisualCameraPlanner(container, shot, project, commit, rere
     );
     phaseDetails.appendChild(phases);
     const preview = element("output", "minimax-h3-camera-preview"); preview.setAttribute("aria-live", "polite");
-    preview.append(element("strong", "", "What H3 receives"), element("span", "", cameraInstructionPreview(shot, project)));
+    preview.append(element("strong", "", "Camera summary"), element("span", "", cameraInstructionPreview(shot, project)));
     root.append(phaseDetails, preview); container.appendChild(root);
 }

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "bands": [
+    {"value": -1.0, "band": 1, "label": "Very low"},
+    {"value": -0.60, "band": 1, "label": "Very low"},
+    {"value": -0.59, "band": 2, "label": "Low"},
+    {"value": -0.15, "band": 2, "label": "Low"},
+    {"value": -0.14, "band": 3, "label": "Eye level"},
+    {"value": 0.0, "band": 3, "label": "Eye level"},
+    {"value": 0.14, "band": 3, "label": "Eye level"},
+    {"value": 0.15, "band": 4, "label": "Elevated"},
+    {"value": 0.59, "band": 4, "label": "Elevated"},
+    {"value": 0.60, "band": 5, "label": "Very elevated"},
+    {"value": 1.0, "band": 5, "label": "Very elevated"}
+  ],
+  "segments": [
+    {"from": 1.0, "to": 0.52, "kind": "move", "direction": "descend", "crossedEyeLine": false},
+    {"from": 0.52, "to": -0.85, "kind": "sweep", "direction": "descend", "crossedEyeLine": true},
+    {"from": -0.85, "to": 0.52, "kind": "sweep", "direction": "ascend", "crossedEyeLine": true},
+    {"from": 0.10, "to": 0.14, "kind": "hold", "direction": null, "crossedEyeLine": false},
+    {"from": 1.0, "to": 0.70, "kind": "drift", "direction": "descend", "crossedEyeLine": false}
+  ]
+}

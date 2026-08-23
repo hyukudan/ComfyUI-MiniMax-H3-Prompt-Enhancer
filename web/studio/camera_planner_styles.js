@@ -207,6 +207,8 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-slider > span { display: flex; justify-content: space-between; gap: 8px; color: var(--h3-text-muted); font-size: 10.5px; }
         .minimax-h3-spatial-slider output { color: var(--h3-text); font-family: var(--h3-mono); }
         .minimax-h3-spatial-slider input { width: 100%; min-width: 0; accent-color: var(--h3-accent); }
+        .minimax-h3-spatial-slider-scale { display: block; color: var(--h3-text-muted); font-size: 9.5px; line-height: 1.25; text-align: center; }
+        .minimax-h3-spatial-control-help { margin: 0; color: var(--h3-text-muted); font-size: 10px; line-height: 1.35; }
         .minimax-h3-spatial-aim { display: grid; min-width: 0; gap: 4px; }
         .minimax-h3-spatial-aim > span,
         .minimax-h3-spatial-select > span { color: var(--h3-text-muted); font-size: 10.5px; }

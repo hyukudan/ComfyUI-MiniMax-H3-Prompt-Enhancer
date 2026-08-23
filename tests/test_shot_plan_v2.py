@@ -111,11 +111,11 @@ def test_spatial_camera_waypoints_are_canonical_and_reach_prompt_instruction():
     assert "along a left-curving path around Marta" in instruction
     assert "around Marta" in instruction
     assert "aimed at Marta" in instruction
-    assert "aiming along the direction of travel" in instruction
+    assert "aiming along its climbing path" in instruction
     assert "turned toward frame right" in instruction
     assert "around the midpoint" in instruction
-    assert "behind it" in instruction
-    assert "in front of it" in instruction
+    assert "behind Marta" in instruction
+    assert "in front of Marta" in instruction
     assert "degrees" not in instruction
     assert "45%" not in instruction
     assert "x=" not in instruction
@@ -135,8 +135,8 @@ def test_numbered_subject_anchor_uses_the_h3_reference_label():
     }
     instruction = shot_plan_instruction(parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0), "ref2va")
     assert "around <Subject 2>" in instruction
-    assert "in front of it" in instruction
-    assert "behind it" in instruction
+    assert "in front of <Subject 2>" in instruction
+    assert "behind <Subject 2>" in instruction
     assert "aimed at <Subject 2>" in instruction
 
 

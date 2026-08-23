@@ -10,7 +10,7 @@ a conflict.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -363,7 +363,57 @@ def _progress_words(value: float) -> str:
     return "at the end"
 
 
-def _qualitative_custom_aim(point: Mapping[str, Any]) -> str:
+def _camera_height_band(value: float) -> int:
+    if value <= -0.60:
+        return 1
+    if value <= -0.15:
+        return 2
+    if value < 0.15:
+        return 3
+    if value < 0.60:
+        return 4
+    return 5
+
+
+def _height_state(value: float, reference: str, *, scene_space: bool = False) -> str:
+    band = _camera_height_band(value)
+    if scene_space:
+        return {
+            1: "very low in the framed scene", 2: "low in the framed scene",
+            3: "at the scene's eye line", 4: "raised in the framed scene",
+            5: "high in the framed scene",
+        }[band]
+    return {
+        1: f"very low, well below {reference}", 2: f"low, below {reference}",
+        3: f"level with {reference}", 4: f"raised above {reference}",
+        5: f"high above {reference}",
+    }[band]
+
+
+def _height_destination(value: float, reference: str, *, scene_space: bool = False) -> str:
+    band = _camera_height_band(value)
+    if scene_space:
+        return {
+            1: "a very low position in the framed scene", 2: "a low position in the framed scene",
+            3: "the scene's eye line", 4: "a raised position in the framed scene",
+            5: "a high position in the framed scene",
+        }[band]
+    return {
+        1: f"a very low position, well below {reference}", 2: f"a low position, below {reference}",
+        3: _eye_line(reference), 4: f"a raised position, still above {reference}",
+        5: f"a very elevated position, high above {reference}",
+    }[band]
+
+
+def _eye_line(reference: str, *, scene_space: bool = False) -> str:
+    if scene_space:
+        return "the scene's eye line"
+    if reference.startswith("the ") and reference.endswith("s"):
+        return f"{reference}' eye line"
+    return f"{reference}'s eye level"
+
+
+def _qualitative_custom_aim(point: Mapping[str, Any], reference: str, *, scene_space: bool = False) -> str:
     pan = float(point.get("panDegrees", 0.0))
     tilt = float(point.get("tiltDegrees", 0.0))
     if abs(pan) < 20:
@@ -376,30 +426,110 @@ def _qualitative_custom_aim(point: Mapping[str, Any]) -> str:
         return horizontal + ", angled upward"
     if tilt <= -20:
         return horizontal + ", angled downward"
-    return horizontal + ", held level"
+    band = _camera_height_band(float(point.get("y", 0.0)))
+    if band >= 4:
+        return horizontal + f", with the lens horizontal rather than tilted down toward {reference}"
+    if band <= 2:
+        return horizontal + f", with the lens horizontal rather than tilted up toward {reference}"
+    return horizontal + ", without tilting the lens up or down"
 
 
-def _waypoint_place(point: Mapping[str, Any]) -> str:
+def _vertical_class(delta: float) -> str:
+    magnitude = abs(delta)
+    if magnitude < 0.10:
+        return "hold"
+    if magnitude < 0.35:
+        return "drift"
+    if magnitude < 0.90:
+        return "move"
+    return "sweep"
+
+
+def _vertical_events(waypoints: Sequence[Mapping[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Resolve authored y deltas once, including cumulative sub-noise."""
+    events: dict[int, dict[str, Any]] = {}
+    origin_index = 0
+    for index in range(1, len(waypoints)):
+        previous_y = float(waypoints[index - 1]["y"])
+        current_y = float(waypoints[index]["y"])
+        raw_delta = current_y - previous_y
+        cumulative_delta = current_y - float(waypoints[origin_index]["y"])
+        if abs(raw_delta) < 0.10 and abs(cumulative_delta) < 0.15:
+            continue
+        event_class = _vertical_class(cumulative_delta)
+        if event_class == "hold":
+            continue
+        origin_y = float(waypoints[origin_index]["y"])
+        direction = "ascend" if cumulative_delta > 0 else "descend"
+        crossed = (origin_y < -0.15 and current_y >= 0.15) or (origin_y >= 0.15 and current_y < -0.15)
+        events[index] = {
+            "class": event_class, "direction": direction, "delta": cumulative_delta,
+            "originY": origin_y, "destinationY": current_y, "crossedEyeLine": crossed,
+        }
+        origin_index = index
+    return events
+
+
+def _vertical_event_phrase(event: Mapping[str, Any], reference: str, *, scene_space: bool = False) -> str:
+    direction = str(event["direction"])
+    event_class = str(event["class"])
+    destination_y = float(event["destinationY"])
+    origin_y = float(event["originY"])
+    destination = _height_destination(destination_y, reference, scene_space=scene_space)
+    if event_class == "drift" and _camera_height_band(origin_y) == _camera_height_band(destination_y):
+        return f"drifts a little {'higher' if direction == 'ascend' else 'lower'} while staying {destination}"
+    verbs = {
+        ("ascend", "drift"): "drifts a little higher",
+        ("ascend", "move"): "rises",
+        ("ascend", "sweep"): "climbs steeply",
+        ("descend", "drift"): "drifts a little lower",
+        ("descend", "move"): "descends",
+        ("descend", "sweep"): "plunges",
+    }
+    verb = verbs[(direction, event_class)]
+    crossing = f" past {_eye_line(reference, scene_space=scene_space)}" if event.get("crossedEyeLine") else ""
+    return f"{verb}{crossing} to {destination}"
+
+
+def _vertical_envelope(waypoints: Sequence[Mapping[str, Any]], events: Mapping[int, Mapping[str, Any]],
+                       reference: str, *, scene_space: bool = False) -> str:
+    start = _height_state(float(waypoints[0]["y"]), reference, scene_space=scene_space)
+    end = _height_state(float(waypoints[-1]["y"]), reference, scene_space=scene_space)
+    if not events:
+        if _camera_height_band(float(waypoints[0]["y"])) in {1, 5}:
+            return f"Across this move the camera stays {start}."
+        return ""
+    directions = [str(event["direction"]) for event in events.values()]
+    if len(set(directions)) == 1:
+        verb = "ascends" if directions[0] == "ascend" else "descends"
+        return f"Across this move the camera only ever {verb}: it starts {start} and ends {end}; keep this height change visible."
+    runs = [directions[0]]
+    for direction in directions[1:]:
+        if direction != runs[-1]:
+            runs.append(direction)
+    if len(runs) == 2:
+        first = "rises" if runs[0] == "ascend" else "descends"
+        second = "rises" if runs[1] == "ascend" else "descends"
+        return f"Across this move the camera first {first}, then {second}, ending {end}; keep both height changes visible."
+    return f"Across this move the camera changes height several times, ending {end}; keep each change visible."
+
+
+def _waypoint_place(point: Mapping[str, Any], reference: str, *, scene_space: bool = False,
+                    include_height: bool = True) -> str:
     x, y, z = (float(point[key]) for key in ("x", "y", "z"))
-    parts = []
+    spatial = []
     if x <= -0.2:
-        parts.append("to its left")
+        spatial.append(f"to the left of {reference}")
     elif x >= 0.2:
-        parts.append("to its right")
+        spatial.append(f"to the right of {reference}")
     if z <= -0.2:
-        parts.append("behind it")
+        spatial.append(f"behind {reference}")
     elif z >= 0.2:
-        parts.append("in front of it")
-    if y <= -0.55:
-        parts.append("well below it")
-    elif y <= -0.2:
-        parts.append("below it")
-    elif y >= 0.55:
-        parts.append("well above it")
-    elif y >= 0.2:
-        parts.append("above it")
-    if not parts:
-        parts.append("level with it")
+        spatial.append(f"in front of {reference}")
+    parts = spatial
+    if include_height:
+        height = _height_state(y, reference, scene_space=scene_space)
+        parts = [height, *spatial] if _camera_height_band(y) in {1, 5} else [*spatial, height]
     radius = (x * x + z * z) ** 0.5
     if "framing" not in point:
         if radius <= 0.35:
@@ -456,37 +586,58 @@ def camera_path_sentence(path: Mapping[str, Any],
     anchor_text = _target_label(anchor, target_labels) if isinstance(anchor, Mapping) else (
         "the active subjects" if path.get("coordinateSpace", "subject") == "subject" else "the framed scene"
     )
+    scene_space = path.get("coordinateSpace", "subject") == "scene"
+    events = _vertical_events(waypoints)
     positions = []
     aims = _resolved_waypoint_aims(path)
     previous_aim_label = None
     for index, point in enumerate(waypoints):
-        position = f"{_progress_words(float(point['at']))}, " + _waypoint_place(point)
+        pieces = [_progress_words(float(point["at"]))]
+        if index in events:
+            pieces.append(_vertical_event_phrase(events[index], anchor_text, scene_space=scene_space))
+        place = _waypoint_place(
+            point, anchor_text, scene_space=scene_space,
+            include_height=index == 0,
+        )
+        if place:
+            pieces.append(place)
         details = [str(point[key]).replace("_", " ") for key in ("framing", "angle") if key in point]
         if details:
-            position += ", framed as " + " with ".join(details)
+            pieces.append("framed as " + " with ".join(details))
         if point.get("hold"):
-            position += ", holding momentarily"
+            pieces.append("holding momentarily")
         aim_mode, aim_target = aims[index]
         aim_label = previous_aim_label
         if aim_mode == "anchor":
             aim_label = anchor_text
-            position += f", aimed at {aim_label}" if aim_label != previous_aim_label else ", maintaining that aim"
+            pieces.append(f"aimed at {aim_label}" if aim_label != previous_aim_label else "maintaining that aim")
         elif aim_mode == "travel":
             aim_label = "the direction of travel"
-            position += ", aiming along the direction of travel"
+            event = events.get(index)
+            if event:
+                travel = "downward" if event["direction"] == "descend" else "climbing"
+                pieces.append(f"aiming along its {travel} path")
+            else:
+                pieces.append("aiming along the direction of travel")
         elif aim_mode == "target" and aim_target:
             aim_label = _target_label(aim_target, target_labels)
             if previous_aim_label and previous_aim_label != aim_label:
-                position += f", smoothly reframing from {previous_aim_label} to {aim_label}"
+                pieces.append(f"smoothly reframing from {previous_aim_label} to {aim_label}")
             elif aim_label == anchor_text:
-                position += ", keeping the anchor in frame"
+                pieces.append("keeping the anchor in frame")
             else:
-                position += f", aimed at {aim_label}"
+                pieces.append(f"aimed at {aim_label}")
         elif aim_mode == "custom":
             aim_label = "a custom direction"
-            position += ", turned " + _qualitative_custom_aim(point)
+            pieces.append("turned " + _qualitative_custom_aim(point, anchor_text, scene_space=scene_space))
         previous_aim_label = aim_label
-        positions.append(position)
+        positions.append(", ".join(pieces))
     relation = "around" if path.get("coordinateSpace", "subject") == "subject" else "through"
-    text += f" along a {shape} path {relation} {anchor_text}: " + "; then ".join(positions)
+    text += f" along a {shape} path {relation} {anchor_text}."
+    envelope = _vertical_envelope(waypoints, events, anchor_text, scene_space=scene_space)
+    if envelope:
+        text += " " + envelope
+    text += " " + positions[0][:1].upper() + positions[0][1:]
+    if len(positions) > 1:
+        text += "; then " + "; then ".join(positions[1:])
     return text + ". Keep this as one continuous camera move without adding a cut."

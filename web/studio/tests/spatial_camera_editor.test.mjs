@@ -21,6 +21,7 @@ test("spatial camera defaults are a valid normalized two-point timeline", () => 
     assert.equal(points.length, 2);
     assert.equal(points[0].at, 0);
     assert.equal(points.at(-1).at, 1);
+    assert.ok(points.every((point) => point.y === 0), "untouched camera paths must not author vertical motion");
     assert.ok(points.every((point) => [point.x, point.y, point.z].every((value) => value >= -1 && value <= 1)));
 });
 

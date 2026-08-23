@@ -16,10 +16,29 @@ function clamp(value, minimum = -1, maximum = 1) {
 
 function round(value) { return Math.round(Number(value) * 100) / 100; }
 
+export function cameraElevationLabel(value) {
+    const elevation = Number(value ?? 0);
+    if (elevation <= -.60) return "Very low";
+    if (elevation <= -.15) return "Low";
+    if (elevation < .15) return "Eye level";
+    if (elevation < .60) return "Elevated";
+    return "Very elevated";
+}
+
+export function cameraVerticalSegment(from, to) {
+    const delta = Number(to ?? 0) - Number(from ?? 0);
+    const magnitude = Math.abs(delta);
+    const kind = magnitude < .10 ? "hold" : magnitude < .35 ? "drift" : magnitude < .90 ? "move" : "sweep";
+    return {
+        kind,
+        direction: kind === "hold" ? null : delta > 0 ? "ascend" : "descend",
+        crossedEyeLine: (from < -.15 && to >= .15) || (from >= .15 && to < -.15),
+        delta: Math.round(delta * 100) / 100,
+    };
+}
+
 function elevationBand(value) {
-    if (value <= -.35) return "low";
-    if (value >= .35) return "high";
-    return "level";
+    return cameraElevationLabel(value).toLowerCase();
 }
 
 function svgNode(tag, attributes = {}, text = "") {
@@ -31,8 +50,8 @@ function svgNode(tag, attributes = {}, text = "") {
 
 export function defaultSpatialWaypoints() {
     return [
-        { id: "cam1", at: 0, x: -0.72, y: 0.08, z: 0.62, framing: "wide", aimMode: "anchor" },
-        { id: "cam2", at: 1, x: 0.42, y: 0.04, z: -0.38, framing: "medium", aimMode: "anchor" },
+        { id: "cam1", at: 0, x: -0.72, y: 0, z: 0.62, framing: "wide", aimMode: "anchor" },
+        { id: "cam2", at: 1, x: 0.42, y: 0, z: -0.38, framing: "medium", aimMode: "anchor" },
     ];
 }
 
@@ -182,15 +201,25 @@ function selectField(label, control) {
     return root;
 }
 
-function slider(label, value, minimum, maximum, step, onInput) {
+function slider(label, value, minimum, maximum, step, onInput, options = {}) {
     const root = element("label", "minimax-h3-spatial-slider");
-    const heading = element("span", ""); const output = element("output", "", String(value));
+    const formatValue = options.formatValue ?? String;
+    const formatted = formatValue(value);
+    const heading = element("span", ""); const output = element("output", "", formatted); output.value = formatted;
     heading.append(element("span", "", label), output);
     const input = document.createElement("input"); input.type = "range"; input.min = String(minimum); input.max = String(maximum); input.step = String(step); input.value = String(value);
     input.setAttribute("aria-label", label);
-    input.addEventListener("input", () => { output.value = input.value; output.textContent = input.value; onInput(Number(input.value), false); });
+    if (options.valueText) input.setAttribute("aria-valuetext", options.valueText(value));
+    input.addEventListener("input", () => {
+        const nextFormatted = formatValue(input.value);
+        output.value = nextFormatted; output.textContent = nextFormatted;
+        if (options.valueText) input.setAttribute("aria-valuetext", options.valueText(input.value));
+        onInput(Number(input.value), false);
+    });
     input.addEventListener("change", () => onInput(Number(input.value), true));
-    root.append(heading, input); return root;
+    root.append(heading, input);
+    if (options.scale) root.appendChild(element("small", "minimax-h3-spatial-slider-scale", options.scale));
+    return root;
 }
 
 function ensurePath(shot) {
@@ -479,14 +508,24 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
     function renderInspector() {
         inspector.replaceChildren(); const point = path.waypoints[state.selected];
         const heading = element("div", "minimax-h3-spatial-inspector-heading");
-        heading.append(element("strong", "", `Position ${state.selected + 1}`), element("span", "", `${Math.round(point.at * 100)}% of shot`));
+        heading.append(element("strong", "", `Position ${state.selected + 1}`), element("span", "", `${Math.round(point.at * 100)}% of shot · ${cameraElevationLabel(point.y)}`));
         const update = (key) => (value, final) => { point[key] = round(value); renderScene(); if (final) { commit(); rerender(); } };
-        inspector.append(heading, slider("Frame left / right", point.x, -1, 1, .01, update("x")), slider("Camera elevation", point.y, -1, 1, .01, update("y")), slider("Behind / in front", point.z, -1, 1, .01, update("z")));
+        inspector.append(
+            heading,
+            slider("Frame left / right", point.x, -1, 1, .01, update("x")),
+            slider("Camera height", point.y, -1, 1, .05, update("y"), {
+                formatValue: cameraElevationLabel,
+                valueText: (value) => `${cameraElevationLabel(value)} — moves the camera body`,
+                scale: "Very low  ·  Low  ·  Eye level  ·  Elevated  ·  Very elevated",
+            }),
+            slider("Behind / in front", point.z, -1, 1, .01, update("z")),
+        );
         const framing = selectInput(point.framing ?? "", FRAMINGS, { ariaLabel: `Framing at camera position ${state.selected + 1}` });
         framing.addEventListener("change", () => { if (framing.value) point.framing = framing.value; else delete point.framing; commit(); rerender(); });
         const angle = selectInput(point.angle ?? "", ANGLES, { ariaLabel: `Angle at camera position ${state.selected + 1}` });
         angle.addEventListener("change", () => { if (angle.value) point.angle = angle.value; else delete point.angle; commit(); rerender(); });
-        inspector.append(selectField("Framing at this position", framing), selectField("Angle at this position", angle));
+        inspector.append(element("p", "minimax-h3-spatial-control-help", "Camera height moves the camera body; Aim controls where the lens points."));
+        inspector.append(selectField("Framing at this position", framing), selectField("Shot angle at this position", angle));
         const aim = selectInput(point.aimMode ?? "", AIM_MODES, { ariaLabel: `Camera aim at position ${state.selected + 1}` });
         aim.addEventListener("change", () => {
             if (aim.value) point.aimMode = aim.value; else delete point.aimMode;
@@ -519,7 +558,9 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         if (point.aimMode === "custom") {
             inspector.append(
                 slider("Pan · left / right (degrees)", point.panDegrees ?? 0, -180, 180, 5, update("panDegrees")),
-                slider("Tilt · down / up (degrees)", point.tiltDegrees ?? 0, -90, 90, 5, update("tiltDegrees")),
+                slider("Lens tilt · down / up (degrees)", point.tiltDegrees ?? 0, -90, 90, 5, update("tiltDegrees"), {
+                    scale: "Tilts the lens only; camera height stays unchanged",
+                }),
             );
         }
         if (state.selected > 0 && state.selected < path.waypoints.length - 1) {

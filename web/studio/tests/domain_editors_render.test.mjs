@@ -210,7 +210,7 @@ test("Camera mounts the selected shot planner and precise controls without hydra
     for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
         assert.match(container.textContent, new RegExp(label));
     }
-    assert.match(container.textContent, /What H3 receives/);
+    assert.match(container.textContent, /Camera summary/);
     assert.doesNotMatch(container.textContent, /What will reach the prompt/);
 });
 

@@ -7,6 +7,7 @@ import jsonschema
 import pytest
 
 from creative_treatments import parse_shot_plan, shot_plan_instruction
+from camera_state import _camera_height_band, _vertical_class
 from prompt_guides import _spatial_camera_output_gaps
 
 
@@ -16,6 +17,16 @@ def _plan(shot):
 
 def _shot(**values):
     return {"id": "s1", "generationId": "g1", "action": "Juan crosses toward Olivia.", **values}
+
+
+def test_camera_height_fixture_keeps_python_bands_and_delta_classes_in_sync():
+    fixture = json.loads((Path(__file__).parents[1] / "docs" / "fixtures" / "camera_elevation_bands.json").read_text(encoding="utf-8"))
+    for row in fixture["bands"]:
+        assert _camera_height_band(row["value"]) == row["band"]
+    for row in fixture["segments"]:
+        delta = row["to"] - row["from"]
+        assert _vertical_class(delta) == row["kind"]
+        assert (None if row["kind"] == "hold" else "ascend" if delta > 0 else "descend") == row["direction"]
 
 
 def test_waypoint_named_targets_are_validated_and_compile_as_a_reframe():
@@ -35,6 +46,59 @@ def test_waypoint_named_targets_are_validated_and_compile_as_a_reframe():
     assert "smoothly reframing from Juan to Olivia" in instruction
     assert "%" not in instruction.split("  Camera:", 1)[1]
     assert "degrees" not in instruction
+
+
+def test_waypoint_height_is_explicit_and_not_confused_with_level_lens_aim():
+    plan = parse_shot_plan(_plan(_shot(cameraPath={
+        "motionType": "tracking", "coordinateSpace": "subject",
+        "waypoints": [
+            {"id": "high", "at": 0, "x": -.72, "y": 1, "z": .62,
+             "aimMode": "custom", "panDegrees": 105, "tiltDegrees": 0},
+            {"id": "low", "at": 1, "x": .79, "y": -.85, "z": -.45,
+             "aimMode": "custom", "panDegrees": -81, "tiltDegrees": 0},
+        ],
+    })), 4.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "high above the active subjects" in instruction
+    assert "a very low position, well below the active subjects" in instruction
+    assert "lens horizontal rather than tilted down toward the active subjects" in instruction
+    assert "held level" not in instruction
+
+
+def test_waypoint_height_changes_compile_as_directed_vertical_motion():
+    plan = parse_shot_plan(_plan(_shot(cameraPath={
+        "motionType": "tracking", "coordinateSpace": "subject",
+        "waypoints": [
+            {"id": "a", "at": 0, "x": -.72, "y": 1, "z": .62},
+            {"id": "b", "at": .5, "x": -.2, "y": .52, "z": -.29},
+            {"id": "c", "at": 1, "x": .79, "y": -.85, "z": -.45},
+        ],
+    })), 4.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "only ever descends" in instruction
+    assert "descends to a raised position, still above the active subjects" in instruction
+    assert "plunges past the active subjects' eye line to a very low position" in instruction
+    assert "rising" not in instruction
+
+
+@pytest.mark.parametrize("heights,expected,forbidden", [
+    ([.8, -.4, .2], ("first descends, then rises", "plunges", "rises"), ("only ever descends",)),
+    ([0, .03, .04], ("level with the active subjects",), ("rises", "descends", "plunges")),
+    ([-.5, -.2, .6], ("only ever ascends", "drifts a little higher", "rises"), ("descends",)),
+])
+def test_vertical_motion_is_resolved_per_leg(heights, expected, forbidden):
+    waypoints = [
+        {"id": f"p{index}", "at": index / (len(heights) - 1), "x": 0, "y": height, "z": 0}
+        for index, height in enumerate(heights)
+    ]
+    plan = parse_shot_plan(_plan(_shot(cameraPath={
+        "motionType": "tracking", "coordinateSpace": "subject", "waypoints": waypoints,
+    })), 4.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    for phrase in expected:
+        assert phrase in instruction
+    for phrase in forbidden:
+        assert phrase not in instruction
 
 
 @pytest.mark.parametrize("waypoint", [

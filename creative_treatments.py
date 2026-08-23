@@ -4668,7 +4668,9 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str,
         "Reference uses grant only their declared role. camera_transfer transfers only its listed cameraAspects; "
         "a video reference does not own any other camera property. Render all structured facts as natural scene "
         "language and never expose JSON, percentages, or these control labels in the enhanced prompt. Convert authored "
-        "relative beat positions into natural temporal flow while preserving their order and spacing."
+        "relative beat positions into natural temporal flow while preserving their order and spacing. Camera height and "
+        "its described rise or descent are authoritative; never flatten a high or low camera position to eye level or "
+        "invert the stated vertical direction."
     )
     return "\n".join(lines)
 
