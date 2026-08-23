@@ -45,6 +45,10 @@ def test_resolution_budget_reuses_the_canonical_float_with_user_facing_effective
     assert 'createPanelElement("div", "minimax-h3-resolution-mode")' in source
     assert 'button.addEventListener("click", () => commitMode(value))' in source
     assert 'custom.addEventListener("input", () => commitCustomBudget())' not in source
+    assert "let editingCustom = false" in source
+    assert "if (!editingCustom)" in source
+    assert 'custom.addEventListener("focus", () => { editingCustom = true; })' in source
+    assert 'custom.addEventListener("blur", () => { editingCustom = false; sync(); })' in source
     assert 'if (event.key === "Enter")' in source
     assert 'if (event.key === "Escape")' in source
     assert "custom.disabled = automatic" in source

@@ -1925,6 +1925,7 @@ function createResolutionBudgetControl(node) {
     const suggestedBudget = () => Math.max(0.05, Math.round(automaticBudget() * 100) / 100);
     let lastCustom = Number(widget.value) > 0 ? Number(widget.value) : null;
     let committedMode = Number(widget.value) > 0 ? "custom" : "auto";
+    let editingCustom = false;
     const sync = () => {
         const budget = Number(widget.value);
         const automatic = !Number.isFinite(budget) || budget <= 0;
@@ -1934,13 +1935,15 @@ function createResolutionBudgetControl(node) {
         }
         custom.disabled = automatic;
         customField.dataset.mode = automatic ? "auto" : "custom";
-        if (!automatic) {
-            lastCustom = budget;
-            custom.value = String(budget);
-        } else {
-            custom.value = String(lastCustom ?? suggestedBudget());
+        if (!editingCustom) {
+            if (!automatic) {
+                lastCustom = budget;
+                custom.value = String(budget);
+            } else {
+                custom.value = String(lastCustom ?? suggestedBudget());
+            }
+            effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), automatic ? 0 : budget));
         }
-        effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), automatic ? 0 : budget));
     };
     const commitMode = (requestedMode) => {
         if (requestedMode === committedMode) return;
@@ -1987,10 +1990,12 @@ function createResolutionBudgetControl(node) {
             effective.textContent = formatResolutionLabel(effectiveH3Resolution(aspectRatio(), preview));
         }
     });
+    custom.addEventListener("focus", () => { editingCustom = true; });
     custom.addEventListener("change", () => commitCustomBudget({ clamp: true }));
+    custom.addEventListener("blur", () => { editingCustom = false; sync(); });
     custom.addEventListener("keydown", (event) => {
         if (event.key === "Enter") { event.preventDefault(); custom.blur(); }
-        if (event.key === "Escape") { event.preventDefault(); sync(); custom.blur(); }
+        if (event.key === "Escape") { event.preventDefault(); editingCustom = false; sync(); custom.blur(); }
     });
     sync();
     return { field, control: custom, modeControl: mode, effective, widget, sync };
