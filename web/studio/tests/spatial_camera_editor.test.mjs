@@ -31,7 +31,7 @@ test("camera icons distinguish anchor, travel and custom aim", () => {
     ];
     assert.notEqual(cameraIconRotation(points, 0, "top"), 0);
     assert.equal(cameraIconRotation(points, 1, "top"), 0);
-    assert.ok(Number.isFinite(cameraIconRotation(points, 2, "top")));
+    assert.equal(cameraIconRotation(points, 2, "top"), 33.06);
 });
 
 test("dragged aim targets convert back to pan and tilt without confusing camera position", () => {
