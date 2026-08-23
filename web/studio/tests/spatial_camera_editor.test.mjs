@@ -13,11 +13,29 @@ import {
     normalizeSpatialWaypoints,
     projectCameraPoint,
     redistributeSpatialWaypointTiming,
+    resolvedCameraAimWaypoint,
     stagedAimPoint,
     spatialPathD,
     setCameraHorizontalDistance,
     unprojectCameraPoint,
 } from "../spatial_camera_editor.js";
+
+test("camera lens inherits aim and always faces the rendered target", () => {
+    const points = [
+        { id: "a", at: 0, x: -.8, y: .6, z: .5, aimMode: "anchor" },
+        { id: "b", at: 1, x: .8, y: -.2, z: -.5 },
+    ];
+    assert.equal(resolvedCameraAimWaypoint(points, 1).aimMode, "anchor");
+    assert.deepEqual(cameraAimTarget(points, 1), { x: 0, y: 0, z: 0 });
+    for (const view of ["perspective", "top", "front"]) {
+        const camera = projectCameraPoint(points[1], view);
+        const target = projectCameraPoint(cameraAimTarget(points, 1), view);
+        const angle = cameraIconRotation(points, 1, view) * Math.PI / 180;
+        const forward = { x: Math.cos(angle), y: Math.sin(angle) };
+        const towardTarget = { x: target.x - camera.x, y: target.y - camera.y };
+        assert.ok(forward.x * towardTarget.x + forward.y * towardTarget.y > 0, `${view} lens must face its target`);
+    }
+});
 
 test("camera distance moves only across the floor and never changes height", () => {
     const point = { x: .3, y: .85, z: .4 };

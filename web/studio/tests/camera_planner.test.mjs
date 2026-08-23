@@ -148,4 +148,7 @@ test("planner responsiveness follows its editor column instead of the full Studi
     assert.match(styles, /@container h3-camera-planner \(min-width: 680px\)/);
     assert.doesNotMatch(styles, /@container h3-studio-panel/);
     assert.doesNotMatch(styles, /\.minimax-h3-camera-stage-note\s*\{[^}]*position:\s*absolute/s);
+    assert.doesNotMatch(styles, /minimax-h3-spatial-camera-glyph[^}]*transform-origin/s);
+    assert.match(styles, /minimax-h3-spatial-camera-body/);
+    assert.match(styles, /minimax-h3-spatial-camera-front/);
 });

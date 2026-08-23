@@ -191,10 +191,12 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-origin-label { fill: var(--h3-text-muted); font: 650 9px/1 var(--h3-font); letter-spacing: .06em; }
         .minimax-h3-spatial-point { cursor: grab; outline: none; }
         .minimax-h3-spatial-point:active { cursor: grabbing; }
-        .minimax-h3-spatial-point circle { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 2; }
-        .minimax-h3-spatial-point path { fill: color-mix(in srgb, var(--h3-accent) 25%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 2; }
-        .minimax-h3-spatial-point[data-selected="true"] circle { fill: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 3; }
-        .minimax-h3-spatial-point:focus-visible circle { stroke: var(--h3-tip); stroke-width: 4; }
+        .minimax-h3-spatial-point-badge circle { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 1.5; }
+        .minimax-h3-spatial-camera-body { fill: var(--h3-surface-raised); stroke: var(--h3-border-strong); stroke-width: 2; }
+        .minimax-h3-spatial-camera-lens { fill: color-mix(in srgb, var(--h3-accent) 25%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 2; }
+        .minimax-h3-spatial-camera-front { fill: none !important; stroke: var(--h3-tip) !important; stroke-width: 2.5 !important; }
+        .minimax-h3-spatial-point[data-selected="true"] .minimax-h3-spatial-camera-body, .minimax-h3-spatial-point[data-selected="true"] .minimax-h3-spatial-point-badge circle { fill: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)); stroke: var(--h3-accent); stroke-width: 3; }
+        .minimax-h3-spatial-point:focus-visible .minimax-h3-spatial-camera-body { stroke: var(--h3-tip); stroke-width: 4; }
         .minimax-h3-spatial-playhead { pointer-events: none; filter: drop-shadow(0 0 5px var(--h3-tip)); }
         .minimax-h3-spatial-playhead circle { fill: var(--h3-tip); stroke: var(--h3-bg); stroke-width: 2; }
         .minimax-h3-spatial-playhead path { fill: color-mix(in srgb, var(--h3-tip) 70%, white); stroke: var(--h3-bg); stroke-width: 1.5; }
@@ -220,7 +222,7 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-aim select,
         .minimax-h3-spatial-select select { width: 100%; min-width: 0; }
         .minimax-h3-spatial-select { display: grid; min-width: 0; gap: 4px; }
-        .minimax-h3-spatial-camera-glyph { transform-box: fill-box; transform-origin: center; }
+        .minimax-h3-spatial-camera-glyph { pointer-events: none; }
         .minimax-h3-spatial-inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
         .minimax-h3-spatial-note { margin: 0; color: var(--h3-text-muted); font-size: 9.5px; text-align: right; }
         .minimax-h3-camera-preset-disclosure { margin: 0 var(--h3-space-3); overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-surface) 88%, transparent); }

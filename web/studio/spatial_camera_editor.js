@@ -122,7 +122,7 @@ export function spatialPathD(waypoints, view = "perspective", shape = "smooth") 
 }
 
 export function cameraAimTarget(waypoints, index, namedTargetPoint = null) {
-    const point = waypoints[index];
+    const point = resolvedCameraAimWaypoint(waypoints, index);
     if (!point) return null;
     if (point.aimMode === "anchor") return { x: 0, y: 0, z: 0 };
     if (point.aimMode === "travel") {
@@ -146,6 +146,21 @@ export function cameraAimTarget(waypoints, index, namedTargetPoint = null) {
         y: point.y + Math.sin(tilt) * length,
         z: point.z - Math.cos(pan) * horizontal * length,
     };
+}
+
+export function resolvedCameraAimWaypoint(waypoints, index) {
+    const point = waypoints[index];
+    if (!point || point.aimMode) return point;
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+        const source = waypoints[previous];
+        if (!source?.aimMode) continue;
+        const inherited = { ...point, aimMode: source.aimMode };
+        for (const key of ["aimTarget", "panDegrees", "tiltDegrees"]) {
+            if (source[key] !== undefined) inherited[key] = structuredClone(source[key]);
+        }
+        return inherited;
+    }
+    return point;
 }
 
 export function aimAnglesForTarget(camera, target) {
@@ -463,7 +478,8 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                 });
                 svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), footprint, heightHandle);
             }
-            const namedTargetPoint = stagedAimPoint(shot, path, point);
+            const resolvedAimPoint = resolvedCameraAimWaypoint(path.waypoints, index);
+            const namedTargetPoint = stagedAimPoint(shot, path, resolvedAimPoint);
             const aimTarget = cameraAimTarget(path.waypoints, index, namedTargetPoint);
             if (aimTarget) {
                 const aimPosition = projectCameraPoint(aimTarget, state.view);
@@ -484,9 +500,9 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                     svgNode("circle", { r: index === state.selected ? 8 : 6 }),
                     svgNode("path", { d: "M -11 0 L -4 0 M 4 0 L 11 0 M 0 -11 L 0 -4 M 0 4 L 0 11" }),
                 );
-                if (point.aimMode === "target") {
-                    const targetSubject = availableSubjects.find((subject) => subject.id === point.aimTarget?.id);
-                    reticle.appendChild(svgNode("text", { class: "minimax-h3-spatial-aim-label", x: 12, y: -10 }, targetSubject?.name || point.aimTarget?.id || "Target"));
+                if (resolvedAimPoint.aimMode === "target") {
+                    const targetSubject = availableSubjects.find((subject) => subject.id === resolvedAimPoint.aimTarget?.id);
+                    reticle.appendChild(svgNode("text", { class: "minimax-h3-spatial-aim-label", x: 12, y: -10 }, targetSubject?.name || resolvedAimPoint.aimTarget?.id || "Target"));
                 }
                 reticle.addEventListener("keydown", (event) => {
                     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -525,9 +541,15 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                 svg.appendChild(reticle);
             }
             const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view, namedTargetPoint)})` });
-            cameraGlyph.appendChild(svgNode("path", { d: "M 10 -7 L 27 -14 L 27 14 L 10 7 Z" }));
+            cameraGlyph.append(
+                svgNode("rect", { class: "minimax-h3-spatial-camera-body", x: -11, y: -8, width: 20, height: 16, rx: 3 }),
+                svgNode("path", { class: "minimax-h3-spatial-camera-lens", d: "M 8 -6 L 25 -3.5 L 25 3.5 L 8 6 Z" }),
+                svgNode("path", { class: "minimax-h3-spatial-camera-front", d: "M 25 -5 L 25 5" }),
+            );
+            const badge = svgNode("g", { class: "minimax-h3-spatial-point-badge", transform: "translate(-12 -16)" });
+            badge.append(svgNode("circle", { r: 8 }), svgNode("text", { y: 3.5, "text-anchor": "middle" }, String(index + 1)));
             const framing = String(point.framing ?? "auto").replaceAll("_", " ");
-            group.append(svgNode("circle", { r: index === state.selected ? 15 : 12 }), cameraGlyph, svgNode("text", { y: 4, "text-anchor": "middle" }, String(index + 1)), svgNode("text", { class: "minimax-h3-spatial-point-meta", x: 18, y: -17 }, `${framing} · ${elevationBand(point.y)}`));
+            group.append(cameraGlyph, badge, svgNode("text", { class: "minimax-h3-spatial-point-meta", x: 18, y: -17 }, `${framing} · ${elevationBand(point.y)}`));
             group.addEventListener("click", () => { state.selected = index; renderScene(); renderInspector(); renderTimeline(); });
             group.addEventListener("keydown", (event) => {
                 if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", " ", "a", "A"].includes(event.key)) return;
