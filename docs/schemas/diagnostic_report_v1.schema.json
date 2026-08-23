@@ -131,7 +131,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "enum": ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"]
+        "enum": ["motion", "aim", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"]
       }
     },
     "diagnostic": {

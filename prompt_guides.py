@@ -3736,7 +3736,11 @@ def _build_user_request_compiled(basic_prompt: str, mode: str, duration_seconds:
     title_style_contract = title_screen_style_instruction(creative_treatment, basic_prompt)
     if title_style_contract:
         parts.append(title_style_contract)
-    explicit_plan_contract = shot_plan_instruction(explicit_shot_plan, resolved)
+    explicit_plan_contract = shot_plan_instruction(
+        explicit_shot_plan,
+        resolved,
+        compiled_planning_context.get("mediaProject") if compiled_planning_context else None,
+    )
     if explicit_plan_contract:
         parts.append(explicit_plan_contract)
     if reference_context.strip():
@@ -6434,6 +6438,31 @@ def _resolved_style_coverage_warnings(text: str, style: Mapping[str, Any]) -> li
     return warnings
 
 
+def _spatial_camera_output_gaps(text: str, shot_plan: Mapping[str, Any]) -> list[str]:
+    """Catch editor notation leaking from a spatial path into delivered H3 prose."""
+    has_spatial_path = any(
+        isinstance(shot, Mapping)
+        and isinstance(shot.get("cameraPath"), Mapping)
+        and bool(shot["cameraPath"].get("waypoints"))
+        for shot in shot_plan.get("shots", ())
+    )
+    if not has_spatial_path:
+        return []
+    gaps = []
+    if re.search(r"\b\d+(?:\.\d+)?\s*%", text):
+        gaps.append("Spatial camera timing leaked as a percentage; express it as natural shot progression")
+    if re.search(r"\b\d+(?:\.\d+)?\s+degrees?\s+(?:left|right|up|down)\b", text, re.IGNORECASE):
+        gaps.append("Spatial camera aim leaked as numeric degrees; express its visible direction qualitatively")
+    camera_tokens = (
+        "arc_left", "arc_right", "ease_in", "ease_out", "ease_in_out",
+        "frame_left", "frame_right", "during_action", "during_dialogue",
+    )
+    observed = sorted(token for token in camera_tokens if re.search(rf"\b{re.escape(token)}\b", text))
+    if observed:
+        gaps.append(f"Spatial camera enum tokens leaked into prose: {observed}; render them as natural language")
+    return gaps
+
+
 def _description_coverage_gaps(timeline: str, mode: str, source_prompt: str,
                                profile_name: str, shot_count: int) -> list[str]:
     if profile_name not in ("enhanced_production", "invented_production") or not timeline.strip():
@@ -6496,7 +6525,18 @@ def _shot_plan_semantic_errors(items: list[str], plan: Mapping[str, Any]) -> lis
             errors.append(f"Shot-plan item {index} dropped its authoritative {fact_name}")
         if plan.get("schemaVersion") == 2:
             path_motion = str(planned.get("cameraPath", {}).get("motionType", "")).replace("_", " ")
-            if path_motion and not any(part in observed for part in path_motion.split() if len(part) >= 4):
+            camera_realizations = {
+                "arc": ("arc", "arcs", "orbit", "orbits", "circle", "circles", "curves"),
+                "tracking": ("track", "tracks", "tracking", "follow", "follows"),
+                "push in": ("pushes in", "push in", "moves closer", "advances"),
+                "pull out": ("pulls back", "pull out", "moves away", "withdraws"),
+                "static": ("static", "locked off", "fixed", "stationary"),
+            }
+            evidence = camera_realizations.get(
+                path_motion,
+                tuple(part for part in path_motion.split() if len(part) >= 3),
+            )
+            if path_motion and evidence and not any(part in observed for part in evidence):
                 errors.append(f"Shot-plan item {index} dropped cameraPath.motionType={path_motion!r}")
             for transition_key in ("appearanceTransitions", "environmentTransitions"):
                 for transition in planned.get(transition_key, ()):
@@ -7533,6 +7573,7 @@ def _validate_prompt_compiled(prompt: str, mode: str, duration_seconds: float,
     # A gap rather than an error: the writer can close it on the next pass, and an attribute it
     # genuinely cannot place should not sink an otherwise valid prompt.
     coverage_gaps.extend(_omitted_appearance_attributes(source_prompt, text))
+    coverage_gaps.extend(_spatial_camera_output_gaps(text, explicit_shot_plan))
     soft_minimum = description_budget.get("softMinWords")
     if (
         resolved == "ref2va"

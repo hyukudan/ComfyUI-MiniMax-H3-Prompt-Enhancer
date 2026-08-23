@@ -11,6 +11,7 @@ import {
     normalizeSpatialWaypoints,
     projectCameraPoint,
     redistributeSpatialWaypointTiming,
+    stagedAimPoint,
     spatialPathD,
     unprojectCameraPoint,
 } from "../spatial_camera_editor.js";
@@ -107,6 +108,27 @@ test("adding a waypoint interpolates position and timing without exceeding six",
     assert.equal(points[1].at, .5);
     while (points.length < 6) points = addSpatialWaypoint(points, 0);
     assert.equal(addSpatialWaypoint(points, 0).length, 6);
+});
+
+test("adding a waypoint inherits the previous named aim target atomically", () => {
+    const points = [
+        { id: "a", at: 0, x: -1, y: 0, z: 1, aimMode: "target", aimTarget: { kind: "subject", id: "olivia" } },
+        { id: "b", at: 1, x: 1, y: 0, z: -1, aimMode: "travel" },
+    ];
+    const added = addSpatialWaypoint(points, 0);
+    assert.equal(added[1].aimMode, "target");
+    assert.deepEqual(added[1].aimTarget, { kind: "subject", id: "olivia" });
+    assert.notEqual(added[1].aimTarget, points[0].aimTarget);
+});
+
+test("named aim resolves staged subject motion relative to the path anchor", () => {
+    const shot = { staging: [
+        { subjectId: "juan", start: { x: -.5, y: 0, z: 0 }, end: { x: 0, y: 0, z: .5 }, movement: "walks" },
+        { subjectId: "olivia", start: { x: .5, y: 0, z: 0 }, end: { x: .8, y: .2, z: -.2 }, movement: "walks" },
+    ] };
+    const path = { coordinateSpace: "subject", anchorTarget: { kind: "subject", id: "juan" } };
+    const point = stagedAimPoint(shot, path, { at: .5, aimMode: "target", aimTarget: { kind: "subject", id: "olivia" } });
+    assert.deepEqual(point, { x: .9, y: .1, z: -.35 });
 });
 
 test("adding from the final camera inserts into the preceding span instead of creating a 99-to-100-percent leg", () => {

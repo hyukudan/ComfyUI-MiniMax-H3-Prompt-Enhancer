@@ -200,7 +200,8 @@ See the normative [`media_manifest_v2.schema.json`](schemas/media_manifest_v2.sc
 - complete subject presence/blocking;
 - environment and view selection;
 - role-bounded `referenceUses`;
-- `cameraStart`, `cameraPath`, and sparse `cameraEnd`; `cameraPath` may add 2–6 strictly ordered normalized waypoints, relative coordinates, coordinate space, and path shape;
+- `cameraStart`, `cameraPath`, and sparse `cameraEnd`; `cameraPath` may add 2–6 strictly ordered normalized waypoints, relative coordinates, coordinate space, path shape, and per-waypoint named aim targets distinct from the path anchor;
+- optional per-shot `staging` with unique subject start/end positions, movement, facing, and eyeline targets;
 - `actionBeats`, with strictly ordered normalized progress and an action/reaction and/or linked dialogue (`speakerId`, exact text, delivery, and optional mood);
 - appearance and environment transitions with exact from/to state IDs, timing, trigger, and mechanism.
 
@@ -223,7 +224,7 @@ Generation initial state uses explicit, carry, or reset policy. The first genera
 Camera ownership is resolved by `(shot, phase, aspect)`, not as one global camera flag.
 
 - Phases: `start`, `path`, `end`, `whole_shot`.
-- Aspects: `motion`, `framing`, `angle`, `viewpoint`, `composition`, `focus`, `distance`, `stability`, `lens`, `parallax`.
+- Aspects: `motion`, `aim`, `framing`, `angle`, `viewpoint`, `composition`, `focus`, `distance`, `stability`, `lens`, `parallax`.
 
 | Source | Rank |
 |---|---:|

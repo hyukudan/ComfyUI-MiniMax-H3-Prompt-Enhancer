@@ -8,6 +8,7 @@ import { diagnosticFieldLabels, focusDiagnosticLocation } from "../drawer.js";
 import { captureOpenDisclosures, restoreOpenDisclosures, textArea, textInput } from "../domain_components.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
+import { renderStagingTab } from "../tab_staging.js";
 import { createWidgetStore } from "../widget_store.js";
 
 class TestElement {
@@ -113,7 +114,11 @@ function matches(element, selector) {
     return false;
 }
 
-globalThis.document = { createElement: (tagName) => new TestElement(tagName) };
+globalThis.document = {
+    createElement: (tagName) => new TestElement(tagName),
+    createElementNS: (_namespace, tagName) => new TestElement(tagName),
+    head: new TestElement("head"),
+};
 
 const project = {
     schemaVersion: 2,
@@ -144,6 +149,7 @@ const plan = {
         id: "s1", generationId: "g1", openingState: "Marta waits", action: "Rain begins", durationSeconds: 4, transitionIn: "cut",
         cutContext: { timeRelation: "continuous", purpose: "state" }, subjectPresenceComplete: true,
         subjects: [{ subjectId: "marta", presence: "present", blocking: "Foreground" }], environment: { environmentId: "alley", viewIds: ["wide"] },
+        staging: [{ subjectId: "marta", start: { x: 0, y: 0, z: .2, facing: "camera" } }],
         referenceUses: [{ assetId: "move", role: "camera_transfer", cameraAspects: ["motion", "framing"], targetIds: ["marta"] }],
         cameraStart: { framing: "medium", composition: "rule_of_thirds", focus: { mode: "single_target", primaryTarget: { kind: "subject", id: "marta" } } },
         cameraEnd: { framing: "close_up", distance: "near" }, cameraPath: {
@@ -204,8 +210,18 @@ test("Camera mounts the selected shot planner and precise controls without hydra
     for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
         assert.match(container.textContent, new RegExp(label));
     }
-    assert.match(container.textContent, /Structured camera summary/);
+    assert.match(container.textContent, /What H3 receives/);
     assert.doesNotMatch(container.textContent, /What will reach the prompt/);
+});
+
+test("Staging mounts positioned subjects without hydration writes", () => {
+    const controller = controllerFixture();
+    const container = new TestElement("section");
+    renderStagingTab(container, controller);
+    assert.equal(controller.writes, 0);
+    assert.match(container.textContent, /Subject staging/);
+    assert.match(container.textContent, /Marta/);
+    assert.match(container.textContent, /What H3 receives/);
 });
 
 test("Review renders successful checked families only after a clean execution", () => {

@@ -178,6 +178,22 @@ def test_targets_must_exist_and_be_active_in_the_shot():
     assert "Unused secret reference" not in compiled["generations"]["g1"]["context"]
 
 
+def test_waypoint_aim_and_staging_subjects_use_the_same_active_target_validation():
+    plan = _shot_plan()
+    plan["shots"][0]["staging"] = [{
+        "subjectId": "ana", "start": {"x": 0, "y": 0, "z": 0, "facing": "camera"},
+    }]
+    plan["shots"][0]["cameraPath"] = {
+        "motionType": "tracking", "waypoints": [
+            {"id": "a", "at": 0, "x": 0, "y": 0, "z": 1, "aimMode": "target", "aimTarget": {"kind": "subject", "id": "ana"}},
+            {"id": "b", "at": 1, "x": 0, "y": 0, "z": -1, "aimMode": "target", "aimTarget": {"kind": "subject", "id": "ghost"}},
+        ],
+    }
+    compiled = compile_planning_context(_media_project(), plan, 8, mode="chained_multishot")
+    assert not compiled["valid"]
+    assert any("ghost" in item["message"] for item in compiled["diagnosticReport"]["diagnostics"])
+
+
 def test_carry_uses_previous_generation_final_state_not_previous_initial_state():
     project = _media_project()
     project["generations"][0]["bindings"].insert(1, {"assetId": "ana.wounded", "slotIndex": 3})

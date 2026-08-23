@@ -72,6 +72,7 @@ function button(label, action) {
 export function diagnosticSection(diagnostic) {
     const field = String(diagnostic.location?.field ?? "").toLowerCase();
     if (field.startsWith("cinematography_json.")) return "look";
+    if (/\.staging(?:\.|$)/.test(field)) return "staging";
     if (/camerapath|camerastart|cameraend/.test(field)) return "camera";
     if (diagnostic.location?.shotId || Number.isInteger(diagnostic.location?.shotIndex)) return "shots";
     const locatedSection = String(diagnostic.location?.section ?? "").toLowerCase();

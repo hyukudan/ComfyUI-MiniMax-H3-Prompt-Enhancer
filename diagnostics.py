@@ -70,6 +70,7 @@ class LegacyBucket(str, Enum):
 
 class CameraAspect(str, Enum):
     MOTION = "motion"
+    AIM = "aim"
     FRAMING = "framing"
     ANGLE = "angle"
     VIEWPOINT = "viewpoint"

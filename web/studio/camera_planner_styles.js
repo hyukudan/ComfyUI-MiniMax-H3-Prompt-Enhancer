@@ -77,8 +77,10 @@ export function ensureCameraPlannerStyles() {
             stroke-width: 1.4;
         }
         .minimax-h3-spatial-aim-target path { fill: none; stroke: currentColor; stroke-width: 1.4; }
+        .minimax-h3-spatial-aim-label { fill: var(--h3-text); font: 650 10px/1 var(--h3-font); paint-order: stroke; stroke: var(--h3-surface); stroke-width: 3px; }
         .minimax-h3-spatial-aim-target[data-selected="true"] { color: var(--h3-accent); pointer-events: auto; cursor: grab; }
         .minimax-h3-spatial-aim-target[data-selected="true"]:active { cursor: grabbing; }
+        .minimax-h3-spatial-arrowhead { fill: var(--h3-accent); stroke: none; }
         .minimax-h3-camera-stage-note {
             margin: 0;
             border-top: 1px solid color-mix(in srgb, var(--h3-border) 70%, transparent);
@@ -217,6 +219,29 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-camera-preset-disclosure { margin: 0 var(--h3-space-3); overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-surface) 88%, transparent); }
         .minimax-h3-camera-preset-disclosure > summary { min-height: 38px; padding: 8px 11px; cursor: pointer; color: var(--h3-text); font-weight: 650; }
         .minimax-h3-camera-preset-disclosure .minimax-h3-camera-phases { padding: 0 10px 10px; }
+        .minimax-h3-staging-header { display: grid; gap: 5px; }
+        .minimax-h3-staging-header h2, .minimax-h3-staging-header p { margin: 0; }
+        .minimax-h3-staging-header p { max-width: 68ch; color: var(--h3-text-muted); line-height: 1.45; }
+        .minimax-h3-staging-toolbar { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--h3-space-3); align-items: end; }
+        .minimax-h3-staging-stage { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--h3-accent) 34%, var(--h3-border)); border-radius: var(--h3-radius-md); background: radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--h3-accent) 11%, transparent), transparent 50%), var(--h3-bg); }
+        .minimax-h3-staging-stage svg { display: block; width: 100%; min-height: 300px; touch-action: none; }
+        .minimax-h3-stage-floor { fill: color-mix(in srgb, var(--h3-surface) 82%, transparent); stroke: var(--h3-border-strong); stroke-width: 1.5; }
+        .minimax-h3-stage-grid { stroke: color-mix(in srgb, var(--h3-border-strong) 54%, transparent); stroke-dasharray: 4 6; }
+        .minimax-h3-stage-axis { fill: var(--h3-text-muted); font: 650 9px/1 var(--h3-mono); letter-spacing: .06em; }
+        .minimax-h3-stage-movement { stroke: var(--h3-tip); stroke-width: 3; stroke-dasharray: 6 5; opacity: .8; }
+        .minimax-h3-stage-subject { cursor: grab; outline: none; }
+        .minimax-h3-stage-subject:active { cursor: grabbing; }
+        .minimax-h3-stage-subject circle { fill: color-mix(in srgb, var(--h3-accent) 18%, var(--h3-surface-raised)); stroke: var(--h3-accent); stroke-width: 2; }
+        .minimax-h3-stage-subject text { fill: var(--h3-text); font: 700 10px/1 var(--h3-font); pointer-events: none; }
+        .minimax-h3-stage-subject.is-selected circle, .minimax-h3-stage-subject:focus-visible circle { fill: color-mix(in srgb, var(--h3-tip) 22%, var(--h3-surface)); stroke: var(--h3-tip); stroke-width: 4; }
+        .minimax-h3-staging-inspector { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--h3-space-3); align-items: end; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: var(--h3-space-3); background: var(--h3-surface); }
+        .minimax-h3-staging-inspector h3 { grid-column: 1 / -1; margin: 0; }
+        .minimax-h3-staging-inspector .minimax-h3-button-danger { justify-self: start; }
+        .minimax-h3-staging-preview { display: grid; gap: 4px; border-left: 3px solid var(--h3-tip); border-radius: 0 var(--h3-radius-sm) var(--h3-radius-sm) 0; padding: 10px 12px; background: color-mix(in srgb, var(--h3-tip) 8%, var(--h3-surface)); }
+        .minimax-h3-staging-preview span { color: var(--h3-text-muted); line-height: 1.45; }
+        @container h3-studio (max-width: 520px) {
+            .minimax-h3-staging-toolbar, .minimax-h3-staging-inspector { grid-template-columns: minmax(0, 1fr); }
+        }
         @container h3-camera-planner (min-width: 720px) {
             .minimax-h3-spatial-workspace { grid-template-columns: minmax(0, 1.55fr) minmax(190px, .72fr); }
             .minimax-h3-spatial-toolbar { grid-template-columns: auto repeat(4, minmax(118px, 1fr)); }

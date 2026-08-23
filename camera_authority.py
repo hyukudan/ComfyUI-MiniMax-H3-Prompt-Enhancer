@@ -288,6 +288,18 @@ def claims_from_shot_plan(shot_plan: Mapping[str, Any]) -> tuple[CameraClaim, ..
                 DiagnosticLocation(LocationScope.CONFIGURATION, base_field + ".cameraPath", shot_id=shot_id,
                                    shot_index=index),
             ))
+            aims = [
+                {key: point[key] for key in ("at", "aimMode", "aimTarget", "panDegrees", "tiltDegrees") if key in point}
+                for point in path.get("waypoints", ()) if isinstance(point, Mapping)
+                and any(key in point for key in ("aimMode", "aimTarget", "panDegrees", "tiltDegrees"))
+            ]
+            if aims:
+                claims.append(CameraClaim(
+                    shot_id, CameraAspect.AIM, CameraPhase.PATH, aims,
+                    CameraSourceKind.SHOT_PLAN, f"shot:{shot_id}", 1.0,
+                    DiagnosticLocation(LocationScope.CONFIGURATION, base_field + ".cameraPath.waypoints",
+                                       shot_id=shot_id, shot_index=index),
+                ))
     return tuple(claims)
 
 

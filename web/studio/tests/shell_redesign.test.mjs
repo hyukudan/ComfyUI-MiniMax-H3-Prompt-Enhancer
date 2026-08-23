@@ -102,7 +102,7 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
         detailMode: "advanced",
         collapsedBlocks: {},
     });
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "subjects", "environments", "media", "camera", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
     assert.equal(normalizeStudioSection("camera_look"), "look");
 });
 

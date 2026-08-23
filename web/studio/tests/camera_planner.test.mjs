@@ -68,7 +68,7 @@ test("prompt preview makes inheritance and H3 camera phases understandable", () 
         cameraEnd: { framing: "close_up" },
     });
     assert.match(preview, /Start: Wide, Eye level/);
-    assert.match(preview, /Dolly in · Small travel · Slow pace · During action/);
+    assert.match(preview, /Dolly in, small travel, slow pace, during action/);
     assert.match(preview, /End: Close up, Eye level/);
 });
 

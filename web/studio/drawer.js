@@ -5,6 +5,7 @@ import { renderEnvironmentsTab } from "./tab_environments.js";
 import { renderReferencesTab } from "./tab_references.js";
 import { renderShotsTab } from "./tab_shots.js";
 import { renderSubjectsTab } from "./tab_subjects.js";
+import { renderStagingTab } from "./tab_staging.js";
 import { createStudioIcon } from "./components/icons.js";
 import { createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
 import { renderOverview } from "./overview.js";
@@ -21,6 +22,7 @@ export function createPanelElement(tagName, className, textContent = "") {
 export const STUDIO_SECTIONS = Object.freeze([
     { id: "overview", label: "Overview", icon: "overview", render: renderOverview },
     { id: "shots", label: "Shots", icon: "shots", render: renderShotsTab },
+    { id: "staging", label: "Staging", icon: "subjects", render: renderStagingTab },
     { id: "subjects", label: "Subjects", icon: "subjects", render: renderSubjectsTab },
     { id: "environments", label: "Environments", icon: "environments", render: renderEnvironmentsTab },
     { id: "media", label: "Media", icon: "media", render: renderReferencesTab },
@@ -59,6 +61,7 @@ export function focusDiagnosticLocation(panel, location = {}) {
     const fieldName = String(location.field ?? "");
     let target = null;
     if (/\.action$|\]\.action$/.test(fieldName)) target = panel.querySelector?.("[data-shot-action]");
+    if (!target && /\.staging(?:\.|$)/.test(fieldName)) target = panel.querySelector?.(".minimax-h3-staging-stage, .minimax-h3-staging-inspector");
     if (!target && /cameraPath/.test(fieldName)) target = panel.querySelector?.(".minimax-h3-camera-planner, .minimax-h3-spatial-camera-editor");
     const wanted = new Set(diagnosticFieldLabels(fieldName).map((value) => value.toLowerCase()));
     if (!target && wanted.size) {
@@ -241,7 +244,7 @@ function createHeader(controller, onReview, onClose) {
     shortcuts.appendChild(createPanelElement("h3", "", "Keyboard shortcuts"));
     const list = createPanelElement("dl", "");
     for (const [keys, action] of [
-        ["1–7", "Open a section"],
+        ["1–8", "Open a section"],
         ["↑ / ↓", "Move through section navigation"],
         ["Ctrl + Enter", "Add an item in the active editor"],
         ["Ctrl + D", "Duplicate the selection"],
@@ -310,7 +313,7 @@ function createNavigation(node, onNavigate, onCollapse) {
 
 function sourceGate(sectionId, controller, panel) {
     const documents = sourceDocuments(controller);
-    if (["shots", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
+    if (["shots", "staging", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Shot plan",
             documentState: documents.shot,
@@ -319,7 +322,7 @@ function sourceGate(sectionId, controller, panel) {
         }));
         return true;
     }
-    if (["subjects", "environments", "media"].includes(sectionId) && documents.project.kind === "v1") {
+    if (["subjects", "environments", "media", "staging"].includes(sectionId) && documents.project.kind === "v1") {
         panel.classList.add("minimax-h3-source-gated");
         const unavailable = createPanelElement("section", "minimax-h3-empty-state minimax-h3-source-unavailable");
         unavailable.append(
@@ -339,7 +342,7 @@ function sourceGate(sectionId, controller, panel) {
         panel.append(unavailable, tools);
         return true;
     }
-    if (["subjects", "environments", "media"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
+    if (["subjects", "environments", "media", "staging"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Media project",
             documentState: documents.project,
@@ -587,12 +590,13 @@ export function dashboardSummaries(controller) {
     const shot = controller.shotDocument();
     const project = controller.projectDocument();
     const shots = shot?.value?.shots?.length ?? 0;
+    const staged = shot?.value?.shots?.reduce((count, item) => count + (item?.staging?.length ?? 0), 0) ?? 0;
     const subjects = project?.value?.subjects?.length ?? 0;
     const environments = project?.value?.environments?.length ?? 0;
     const assets = project?.value?.assets?.length ?? 0;
     const active = project?.value?.generations?.reduce((count, generation) => count + (generation?.bindings?.length ?? 0), 0) ?? 0;
     const diagnostics = controller.diagnostics()?.diagnostics?.length ?? 0;
-    return { shots, subjects, environments, assets, active, diagnostics };
+    return { shots, staged, subjects, environments, assets, active, diagnostics };
 }
 
 export function createStudioDashboard(node, controller) {
@@ -609,6 +613,7 @@ export function createStudioDashboard(node, controller) {
     const strip = createPanelElement("div", "minimax-h3-dashboard-links");
     const definitions = [
         ["shots", "Shots", "shots", (summary) => summary.shots],
+        ["staging", "Staging", "subjects", (summary) => summary.staged],
         ["subjects", "Subjects", "subjects", (summary) => summary.subjects],
         ["environments", "Environments", "environments", (summary) => summary.environments],
         ["media", "Media", "media", (summary) => `${summary.active}/${summary.assets}`],

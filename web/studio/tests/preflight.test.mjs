@@ -40,6 +40,29 @@ test("local preflight routes actionable shot, media and camera problems", () => 
     assert.ok(result.errors >= 3);
 });
 
+test("named camera aim is checked against the project and Staging", () => {
+    const baseProject = documentState({
+        subjects: [{ id: "juan", name: "Juan", description: "Adult man." }, { id: "olivia", name: "Olivia", description: "Adult woman." }],
+        assets: [], generations: [{ id: "g1", activation: { mode: "auto" }, bindings: [] }],
+    });
+    const shot = {
+        id: "s1", generationId: "g1", action: "Juan crosses toward Olivia.",
+        subjects: [{ subjectId: "juan", presence: "present" }, { subjectId: "olivia", presence: "present" }],
+        cameraPath: { waypoints: [
+            { at: 0, aimMode: "target", aimTarget: { kind: "subject", id: "juan" } },
+            { at: 1, aimMode: "target", aimTarget: { kind: "subject", id: "olivia" } },
+        ] },
+    };
+    const unplaced = localPreflight({ shotDocument: documentState({ shots: [shot] }), projectDocument: baseProject });
+    assert.ok(unplaced.items.some((item) => item.section === "staging" && item.message.includes("Place juan")));
+    shot.staging = [
+        { subjectId: "juan", start: { x: -.5, y: 0, z: 0, facing: "camera" } },
+        { subjectId: "olivia", start: { x: .5, y: 0, z: 0, facing: "camera" } },
+    ];
+    const placed = localPreflight({ shotDocument: documentState({ shots: [shot] }), projectDocument: baseProject });
+    assert.equal(placed.items.some((item) => item.section === "staging"), false);
+});
+
 test("complete presence and empty beats are non-blocking local notes", () => {
     const result = localPreflight({
         shotDocument: documentState({ shots: [{

@@ -11,7 +11,7 @@ function nonEmpty(value) {
     return typeof value === "string" && value.trim().length > 0;
 }
 
-function cameraPathIssues(shot) {
+function cameraPathIssues(shot, subjects = []) {
     const points = shot?.cameraPath?.waypoints;
     if (points === undefined) return [];
     if (!Array.isArray(points) || points.length < 2 || points.length > 6) {
@@ -22,7 +22,33 @@ function cameraPathIssues(shot) {
         || timings.some((value, index) => index > 0 && value <= timings[index - 1])) {
         return [issue("error", "camera", "Camera positions need unique timings in playback order.", shot.id)];
     }
-    return [];
+    const known = new Set(subjects.map((subject) => subject.id));
+    const items = [];
+    for (const [index, point] of points.entries()) {
+        if (Boolean(point?.aimTarget) !== (point?.aimMode === "target")) {
+            return [issue("error", "camera", `Camera position ${index + 1} needs both Aim at named subject and a subject choice.`, shot.id)];
+        }
+        if (point?.aimTarget?.kind === "subject" && !known.has(point.aimTarget.id)) {
+            return [issue("error", "camera", `Camera position ${index + 1} aims at a subject that is not in this project.`, shot.id)];
+        }
+        if (point?.aimTarget?.kind === "subject" && !(shot.staging ?? []).some((item) => item.subjectId === point.aimTarget.id)) {
+            items.push(issue("warning", "staging", `Place ${point.aimTarget.id} in Staging so its camera target has a visible position.`, shot.id));
+        }
+    }
+    const first = points[0]; const last = points.at(-1);
+    const distance = Math.hypot(Number(last.x) - Number(first.x), Number(last.y) - Number(first.y), Number(last.z) - Number(first.z));
+    if (shot.cameraPath?.amplitude === "small" && distance > 1.2) {
+        items.push(issue("warning", "camera", "The path crosses most of the staging space but Travel is Gentle. Choose a stronger travel range or shorten the route.", shot.id));
+    }
+    const startFraming = shot.cameraStart?.framing;
+    const endFraming = shot.cameraEnd?.framing ?? startFraming;
+    if (first.framing && startFraming && first.framing !== startFraming) {
+        items.push(issue("warning", "camera", "The first path position and Camera Start use different framing.", shot.id));
+    }
+    if (last.framing && endFraming && last.framing !== endFraming) {
+        items.push(issue("warning", "camera", "The final path position and Camera End use different framing.", shot.id));
+    }
+    return items;
 }
 
 export function actionBeatIssues(shot) {
@@ -119,7 +145,10 @@ export function localPreflight({ shotDocument, projectDocument, basicPrompt = ""
             }
         }
         items.push(...actionBeatIssues(shot));
-        items.push(...cameraPathIssues(shot));
+        items.push(...cameraPathIssues(shot, subjects));
+        if ((shot.staging ?? []).length && (shot.subjects ?? []).some((entry) => nonEmpty(entry.blocking))) {
+            items.push(issue("info", "staging", "Structured staging sets position; free-text blocking adds nuance. Check that they describe the same arrangement.", label));
+        }
         const hasDialogue = (shot?.actionBeats ?? []).some((beat) => nonEmpty(beat?.dialogue?.text));
         if (!hasDialogue && (shot?.referenceUses ?? []).some((reference) => ["voice", "exact_dialogue"].includes(reference?.role))) {
             items.push(issue("warning", "media", "A voice or exact-dialogue reference is assigned to a shot with no authored dialogue beat.", label));

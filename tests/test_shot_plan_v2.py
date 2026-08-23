@@ -37,8 +37,8 @@ def test_v2_normalizes_camera_end_as_delta_and_renders_temporal_phases():
     }
     instruction = shot_plan_instruction(plan, "t2va")
     assert "different temporal phases, not conflicting instructions" in instruction
-    assert "Camera starts with framing wide" in instruction
-    assert "Camera ends with framing medium" in instruction
+    assert "Camera: Start wide, rear three quarter" in instruction
+    assert "End medium, rear three quarter" in instruction
     assert "cinematic" not in instruction.casefold()
     assert "realistic" not in instruction.casefold()
 
@@ -108,19 +108,20 @@ def test_spatial_camera_waypoints_are_canonical_and_reach_prompt_instruction():
     plan = parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0)
     assert plan["shots"][0]["cameraPath"] == path
     instruction = shot_plan_instruction(plan, "t2va")
-    assert "subject-relative space" in instruction
-    assert "subject 'marta'" in instruction
-    assert "keeping the camera aimed" in instruction
+    assert "along a left-curving path around Marta" in instruction
+    assert "around Marta" in instruction
+    assert "aimed at Marta" in instruction
     assert "aiming along the direction of travel" in instruction
-    assert "135 degrees right" in instruction
-    assert "15 degrees down" in instruction
-    assert "45% at above the anchor" in instruction
-    assert "behind subject 'marta'" in instruction
-    assert "in front of subject 'marta'" in instruction
+    assert "turned toward frame right" in instruction
+    assert "around the midpoint" in instruction
+    assert "behind it" in instruction
+    assert "in front of it" in instruction
+    assert "degrees" not in instruction
+    assert "45%" not in instruction
     assert "x=" not in instruction
     assert "y=" not in instruction
     assert "z=" not in instruction
-    assert "brief hold" in instruction
+    assert "holding momentarily" in instruction
 
 
 def test_numbered_subject_anchor_uses_the_h3_reference_label():
@@ -133,9 +134,10 @@ def test_numbered_subject_anchor_uses_the_h3_reference_label():
         ],
     }
     instruction = shot_plan_instruction(parse_shot_plan(_plan(_shot(cameraPath=path)), 8.0), "ref2va")
-    assert "in front of <Subject 2>" in instruction
-    assert "behind <Subject 2>" in instruction
-    assert "keeping the camera aimed at <Subject 2>" in instruction
+    assert "around <Subject 2>" in instruction
+    assert "in front of it" in instruction
+    assert "behind it" in instruction
+    assert "aimed at <Subject 2>" in instruction
 
 
 @pytest.mark.parametrize("waypoints", [
@@ -196,7 +198,7 @@ def test_action_beat_spans_calls_out_and_dialogue_camera_timing_reach_instructio
     instruction = shot_plan_instruction(plan, "t2va")
     assert "From 20% to 55%" in instruction
     assert 'ana calls out: "Wait for me!"' in instruction
-    assert "during dialogue" in instruction
+    assert "during the dialogue" in instruction
     assert "brief cross-dissolve" in instruction
 
 

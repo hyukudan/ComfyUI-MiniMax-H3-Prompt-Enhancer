@@ -46,5 +46,5 @@ test("dashboard summaries use canonical widget documents", () => {
         projectDocument: () => ({ value: { subjects: [{}], environments: [{}, {}], assets: [{}, {}, {}], generations: [{ bindings: [{}, {}] }] } }),
         diagnostics: () => ({ diagnostics: [{}, {}, {}, {}] }),
     });
-    assert.deepEqual(summary, { shots: 2, subjects: 1, environments: 2, assets: 3, active: 2, diagnostics: 4 });
+    assert.deepEqual(summary, { shots: 2, staged: 0, subjects: 1, environments: 2, assets: 3, active: 2, diagnostics: 4 });
 });

@@ -6,9 +6,10 @@ It does not add a project manager, a network service, or another ComfyUI output.
 
 ## Open the Studio
 
-The enhancer node presents seven dashboard chips:
+The enhancer node presents eight dashboard chips:
 
 - **Shots** — number of structured shots.
+- **Staging** — positioned cast members in the selected shot.
 - **Subjects** — number of logical subjects.
 - **Environments** — number of logical environments.
 - **Media** — bound physical slots versus logical references.
@@ -16,7 +17,7 @@ The enhancer node presents seven dashboard chips:
 - **Look** — creative direction and global cinematography defaults.
 - **Review** — current structured diagnostic count and Prompt Coach advice.
 
-Selecting a chip opens one drawer attached to that node. The node's **Open Studio** button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–7.
+Selecting a chip opens one drawer attached to that node. The node's **Open Studio** button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–8.
 
 There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is committed immediately to this node's structured v2 widgets and is saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not write anything.
 
@@ -52,6 +53,7 @@ The logical reference says what a file means and how it may be used. The physica
 |---|---|---|
 | **Overview** | Check whether the project is ready and jump to unfinished work. | Derived counts, health, continuity, and navigation only. |
 | **Shots** | Divide the scene into visible beats and inspect each shot's compact camera summary. | Story, timing/cuts, cast presence, environment/views, reference uses, and transitions in Shot Plan v2. |
+| **Staging** | Arrange the cast visually before directing the camera. | Per-shot subject start/end positions, movement, facing, and eyelines in Shot Plan v2. |
 | **Subjects** | Preserve who or what appears and manage visible changes. | Identity sources, H3 subject index, base appearance, appearance states, and usage guards. |
 | **Environments** | Reuse a stable place under different conditions. | Permanent geography/architecture/scale, views, default state, temporary states, and usage guards. |
 | **Media** | Explain a reference and pair it with a connected file for one generation. | Reference library, activation, generation bindings, physical slots, quotas, and initial states. |
@@ -169,6 +171,12 @@ This distinction allows slot reuse across chained generations without changing a
 
 Shots keeps camera context compact: it shows the selected shot's current instruction and an **Edit camera** action. Camera opens the spatial planner at workspace scale, provides a shot selector, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Y/Z, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. Its 3D view uses a four-corner isometric floor rather than a perspective funnel; dashed stems make each position's elevation explicit, while Top and Front views isolate horizontal placement and elevation. The toolbar exposes the overall path shape, pace, speed change and reference frame, and each position exposes framing, angle, aim and timing. A four-second **Preview** and scrubber interpolate by each waypoint's actual `at` value, so uneven timing remains visible. All three views edit the same data and are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Both surfaces read and write the same shot object in `shot_plan_json` v2, so switching sections does not copy or reconcile data.
 
+### Staging
+
+Staging shares the selected shot with Shots and Camera. **Create staging** places the shot's present cast across the frame only after that explicit action. Drag each named subject in 3D, Top, or Front view; choose Start or End positions, a movement verb, and whether the subject faces the camera, travel, a side of frame, away from camera, or another named subject. It compiles as qualitative blocking and eyeline prose—not XYZ values. Free-text blocking remains available for nuance; Review notes when both are present so contradictory arrangements are not silently merged.
+
+Camera **Anchor** and **Aim target** are deliberately separate. Anchor establishes the origin for camera position (for example, left of Juan or behind Juan). Each waypoint's Aim target says where the lens points and may select a different present subject. If that subject has no Staging position, its name still reaches H3 but Studio reports that the reticle is only a placeholder. New waypoints inherit the prior resolved aim; target changes compile as a smooth reframe instead of numeric pan/tilt.
+
 ### Before-generation checks and Review
 
 Overview checks the current in-browser v2 documents immediately, before the node runs. It catches missing shot actions, invalid generation links, incomplete declared presence, empty action beats, invalid spatial timing, deleted references, and reference uses without file-slot assignments. The compact result is either **Ready to generate**, a non-blocking note, or a blocking count; each visible issue opens the relevant Shots, Media, or Camera workspace.
@@ -245,7 +253,7 @@ The normative schema is [`schemas/media_manifest_v2.schema.json`](schemas/media_
 
 ### `shot_plan_json` v2
 
-Shot-plan v2 is the temporal source of truth. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode. Spatial camera paths distinguish camera position from camera aim: `anchorTarget` names the project subject used as the origin when needed, while each waypoint aims at that subject/object anchor by default, follows the direction of travel, or declares bounded custom pan/tilt degrees. The aim reticle is separate from the camera marker and can be dragged; Top edits lateral/depth direction, Front edits lateral/elevation direction, and 3D edits direction on the ground plane. With multiple active subjects, Studio asks for a named anchor; an older path without one remains executable using the whole active group but is visibly identified as ambiguous. Internal XYZ authoring coordinates compile to qualitative H3 direction such as **left**, **above**, **behind**, and **in front of** the selected `<Subject N>` and do not appear in the requested final prompt.
+Shot-plan v2 is the temporal source of truth. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode. Spatial camera paths distinguish camera position from camera aim: `anchorTarget` names the project subject used as the origin, while each waypoint may inherit aim, keep the anchor framed, follow travel, aim at a named `aimTarget`, or use a custom editor direction. Optional `staging` places each subject at qualitative start/end positions with movement and facing. The compiler resolves all of this into names and natural camera/blocking prose; internal XYZ, timing percentages, angle degrees, and enum tokens do not become camera instructions.
 
 `timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `actionBeats[].at`, optional `actionBeats[].endAt`, and camera waypoint `at` values are normalized from 0 to 1, so their rhythm survives duration changes. Beats may use neutral projected **calls out** delivery as well as the other documented verbs. The editor warns about overlaps, large fully-authored gaps, and dialogue that is likely too dense for its exact span using a transparent 150-words-per-minute estimate. Beat percentages and editor labels never appear in the enhanced prompt; they compile to natural temporal flow. Camera timing may also target **during dialogue** or **after dialogue**. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start. Shot transitions include ordinary cuts plus cross dissolve and fade through black. `scaleRelationships` describes only explicitly authored relative scale between present subjects and never supplies invented measurements.
 
@@ -267,7 +275,7 @@ As with Creative Treatment, runtime parsing accepts a legacy v1 source and canon
 
 ## Camera authority
 
-Camera ownership is resolved independently for each shot, phase, and aspect. Aspects are motion, framing, angle, viewpoint, composition, focus, distance, stability, lens, and parallax. Phases are Start, Path, End, and Whole Shot.
+Camera ownership is resolved independently for each shot, phase, and aspect. Aspects are motion, aim, framing, angle, viewpoint, composition, focus, distance, stability, lens, and parallax. Phases are Start, Path, End, and Whole Shot.
 
 | Source | Authority | Behavior |
 |---|---:|---|

@@ -233,7 +233,7 @@ function preflightSummary(model, navigate) {
             const message = document.createElement("span");
             message.textContent = item.message;
             const action = document.createElement("strong");
-            action.textContent = `Open ${item.section === "media" ? "Media" : item.section === "camera" ? "Camera" : "Shots"}`;
+            action.textContent = `Open ${item.section === "media" ? "Media" : item.section === "camera" ? "Camera" : item.section === "staging" ? "Staging" : "Shots"}`;
             button.append(message, action);
             button.addEventListener("click", () => navigate(item.section));
             list.appendChild(button);

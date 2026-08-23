@@ -54,7 +54,7 @@ PATH_KEYS = {
 }
 WAYPOINT_KEYS = {
     "id", "at", "x", "y", "z", "framing", "angle", "hold",
-    "aimMode", "panDegrees", "tiltDegrees",
+    "aimMode", "aimTarget", "panDegrees", "tiltDegrees",
 }
 
 
@@ -219,9 +219,11 @@ def normalize_camera_waypoints(value: Any, path: str) -> list[dict[str, Any]]:
             if raw["hold"]:
                 normalized["hold"] = True
         if "aimMode" in raw:
-            if raw["aimMode"] not in {"anchor", "travel", "custom"}:
-                raise ValueError(f"{item_path}.aimMode must be anchor, travel, or custom")
+            if raw["aimMode"] not in {"anchor", "travel", "custom", "target"}:
+                raise ValueError(f"{item_path}.aimMode must be anchor, travel, custom, or target")
             normalized["aimMode"] = raw["aimMode"]
+        if "aimTarget" in raw:
+            normalized["aimTarget"] = normalize_target(raw["aimTarget"], f"{item_path}.aimTarget")
         for key, minimum, maximum in (
             ("panDegrees", -180.0, 180.0), ("tiltDegrees", -90.0, 90.0),
         ):
@@ -229,6 +231,8 @@ def normalize_camera_waypoints(value: Any, path: str) -> list[dict[str, Any]]:
                 normalized[key] = _finite_number(raw[key], f"{item_path}.{key}", minimum, maximum)
         if any(key in normalized for key in ("panDegrees", "tiltDegrees")) and normalized.get("aimMode") != "custom":
             raise ValueError(f"{item_path} panDegrees/tiltDegrees require aimMode 'custom'")
+        if ("aimTarget" in normalized) != (normalized.get("aimMode") == "target"):
+            raise ValueError(f"{item_path} aimTarget requires aimMode 'target', and target mode requires aimTarget")
         result.append(normalized)
     if result[0]["at"] != 0.0 or result[-1]["at"] != 1.0:
         raise ValueError(f"{path} must start at 0 and end at 1")
@@ -280,102 +284,209 @@ def normalize_camera_path(value: Any, path: str) -> dict[str, Any]:
     return result
 
 
-def camera_frame_sentence(frame: Mapping[str, Any], phase: str = "start") -> str:
-    """Render only explicit structured values; never infer an aesthetic."""
+def _target_label(target: Mapping[str, Any] | None,
+                  target_labels: Mapping[tuple[str, str], str] | None = None) -> str:
+    if not isinstance(target, Mapping):
+        return "the declared target"
+    if target.get("kind") == "text":
+        return str(target.get("text", "the declared target"))
+    kind = str(target.get("kind", "target"))
+    target_id = str(target.get("id", ""))
+    if target_labels and (kind, target_id) in target_labels:
+        return str(target_labels[(kind, target_id)])
+    subject_number = re.fullmatch(r"subject\.(\d+)", target_id)
+    if kind == "subject" and subject_number:
+        return f"<Subject {subject_number.group(1)}>"
+    readable = re.sub(r"[._-]+", " ", target_id).strip()
+    return readable[:1].upper() + readable[1:] if readable else f"the {kind}"
+
+
+def camera_frame_sentence(frame: Mapping[str, Any], phase: str = "start",
+                          target_labels: Mapping[tuple[str, str], str] | None = None) -> str:
+    """Render every explicit frame fact in natural camera prose."""
     if not frame:
         return ""
-    labels = {
-        "framing": "framing", "angle": "angle", "viewpoint": "viewpoint",
-        "composition": "composition", "distance": "distance",
-    }
-    parts = [f"{labels[key]} {str(frame[key]).replace('_', ' ')}" for key in labels if key in frame]
+    parts = [
+        str(frame[key]).replace("_", " ")
+        for key in ("framing", "angle", "viewpoint", "composition", "distance")
+        if key in frame
+    ]
+    for key, label in (
+        ("primaryTarget", "centered on"), ("secondaryTarget", "also including"),
+        ("foregroundTarget", "with the foreground occupied by"),
+    ):
+        if key in frame:
+            parts.append(f"{label} {_target_label(frame[key], target_labels)}")
+    focus = frame.get("focus")
+    if isinstance(focus, Mapping):
+        focus_text = {
+            "single_target": "single-target focus",
+            "split_focus": "split focus",
+            "deep_focus": "deep focus",
+            "custom": "custom focus",
+        }.get(str(focus.get("mode", "")), "authored focus")
+        targets = [
+            _target_label(focus[key], target_labels)
+            for key in ("primaryTarget", "secondaryTarget") if key in focus
+        ]
+        if targets:
+            focus_text += " on " + " and ".join(targets)
+        if focus.get("note"):
+            focus_text += f" ({focus['note']})"
+        parts.append(focus_text)
     for key, label in (("compositionNote", "composition detail"), ("distanceNote", "distance detail")):
         if key in frame:
             parts.append(f"{label} {frame[key]}")
-    prefix = "Camera starts with" if phase == "start" else "Camera ends with"
-    return prefix + " " + ", ".join(parts) + "." if parts else ""
+    return ("Start " if phase == "start" else "End ") + ", ".join(parts) + "."
 
 
-def camera_path_sentence(path: Mapping[str, Any]) -> str:
+_MOTION_PHRASES = {
+    "zoom_in": "zooms in", "zoom_out": "zooms out", "push_in": "pushes in",
+    "pull_out": "pulls back", "pan_left": "pans left", "pan_right": "pans right",
+    "truck_left": "trucks left", "truck_right": "trucks right", "tilt_up": "tilts up",
+    "tilt_down": "tilts down", "pedestal_up": "rises", "pedestal_down": "descends",
+    "arc": "arcs around the action", "tracking": "tracks the action",
+    "shake": "moves with camera shake", "roll_clockwise": "rolls clockwise",
+    "roll_counterclockwise": "rolls counterclockwise",
+}
+
+
+def _progress_words(value: float) -> str:
+    if value <= 0.02:
+        return "at the start"
+    if value < 0.38:
+        return "early in the shot"
+    if value <= 0.62:
+        return "around the midpoint"
+    if value < 0.98:
+        return "near the end"
+    return "at the end"
+
+
+def _qualitative_custom_aim(point: Mapping[str, Any]) -> str:
+    pan = float(point.get("panDegrees", 0.0))
+    tilt = float(point.get("tiltDegrees", 0.0))
+    if abs(pan) < 20:
+        horizontal = "straight ahead"
+    elif abs(pan) > 155:
+        horizontal = "back toward the space behind the camera"
+    else:
+        horizontal = f"toward frame {'right' if pan > 0 else 'left'}"
+    if tilt >= 20:
+        return horizontal + ", angled upward"
+    if tilt <= -20:
+        return horizontal + ", angled downward"
+    return horizontal + ", held level"
+
+
+def _waypoint_place(point: Mapping[str, Any]) -> str:
+    x, y, z = (float(point[key]) for key in ("x", "y", "z"))
+    parts = []
+    if x <= -0.2:
+        parts.append("to its left")
+    elif x >= 0.2:
+        parts.append("to its right")
+    if z <= -0.2:
+        parts.append("behind it")
+    elif z >= 0.2:
+        parts.append("in front of it")
+    if y <= -0.55:
+        parts.append("well below it")
+    elif y <= -0.2:
+        parts.append("below it")
+    elif y >= 0.55:
+        parts.append("well above it")
+    elif y >= 0.2:
+        parts.append("above it")
+    if not parts:
+        parts.append("level with it")
+    radius = (x * x + z * z) ** 0.5
+    if "framing" not in point:
+        if radius <= 0.35:
+            parts.append("at close distance")
+        elif radius >= 0.9:
+            parts.append("at a broad distance")
+    return ", ".join(parts)
+
+
+def _resolved_waypoint_aims(path: Mapping[str, Any]) -> list[tuple[str | None, Mapping[str, Any] | None]]:
+    result: list[tuple[str | None, Mapping[str, Any] | None]] = []
+    previous_mode: str | None = None
+    previous_target: Mapping[str, Any] | None = None
+    for index, point in enumerate(path.get("waypoints", ())):
+        mode = point.get("aimMode")
+        target = point.get("aimTarget") if mode == "target" else None
+        if not mode:
+            if index == 0 and (path.get("anchorTarget") or path.get("coordinateSpace", "subject") == "subject"):
+                mode = "anchor"
+            else:
+                mode, target = previous_mode, previous_target
+        resolved = (str(mode) if mode else None, target if isinstance(target, Mapping) else None)
+        result.append(resolved)
+        previous_mode, previous_target = resolved
+    return result
+
+
+def camera_path_sentence(path: Mapping[str, Any],
+                         target_labels: Mapping[tuple[str, str], str] | None = None) -> str:
     if not path:
         return ""
-    motion = str(path["motionType"]).replace("_", " ")
+    motion = str(path["motionType"])
     if motion == "static":
         return "The camera remains static throughout the shot."
-    qualifiers = [str(path[key]).replace("_", " ") for key in ("amplitude", "speed") if key in path]
-    text = f"The camera performs a {motion}"
-    if qualifiers:
-        text += " with " + " and ".join(qualifiers)
+    text = "The camera " + _MOTION_PHRASES.get(motion, motion.replace("_", " "))
+    if "amplitude" in path:
+        text += {"small": " with a restrained range", "medium": " with a moderate range", "large": " with a broad range"}[path["amplitude"]]
+    if "speed" in path:
+        text += f" at {path['speed']} speed"
     if "easing" in path:
-        text += f", using {str(path['easing']).replace('_', ' ')} easing"
+        text += {"linear": ", at constant pace", "ease_in": ", accelerating smoothly", "ease_out": ", decelerating smoothly", "ease_in_out": ", easing smoothly in and out"}[path["easing"]]
     if "timing" in path:
-        text += f", {str(path['timing']).replace('_', ' ')}"
+        text += ", " + {
+            "throughout": "throughout the shot", "during_opening": "during the opening",
+            "after_opening": "after the opening", "during_action": "during the action",
+            "during_dialogue": "during the dialogue", "after_dialogue": "after the dialogue",
+            "before_cut": "before the cut",
+        }[path["timing"]]
     waypoints = path.get("waypoints")
-    if waypoints:
-        space = str(path.get("coordinateSpace", "subject")).replace("_", " ")
-        shape = str(path.get("pathShape", "smooth")).replace("_", " ")
-        anchor = path.get("anchorTarget")
-        if isinstance(anchor, Mapping):
-            if anchor.get("kind") == "text":
-                anchor_text = f"the declared anchor {anchor.get('text')}"
+    if not waypoints:
+        return text + "."
+    shape = {"smooth": "smooth", "straight": "straight", "arc_left": "left-curving", "arc_right": "right-curving"}.get(str(path.get("pathShape", "smooth")), "smooth")
+    anchor = path.get("anchorTarget")
+    anchor_text = _target_label(anchor, target_labels) if isinstance(anchor, Mapping) else (
+        "the active subjects" if path.get("coordinateSpace", "subject") == "subject" else "the framed scene"
+    )
+    positions = []
+    aims = _resolved_waypoint_aims(path)
+    previous_aim_label = None
+    for index, point in enumerate(waypoints):
+        position = f"{_progress_words(float(point['at']))}, " + _waypoint_place(point)
+        details = [str(point[key]).replace("_", " ") for key in ("framing", "angle") if key in point]
+        if details:
+            position += ", framed as " + " with ".join(details)
+        if point.get("hold"):
+            position += ", holding momentarily"
+        aim_mode, aim_target = aims[index]
+        aim_label = previous_aim_label
+        if aim_mode == "anchor":
+            aim_label = anchor_text
+            position += f", aimed at {aim_label}" if aim_label != previous_aim_label else ", maintaining that aim"
+        elif aim_mode == "travel":
+            aim_label = "the direction of travel"
+            position += ", aiming along the direction of travel"
+        elif aim_mode == "target" and aim_target:
+            aim_label = _target_label(aim_target, target_labels)
+            if previous_aim_label and previous_aim_label != aim_label:
+                position += f", smoothly reframing from {previous_aim_label} to {aim_label}"
+            elif aim_label == anchor_text:
+                position += ", keeping the anchor in frame"
             else:
-                anchor_id = str(anchor.get("id", ""))
-                subject_number = re.fullmatch(r"subject\.(\d+)", anchor_id)
-                anchor_text = (
-                    f"<Subject {subject_number.group(1)}>"
-                    if anchor.get("kind") == "subject" and subject_number
-                    else f"{anchor.get('kind')} '{anchor_id}'"
-                )
-        elif space == "subject":
-            anchor_text = "the shot's active subject group"
-        else:
-            anchor_text = "the scene origin"
-        positions = []
-        for index, point in enumerate(waypoints):
-            progress = round(float(point["at"]) * 100)
-            x = float(point["x"])
-            y = float(point["y"])
-            z = float(point["z"])
-            spatial = []
-            if x <= -0.2:
-                spatial.append(f"to the left of {anchor_text}")
-            elif x >= 0.2:
-                spatial.append(f"to the right of {anchor_text}")
-            if y <= -0.2:
-                spatial.append("below the anchor")
-            elif y >= 0.2:
-                spatial.append("above the anchor")
-            # The Studio grid presents negative depth on the far side of its
-            # origin and positive depth on the near side.  Preserve that
-            # visible authoring convention in prose instead of asking the LLM
-            # to infer meaning from an implementation coordinate.
-            if z <= -0.2:
-                spatial.append(f"behind {anchor_text}")
-            elif z >= 0.2:
-                spatial.append(f"in front of {anchor_text}")
-            position = (
-                f"{progress}% at "
-                + (", ".join(spatial) if spatial else f"the level position beside {anchor_text}")
-            )
-            details = [str(point[key]).replace("_", " ") for key in ("framing", "angle") if key in point]
-            if details:
-                position += " (" + ", ".join(details) + ")"
-            if point.get("hold"):
-                position += " with a brief hold"
-            aim_mode = point.get("aimMode")
-            if aim_mode == "anchor":
-                position += f", keeping the camera aimed at {anchor_text}"
-            elif aim_mode == "travel":
-                position += ", aiming along the direction of travel"
-            elif aim_mode == "custom":
-                pan = float(point.get("panDegrees", 0.0))
-                tilt = float(point.get("tiltDegrees", 0.0))
-                pan_text = "straight ahead" if pan == 0 else f"{abs(pan):g} degrees {'right' if pan > 0 else 'left'}"
-                tilt_text = "level" if tilt == 0 else f"{abs(tilt):g} degrees {'up' if tilt > 0 else 'down'}"
-                position += f", with custom aim {pan_text} and {tilt_text} relative to {anchor_text}"
-            positions.append(position)
-        text += (
-            f" along a {shape} path in {space}-relative space anchored to {anchor_text}, passing "
-            + "; then ".join(positions)
-        )
-    return text + "."
+                position += f", aimed at {aim_label}"
+        elif aim_mode == "custom":
+            aim_label = "a custom direction"
+            position += ", turned " + _qualitative_custom_aim(point)
+        previous_aim_label = aim_label
+        positions.append(position)
+    relation = "around" if path.get("coordinateSpace", "subject") == "subject" else "through"
+    text += f" along a {shape} path {relation} {anchor_text}: " + "; then ".join(positions)
+    return text + ". Keep this as one continuous camera move without adding a cut."

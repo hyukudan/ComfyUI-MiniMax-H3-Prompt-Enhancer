@@ -26,6 +26,7 @@ try:
         normalize_camera_path,
         resolve_camera_end,
     )
+    from .staging_state import normalize_staging, staging_sentence
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from camera_state import (
         camera_frame_sentence,
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
         normalize_camera_path,
         resolve_camera_end,
     )
+    from staging_state import normalize_staging, staging_sentence
 
 
 CREATIVE_TREATMENT_LEGACY_SCHEMA_VERSION = 1
@@ -3893,7 +3895,7 @@ _SHOT_PLAN_V2_ITEM_KEYS = {
     "id", "generationId", "openingState", "action", "durationSeconds",
     "transitionIn", "cutContext", "subjectPresenceComplete", "subjects",
     "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
-    "actionBeats", "scaleRelationships", "appearanceTransitions", "environmentTransitions",
+    "actionBeats", "scaleRelationships", "staging", "appearanceTransitions", "environmentTransitions",
 }
 _REFERENCE_ROLES = {
     "identity_reinforcement", "appearance", "environment_view", "scale",
@@ -4255,6 +4257,8 @@ def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
             shot["actionBeats"] = _shot_v2_action_beats(data["actionBeats"], f"{path} actionBeats")
         if "scaleRelationships" in data:
             shot["scaleRelationships"] = _shot_v2_scale_relationships(data["scaleRelationships"], f"{path} scaleRelationships")
+        if "staging" in data:
+            shot["staging"] = normalize_staging(data["staging"], f"{path} staging")
         if "appearanceTransitions" in data:
             shot["appearanceTransitions"] = _shot_v2_transition(
                 data["appearanceTransitions"], f"{path} appearanceTransitions", "subjectId"
@@ -4540,7 +4544,28 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{remainder:06.3f}"
 
 
-def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
+def _project_target_labels(media_project: Mapping[str, Any] | None) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+    if not isinstance(media_project, Mapping):
+        return {}, {}
+    project = media_project.get("project", media_project)
+    if not isinstance(project, Mapping):
+        return {}, {}
+    labels: dict[tuple[str, str], str] = {}
+    subject_labels: dict[str, str] = {}
+    for collection, kind in (("subjects", "subject"), ("environments", "environment"), ("assets", "asset")):
+        for item in project.get(collection, ()):
+            if not isinstance(item, Mapping) or not item.get("id"):
+                continue
+            resource_id = str(item["id"])
+            label = str(item.get("name") or resource_id)
+            labels[(kind, resource_id)] = label
+            if kind == "subject":
+                subject_labels[resource_id] = label
+    return labels, subject_labels
+
+
+def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str,
+                              media_project: Mapping[str, Any] | None = None) -> str:
     resolved_mode = str(mode or "").strip().lower()
     chained = resolved_mode == "chained_multishot"
     lines = [
@@ -4563,6 +4588,7 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
         lines.append("Honor the exact per-generation durations and cut positions; Shot 1 has no timestamp.")
     else:
         lines.append("Choose strictly increasing cut times while preserving shot and generation boundaries.")
+    target_labels, subject_labels = _project_target_labels(media_project)
     generation_elapsed: dict[str, float] = {}
     for index, shot in enumerate(plan["shots"], start=1):
         generation_id = shot["generationId"]
@@ -4621,13 +4647,15 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
                 description = relationship_labels[relationship["relation"]]
                 note = f"; {relationship['note']}" if relationship.get("note") else ""
                 lines.append(f"    - {relationship['subjectId']} is {description} {relationship['relativeToId']}{note}.")
+        if shot.get("staging"):
+            lines.append("  " + staging_sentence(shot["staging"], subject_labels))
         camera_sentences = []
         start = shot.get("cameraStart", {})
         end_delta = shot.get("cameraEnd", {})
         for sentence in (
-            camera_frame_sentence(start, "start"),
-            camera_path_sentence(shot.get("cameraPath", {})),
-            camera_frame_sentence(resolve_camera_end(start, end_delta), "end") if end_delta else "",
+            camera_frame_sentence(start, "start", target_labels),
+            camera_path_sentence(shot.get("cameraPath", {}), target_labels),
+            camera_frame_sentence(resolve_camera_end(start, end_delta), "end", target_labels) if end_delta else "",
         ):
             if sentence:
                 camera_sentences.append(sentence)
@@ -4645,12 +4673,13 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str) -> str:
     return "\n".join(lines)
 
 
-def shot_plan_instruction(plan: Mapping[str, Any], mode: str) -> str:
+def shot_plan_instruction(plan: Mapping[str, Any], mode: str,
+                          media_project: Mapping[str, Any] | None = None) -> str:
     """Render a strict allocation contract without interpreting JSON as meta-instructions."""
     if not plan.get("provided") or not plan.get("applied"):
         return ""
     if plan.get("schemaVersion") == SHOT_PLAN_SCHEMA_V2:
-        return _shot_plan_v2_instruction(plan, mode)
+        return _shot_plan_v2_instruction(plan, mode, media_project)
     resolved_mode = str(mode or "").strip().lower()
     chained = resolved_mode == "chained_multishot"
     shot_count = int(plan["shotCount"])

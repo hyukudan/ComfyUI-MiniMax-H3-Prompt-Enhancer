@@ -106,10 +106,27 @@ def _target_refs(frame: Mapping[str, Any]) -> list[tuple[str, str, str]]:
 
 
 def _path_target_refs(path: Mapping[str, Any]) -> list[tuple[str, str, str]]:
+    found: list[tuple[str, str, str]] = []
     target = path.get("anchorTarget")
     if isinstance(target, Mapping) and target.get("kind") != "text":
-        return [(str(target.get("kind", "")), str(target.get("id", "")), "anchorTarget")]
-    return []
+        found.append((str(target.get("kind", "")), str(target.get("id", "")), "anchorTarget"))
+    for index, waypoint in enumerate(path.get("waypoints", ())):
+        target = waypoint.get("aimTarget") if isinstance(waypoint, Mapping) else None
+        if isinstance(target, Mapping) and target.get("kind") != "text":
+            found.append((str(target.get("kind", "")), str(target.get("id", "")), f"waypoints.{index}.aimTarget"))
+    return found
+
+
+def _staging_target_refs(staging: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]) -> list[tuple[str, str, str]]:
+    found: list[tuple[str, str, str]] = []
+    for index, placement in enumerate(staging):
+        found.append(("subject", str(placement.get("subjectId", "")), f"staging.{index}.subjectId"))
+        for phase in ("start", "end"):
+            point = placement.get(phase)
+            target = point.get("facingTarget") if isinstance(point, Mapping) else None
+            if isinstance(target, Mapping):
+                found.append(("subject", str(target.get("id", "")), f"staging.{index}.{phase}.facingTarget"))
+    return found
 
 
 def _appearance_source_roots(subject: Mapping[str, Any], state_id: str) -> list[dict[str, str]]:
@@ -213,6 +230,9 @@ def _generation_entities(
                 environment_ids.add(resource_id)
             elif kind == "asset":
                 asset_ids.add(resource_id)
+        for kind, resource_id, _field in _staging_target_refs(shot.get("staging", ())):
+            if kind == "subject":
+                subject_ids.add(resource_id)
     return subject_ids, environment_ids, asset_ids, view_ids
 
 
@@ -512,6 +532,12 @@ def _validate_shots_and_resolve_state(
         for kind, target_id, target_field in _path_target_refs(shot.get("cameraPath", {})):
             _validate_target(
                 collector, kind, target_id, f"cameraPath.{target_field}", generation_id,
+                shot, shot_index, subjects, environments, assets, presence,
+                active_environment_id, active_asset_ids,
+            )
+        for kind, target_id, target_field in _staging_target_refs(shot.get("staging", ())):
+            _validate_target(
+                collector, kind, target_id, target_field, generation_id,
                 shot, shot_index, subjects, environments, assets, presence,
                 active_environment_id, active_asset_ids,
             )

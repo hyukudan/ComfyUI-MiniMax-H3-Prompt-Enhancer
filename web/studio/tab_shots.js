@@ -665,7 +665,7 @@ export function renderShotsTab(container, controller) {
     const cameraCopy = element("div", "");
     cameraCopy.append(
         element("strong", "", "Camera"),
-        element("p", "", cameraInstructionPreview(shot)),
+        element("p", "", cameraInstructionPreview(shot, project)),
     );
     const editCamera = actionButton("Edit camera", () => controller.navigateStudio?.("camera"), {
         disabled: typeof controller.navigateStudio !== "function",
