@@ -5,6 +5,8 @@ import {
     addSpatialWaypoint,
     aimAnglesForTarget,
     cameraAimTarget,
+    cameraDistanceLabel,
+    cameraHorizontalDistance,
     cameraIconRotation,
     defaultSpatialWaypoints,
     interpolateSpatialWaypoint,
@@ -13,8 +15,20 @@ import {
     redistributeSpatialWaypointTiming,
     stagedAimPoint,
     spatialPathD,
+    setCameraHorizontalDistance,
     unprojectCameraPoint,
 } from "../spatial_camera_editor.js";
+
+test("camera distance moves only across the floor and never changes height", () => {
+    const point = { x: .3, y: .85, z: .4 };
+    assert.equal(cameraHorizontalDistance(point), .5);
+    assert.equal(cameraDistanceLabel(.5), "Medium distance");
+    setCameraHorizontalDistance(point, 1);
+    assert.deepEqual(point, { x: .6, y: .85, z: .8 });
+    assert.equal(cameraHorizontalDistance(point), 1);
+    setCameraHorizontalDistance(point, 0);
+    assert.deepEqual(point, { x: 0, y: .85, z: 0 });
+});
 
 test("spatial camera defaults are a valid normalized two-point timeline", () => {
     const points = defaultSpatialWaypoints();

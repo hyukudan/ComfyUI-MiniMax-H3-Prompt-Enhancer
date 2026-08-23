@@ -531,11 +531,14 @@ def _waypoint_place(point: Mapping[str, Any], reference: str, *, scene_space: bo
         height = _height_state(y, reference, scene_space=scene_space)
         parts = [height, *spatial] if _camera_height_band(y) in {1, 5} else [*spatial, height]
     radius = (x * x + z * z) ** 0.5
-    if "framing" not in point:
-        if radius <= 0.35:
-            parts.append("at close distance")
-        elif radius >= 0.9:
-            parts.append("at a broad distance")
+    if radius <= 0.30:
+        parts.append("at close distance")
+    elif radius <= 0.70:
+        parts.append("at medium distance")
+    elif radius <= 1.05:
+        parts.append("at far distance")
+    else:
+        parts.append("at a very far distance")
     return ", ".join(parts)
 
 

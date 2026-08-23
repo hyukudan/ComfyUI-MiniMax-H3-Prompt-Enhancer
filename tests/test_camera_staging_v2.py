@@ -65,6 +65,20 @@ def test_waypoint_height_is_explicit_and_not_confused_with_level_lens_aim():
     assert "held level" not in instruction
 
 
+def test_camera_distance_reaches_the_instruction_even_when_framing_is_explicit():
+    plan = parse_shot_plan(_plan(_shot(cameraPath={
+        "motionType": "tracking", "coordinateSpace": "subject",
+        "waypoints": [
+            {"id": "near", "at": 0, "x": 0, "y": .8, "z": .2, "framing": "wide"},
+            {"id": "far", "at": 1, "x": 1, "y": .8, "z": 1, "framing": "wide"},
+        ],
+    })), 4.0)
+    instruction = shot_plan_instruction(plan, "t2va")
+    assert "at close distance" in instruction
+    assert "at a very far distance" in instruction
+    assert instruction.count("framed as wide") == 2
+
+
 def test_waypoint_height_changes_compile_as_directed_vertical_motion():
     plan = parse_shot_plan(_plan(_shot(cameraPath={
         "motionType": "tracking", "coordinateSpace": "subject",

@@ -37,6 +37,29 @@ export function cameraVerticalSegment(from, to) {
     };
 }
 
+export function cameraHorizontalDistance(point) {
+    return round(Math.hypot(Number(point?.x ?? 0), Number(point?.z ?? 0)));
+}
+
+export function setCameraHorizontalDistance(point, distance) {
+    const current = cameraHorizontalDistance(point);
+    const requested = Math.max(0, Math.min(Math.SQRT2, Number(distance)));
+    const direction = current < .001 ? { x: 0, z: 1 } : { x: Number(point.x) / current, z: Number(point.z) / current };
+    const maximum = 1 / Math.max(Math.abs(direction.x), Math.abs(direction.z), 1 / Math.SQRT2);
+    const scale = Math.min(requested, maximum);
+    point.x = round(clamp(direction.x * scale));
+    point.z = round(clamp(direction.z * scale));
+    return point;
+}
+
+export function cameraDistanceLabel(value) {
+    const distance = Number(value ?? 0);
+    if (distance <= .30) return "Close";
+    if (distance <= .70) return "Medium distance";
+    if (distance <= 1.05) return "Far";
+    return "Very far";
+}
+
 function elevationBand(value) {
     return cameraElevationLabel(value).toLowerCase();
 }
@@ -386,9 +409,59 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         }
         projected.forEach((position, index) => {
             const point = path.waypoints[index]; const group = svgNode("g", { class: "minimax-h3-spatial-point", "data-selected": String(index === state.selected), transform: `translate(${position.x} ${position.y})`, tabindex: "0", role: "button", "aria-label": `Camera position ${index + 1}, ${Math.round(point.at * 100)} percent` });
-            if (state.view === "perspective" && Math.abs(point.y) >= .01) {
+            if (state.view === "perspective" && (Math.abs(point.y) >= .01 || index === state.selected)) {
                 const ground = projectCameraPoint({ ...point, y: 0 }, state.view);
-                svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), svgNode("circle", { class: "minimax-h3-spatial-elevation-foot", cx: ground.x, cy: ground.y, r: 4 }));
+                const footprint = svgNode("circle", {
+                    class: "minimax-h3-spatial-elevation-foot", cx: ground.x, cy: ground.y, r: 9,
+                    role: "button", tabindex: index === state.selected ? "0" : "-1",
+                    "aria-label": `Move camera position ${index + 1} across the floor while keeping ${cameraElevationLabel(point.y).toLowerCase()} height`,
+                });
+                footprint.addEventListener("pointerdown", (event) => {
+                    event.preventDefault(); event.stopPropagation(); state.selected = index;
+                    const move = (moveEvent) => {
+                        const rect = svg.getBoundingClientRect();
+                        const screen = { x: (moveEvent.clientX - rect.left) * 360 / rect.width, y: (moveEvent.clientY - rect.top) * 240 / rect.height };
+                        const floorPoint = unprojectCameraPoint(screen, { ...point, y: 0 }, "perspective");
+                        point.x = floorPoint.x; point.z = floorPoint.z;
+                        renderScene(); renderInspector(); renderTimeline();
+                    };
+                    const up = () => {
+                        document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
+                        commit(); rerender();
+                    };
+                    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+                });
+                const heightHandle = svgNode("g", {
+                    class: "minimax-h3-spatial-height-handle", role: "slider", tabindex: index === state.selected ? "0" : "-1",
+                    transform: `translate(${ground.x + 12} ${(ground.y + position.y) / 2})`,
+                    "aria-label": `Camera height for position ${index + 1}`,
+                    "aria-valuemin": "-1", "aria-valuemax": "1", "aria-valuenow": point.y,
+                    "aria-valuetext": cameraElevationLabel(point.y),
+                });
+                heightHandle.append(svgNode("rect", { x: -7, y: -11, width: 14, height: 22, rx: 7 }), svgNode("text", { y: 4, "text-anchor": "middle" }, "↕"));
+                const setHeightFromEvent = (moveEvent) => {
+                    const rect = svg.getBoundingClientRect();
+                    const screenY = (moveEvent.clientY - rect.top) * 240 / rect.height;
+                    point.y = round(clamp((ground.y - screenY) / 70));
+                    renderScene(); renderInspector();
+                };
+                heightHandle.addEventListener("pointerdown", (event) => {
+                    event.preventDefault(); event.stopPropagation(); state.selected = index;
+                    const move = (moveEvent) => setHeightFromEvent(moveEvent);
+                    const up = () => {
+                        document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
+                        commit(); rerender();
+                    };
+                    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+                });
+                heightHandle.addEventListener("keydown", (event) => {
+                    if (!["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) return;
+                    event.preventDefault();
+                    const direction = ["ArrowUp", "PageUp"].includes(event.key) ? 1 : -1;
+                    const step = event.key.startsWith("Page") ? .15 : .05;
+                    point.y = round(clamp(point.y + direction * step)); commit(); rerender();
+                });
+                svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), footprint, heightHandle);
             }
             const namedTargetPoint = stagedAimPoint(shot, path, point);
             const aimTarget = cameraAimTarget(path.waypoints, index, namedTargetPoint);
@@ -510,6 +583,7 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         const heading = element("div", "minimax-h3-spatial-inspector-heading");
         heading.append(element("strong", "", `Position ${state.selected + 1}`), element("span", "", `${Math.round(point.at * 100)}% of shot · ${cameraElevationLabel(point.y)}`));
         const update = (key) => (value, final) => { point[key] = round(value); renderScene(); if (final) { commit(); rerender(); } };
+        const updateDistance = (value, final) => { setCameraHorizontalDistance(point, value); renderScene(); if (final) { commit(); rerender(); } };
         inspector.append(
             heading,
             slider("Frame left / right", point.x, -1, 1, .01, update("x")),
@@ -519,6 +593,11 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                 scale: "Very low  ·  Low  ·  Eye level  ·  Elevated  ·  Very elevated",
             }),
             slider("Behind / in front", point.z, -1, 1, .01, update("z")),
+            slider("Distance from anchor", cameraHorizontalDistance(point), 0, Math.SQRT2, .02, updateDistance, {
+                formatValue: cameraDistanceLabel,
+                valueText: (value) => `${cameraDistanceLabel(value)} from the anchor; camera height stays unchanged`,
+                scale: "Close  ·  Medium  ·  Far  ·  Very far",
+            }),
         );
         const framing = selectInput(point.framing ?? "", FRAMINGS, { ariaLabel: `Framing at camera position ${state.selected + 1}` });
         framing.addEventListener("change", () => { if (framing.value) point.framing = framing.value; else delete point.framing; commit(); rerender(); });
@@ -575,6 +654,6 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
 
     renderScene(); renderTimeline(); renderInspector();
     const workspace = element("div", "minimax-h3-spatial-workspace"); workspace.append(canvas, inspector); canvas.append(svg, playback, timeline);
-    root.append(toolbar, workspace, element("p", "minimax-h3-spatial-note", "Position, anchor and aim are compiled into prompt direction · this is not a physical simulation"));
+    root.append(toolbar, workspace, element("p", "minimax-h3-spatial-note", "Drag the floor marker to move across the plane without changing height · position, distance, anchor and aim compile into prompt direction"));
     container.appendChild(root);
 }

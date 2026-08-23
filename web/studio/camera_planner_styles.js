@@ -176,7 +176,12 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-grid { fill: none; stroke: color-mix(in srgb, var(--h3-border-strong) 46%, transparent); stroke-width: 1; }
         .minimax-h3-spatial-axis-label { fill: color-mix(in srgb, var(--h3-text-muted) 86%, transparent); font: 650 8px/1 var(--h3-mono); letter-spacing: .05em; pointer-events: none; }
         .minimax-h3-spatial-elevation { fill: none; stroke: var(--h3-tip); stroke-width: 1.5; stroke-dasharray: 4 4; pointer-events: none; }
-        .minimax-h3-spatial-elevation-foot { fill: var(--h3-bg); stroke: var(--h3-tip); stroke-width: 1.5; pointer-events: none; }
+        .minimax-h3-spatial-elevation-foot { fill: var(--h3-bg); stroke: var(--h3-tip); stroke-width: 1.5; cursor: grab; }
+        .minimax-h3-spatial-elevation-foot:hover, .minimax-h3-spatial-elevation-foot:focus { fill: var(--h3-accent-soft); stroke: var(--h3-focus); outline: none; }
+        .minimax-h3-spatial-height-handle { cursor: ns-resize; color: var(--h3-text); }
+        .minimax-h3-spatial-height-handle rect { fill: var(--h3-surface); stroke: var(--h3-accent); stroke-width: 1.5; }
+        .minimax-h3-spatial-height-handle text { fill: currentColor; font-size: 11px; font-weight: 800; pointer-events: none; }
+        .minimax-h3-spatial-height-handle:hover rect, .minimax-h3-spatial-height-handle:focus rect { fill: var(--h3-accent-soft); stroke: var(--h3-focus); }
         .minimax-h3-spatial-path-shadow { fill: none; stroke: color-mix(in srgb, black 50%, transparent); stroke-width: 10; opacity: .35; }
         .minimax-h3-spatial-path { fill: none; stroke: var(--h3-accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--h3-accent) 60%, transparent)); }
         .minimax-h3-spatial-target circle:first-child { fill: color-mix(in srgb, var(--h3-tip) 14%, var(--h3-bg)); stroke: var(--h3-tip); stroke-width: 2; }
