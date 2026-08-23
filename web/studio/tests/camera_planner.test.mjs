@@ -23,7 +23,7 @@ test("camera height UI exposes semantic accessibility copy instead of only raw n
     const editor = await readFile(new URL("../spatial_camera_editor.js", import.meta.url), "utf8");
     assert.match(editor, /aria-valuetext/);
     assert.match(editor, /Camera height/);
-    assert.match(editor, /moves the camera body; Aim controls where the lens points/);
+    assert.match(editor, /Camera height changes its apparent scale here; Aim controls where the lens points/);
     assert.match(editor, /Very low\s+·\s+Low\s+·\s+Eye level\s+·\s+Elevated\s+·\s+Very elevated/);
 });
 

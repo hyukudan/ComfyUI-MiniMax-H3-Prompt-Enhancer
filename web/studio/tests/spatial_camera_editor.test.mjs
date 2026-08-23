@@ -6,6 +6,7 @@ import {
     aimAnglesForTarget,
     cameraAimTarget,
     cameraDistanceLabel,
+    cameraHeightScale,
     cameraHorizontalDistance,
     cameraIconRotation,
     defaultSpatialWaypoints,
@@ -17,17 +18,18 @@ import {
     stagedAimPoint,
     spatialPathD,
     setCameraHorizontalDistance,
-    setCameraHeightFromPerspectiveScreenY,
     unprojectCameraPoint,
 } from "../spatial_camera_editor.js";
 
-test("dragging the 3D camera body changes height even at the floor boundary", () => {
-    const point = { x: 1, y: 0, z: 1 };
-    const ground = projectCameraPoint(point, "perspective");
-    setCameraHeightFromPerspectiveScreenY(point, ground.y - 70);
-    assert.deepEqual(point, { x: 1, y: 1, z: 1 });
-    setCameraHeightFromPerspectiveScreenY(point, ground.y + 70);
-    assert.deepEqual(point, { x: 1, y: -1, z: 1 });
+test("3D floor position ignores height while icon scale communicates it", () => {
+    const low = projectCameraPoint({ x: .4, y: -1, z: -.3 }, "perspective");
+    const eye = projectCameraPoint({ x: .4, y: 0, z: -.3 }, "perspective");
+    const high = projectCameraPoint({ x: .4, y: 1, z: -.3 }, "perspective");
+    assert.deepEqual(low, eye);
+    assert.deepEqual(high, eye);
+    assert.ok(cameraHeightScale(-1) > cameraHeightScale(0));
+    assert.ok(cameraHeightScale(0) > cameraHeightScale(1));
+    assert.notEqual(projectCameraPoint({ x: .4, y: -1, z: -.3 }, "front").y, projectCameraPoint({ x: .4, y: 1, z: -.3 }, "front").y);
 });
 
 test("camera lens inherits aim and always faces the rendered target", () => {
@@ -50,7 +52,7 @@ test("camera lens inherits aim and always faces the rendered target", () => {
 test("camera distance moves only across the floor and never changes height", () => {
     const point = { x: .3, y: .85, z: .4 };
     assert.equal(cameraHorizontalDistance(point), .5);
-    assert.equal(cameraDistanceLabel(.5), "Close");
+    assert.equal(cameraDistanceLabel(.5), "Medium distance");
     setCameraHorizontalDistance(point, 1);
     assert.deepEqual(point, { x: .6, y: .85, z: .8 });
     assert.equal(cameraHorizontalDistance(point), 1);
@@ -64,7 +66,7 @@ test("spatial camera defaults are a valid normalized two-point timeline", () => 
     assert.equal(points[0].at, 0);
     assert.equal(points.at(-1).at, 1);
     assert.ok(points.every((point) => point.y === 0), "untouched camera paths must not author vertical motion");
-    assert.ok(points.every((point) => point.x >= -3 && point.x <= 3 && point.z >= -3 && point.z <= 3 && point.y >= -1 && point.y <= 1));
+    assert.ok(points.every((point) => point.x >= -1 && point.x <= 1 && point.z >= -1 && point.z <= 1 && point.y >= -1 && point.y <= 1));
 });
 
 test("camera icons distinguish anchor, travel and custom aim", () => {
@@ -132,7 +134,7 @@ test("projection round-trips draggable axes in isometric, top and front views", 
     assert.equal(front.y, point.y);
 });
 
-test("isometric platform stays a four-corner plane and elevation moves vertically", () => {
+test("isometric platform stays a four-corner plane without coupling elevation to floor position", () => {
     const corners = [
         projectCameraPoint({ x: -1, y: 0, z: -1 }), projectCameraPoint({ x: 1, y: 0, z: -1 }),
         projectCameraPoint({ x: 1, y: 0, z: 1 }), projectCameraPoint({ x: -1, y: 0, z: 1 }),
@@ -141,7 +143,7 @@ test("isometric platform stays a four-corner plane and elevation moves verticall
     const ground = projectCameraPoint({ x: .2, y: 0, z: -.3 });
     const raised = projectCameraPoint({ x: .2, y: .6, z: -.3 });
     assert.equal(ground.x, raised.x);
-    assert.ok(raised.y < ground.y);
+    assert.equal(raised.y, ground.y);
 });
 
 test("adding a waypoint interpolates position and timing without exceeding six", () => {
@@ -198,7 +200,7 @@ test("normalization clamps coordinates and preserves fixed timeline ends", () =>
         { id: "b", at: .8, x: 9, y: -4, z: 0 },
     ]);
     assert.deepEqual(points.map((point) => point.at), [0, 1]);
-    assert.equal(points[0].x, -3);
+    assert.equal(points[0].x, -1);
     assert.equal(points[1].y, -1);
 });
 

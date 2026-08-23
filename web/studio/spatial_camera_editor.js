@@ -1,7 +1,7 @@
 import { actionButton, element, selectInput } from "./domain_components.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-export const CAMERA_HORIZONTAL_EXTENT = 3;
+export const CAMERA_HORIZONTAL_EXTENT = 1;
 const VIEW_STATE = new Map();
 const SHAPES = [["smooth", "Smooth"], ["straight", "Straight"], ["arc_left", "Arc left"], ["arc_right", "Arc right"]];
 const SPACES = [["subject", "Around subject"], ["scene", "In scene"]];
@@ -57,10 +57,14 @@ export function setCameraHorizontalDistance(point, distance) {
 
 export function cameraDistanceLabel(value) {
     const distance = Number(value ?? 0);
-    if (distance <= .50) return "Close";
-    if (distance <= 1.25) return "Medium distance";
-    if (distance <= 2.50) return "Far";
+    if (distance <= .30) return "Close";
+    if (distance <= .70) return "Medium distance";
+    if (distance <= 1.05) return "Far";
     return "Very far";
+}
+
+export function cameraHeightScale(value) {
+    return round(1 - clamp(value) * .22);
 }
 
 function elevationBand(value) {
@@ -76,8 +80,8 @@ function svgNode(tag, attributes = {}, text = "") {
 
 export function defaultSpatialWaypoints() {
     return [
-        { id: "cam1", at: 0, x: -1.8, y: 0, z: 1.5, framing: "wide", aimMode: "anchor" },
-        { id: "cam2", at: 1, x: 1.4, y: 0, z: -1.2, framing: "medium", aimMode: "anchor" },
+        { id: "cam1", at: 0, x: -.72, y: 0, z: .62, framing: "wide", aimMode: "anchor" },
+        { id: "cam2", at: 1, x: .42, y: 0, z: -.38, framing: "medium", aimMode: "anchor" },
     ];
 }
 
@@ -96,25 +100,19 @@ export function projectCameraPoint(point, view = "perspective") {
     const z = Number(point.z) / CAMERA_HORIZONTAL_EXTENT;
     if (view === "top") return { x: 180 + x * 126, y: 122 + z * 82 };
     if (view === "front") return { x: 180 + x * 126, y: 122 - point.y * 82 };
-    return { x: 180 + x * 90 - z * 55, y: 128 + x * 45 + z * 45 - point.y * 70 };
+    return { x: 180 + x * 90 - z * 55, y: 128 + x * 45 + z * 45 };
 }
 
 export function unprojectCameraPoint(screen, point, view = "perspective") {
     if (view === "top") return { ...point, x: round(clampHorizontal((screen.x - 180) / 126 * CAMERA_HORIZONTAL_EXTENT)), z: round(clampHorizontal((screen.y - 122) / 82 * CAMERA_HORIZONTAL_EXTENT)) };
     if (view === "front") return { ...point, x: round(clampHorizontal((screen.x - 180) / 126 * CAMERA_HORIZONTAL_EXTENT)), y: round(clamp((122 - screen.y) / 82)) };
     const horizontal = screen.x - 180;
-    const vertical = screen.y - 128 + point.y * 70;
+    const vertical = screen.y - 128;
     return {
         ...point,
         x: round(clampHorizontal((45 * horizontal + 55 * vertical) / 6525 * CAMERA_HORIZONTAL_EXTENT)),
         z: round(clampHorizontal((-45 * horizontal + 90 * vertical) / 6525 * CAMERA_HORIZONTAL_EXTENT)),
     };
-}
-
-export function setCameraHeightFromPerspectiveScreenY(point, screenY) {
-    const ground = projectCameraPoint({ ...point, y: 0 }, "perspective");
-    point.y = round(clamp((ground.y - Number(screenY)) / 70));
-    return point;
 }
 
 export function spatialPathD(waypoints, view = "perspective", shape = "smooth") {
@@ -434,61 +432,7 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
             for (const [label, position] of labels) svg.appendChild(svgNode("text", { class: "minimax-h3-spatial-axis-label", x: position.x, y: position.y - 8, "text-anchor": "middle" }, label));
         }
         projected.forEach((position, index) => {
-            const point = path.waypoints[index]; const group = svgNode("g", { class: "minimax-h3-spatial-point", "data-selected": String(index === state.selected), "data-view": state.view, transform: `translate(${position.x} ${position.y})`, tabindex: "0", role: "button", "aria-label": `Camera position ${index + 1}, ${Math.round(point.at * 100)} percent. In 3D, drag the camera body vertically; drag its floor marker horizontally.` });
-            if (state.view === "perspective" && (Math.abs(point.y) >= .01 || index === state.selected)) {
-                const ground = projectCameraPoint({ ...point, y: 0 }, state.view);
-                const footprint = svgNode("circle", {
-                    class: "minimax-h3-spatial-elevation-foot", cx: ground.x, cy: ground.y, r: 9,
-                    role: "button", tabindex: index === state.selected ? "0" : "-1",
-                    "aria-label": `Move camera position ${index + 1} across the floor while keeping ${cameraElevationLabel(point.y).toLowerCase()} height`,
-                });
-                footprint.addEventListener("pointerdown", (event) => {
-                    event.preventDefault(); event.stopPropagation(); state.selected = index;
-                    const move = (moveEvent) => {
-                        const rect = svg.getBoundingClientRect();
-                        const screen = { x: (moveEvent.clientX - rect.left) * 360 / rect.width, y: (moveEvent.clientY - rect.top) * 240 / rect.height };
-                        const floorPoint = unprojectCameraPoint(screen, { ...point, y: 0 }, "perspective");
-                        point.x = floorPoint.x; point.z = floorPoint.z;
-                        renderScene(); renderInspector(); renderTimeline();
-                    };
-                    const up = () => {
-                        document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
-                        commit(); rerender();
-                    };
-                    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
-                });
-                const heightHandle = svgNode("g", {
-                    class: "minimax-h3-spatial-height-handle", role: "slider", tabindex: index === state.selected ? "0" : "-1",
-                    transform: `translate(${ground.x + 12} ${(ground.y + position.y) / 2})`,
-                    "aria-label": `Camera height for position ${index + 1}`,
-                    "aria-valuemin": "-1", "aria-valuemax": "1", "aria-valuenow": point.y,
-                    "aria-valuetext": cameraElevationLabel(point.y),
-                });
-                heightHandle.append(svgNode("rect", { x: -7, y: -11, width: 14, height: 22, rx: 7 }), svgNode("text", { y: 4, "text-anchor": "middle" }, "↕"));
-                const setHeightFromEvent = (moveEvent) => {
-                    const rect = svg.getBoundingClientRect();
-                    const screenY = (moveEvent.clientY - rect.top) * 240 / rect.height;
-                    setCameraHeightFromPerspectiveScreenY(point, screenY);
-                    renderScene(); renderInspector();
-                };
-                heightHandle.addEventListener("pointerdown", (event) => {
-                    event.preventDefault(); event.stopPropagation(); state.selected = index;
-                    const move = (moveEvent) => setHeightFromEvent(moveEvent);
-                    const up = () => {
-                        document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
-                        commit(); rerender();
-                    };
-                    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
-                });
-                heightHandle.addEventListener("keydown", (event) => {
-                    if (!["ArrowUp", "ArrowDown", "PageUp", "PageDown"].includes(event.key)) return;
-                    event.preventDefault();
-                    const direction = ["ArrowUp", "PageUp"].includes(event.key) ? 1 : -1;
-                    const step = event.key.startsWith("Page") ? .15 : .05;
-                    point.y = round(clamp(point.y + direction * step)); commit(); rerender();
-                });
-                svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), footprint, heightHandle);
-            }
+            const point = path.waypoints[index]; const group = svgNode("g", { class: "minimax-h3-spatial-point", "data-selected": String(index === state.selected), "data-view": state.view, transform: `translate(${position.x} ${position.y})`, tabindex: "0", role: "button", "aria-label": `Camera position ${index + 1}, ${Math.round(point.at * 100)} percent, ${cameraElevationLabel(point.y).toLowerCase()}. Drag across the plane to reposition; use Camera height to change elevation.` });
             const resolvedAimPoint = resolvedCameraAimWaypoint(path.waypoints, index);
             const namedTargetPoint = stagedAimPoint(shot, path, resolvedAimPoint);
             const aimTarget = cameraAimTarget(path.waypoints, index, namedTargetPoint);
@@ -551,7 +495,8 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                 });
                 svg.appendChild(reticle);
             }
-            const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view, namedTargetPoint)})` });
+            const heightScale = state.view === "perspective" ? cameraHeightScale(point.y) : 1;
+            const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view, namedTargetPoint)}) scale(${heightScale})` });
             cameraGlyph.append(
                 svgNode("rect", { class: "minimax-h3-spatial-camera-body", x: -11, y: -8, width: 20, height: 16, rx: 3 }),
                 svgNode("path", { class: "minimax-h3-spatial-camera-lens", d: "M 8 -6 L 25 -3.5 L 25 3.5 L 8 6 Z" }),
@@ -563,7 +508,7 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
             group.append(cameraGlyph, badge, svgNode("text", { class: "minimax-h3-spatial-point-meta", x: 18, y: -17 }, `${framing} · ${elevationBand(point.y)}`));
             group.addEventListener("click", () => { state.selected = index; renderScene(); renderInspector(); renderTimeline(); });
             group.addEventListener("keydown", (event) => {
-                if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Enter", " ", "a", "A"].includes(event.key)) return;
+                if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", " ", "a", "A"].includes(event.key)) return;
                 event.preventDefault();
                 if (["Enter", " "].includes(event.key)) { state.selected = index; renderScene(); renderInspector(); renderTimeline(); return; }
                 if (["a", "A"].includes(event.key)) {
@@ -574,10 +519,6 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                         if (fallback) point.aimTarget = { kind: "subject", id: fallback.id }; else point.aimMode = "anchor";
                     } else delete point.aimTarget;
                     if (point.aimMode !== "custom") { delete point.panDegrees; delete point.tiltDegrees; }
-                    commit(); rerender(); return;
-                }
-                if (["PageUp", "PageDown"].includes(event.key)) {
-                    point.y = round(clamp(point.y + (event.key === "PageUp" ? .15 : -.15)));
                     commit(); rerender(); return;
                 }
                 const delta = event.shiftKey ? .1 : .03;
@@ -598,8 +539,7 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
                 const move = (moveEvent) => {
                     const rect = svg.getBoundingClientRect();
                     const screen = { x: (moveEvent.clientX - rect.left) * 360 / rect.width, y: (moveEvent.clientY - rect.top) * 240 / rect.height };
-                    if (state.view === "perspective") setCameraHeightFromPerspectiveScreenY(point, screen.y);
-                    else Object.assign(point, unprojectCameraPoint(screen, point, state.view));
+                    Object.assign(point, unprojectCameraPoint(screen, point, state.view));
                     renderScene(); renderInspector(); renderTimeline();
                 };
                 const up = () => { document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); commit(); };
@@ -642,7 +582,7 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         framing.addEventListener("change", () => { if (framing.value) point.framing = framing.value; else delete point.framing; commit(); rerender(); });
         const angle = selectInput(point.angle ?? "", ANGLES, { ariaLabel: `Angle at camera position ${state.selected + 1}` });
         angle.addEventListener("change", () => { if (angle.value) point.angle = angle.value; else delete point.angle; commit(); rerender(); });
-        inspector.append(element("p", "minimax-h3-spatial-control-help", "Camera height moves the camera body; Aim controls where the lens points."));
+        inspector.append(element("p", "minimax-h3-spatial-control-help", "Drag the camera across the plane. Camera height changes its apparent scale here; Aim controls where the lens points."));
         inspector.append(selectField("Framing at this position", framing), selectField("Shot angle at this position", angle));
         const aim = selectInput(point.aimMode ?? "", AIM_MODES, { ariaLabel: `Camera aim at position ${state.selected + 1}` });
         aim.addEventListener("change", () => {

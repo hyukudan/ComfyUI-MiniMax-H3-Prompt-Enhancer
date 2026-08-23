@@ -202,9 +202,9 @@ def normalize_camera_waypoints(value: Any, path: str) -> list[dict[str, Any]]:
         normalized: dict[str, Any] = {
             "id": waypoint_id,
             "at": at,
-            "x": _finite_number(raw.get("x"), f"{item_path}.x", -3.0, 3.0),
+            "x": _finite_number(raw.get("x"), f"{item_path}.x", -1.0, 1.0),
             "y": _finite_number(raw.get("y"), f"{item_path}.y", -1.0, 1.0),
-            "z": _finite_number(raw.get("z"), f"{item_path}.z", -3.0, 3.0),
+            "z": _finite_number(raw.get("z"), f"{item_path}.z", -1.0, 1.0),
         }
         for key in ("framing", "angle"):
             if key in raw:
@@ -531,11 +531,11 @@ def _waypoint_place(point: Mapping[str, Any], reference: str, *, scene_space: bo
         height = _height_state(y, reference, scene_space=scene_space)
         parts = [height, *spatial] if _camera_height_band(y) in {1, 5} else [*spatial, height]
     radius = (x * x + z * z) ** 0.5
-    if radius <= 0.50:
+    if radius <= 0.30:
         parts.append("at close distance")
-    elif radius <= 1.25:
+    elif radius <= 0.70:
         parts.append("at medium distance")
-    elif radius <= 2.50:
+    elif radius <= 1.05:
         parts.append("at far distance")
     else:
         parts.append("at a very far distance")
