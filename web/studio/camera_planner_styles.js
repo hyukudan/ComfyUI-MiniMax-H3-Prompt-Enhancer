@@ -145,21 +145,25 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-empty h3, .minimax-h3-spatial-empty p { margin: 0; }
         .minimax-h3-spatial-empty p { max-width: 420px; color: var(--h3-text-muted); line-height: 1.45; }
         .minimax-h3-spatial-empty-art { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid var(--h3-accent); border-radius: 18px; color: var(--h3-accent); font-size: 30px; background: color-mix(in srgb, var(--h3-accent) 12%, var(--h3-surface)); }
-        .minimax-h3-spatial-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; }
-        .minimax-h3-spatial-toolbar select { width: auto; min-width: 118px; flex: 1 1 118px; }
+        .minimax-h3-spatial-toolbar { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 7px; }
+        .minimax-h3-spatial-toolbar select { width: 100%; min-width: 0; }
         .minimax-h3-spatial-anchor-warning { flex: 1 0 100%; color: var(--h3-warning, #f3c969); font-size: 10px; line-height: 1.35; }
-        .minimax-h3-spatial-segments { display: inline-flex; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); }
+        .minimax-h3-spatial-segments { display: inline-flex; align-self: end; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); }
         .minimax-h3-spatial-segments button { min-height: 32px; border: 0 !important; border-radius: 0 !important; padding: 5px 10px; }
         .minimax-h3-spatial-segments button[aria-pressed="true"] { color: var(--h3-text); background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; }
         .minimax-h3-spatial-workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 10px; }
         .minimax-h3-spatial-canvas { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--h3-accent) 34%, var(--h3-border)); border-radius: var(--h3-radius-md); background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--h3-accent) 12%, transparent), transparent 42%), color-mix(in srgb, var(--h3-bg) 90%, black 10%); }
         .minimax-h3-spatial-canvas svg { display: block; width: 100%; min-height: 270px; touch-action: none; }
         .minimax-h3-spatial-grid { fill: none; stroke: color-mix(in srgb, var(--h3-border-strong) 46%, transparent); stroke-width: 1; }
+        .minimax-h3-spatial-axis-label { fill: color-mix(in srgb, var(--h3-text-muted) 86%, transparent); font: 650 8px/1 var(--h3-mono); letter-spacing: .05em; pointer-events: none; }
+        .minimax-h3-spatial-elevation { fill: none; stroke: var(--h3-tip); stroke-width: 1.5; stroke-dasharray: 4 4; pointer-events: none; }
+        .minimax-h3-spatial-elevation-foot { fill: var(--h3-bg); stroke: var(--h3-tip); stroke-width: 1.5; pointer-events: none; }
         .minimax-h3-spatial-path-shadow { fill: none; stroke: color-mix(in srgb, black 50%, transparent); stroke-width: 10; opacity: .35; }
         .minimax-h3-spatial-path { fill: none; stroke: var(--h3-accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--h3-accent) 60%, transparent)); }
         .minimax-h3-spatial-target circle:first-child { fill: color-mix(in srgb, var(--h3-tip) 14%, var(--h3-bg)); stroke: var(--h3-tip); stroke-width: 2; }
         .minimax-h3-spatial-target circle:nth-child(2) { fill: var(--h3-tip); }
         .minimax-h3-spatial-point text { fill: var(--h3-text); pointer-events: none; font: 700 10px/1 var(--h3-font); }
+        .minimax-h3-spatial-point .minimax-h3-spatial-point-meta { fill: var(--h3-text-muted); font: 600 8px/1 var(--h3-font); text-transform: uppercase; }
         .minimax-h3-spatial-origin-label { fill: var(--h3-text-muted); font: 650 9px/1 var(--h3-font); letter-spacing: .06em; }
         .minimax-h3-spatial-point { cursor: grab; outline: none; }
         .minimax-h3-spatial-point:active { cursor: grabbing; }
@@ -185,8 +189,11 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-spatial-slider output { color: var(--h3-text); font-family: var(--h3-mono); }
         .minimax-h3-spatial-slider input { width: 100%; min-width: 0; accent-color: var(--h3-accent); }
         .minimax-h3-spatial-aim { display: grid; min-width: 0; gap: 4px; }
-        .minimax-h3-spatial-aim > span { color: var(--h3-text-muted); font-size: 10.5px; }
-        .minimax-h3-spatial-aim select { width: 100%; min-width: 0; }
+        .minimax-h3-spatial-aim > span,
+        .minimax-h3-spatial-select > span { color: var(--h3-text-muted); font-size: 10.5px; }
+        .minimax-h3-spatial-aim select,
+        .minimax-h3-spatial-select select { width: 100%; min-width: 0; }
+        .minimax-h3-spatial-select { display: grid; min-width: 0; gap: 4px; }
         .minimax-h3-spatial-camera-glyph { transform-box: fill-box; transform-origin: center; }
         .minimax-h3-spatial-inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
         .minimax-h3-spatial-note { margin: 0; color: var(--h3-text-muted); font-size: 9.5px; text-align: right; }
@@ -195,6 +202,7 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-camera-preset-disclosure .minimax-h3-camera-phases { padding: 0 10px 10px; }
         @container h3-camera-planner (min-width: 720px) {
             .minimax-h3-spatial-workspace { grid-template-columns: minmax(0, 1.55fr) minmax(190px, .72fr); }
+            .minimax-h3-spatial-toolbar { grid-template-columns: auto repeat(4, minmax(118px, 1fr)); }
         }
         @container h3-camera-planner (min-width: 680px) {
             .minimax-h3-camera-phases { grid-template-columns: minmax(0, .8fr) minmax(0, 1.25fr) minmax(0, .8fr); }

@@ -5,6 +5,10 @@ const VIEW_STATE = new Map();
 const SHAPES = [["smooth", "Smooth"], ["straight", "Straight"], ["arc_left", "Arc left"], ["arc_right", "Arc right"]];
 const SPACES = [["subject", "Around subject"], ["scene", "In scene"]];
 const AIM_MODES = [["", "Aim: Unspecified"], ["anchor", "Keep anchor in frame"], ["travel", "Follow direction of travel"], ["custom", "Custom direction"]];
+const SPEEDS = [["", "Automatic"], ["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]];
+const EASINGS = [["", "Automatic"], ["linear", "Constant"], ["ease_in", "Accelerate"], ["ease_out", "Decelerate"], ["ease_in_out", "Accelerate then settle"]];
+const FRAMINGS = [["", "Unspecified"], ["extreme_close_up", "Extreme close-up"], ["close_up", "Close-up"], ["medium_close_up", "Medium close-up"], ["medium", "Medium"], ["medium_wide", "Medium wide"], ["wide", "Wide"], ["extreme_wide", "Extreme wide"]];
+const ANGLES = [["", "Unspecified"], ["eye_level", "Eye level"], ["low_angle", "Low angle"], ["high_angle", "High angle"], ["overhead", "Overhead"], ["dutch_static", "Dutch"], ["worms_eye", "Worm's eye"]];
 
 function clamp(value, minimum = -1, maximum = 1) {
     return Math.max(minimum, Math.min(maximum, Number(value)));
@@ -38,18 +42,26 @@ export function normalizeSpatialWaypoints(value) {
 
 export function projectCameraPoint(point, view = "perspective") {
     if (view === "top") return { x: 180 + point.x * 126, y: 122 + point.z * 82 };
-    return { x: 180 + point.x * 116, y: 137 - point.y * 72 + point.z * 44 };
+    if (view === "front") return { x: 180 + point.x * 126, y: 122 - point.y * 82 };
+    return { x: 180 + point.x * 90 - point.z * 55, y: 128 + point.x * 45 + point.z * 45 - point.y * 70 };
 }
 
 export function unprojectCameraPoint(screen, point, view = "perspective") {
     if (view === "top") return { ...point, x: round(clamp((screen.x - 180) / 126)), z: round(clamp((screen.y - 122) / 82)) };
-    return { ...point, x: round(clamp((screen.x - 180) / 116)), z: round(clamp((screen.y - 137 + point.y * 72) / 44)) };
+    if (view === "front") return { ...point, x: round(clamp((screen.x - 180) / 126)), y: round(clamp((122 - screen.y) / 82)) };
+    const horizontal = screen.x - 180;
+    const vertical = screen.y - 128 + point.y * 70;
+    return {
+        ...point,
+        x: round(clamp((45 * horizontal + 55 * vertical) / 6525)),
+        z: round(clamp((-45 * horizontal + 90 * vertical) / 6525)),
+    };
 }
 
 export function spatialPathD(waypoints, view = "perspective", shape = "smooth") {
     const points = waypoints.map((point) => projectCameraPoint(point, view));
     if (!points.length) return "";
-    if (shape === "straight" || points.length < 3) return points.map((point, index) => `${index ? "L" : "M"} ${round(point.x)} ${round(point.y)}`).join(" ");
+    if (shape === "straight" || points.length < 2) return points.map((point, index) => `${index ? "L" : "M"} ${round(point.x)} ${round(point.y)}`).join(" ");
     let result = `M ${round(points[0].x)} ${round(points[0].y)}`;
     for (let index = 1; index < points.length; index += 1) {
         const previous = points[index - 1]; const point = points[index];
@@ -67,7 +79,7 @@ export function cameraIconRotation(waypoints, index, view = "perspective") {
     const projected = waypoints.map((item) => projectCameraPoint(item, view));
     const here = projected[index];
     let target;
-    if (point.aimMode === "anchor") target = { x: 180, y: 122 };
+    if (point.aimMode === "anchor") target = projectCameraPoint({ x: 0, y: 0, z: 0 }, view);
     else if (point.aimMode === "travel") target = projected[index + 1] ?? projected[index - 1];
     else if (point.aimMode === "custom") return Number(point.panDegrees ?? 0);
     if (!target) return 0;
@@ -107,16 +119,24 @@ export function redistributeSpatialWaypointTiming(waypoints) {
 }
 
 function grid(svg, view) {
-    if (view === "top") {
-        for (let x = 54; x <= 306; x += 42) svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-grid", d: `M ${x} 38 L ${x} 206` }));
-        for (let y = 38; y <= 206; y += 28) svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-grid", d: `M 54 ${y} L 306 ${y}` }));
-        return;
+    const values = [-1, -.67, -.33, 0, .33, .67, 1];
+    const line = (from, to) => {
+        const a = projectCameraPoint(from, view); const b = projectCameraPoint(to, view);
+        svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-grid", d: `M ${round(a.x)} ${round(a.y)} L ${round(b.x)} ${round(b.y)}` }));
+    };
+    if (view === "front") {
+        for (const value of values) line({ x: value, y: -1, z: 0 }, { x: value, y: 1, z: 0 });
+        for (const value of values) line({ x: -1, y: value, z: 0 }, { x: 1, y: value, z: 0 });
+    } else {
+        for (const value of values) line({ x: value, y: 0, z: -1 }, { x: value, y: 0, z: 1 });
+        for (const value of values) line({ x: -1, y: 0, z: value }, { x: 1, y: 0, z: value });
     }
-    for (let index = -5; index <= 5; index += 1) svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-grid", d: `M 180 62 L ${180 + index * 31} 210` }));
-    for (let index = 0; index < 7; index += 1) {
-        const y = 82 + index * 21; const width = 34 + index * 21;
-        svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-grid", d: `M ${180 - width} ${y} L ${180 + width} ${y}` }));
-    }
+}
+
+function selectField(label, control) {
+    const root = element("label", "minimax-h3-spatial-select");
+    root.append(element("span", "", label), control);
+    return root;
 }
 
 function slider(label, value, minimum, maximum, step, onInput) {
@@ -162,18 +182,22 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
 
     const toolbar = element("div", "minimax-h3-spatial-toolbar");
     const viewSwitch = element("div", "minimax-h3-spatial-segments"); viewSwitch.setAttribute("role", "group"); viewSwitch.setAttribute("aria-label", "Camera workspace view");
-    for (const [token, label] of [["perspective", "Perspective"], ["top", "Top"]]) {
+    for (const [token, label] of [["perspective", "3D"], ["top", "Top"], ["front", "Front"]]) {
         const button = actionButton(label, () => { state.view = token; renderScene(); }); button.setAttribute("aria-pressed", String(state.view === token)); viewSwitch.appendChild(button);
     }
     const shape = selectInput(path.pathShape ?? "smooth", SHAPES, { ariaLabel: "Path shape" });
     shape.addEventListener("change", () => { path.pathShape = shape.value; commit(); rerender(); });
+    const speed = selectInput(path.speed ?? "", SPEEDS, { ariaLabel: "Overall camera pace" });
+    speed.addEventListener("change", () => { if (speed.value) path.speed = speed.value; else delete path.speed; commit(); rerender(); });
+    const easing = selectInput(path.easing ?? "", EASINGS, { ariaLabel: "Camera speed change" });
+    easing.addEventListener("change", () => { if (easing.value) path.easing = easing.value; else delete path.easing; commit(); rerender(); });
     const space = selectInput(path.coordinateSpace ?? "subject", SPACES, { ariaLabel: "Coordinate space" });
     space.addEventListener("change", () => {
         path.coordinateSpace = space.value;
         if (space.value !== "subject") delete path.anchorTarget;
         commit(); rerender();
     });
-    toolbar.append(viewSwitch, shape, space);
+    toolbar.append(viewSwitch, selectField("Path shape", shape), selectField("Overall pace", speed), selectField("Speed change", easing), selectField("Reference frame", space));
     if ((path.coordinateSpace ?? "subject") === "subject") {
         const declared = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
         const subjects = (project?.subjects ?? []).filter((subject) => !declared.size || declared.has(subject.id));
@@ -244,18 +268,33 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         const projected = path.waypoints.map((point) => projectCameraPoint(point, state.view));
         svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-path-shadow", d: spatialPathD(path.waypoints, state.view, path.pathShape) }));
         svg.appendChild(svgNode("path", { class: "minimax-h3-spatial-path", d: spatialPathD(path.waypoints, state.view, path.pathShape) }));
-        const target = svgNode("g", { class: "minimax-h3-spatial-target", transform: "translate(180 122)" });
+        const origin = projectCameraPoint({ x: 0, y: 0, z: 0 }, state.view);
+        const target = svgNode("g", { class: "minimax-h3-spatial-target", transform: `translate(${origin.x} ${origin.y})` });
         target.append(svgNode("circle", { r: 16 }), svgNode("circle", { r: 4 })); svg.appendChild(target);
         const anchorSubject = (project?.subjects ?? []).find((subject) => subject.id === path.anchorTarget?.id);
         const originLabel = path.coordinateSpace === "subject"
             ? anchorSubject ? `AROUND ${String(anchorSubject.name || anchorSubject.id).toLocaleUpperCase()}` : ((project?.subjects ?? []).length > 1 ? "CHOOSE SUBJECT ANCHOR" : `AROUND ${String(project?.subjects?.[0]?.name || "SHOT SUBJECT").toLocaleUpperCase()}`)
             : "SCENE ORIGIN";
         svg.appendChild(svgNode("text", { class: "minimax-h3-spatial-origin-label", x: 14, y: 22 }, originLabel));
+        if (state.view !== "front") {
+            const labels = [
+                ["FRAME LEFT", projectCameraPoint({ x: -1, y: 0, z: 0 }, state.view)],
+                ["FRAME RIGHT", projectCameraPoint({ x: 1, y: 0, z: 0 }, state.view)],
+                ["BEHIND", projectCameraPoint({ x: 0, y: 0, z: -1 }, state.view)],
+                ["IN FRONT", projectCameraPoint({ x: 0, y: 0, z: 1 }, state.view)],
+            ];
+            for (const [label, position] of labels) svg.appendChild(svgNode("text", { class: "minimax-h3-spatial-axis-label", x: position.x, y: position.y - 8, "text-anchor": "middle" }, label));
+        }
         projected.forEach((position, index) => {
             const point = path.waypoints[index]; const group = svgNode("g", { class: "minimax-h3-spatial-point", "data-selected": String(index === state.selected), transform: `translate(${position.x} ${position.y})`, tabindex: "0", role: "button", "aria-label": `Camera position ${index + 1}, ${Math.round(point.at * 100)} percent` });
+            if (state.view === "perspective" && Math.abs(point.y) >= .01) {
+                const ground = projectCameraPoint({ ...point, y: 0 }, state.view);
+                svg.append(svgNode("path", { class: "minimax-h3-spatial-elevation", d: `M ${ground.x} ${ground.y} L ${position.x} ${position.y}` }), svgNode("circle", { class: "minimax-h3-spatial-elevation-foot", cx: ground.x, cy: ground.y, r: 4 }));
+            }
             const cameraGlyph = svgNode("g", { class: "minimax-h3-spatial-camera-glyph", transform: `rotate(${cameraIconRotation(path.waypoints, index, state.view)})` });
             cameraGlyph.appendChild(svgNode("path", { d: "M 10 -7 L 27 -14 L 27 14 L 10 7 Z" }));
-            group.append(svgNode("circle", { r: index === state.selected ? 15 : 12 }), cameraGlyph, svgNode("text", { y: 4, "text-anchor": "middle" }, String(index + 1)));
+            const framing = String(point.framing ?? "auto").replaceAll("_", " ");
+            group.append(svgNode("circle", { r: index === state.selected ? 15 : 12 }), cameraGlyph, svgNode("text", { y: 4, "text-anchor": "middle" }, String(index + 1)), svgNode("text", { class: "minimax-h3-spatial-point-meta", x: 18, y: -17 }, `${framing} · elev ${Number(point.y).toFixed(2)}`));
             group.addEventListener("click", () => { state.selected = index; renderScene(); renderInspector(); renderTimeline(); });
             group.addEventListener("keydown", (event) => {
                 if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", " "].includes(event.key)) return;
@@ -295,7 +334,12 @@ export function renderSpatialCameraEditor(container, shot, project, commit, rere
         const heading = element("div", "minimax-h3-spatial-inspector-heading");
         heading.append(element("strong", "", `Position ${state.selected + 1}`), element("span", "", `${Math.round(point.at * 100)}% of shot`));
         const update = (key) => (value, final) => { point[key] = round(value); renderScene(); if (final) { commit(); rerender(); } };
-        inspector.append(heading, slider("Left / right", point.x, -1, 1, .01, update("x")), slider("Height", point.y, -1, 1, .01, update("y")), slider("Behind / in front", point.z, -1, 1, .01, update("z")));
+        inspector.append(heading, slider("Frame left / right", point.x, -1, 1, .01, update("x")), slider("Camera elevation", point.y, -1, 1, .01, update("y")), slider("Behind / in front", point.z, -1, 1, .01, update("z")));
+        const framing = selectInput(point.framing ?? "", FRAMINGS, { ariaLabel: `Framing at camera position ${state.selected + 1}` });
+        framing.addEventListener("change", () => { if (framing.value) point.framing = framing.value; else delete point.framing; commit(); rerender(); });
+        const angle = selectInput(point.angle ?? "", ANGLES, { ariaLabel: `Angle at camera position ${state.selected + 1}` });
+        angle.addEventListener("change", () => { if (angle.value) point.angle = angle.value; else delete point.angle; commit(); rerender(); });
+        inspector.append(selectField("Framing at this position", framing), selectField("Angle at this position", angle));
         const aim = selectInput(point.aimMode ?? "", AIM_MODES, { ariaLabel: `Camera aim at position ${state.selected + 1}` });
         aim.addEventListener("change", () => {
             if (aim.value) point.aimMode = aim.value; else delete point.aimMode;

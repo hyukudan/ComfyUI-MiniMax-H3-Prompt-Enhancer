@@ -41,7 +41,7 @@ test("playback interpolation follows waypoint timing instead of point index", ()
     assert.deepEqual(point, { at: .625, x: .5, y: .5, z: -.5 });
 });
 
-test("projection round-trips draggable axes in perspective and top views", () => {
+test("projection round-trips draggable axes in isometric, top and front views", () => {
     const point = { x: .35, y: -.2, z: .42 };
     for (const view of ["perspective", "top"]) {
         const projected = projectCameraPoint(point, view);
@@ -49,6 +49,21 @@ test("projection round-trips draggable axes in perspective and top views", () =>
         assert.equal(result.x, point.x);
         assert.equal(result.z, point.z);
     }
+    const front = unprojectCameraPoint(projectCameraPoint(point, "front"), point, "front");
+    assert.equal(front.x, point.x);
+    assert.equal(front.y, point.y);
+});
+
+test("isometric platform stays a four-corner plane and elevation moves vertically", () => {
+    const corners = [
+        projectCameraPoint({ x: -1, y: 0, z: -1 }), projectCameraPoint({ x: 1, y: 0, z: -1 }),
+        projectCameraPoint({ x: 1, y: 0, z: 1 }), projectCameraPoint({ x: -1, y: 0, z: 1 }),
+    ];
+    assert.equal(new Set(corners.map((point) => `${point.x},${point.y}`)).size, 4);
+    const ground = projectCameraPoint({ x: .2, y: 0, z: -.3 });
+    const raised = projectCameraPoint({ x: .2, y: .6, z: -.3 });
+    assert.equal(ground.x, raised.x);
+    assert.ok(raised.y < ground.y);
 });
 
 test("adding a waypoint interpolates position and timing without exceeding six", () => {
