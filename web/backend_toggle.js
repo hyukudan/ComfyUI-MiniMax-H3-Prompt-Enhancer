@@ -56,7 +56,6 @@ const LOCAL_WIDGETS = [
 ];
 const INSTRUMENTAL_WIDGET = "instrumental_description";
 const INSTRUMENTAL_STYLE_WIDGET = "instrumental_style";
-const INSTRUMENTAL_STYLE_PROXY_WIDGET = "minimax_h3_instrumental_style_proxy";
 const INSTRUMENTAL_STYLE_CHOICES = [
     ["none", "No genre / preserve description"],
     ["cinematic_orchestral", "Cinematic orchestral"],
@@ -2218,7 +2217,6 @@ function releaseCreativeDirectionPanel(node) {
     node.__minimaxCinematographyState = null;
     node.__minimaxShotPlanState = null;
     node.__minimaxProxyManagedWidgets = null;
-    node.__minimaxInstrumentalStyleProxy = null;
     node.__minimaxCreativeLayoutPending = false;
     node.__minimaxStudioController = null;
     node.__minimaxStudioDashboard = null;
@@ -3591,6 +3589,34 @@ function repairLegacyModelDiscoveryShift(node, info) {
     return true;
 }
 
+function repairInterleavedInstrumentalStyleProxyShift(node, info) {
+    const values = info?.widgets_values;
+    if (!Array.isArray(values)) return false;
+    const persistentWidgets = (node.widgets ?? []).filter((widget) => widget.serialize !== false);
+    const scoreIndex = persistentWidgets.findIndex((widget) => widget.name === "background_score_policy");
+    const holeIndex = scoreIndex + 1;
+    if (scoreIndex < 0 || values.length <= persistentWidgets.length || values[holeIndex] !== null
+        || !["audible", "silent_mouth_acting_experimental", "none"].includes(values[holeIndex + 2])) return false;
+    const repairedValues = [
+        ...values.slice(0, holeIndex),
+        ...values.slice(holeIndex + 1),
+    ];
+    persistentWidgets.forEach((widget, index) => {
+        if (index < repairedValues.length) widget.value = repairedValues[index];
+    });
+    info.widgets_values = repairedValues;
+    return true;
+}
+
+function restoreNamedWidgetValues(node, info) {
+    const values = info?.widgets_values_named;
+    if (!values || typeof values !== "object" || Array.isArray(values)) return false;
+    for (const widget of node.widgets ?? []) {
+        if (widget.serialize !== false && Object.hasOwn(values, widget.name)) widget.value = values[widget.name];
+    }
+    return true;
+}
+
 function visibleWidgetHeight(node) {
     const width = Math.max(MIN_NODE_WIDTH, Number(node.size?.[0]) || 0);
     let height = 88 + Math.max(0, (node.outputs?.length ?? 0) - 1) * 20;
@@ -3731,13 +3757,11 @@ function enforceConditionalVisibility(node) {
     for (const name of LOCAL_WIDGETS) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), !managed.has(name) && !useRemote);
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     const instrumentalActive = score?.value === "add_instrumental";
-    const styleProxy = node.__minimaxInstrumentalStyleProxy;
     setWidgetVisible(node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET), instrumentalActive);
     setWidgetVisible(
         node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET),
-        instrumentalActive && !styleProxy,
+        instrumentalActive && !managed.has(INSTRUMENTAL_STYLE_WIDGET),
     );
-    if (styleProxy) setWidgetVisible(styleProxy.widget, instrumentalActive);
     const modeWidget = node.widgets?.find((widget) => widget.name === "mode");
     if (modeWidget) {
         const multishot = modeWidget.value === "chained_multishot";
@@ -3769,7 +3793,6 @@ function conditionalVisibilitySignature(node) {
     return [
         node.widgets?.length ?? 0,
         node.__minimaxProxyManagedWidgets?.size ?? 0,
-        node.__minimaxInstrumentalStyleProxy ? 1 : 0,
         String(value("use_remote_model")),
         String(value("mode")),
         String(value("background_score_policy")),
@@ -3832,51 +3855,12 @@ function refreshInstrumentalWidget(node) {
     const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
     const description = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_WIDGET);
     const style = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
-    const styleProxy = node.__minimaxInstrumentalStyleProxy;
     const active = score?.value === "add_instrumental";
     const panelManaged = node.__minimaxProxyManagedWidgets?.has(INSTRUMENTAL_STYLE_WIDGET);
     setWidgetVisible(description, active && !node.__minimaxProxyManagedWidgets?.has(INSTRUMENTAL_WIDGET));
-    setWidgetVisible(style, active && !styleProxy && !panelManaged);
-    if (styleProxy) {
-        setWidgetVisible(style, false);
-        setWidgetVisible(styleProxy.widget, active && !panelManaged);
-        styleProxy.widget.value = styleProxy.valueToLabel.get(String(style?.value ?? "none"))
-            ?? INSTRUMENTAL_STYLE_CHOICES[0][1];
-    }
+    setWidgetVisible(style, active && !panelManaged);
     node.__minimaxCreativePanel?.audioSettings?.refreshSummary?.();
     fitNodeToVisibleWidgets(node);
-}
-
-function addInstrumentalStyleProxy(node) {
-    if (node.__minimaxInstrumentalStyleProxy || typeof node.addWidget !== "function") return;
-    const canonical = node.widgets?.find((widget) => widget.name === INSTRUMENTAL_STYLE_WIDGET);
-    const score = node.widgets?.find((widget) => widget.name === "background_score_policy");
-    if (!canonical || !score) return;
-    const valueToLabel = new Map(INSTRUMENTAL_STYLE_CHOICES);
-    const labelToValue = new Map(INSTRUMENTAL_STYLE_CHOICES.map(([value, label]) => [label, value]));
-    const proxyWidget = node.addWidget(
-        "combo",
-        INSTRUMENTAL_STYLE_PROXY_WIDGET,
-        valueToLabel.get(String(canonical.value ?? "none")) ?? INSTRUMENTAL_STYLE_CHOICES[0][1],
-        (label) => setCanonicalValue(node, canonical, labelToValue.get(String(label)) ?? "none"),
-        {
-            values: INSTRUMENTAL_STYLE_CHOICES.map(([, label]) => label),
-            serialize: false,
-            tooltip: canonical.options?.tooltip ?? "Adapt the instrumental arrangement while preserving compatible user direction.",
-        },
-    );
-    proxyWidget.label = "Music genre / style";
-    markPanelWidgetNonPersistent(proxyWidget);
-    const currentIndex = node.widgets.indexOf(proxyWidget);
-    const scoreIndex = node.widgets.indexOf(score);
-    if (currentIndex >= 0 && scoreIndex >= 0) {
-        node.widgets.splice(currentIndex, 1);
-        node.widgets.splice(scoreIndex + 1, 0, proxyWidget);
-    }
-    node.__minimaxInstrumentalStyleProxy = {
-        widget: proxyWidget, canonical, valueToLabel, labelToValue,
-    };
-    setWidgetVisible(canonical, false);
 }
 
 function refreshBackendWidgets(node) {
@@ -3916,7 +3900,6 @@ function configureAudioNode(node) {
     applyLabels(node);
     protectApiKeyWidget(node);
     normalizeMigratedRuntimeWidgets(node);
-    addInstrumentalStyleProxy(node);
     wrapRefreshCallback(node, "background_score_policy", refreshInstrumentalWidget);
     wrapRefreshCallback(node, "mode", (target) => {
         enforceConditionalVisibility(target);
@@ -3980,8 +3963,10 @@ app.registerExtension({
             const result = originalConfigured?.apply(this, arguments);
             this.__minimaxWidgetMigrationComplete = false;
             addRemoteModelDiscovery(this);
-            migrateLegacyLatitudePair(this, arguments[0]);
             repairLegacyModelDiscoveryShift(this, arguments[0]);
+            repairInterleavedInstrumentalStyleProxyShift(this, arguments[0]);
+            restoreNamedWidgetValues(this, arguments[0]);
+            migrateLegacyLatitudePair(this, arguments[0]);
             wrapRefreshCallback(this, "use_remote_model", refreshBackendWidgets);
             configureAudioNode(this);
             configureCreativeDirectionNode(this, NODE_NAME);
@@ -4032,6 +4017,8 @@ app.registerExtension({
         const originalConfigured = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const result = originalConfigured?.apply(this, arguments);
+            repairInterleavedInstrumentalStyleProxyShift(this, arguments[0]);
+            restoreNamedWidgetValues(this, arguments[0]);
             configureAudioNode(this);
             if (CREATIVE_NODE_NAMES.has(nodeData.name)) configureCreativeDirectionNode(this, nodeData.name);
             return result;

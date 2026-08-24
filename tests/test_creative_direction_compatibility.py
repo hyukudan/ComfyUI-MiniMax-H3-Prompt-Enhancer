@@ -414,22 +414,42 @@ def test_frontend_uses_compact_non_persistent_accordions_and_keeps_advanced_last
     assert "setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false)" in source
 
 
-def test_frontend_places_nonpersistent_music_style_proxy_below_background_score():
+def test_frontend_does_not_interleave_nonpersistent_widgets_with_canonical_storage():
     source = FRONTEND.read_text(encoding="utf-8")
-    assert 'const INSTRUMENTAL_STYLE_PROXY_WIDGET = "minimax_h3_instrumental_style_proxy"' in source
-    proxy = source.split("function addInstrumentalStyleProxy", 1)[1].split(
-        "function refreshBackendWidgets", 1,
+    assert "function addInstrumentalStyleProxy" not in source
+    assert 'node.widgets.splice(scoreIndex + 1, 0, proxyWidget)' not in source
+    audio_panel = source.split("function createAudioSettingsDetails", 1)[1].split(
+        "function createAdvancedSettingsDetails", 1,
     )[0]
-    assert 'node.addWidget(\n        "combo"' in proxy
-    assert "node.addDOMWidget" not in proxy
-    assert 'node.widgets.indexOf(score)' in proxy
-    assert 'node.widgets.splice(scoreIndex + 1, 0, proxyWidget)' in proxy
-    assert "markPanelWidgetNonPersistent(proxyWidget)" in proxy
+    assert '["instrumental_style", "Music genre / style"]' in audio_panel
     for token in (
         "action_cinematic", "mystery_investigation", "suspense_build", "combat_rhythmic",
         "chinese_martial_arts", "horror_intense",
     ):
         assert f'["{token}",' in source
+
+
+def test_frontend_repairs_the_interleaved_music_proxy_hole_before_hydration():
+    source = FRONTEND.read_text(encoding="utf-8")
+    repair = source.split("function repairInterleavedInstrumentalStyleProxyShift", 1)[1].split(
+        "function restoreNamedWidgetValues", 1,
+    )[0]
+    assert 'widget.name === "background_score_policy"' in repair
+    assert "values[holeIndex] !== null" in repair
+    assert 'values.slice(holeIndex + 1)' in repair
+    assert "info.widgets_values = repairedValues" in repair
+
+    restore = source.split("function restoreNamedWidgetValues", 1)[1].split(
+        "function visibleWidgetHeight", 1,
+    )[0]
+    assert "info?.widgets_values_named" in restore
+    assert "Object.hasOwn(values, widget.name)" in restore
+
+    configured = source.split("nodeType.prototype.onConfigure = function () {", 1)[1].split(
+        "const originalDrawForeground", 1,
+    )[0]
+    assert configured.index("repairInterleavedInstrumentalStyleProxyShift") < configured.index("restoreNamedWidgetValues")
+    assert configured.index("restoreNamedWidgetValues") < configured.index("configureAudioNode")
 
 
 def test_frontend_sanitizer_accepts_every_selectable_preset():
