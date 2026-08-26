@@ -5,7 +5,7 @@ import { createEnvironmentDraft, renderEnvironmentsTab } from "./tab_environment
 import { projectForController, uniqueId } from "./project_editor.js";
 import { referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
 import { disconnectPurposeReference, replacePurposeReference } from "./media_workflows.js";
-import { mediaTypeForFile, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
+import { mediaTypeForFile, referenceSourceForAsset, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
 import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "./schema.js";
 import { renderReferencesTab } from "./tab_references.js";
 import { renderStagingTab } from "./tab_staging.js";
@@ -26,7 +26,7 @@ function button(label, action, className = "minimax-h3-button minimax-h3-button-
 }
 
 function directorState(controller) {
-    return controller.directorUiState ??= { composeMode: "build", libraryMode: "media", castPlacesMode: "subjects", generationId: "" };
+    return controller.directorUiState ??= { composeMode: "build", libraryMode: "subjects", castPlacesMode: "subjects", generationId: "" };
 }
 
 function shotPlanForController(controller) {
@@ -562,7 +562,7 @@ function composeDropTarget(controller, purposeId, relationId, selectedAsset, con
     if (connected) {
         const disconnectButton = button("×", () => disconnect(purposeId, relationId), "minimax-h3-director-drop-disconnect");
         disconnectButton.setAttribute("aria-label", `Disconnect ${definition.label.toLowerCase()} reference`);
-        disconnectButton.title = `Disconnect from ${definition.label}; keep the file in ${controller.isVisualReferenceDirector ? "Library" : "Media"}`;
+        disconnectButton.title = `Disconnect from ${definition.label}; keep the file in Library · Files`;
         wrapper.appendChild(disconnectButton);
     }
     wrapper.appendChild(fileInput);
@@ -578,7 +578,7 @@ function renderComposeAssetTray(container, controller, project, shotPlan, shot, 
     const header = el("div", "minimax-h3-director-tray-header");
     header.append(el("div", "", "References"), el("span", "", assets.length
         ? "Select or drag onto a highlighted destination"
-        : `Import files in ${controller.isVisualReferenceDirector ? "Library" : "Media"} first`));
+        : "Import files in Library · Files first"));
     tray.appendChild(header);
     const rail = el("div", "minimax-h3-director-asset-rail");
     for (const asset of assets) {
@@ -595,7 +595,7 @@ function renderComposeAssetTray(container, controller, project, shotPlan, shot, 
         card.append(composeMediaVisual(asset, sources[asset.id]), copy); rail.appendChild(card);
     }
     if (!assets.length) rail.appendChild(button(
-        controller.isVisualReferenceDirector ? "Open Library" : "Open Media",
+        "Open Library",
         () => controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "media"),
         "minimax-h3-director-tray-empty",
     ));
@@ -720,7 +720,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         if (!committed?.ok) {
             feedback.dataset.valid = "false"; feedback.textContent = committed?.message || "Could not disconnect the reference atomically."; return;
         }
-        controller.directorUiState.composeFeedback = `${result.summary}. The file remains in ${controller.isVisualReferenceDirector ? "Library" : "Media"}.`;
+        controller.directorUiState.composeFeedback = `${result.summary}. The file remains in Library · Files.`;
         rerender();
     };
     const layout = el("div", "minimax-h3-director-compose-grid");
@@ -793,7 +793,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     const lanes = el("section", "minimax-h3-director-lanes");
     const lanesHeading = el("div", "minimax-h3-director-scene-heading");
     const lanesIdentity = el("div");
-    lanesIdentity.append(el("h3", "", "References"), el("small", "", "Connect here or manage reusable files in Media."));
+    lanesIdentity.append(el("h3", "", "References"), el("small", "", "Connect here or manage reusable files in Library · Files."));
     lanesHeading.append(lanesIdentity, el("span", "minimax-h3-scope-chip", "This Shot"));
     lanes.appendChild(lanesHeading);
     const roles = new Map();
@@ -810,7 +810,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         lane.appendChild(el("strong", "", laneName));
         const values = roles.get(laneName) ?? [];
         lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ")
-            || `Drop or connect a reference in ${controller.isVisualReferenceDirector ? "Library" : "Media"}`));
+            || "Drop or connect a reference in Library · Files"));
         if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, importFile, disconnect, values.length > 0));
         else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, importFile, disconnect, values.length > 0));
         else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
@@ -923,10 +923,10 @@ export function renderDirectorCompose(container, controller) {
     const top = el("header", "minimax-h3-director-workspace-header");
     const copy = el("div");
     copy.append(
-        el("h2", "", "Compose"),
+        el("h2", "", "Storyboard"),
         el("p", "", controller.isVisualReferenceDirector
             ? "Maintain a legacy reference project or migrate it into Prompt Studio."
-            : "Create the complete prompt visually here: subjects, identity images, voices, backgrounds, action, dialogue, camera and physical H3 outputs share one native project."),
+            : "Build the prompt visually, Shot by Shot: cast, identity and voice, environment, action, sound and camera stay connected in one Studio Project."),
     );
     if (state.composeMode === "board" || state.composeMode === "details") state.composeMode = "build";
     top.appendChild(copy); container.appendChild(top);
@@ -960,7 +960,7 @@ export function renderDirectorCompose(container, controller) {
         );
         else contextActions.appendChild(button("Delete", () => { state.confirmDeleteShotId = selected.id; rerender(); }, "minimax-h3-director-text-button minimax-h3-director-delete"));
     }
-    contextTop.append(identity, modeSwitch(state, rerender, [["build", "Build"], ["staging", "Stage"], ["camera", "Camera"]]), contextActions);
+    contextTop.append(identity, modeSwitch(state, rerender, [["build", "Content"], ["staging", "Stage"], ["camera", "Camera"]]), contextActions);
     context.appendChild(contextTop);
     const strip = el("div", "minimax-h3-director-scene-strip"); strip.setAttribute("aria-label", "Shot strip");
     for (const [index, shot] of plan.shots.entries()) {
@@ -1024,19 +1024,83 @@ export function renderCastPlaces(container, controller) {
     (state.castPlacesMode === "environments" ? renderEnvironmentsTab : renderSubjectsTab)(host, controller);
 }
 
+function renderFilesLibrary(container, controller) {
+    container.replaceChildren();
+    const project = projectForController(controller);
+    if (!project) return renderReferencesTab(container, controller);
+    const state = directorState(controller);
+    const sourceDocument = controller.referenceDirectorDocument?.();
+    const director = sourceDocument?.kind === "v1" ? sourceDocument.value : { format: "minimax-h3-reference-director", formatVersion: 1, sources: {} };
+    if (!["all", "picture", "video", "audio"].includes(state.fileFilter)) state.fileFilter = "all";
+
+    const toolbar = el("div", "minimax-h3-files-toolbar");
+    const filters = el("div", "minimax-h3-director-mode-switch");
+    for (const [id, label] of [["all", "All"], ["picture", "Images"], ["video", "Video"], ["audio", "Audio"]]) {
+        const control = button(label, () => { state.fileFilter = id; renderFilesLibrary(container, controller); }, "minimax-h3-director-mode");
+        control.setAttribute("aria-selected", String(state.fileFilter === id)); filters.appendChild(control);
+    }
+    const fileInput = el("input"); fileInput.type = "file"; fileInput.multiple = true; fileInput.accept = "image/*,video/*,audio/*"; fileInput.hidden = true;
+    const feedback = el("p", "minimax-h3-studio-status"); feedback.hidden = true;
+    const importButton = button("+ Import files", () => fileInput.click(), "minimax-h3-button minimax-h3-button-primary");
+    fileInput.addEventListener("change", async () => {
+        const files = [...(fileInput.files ?? [])]; if (!files.length) return;
+        importButton.disabled = true; feedback.hidden = false; feedback.dataset.valid = "true"; feedback.textContent = `Importing ${files.length} file${files.length === 1 ? "" : "s"}…`;
+        const nextProject = structuredClone(project); let nextDirector = structuredClone(director); const failures = [];
+        for (const file of files) {
+            const type = mediaTypeForFile(file);
+            if (!type) { failures.push(`${file.name}: unsupported`); continue; }
+            try {
+                const source = await controller.uploadReferenceFile(file);
+                const id = uniqueId(nextProject.assets, "asset.");
+                nextProject.assets.push({ id, type, name: String(file.name).replace(/\.[^.]+$/, "") || `${type} file`, available: true });
+                nextDirector = setReferenceSource(nextDirector, id, source);
+            } catch (error) { failures.push(`${file.name}: ${error?.message ?? "upload failed"}`); }
+        }
+        const result = controller.replaceProjectBundleAtomically?.({ mediaProject: nextProject, referenceDirector: nextDirector });
+        if (!result?.ok) failures.push(result?.message ?? "Could not save imported files.");
+        if (failures.length) { state.fileFeedback = failures.join(" "); state.fileFeedbackValid = false; }
+        else { state.fileFeedback = `${files.length} file${files.length === 1 ? "" : "s"} imported. Drag or connect them from Storyboard.`; state.fileFeedbackValid = true; }
+        renderDirectorLibrary(container, controller);
+    });
+    toolbar.append(filters, importButton, fileInput); container.append(toolbar, feedback);
+    if (state.fileFeedback) { feedback.hidden = false; feedback.dataset.valid = String(state.fileFeedbackValid !== false); feedback.textContent = state.fileFeedback; delete state.fileFeedback; }
+
+    const assets = (project.assets ?? []).filter((asset) => state.fileFilter === "all" || asset.type === state.fileFilter);
+    if (!assets.length) {
+        const empty = el("section", "minimax-h3-empty-state");
+        empty.append(el("h3", "", project.assets?.length ? "No files in this filter" : "Import your first reference"), el("p", "", "Images, video and audio live here once, then Subjects, Environments and Shots refer to them visually."));
+        container.appendChild(empty); return;
+    }
+    const grid = el("div", "minimax-h3-files-grid");
+    for (const asset of assets) {
+        const source = referenceSourceForAsset(director, asset.id);
+        const card = el("article", "minimax-h3-file-card"); card.dataset.type = asset.type; card.dataset.ready = String(Boolean(source));
+        const visual = el("div", "minimax-h3-file-preview"); const url = sourcePreviewUrl(source);
+        if (url && asset.type === "picture") { const image = el("img"); image.src = url; image.alt = asset.name; image.loading = "lazy"; visual.appendChild(image); }
+        else if (url && asset.type === "video") { const video = el("video"); video.src = url; video.muted = true; video.preload = "metadata"; video.playsInline = true; visual.appendChild(video); }
+        else visual.appendChild(el("strong", "", asset.type === "audio" ? "≋" : asset.type === "video" ? "▶" : "▧"));
+        const copy = el("div", "minimax-h3-file-copy");
+        copy.append(el("strong", "", asset.name || asset.id), el("small", "", `${asset.type === "picture" ? "Image" : asset.type === "video" ? "Video" : "Audio"} · ${source ? "Ready" : "Missing physical file"}`));
+        const connect = button("Use in Storyboard", () => controller.navigateStudio?.("storyboard"), "minimax-h3-director-text-button");
+        card.append(visual, copy, connect); grid.appendChild(card);
+    }
+    container.appendChild(grid);
+}
+
 export function renderDirectorLibrary(container, controller) {
     container.replaceChildren();
     const state = directorState(controller);
     const top = el("header", "minimax-h3-director-workspace-header");
-    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Import reusable media, define cast and places, then connect them to the selected Shot."));
+    if (!["subjects", "environments", "media"].includes(state.libraryMode)) state.libraryMode = "subjects";
+    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Create reusable Subjects and Environments, attach identity, voice and place references, and keep raw files in one visual library."));
     const switcher = el("div", "minimax-h3-director-mode-switch");
-    for (const [id, label] of [["media", "Media"], ["subjects", "Subjects"], ["environments", "Environments"]]) {
+    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Environments"], ["media", "Files"]]) {
         const control = button(label, () => { state.libraryMode = id; renderDirectorLibrary(container, controller); }, "minimax-h3-director-mode");
         control.setAttribute("aria-selected", String(state.libraryMode === id)); switcher.appendChild(control);
     }
     top.append(copy, switcher); container.appendChild(top);
     const host = el("div", "minimax-h3-director-library-host"); container.appendChild(host);
-    ({ media: renderReferencesTab, subjects: renderSubjectsTab, environments: renderEnvironmentsTab }[state.libraryMode] ?? renderReferencesTab)(host, controller);
+    ({ media: renderFilesLibrary, subjects: renderSubjectsTab, environments: renderEnvironmentsTab }[state.libraryMode] ?? renderSubjectsTab)(host, controller);
 }
 
 export function renderDirectorWiring(container, controller) {

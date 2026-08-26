@@ -1789,9 +1789,19 @@ export function ensureStudioStyles() {
             display: flex; align-items: flex-start; justify-content: space-between; gap: var(--h3-space-4);
             margin-bottom: var(--h3-space-4);
         }
+        .minimax-h3-section-storyboard { padding: 0; }
+        .minimax-h3-section-storyboard > .minimax-h3-director-workspace-header {
+            margin: var(--h3-space-4) var(--h3-space-4) 0;
+            padding-top: var(--h3-space-1);
+        }
+        .minimax-h3-section-storyboard > :not(.minimax-h3-director-workspace-header):not(.minimax-h3-director-shot-context) {
+            width: calc(100% - (2 * var(--h3-space-4)));
+            margin-right: var(--h3-space-4);
+            margin-left: var(--h3-space-4);
+        }
         .minimax-h3-director-workspace-header h2 { margin: 0; font-size: 20px; }
         .minimax-h3-director-workspace-header p { margin: 4px 0 0; color: var(--h3-text-muted); }
-        .minimax-h3-director-shot-context { position: sticky; z-index: 12; top: 0; display: grid; gap: 8px; margin: 0 0 var(--h3-space-4); padding: 9px 0 7px; border-bottom: 1px solid var(--h3-border); background: color-mix(in srgb, var(--h3-surface) 94%, transparent); backdrop-filter: blur(12px); }
+        .minimax-h3-director-shot-context { position: sticky; z-index: 12; top: 0; display: grid; gap: 8px; margin: 0 0 var(--h3-space-4); padding: 9px var(--h3-space-4) 7px; border-bottom: 1px solid var(--h3-border); background: var(--h3-surface); box-shadow: 0 8px 18px color-mix(in srgb, #000 18%, transparent); isolation: isolate; }
         .minimax-h3-director-shot-context-top { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 10px; }
         .minimax-h3-director-shot-context-identity { display: grid; min-width: 0; gap: 2px; }
         .minimax-h3-director-shot-context-identity > strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -1810,6 +1820,16 @@ export function ensureStudioStyles() {
         .minimax-h3-director-scene-camera { color: color-mix(in srgb, var(--h3-accent) 72%, var(--h3-text-muted)) !important; font-size: 10px; }
         .minimax-h3-director-scene-number { grid-row: 1 / 3; color: var(--h3-accent); font-weight: 750; }
         .minimax-h3-director-add-scene { flex: 0 0 86px; min-height: 66px; border: 1px dashed var(--h3-border) !important; border-radius: var(--h3-radius-md) !important; background: transparent !important; }
+        .minimax-h3-files-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--h3-space-3); margin-bottom: var(--h3-space-3); }
+        .minimax-h3-files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--h3-space-3); }
+        .minimax-h3-file-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; align-items: center; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); padding: 8px; background: var(--h3-surface-raised); }
+        .minimax-h3-file-card[data-ready="false"] { border-style: dashed; }
+        .minimax-h3-file-preview { display: grid; width: 64px; height: 64px; place-items: center; overflow: hidden; border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-accent) 12%, var(--h3-surface)); color: var(--h3-accent); font-size: 22px; }
+        .minimax-h3-file-preview img, .minimax-h3-file-preview video { width: 100%; height: 100%; object-fit: cover; }
+        .minimax-h3-file-copy { display: grid; min-width: 0; gap: 3px; }
+        .minimax-h3-file-copy strong, .minimax-h3-file-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-file-copy small { color: var(--h3-text-muted); text-transform: capitalize; }
+        .minimax-h3-file-card > button { grid-column: 1 / -1; justify-self: stretch; }
         .minimax-h3-director-asset-tray { display: grid; gap: 8px; margin-bottom: var(--h3-space-4); padding: 10px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
         .minimax-h3-director-tray-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
         .minimax-h3-director-tray-header div { font-weight: 750; }

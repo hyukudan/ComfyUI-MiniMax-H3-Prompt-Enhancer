@@ -44,6 +44,7 @@ TITLE_FIELDS = [
     "title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement",
 ]
 REFERENCE_DIRECTOR_FIELDS = ["reference_director_json", "generation_id"]
+STUDIO_PROJECT_FIELDS = ["studio_project_json"]
 DELIVERY_TARGET_CALLABLES = {
     prompt_enhancer.enhance_prompt_with_completion,
     prompt_enhancer.enhance_prompt,
@@ -71,6 +72,8 @@ def _appended_fields(node_class):
     if node_class is MiniMaxH3PromptEnhancer:
         fields.extend(TITLE_FIELDS)
     fields.extend(REFERENCE_DIRECTOR_FIELDS)
+    if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
+        fields.extend(STUDIO_PROJECT_FIELDS)
     return fields
 
 
@@ -131,6 +134,10 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
         assert optional["reference_director_json"][1]["multiline"] is True
         assert optional["reference_director_json"][1]["dynamicPrompts"] is False
         assert optional["generation_id"][1]["default"] == ""
+        if "studio_project_json" in appended:
+            assert optional["studio_project_json"][1]["default"] == ""
+            assert optional["studio_project_json"][1]["multiline"] is True
+            assert optional["studio_project_json"][1]["dynamicPrompts"] is False
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -192,6 +199,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
         # creative_latitude replaced the enhance_description/invent_scene pair. It defaults to
         # None so an API caller that still passes the old flags keeps its exact behaviour, which
         # is what this test exists to guarantee.
+        if parameters[-1].name == "studio_project_json":
+            assert parameters[-1].default == ""
+            parameters = parameters[:-1]
         if parameters[-1].name == "generation_id":
             assert parameters[-1].default == ""
             parameters = parameters[:-1]

@@ -146,7 +146,7 @@ test("camera provenance distinguishes ordinary inheritance from explicit media c
 test("slot capacity counts physical picture, video and soundtrack allocations", () => {
     const generation = { bindings: [{ assetId: "portrait", slotIndex: 1 }, { assetId: "move", slotIndex: 2, soundtrackSlotIndex: 1 }] };
     assert.deepEqual(slotCapacity(generation, project.assets), {
-        picture: { used: 1, maximum: 9 }, video: { used: 1, maximum: 9 }, audio: { used: 1, maximum: 3 },
+        picture: { used: 1, maximum: 9 }, video: { used: 1, maximum: 3 }, audio: { used: 1, maximum: 3 },
     });
 });
 

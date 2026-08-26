@@ -143,7 +143,7 @@ export function renderEnvironmentsTab(container, controller) {
         commit(); rerender();
     }, { disabled: !pictures.length || environment.views?.length >= 24 }));
     inspector.appendChild(viewsHeading);
-    if (!pictures.length) inspector.appendChild(element("p", "minimax-h3-usage-note", "Add a picture in Media before creating an environment view."));
+    if (!pictures.length) inspector.appendChild(element("p", "minimax-h3-usage-note", "Add a picture in Library · Files before creating an environment view."));
     for (const view of environment.views ?? []) renderView(inspector, environment, view, project, uses, commit, rerender);
 
     const statesHeading = element("div", "minimax-h3-studio-toolbar");

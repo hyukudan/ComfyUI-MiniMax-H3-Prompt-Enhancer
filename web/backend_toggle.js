@@ -24,6 +24,12 @@ import {
     REFERENCE_DIRECTOR_WIDGET, parseReferenceDirector,
 } from "./studio/reference_sources.js";
 import { getWidgetStore } from "./studio/widget_store.js";
+import {
+    STUDIO_PROJECT_WIDGET,
+    parseStudioProjectV3,
+    stableStudioProjectJson,
+    studioProjectFromDocuments,
+} from "./studio/studio_project_v3.js";
 
 const NODE_NAME = "MiniMaxH3PromptEnhancer";
 const VISUAL_REFERENCE_DIRECTOR_NODE = "MiniMaxH3VisualReferenceDirector";
@@ -190,6 +196,7 @@ const STUDIO_JSON_STORAGE_WIDGETS = new Set([
     CINEMATOGRAPHY_WIDGET,
     MEDIA_PROJECT_WIDGET,
     REFERENCE_DIRECTOR_WIDGET,
+    STUDIO_PROJECT_WIDGET,
     "media_project",
 ]);
 const MAX_SHOTS = 64;
@@ -2775,6 +2782,7 @@ function hydrateCreativeDirectionPanel(node) {
     const cinematographyWidget = node.widgets?.find((widget) => widget.name === CINEMATOGRAPHY_WIDGET);
     const mediaProjectWidget = node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET);
     const referenceDirectorWidget = node.widgets?.find((widget) => widget.name === REFERENCE_DIRECTOR_WIDGET);
+    const studioProjectWidget = node.widgets?.find((widget) => widget.name === STUDIO_PROJECT_WIDGET);
     if (!creativeWidget || !shotWidget || !cinematographyWidget) return;
 
     hideJsonStorageWidget(creativeWidget);
@@ -2782,6 +2790,7 @@ function hydrateCreativeDirectionPanel(node) {
     hideJsonStorageWidget(cinematographyWidget);
     hideJsonStorageWidget(mediaProjectWidget);
     hideJsonStorageWidget(referenceDirectorWidget);
+    hideJsonStorageWidget(studioProjectWidget);
     const creativeDocument = nativeDocumentViewForWidget(
         CREATIVE_TREATMENT_WIDGET,
         structuredWidgetStore(node, CREATIVE_TREATMENT_WIDGET).hydrate(creativeWidget.value),
@@ -3173,6 +3182,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
             const store = structuredWidgetStore(node, SHOT_PLAN_WIDGET);
             if (!widget || !store?.commit(raw, (value) => writeJsonStorage(node, widget, value))) return false;
             hydrateCreativeDirectionPanel(node);
+            this.syncStudioProject();
             node.__minimaxStudioDashboard?.refresh();
             return true;
         },
@@ -3182,12 +3192,53 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
             writeJsonStorage(node, widget, raw);
             structuredWidgetStore(node, SHOT_PLAN_WIDGET)?.hydrate(raw);
             hydrateCreativeDirectionPanel(node);
+            this.syncStudioProject();
             refreshStudioDrawer(node.id);
             return true;
         },
         projectDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === mediaWidgetName);
             return parseMediaProject(widget?.value ?? "");
+        },
+        studioProjectDocument() {
+            const widget = node.widgets?.find((candidate) => candidate.name === STUDIO_PROJECT_WIDGET);
+            return parseStudioProjectV3(widget?.value ?? "");
+        },
+        syncStudioProject() {
+            if (node.__minimaxSyncingStudioProject) return false;
+            const widget = node.widgets?.find((candidate) => candidate.name === STUDIO_PROJECT_WIDGET);
+            if (!widget) return false;
+            const media = this.projectDocument();
+            const shots = this.shotDocument();
+            const current = this.studioProjectDocument();
+            if (current.kind !== "v3" && media.kind !== "v2" && shots.kind !== "v2") return false;
+            const creative = this.creativeDocument?.();
+            const camera = this.cinematographyDocument?.();
+            const references = this.referenceDirectorDocument?.();
+            const project = studioProjectFromDocuments({
+                mediaProject: media.kind === "v2" ? media.value : undefined,
+                shotPlan: shots.kind === "v2" ? shots.value : undefined,
+                creativeTreatment: creative?.kind === "v2" ? creative.value : undefined,
+                cinematography: camera?.kind === "v2" ? camera.value : undefined,
+                referenceDirector: references?.kind === "v1" ? references.value : undefined,
+                previous: current.kind === "v3" ? current.value : undefined,
+            });
+            node.__minimaxSyncingStudioProject = true;
+            try { return writeJsonStorage(node, widget, stableStudioProjectJson(project)); }
+            finally { node.__minimaxSyncingStudioProject = false; }
+        },
+        async compileStudioProject(generationId = "") {
+            this.syncStudioProject();
+            const documentState = this.studioProjectDocument();
+            if (documentState.kind !== "v3") throw new Error("Studio Project v3 is not ready yet.");
+            const response = await api.fetchApi("/minimax_h3_prompt_enhancer/studio/compile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ project: documentState.value, generationId }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload?.error ?? `Studio compilation failed (${response.status}).`);
+            return payload;
         },
         referenceDirectorDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === REFERENCE_DIRECTOR_WIDGET);
@@ -3223,6 +3274,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
             const widget = node.widgets?.find((candidate) => candidate.name === mediaWidgetName);
             if (!widget) return false;
             const changed = writeJsonStorage(node, widget, raw);
+            if (changed) this.syncStudioProject();
             node.__minimaxStudioDashboard?.refresh();
             return changed;
         },
@@ -3260,6 +3312,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
                 node.__minimaxCinematographyState[key] = previous;
                 return false;
             }
+            this.syncStudioProject();
             node.__minimaxStudioDashboard?.refresh();
             return true;
         },
@@ -3295,14 +3348,19 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
                 node.__minimaxCreativeTreatmentState[key] = previous;
                 return false;
             }
+            this.syncStudioProject();
             node.__minimaxStudioDashboard?.refresh();
             return true;
         },
         importCreativeSource(raw) {
-            return importNativeStructuredSource(node, CREATIVE_TREATMENT_WIDGET, raw);
+            const result = importNativeStructuredSource(node, CREATIVE_TREATMENT_WIDGET, raw);
+            if (result.ok) this.syncStudioProject();
+            return result;
         },
         importCinematographySource(raw) {
-            return importNativeStructuredSource(node, CINEMATOGRAPHY_WIDGET, raw);
+            const result = importNativeStructuredSource(node, CINEMATOGRAPHY_WIDGET, raw);
+            if (result.ok) this.syncStudioProject();
+            return result;
         },
         replaceStructuredRaw(widgetName, raw) {
             if (widgetName === CREATIVE_TREATMENT_WIDGET) return this.importCreativeSource(raw).ok;
@@ -3312,6 +3370,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
             writeJsonStorage(node, widget, raw);
             structuredWidgetStore(node, widgetName)?.hydrate(raw);
             hydrateCreativeDirectionPanel(node);
+            this.syncStudioProject();
             refreshStudioDrawer(node.id);
             return true;
         },
@@ -3359,6 +3418,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
                 for (const entry of entries) if (STUDIO_JSON_STORAGE_WIDGETS.has(entry.name)) hideJsonStorageWidget(entry.widget);
             }
             hydrateCreativeDirectionPanel(node);
+            this.syncStudioProject();
             if (node.__minimaxDiagnostics) node.__minimaxDiagnostics.stale = true;
             node.graph?.setDirtyCanvas?.(true, true);
             node.setDirtyCanvas?.(true, true);
@@ -3538,6 +3598,7 @@ function addCreativeDirectionPanel(node) {
     ensureFieldTitleStyles();
     const root = createPanelElement("div", "minimax-h3-creative-panel");
     const studioController = createStudioController(node);
+    studioController.syncStudioProject();
     node.__minimaxStudioController = studioController;
     const studioDashboard = createStudioDashboard(node, studioController);
     node.__minimaxStudioDashboard = studioDashboard;
@@ -4019,6 +4080,7 @@ function configureAudioNode(node) {
     hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET));
     hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === REFERENCE_DIRECTOR_WIDGET));
     hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === "generation_id"));
+    hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === STUDIO_PROJECT_WIDGET));
     applyLabels(node);
     protectApiKeyWidget(node);
     normalizeMigratedRuntimeWidgets(node);

@@ -1,37 +1,37 @@
 # MiniMax H3 Prompt Studio
 
-Prompt Studio is the structured planning interface embedded in the two enhancer nodes. It keeps the node compact while exposing shots, subjects, appearance states, environments, logical references, camera controls, and diagnostics in a viewport-level drawer.
+Prompt Studio is the visual planning interface embedded in the two enhancer nodes. One authoritative **Studio Project v3** stores Files, Subjects, Environments, Generations, Shots, semantic links and Look. The established v2 prompt contracts are generated internally as runtime projections; users do not manage them as separate Studio documents.
 
 The canonical hierarchy and scope rules are defined in [Integrated Prompt Studio domain](integrated_prompt_studio_domain.md). In particular, one Shot is one continuous block between cuts; `Scene` is not a second container, and reusable defaults must remain separate from This Shot overrides.
 
-**Compose** is the production editor for those contracts: an always-visible Shot strip, visual stage, reference tray, semantic destinations and contextual inspector. **Build**, **Stage** and **Camera** are modes of the selected Shot, not separate project areas. A Shot can be duplicated with nested camera and reference state intact, moved, or deleted with confirmation. The inspector creates and places a canonical Subject or Environment atomically, so Ana can receive a project-default identity image and voice, enter a Shot, receive Shot-only overrides, and use a selected background without leaving Prompt Studio. The stage exposes the real `<Subject N>` alias, portrait, voice/performance references and exact Environment view used during compilation. **Dialogue & sound** authors exact lines and separates default voice, Shot overrides, recordings and soundtrack. The read-only **LLM handoff** derives its subject and physical aliases from the same assignments sent to the LLM and media outputs.
+**Storyboard** is the production editor: an always-visible Shot strip, visual stage, reference tray, semantic destinations and contextual inspector. **Content**, **Stage** and **Camera** are modes of the selected Shot, not separate project areas. The inspector creates and places a canonical Subject or Environment atomically, so Ana can receive a reusable identity image and voice, enter a Shot, receive Shot-only overrides, and use a selected background without leaving Prompt Studio. **Dialogue & sound** authors exact lines and separates default voice, Shot overrides, recordings and soundtrack. The read-only **LLM handoff** derives its subject and physical aliases from the same v3 graph sent to the compiler.
 
-All of this belongs to the same Prompt Enhancer node. The visible areas are **Compose**, **Cast & Places**, **Media**, **Look**, and **Review**. Subjects and Environments are reusable resources under Cast & Places; Shot editing, staging and camera direction stay contextual inside Compose. The older Visual Reference Director class remains loadable only for workflow migration and is marked deprecated.
+All of this belongs to the same Prompt Enhancer node. The visible areas are **Storyboard**, **Library**, **Look**, and **Review & Generate**. Library groups **Subjects**, **Environments**, and compact **Files**; Shot editing, staging and camera direction stay contextual inside Storyboard. The older Visual Reference Director class remains loadable only for workflow migration and is marked deprecated.
 
-It does not add a project manager or network service. The canonical project remains in `media_manifest`, `shot_plan_json`, `creative_treatment_json`, `cinematography_json`, and hidden physical-source storage saved with the workflow.
+It does not add a project manager or external service. The canonical project is `studio_project_json` schema v3, saved inside the workflow. Hidden older fields remain only as generated runtime adapters for compatibility.
 
 ## Open the Studio
 
-The enhancer node presents a primary **Open Compose** action plus destination chips:
+The enhancer node presents a primary **Open Studio** action plus destination chips:
 
-- **Compose** — visually assemble the prompt from shots, subjects, voices, backgrounds, action, dialogue, camera and references.
-
-- **Cast & Places** — reusable Subjects, identity/voice defaults, appearances, Environments, views and states.
-- **Media** — bound physical slots versus logical references.
+- **Storyboard** — visually assemble the prompt Shot by Shot from cast, backgrounds, action, dialogue, camera and references.
+- **Library · Subjects** — reusable identities, default voices and appearances.
+- **Library · Environments** — reusable places, background views and states.
+- **Library · Files** — compact import, filter and preview shelf for images, video and audio.
 - **Look** — creative direction and global cinematography defaults.
-- **Review** — current structured diagnostic count and Prompt Coach advice.
+- **Review & Generate** — compile v3, inspect exact physical outputs, diagnostics and queue actions.
 
-Selecting **Open Compose** or a chip opens one drawer attached to that node. The primary button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–9.
+Selecting **Open Studio** or a chip opens one drawer attached to that node. The primary button changes to **Close Studio** while its drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the editors stack into one column.
 
-There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is committed immediately to this node's structured v2 widgets and is saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not write anything.
+There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is consolidated into Studio Project v3 and saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not create project facts.
 
 Empty authoring fields use instructional placeholders. The example disappears on focus and returns on blur only while the field remains empty; it is never stored in project JSON or compiled into the prompt. Required empty drafts remain visibly editable and Review identifies them before generation instead of substituting invented prose.
 
-**Guided / Advanced** is a Look-specific presentation control and therefore appears inside **Look**, not in the global Studio header. Guided presents the principal Look controls first and places neutral specialist fields behind a labelled disclosure; if an advanced Creative Treatment value is already active, that disclosure opens and reports the active count. Advanced renders every available Look field. Switching modes never clears, rewrites, or adds a workflow field, and it does not affect Compose, Cast & Places, Media, or Review.
+**Guided / Advanced** is a Look-specific presentation control and therefore appears inside **Look**, not in the global Studio header. Switching modes never clears, rewrites, or adds a workflow fact, and it does not affect Storyboard, Library, or Review & Generate.
 
 ## What Prompt Studio does — and does not do
 
-Prompt Studio is the planning layer for the prompt enhancer. It stores shots, reusable identities and places, logical reference metadata, generation bindings, camera choices, and diagnostics in the enhancer's existing structured widgets. Those facts compile into `enhanced_prompt` and validation metadata.
+Prompt Studio is the planning layer for the prompt enhancer. Studio Project v3 compiles into `enhanced_prompt`, validation metadata, a typed `reference_project`, and aligned physical media lists.
 
 Prompt Studio imports pictures, video and audio into ComfyUI input storage. The enhancer emits ordered `pictures`, `videos` and `audios` lists plus a typed `reference_project`; these outputs are compiled from the same assignments used in `enhanced_prompt`.
 
@@ -49,47 +49,47 @@ The logical meaning, physical file and generation binding remain distinct record
 
 | Area | Use it when you need to… | It owns |
 |---|---|---|
-| **Compose · Build** | Create and order Shots, cast Subjects, choose an Environment view, add action/dialogue and attach Shot references. | Story, timing/cuts, presence, exact background views, reference uses, transitions and overrides in Shot Plan v2. |
-| **Compose · Stage** | Arrange the selected Shot's cast visually. | Subject start/end positions, movement, facing, and eyelines in that Shot. |
-| **Compose · Camera** | Design or refine camera behavior for the selected Shot. | Start/Path/End values in that same Shot; no duplicate camera schema. |
-| **Cast & Places · Subjects** | Create reusable identities, voices and visible appearance states. | Project-default identity/voice sources, H3 subject index, appearance states, and usage guards. |
-| **Cast & Places · Environments** | Create reusable places, reference views and temporary states. | Permanent geography/architecture/scale, reusable views, default state, temporary states, and usage guards. |
-| **Media** | Explain a reference and pair it with a connected file for one generation. | Reference library, activation, generation bindings, physical slots, quotas, and initial states. |
-| **Look** | Set global presentation defaults or reuse a Look. | Creative Treatment v2, Cinematography v2, global provenance, and explicit import/export. |
-| **Review** | Understand what blocks generation or could be clearer. | Diagnostics and bounded Prompt Coach actions; it does not silently rewrite the plan. |
+| **Storyboard · Content** | Create and order Shots, cast Subjects, choose an Environment view, add action/dialogue and attach references. | Story, timing/cuts, presence, background views, links, transitions and overrides in v3. |
+| **Storyboard · Stage** | Arrange the selected Shot's cast visually. | Subject start/end positions, movement, facing and eyelines in that Shot. |
+| **Storyboard · Camera** | Design or refine camera behavior for the selected Shot. | Start/Path/End in that same Shot; no duplicate camera model. |
+| **Library · Subjects** | Create reusable identities, voices and appearance states. | Identity Files, default voice File, H3 subject index and appearance states. |
+| **Library · Environments** | Create reusable places, reference views and temporary states. | Permanent place facts, view Files and states. |
+| **Library · Files** | Import and preview raw references once. | Physical ComfyUI source, media type and stable File ID. |
+| **Look** | Set global presentation defaults or reuse a Look. | Creative treatment and cinematography inside v3. |
+| **Review & Generate** | Verify and run. | v3 compilation, quotas, exact physical output map, diagnostics and queue action. |
 
 ## Common workflows
 
 ### T2V / T2VA — no source media
 
 1. Write the idea in `basic_prompt`.
-2. Optionally organize it as Shots in **Compose** and create reusable resources in **Cast & Places**.
-3. Choose global presentation in **Look**, switch the selected Shot to **Camera** when it needs explicit direction, and check **Review**.
-4. Connect `enhanced_prompt` to the H3 generation node. The Media library can remain empty.
+2. Optionally organize it as Shots in **Storyboard** and create reusable resources in **Library**.
+3. Choose global presentation in **Look**, switch the selected Shot to **Camera** when it needs explicit direction, and check **Review & Generate**.
+4. Connect `enhanced_prompt` to the H3 generation node. Library · Files can remain empty.
 
-When all structured widgets are blank, Compose can start directly from the Basic prompt; advanced project transfer and source inspection remain available without creating a second tool.
+When Studio Project v3 is empty, Storyboard can start directly from the Basic prompt; advanced migration tools remain collapsed in Review.
 
 ### I2V / FL2V / L2V — alignment frames
 
 1. Load the physical image with the normal ComfyUI image loader and connect it to the H3 first/last-frame input.
-2. Describe the required alignment and action in the enhancer. Use the Shot strip in **Compose** for the temporal plan.
+2. Describe the required alignment and action in the enhancer. Use the Shot strip in **Storyboard** for the temporal plan.
 3. Add a logical reference only when the project also needs reusable metadata or a binding; adding one does not carry the image tensor.
 4. Connect `enhanced_prompt` to the same H3 generation node.
 
 ### Ref2VA — reusable picture, video, or audio references
 
-1. On **MiniMax H3 Prompt Enhancer**, choose **Open Compose**.
-2. In **Compose** or **Media**, import pictures, video or audio. Prompt Studio copies them into ComfyUI input storage and creates stable logical assets with visual previews.
+1. On **MiniMax H3 Prompt Enhancer**, choose **Open Studio**.
+2. In **Storyboard** or **Library · Files**, import pictures, video or audio. Prompt Studio copies them into ComfyUI input storage and creates stable Files with visual previews.
 3. Drop each visual card onto the subject identity/voice, environment/background, or shot performance/camera property it controls.
-4. In the target generation, verify the derived **physical slot** (`Picture N`, `Video N`, or `Audio N`).
+4. In **Review & Generate**, compile the target Generation and verify every derived **physical slot** (`Picture N`, `Video N`, or `Audio N`).
 5. Connect the enhancer's ordered `pictures`, `videos` and `audios` list outputs to a list-aware H3 adapter (or split them into numbered native slots). The enhancer injects the matching reference context into its own LLM request automatically.
 6. Optionally connect `reference_project` to **MiniMax H3 Reference Project Inspector** for the exact wiring report.
 
 ### Chained Multishot — several generation passes
 
-1. Create the ordered generations in **Media** and assign Shots to them in **Compose**.
-2. For each generation, connect the physical files to that generation's H3 node/pass and create matching bindings.
-3. Reuse stable logical references across generations even when their physical slot number changes; slots are local to one generation.
+1. Create ordered Generations and assign Shots to them in **Storyboard**.
+2. Link reusable Files to the Subjects, Environments and Shots used by each Generation.
+3. Compile in **Review & Generate**; physical slot numbers are derived locally for each Generation.
 4. Set explicit/carry/reset initial states and review continuity before queueing the chain.
 
 ## Resolution: frame shape and pixel area
@@ -107,11 +107,11 @@ Only one Studio drawer is active at a time. Collapsing or deleting its node clos
 
 ## Integrated areas and contextual modes
 
-### Compose · Build
+### Storyboard · Content
 
 The shot list uses fixed 60-pixel, two-line rows and mounts only the visible range plus five-row overscan on either side. A separate editor handles the selected shot, so a 64-shot plan does not create 64 expanded editors.
 
-For shot-plan v2, the editor owns:
+For each Studio Project v3 Shot, the editor owns:
 
 - a visible Action for every Shot; a new Shot starts from the current Basic prompt, while one existing empty Shot can inherit that prompt without mutating storage and offers **Use Basic prompt as Action** to make the inheritance explicit. Multiple Shots require individual Actions;
 
@@ -129,15 +129,15 @@ For shot-plan v2, the editor owns:
 
 `openingState` is the visible first-frame condition. `action` is the change that occurs during the shot. Do not repeat the opening state as if it were a second event.
 
-### Cast & Places · Subjects
+### Library · Subjects
 
 Subjects have a stable logical ID, an H3 subject index, an identity description, identity assets, an optional default voice asset, and a base appearance state. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that Shot. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension.
 
-A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a Shot through **Use in prompts → Always include in Generation …**; alternatively, cast them in the selected Shot under **Compose**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library Subject is neither included in a generation nor cast in a Shot, because it will not reach the LLM.
+A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a Shot through **Use in prompts → Always include in Generation …**; alternatively, cast them in the selected Shot under **Storyboard · Content**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library Subject is neither included in a Generation nor cast in a Shot, because it will not reach the LLM.
 
 Identity and appearance are separate. An appearance state cannot silently replace facial identity. Copying a state creates a new stable ID. A base or referenced state cannot be deleted silently; the UI shows where it is used.
 
-### Cast & Places · Environments
+### Library · Environments
 
 An environment separates permanent facts from temporary state:
 
@@ -147,15 +147,15 @@ An environment separates permanent facts from temporary state:
 
 A temporary state does not own permanent geometry. A detail view does not become an overview, and a lighting view does not redefine architecture.
 
-### Media and references
+### Library · Files and semantic references
 
-The Reference library describes logical references; generation cards describe activation and physical bindings. Logical IDs remain stable while H3 labels such as `<Picture 1>` or `<Video 2>` are derived per generation.
+The Files library stores physical sources and stable semantic meaning without asking users to manage slot numbers. H3 labels such as `<Picture 1>` or `<Video 2>` are derived deterministically for each Generation during v3 compilation.
 
 **Plan by outcome** provides an inline, cancelable first-binding assistant for subject identity, environment view, performance, camera, voice, and continuity. It chooses only from existing shots, generations, subjects, and environments, then prepares the logical asset, its subject/environment relationship when required, a shot-scoped `referenceUse`, and the generation binding as one atomic Media + Shot Plan update. It never connects or uploads the physical file. If a shot belongs to another generation, a required relationship is absent, or the matching physical slot quota is full, the assistant reports that prerequisite deterministically and writes nothing.
 
 The adjacent user-first recipes are contract-safe starting points rather than new schema objects: **Targeted edit** uses an appearance-scoped picture, **Relight** uses a lighting-scoped picture, **Performance transfer** uses a performance-scoped video, and **Continuation** uses a continuity-scoped video. The cards explain what is missing before setup and remain editable through the ordinary asset, shot-use, and binding controls afterward.
 
-**Export LLM planning context** emits `minimax-h3-planning-context` format version 1. It is a read-only discussion artifact containing the current v2 Media Project and Shot Plan plus explicit instructions to preserve IDs and generation boundaries. It contains no physical files, performs no network request, has no import action, and never applies an LLM response automatically.
+**Export LLM planning context** emits `minimax-h3-planning-context` format version 1. It is a read-only discussion artifact projected from Studio Project v3, with explicit instructions to preserve IDs and Generation boundaries. It contains no physical files, performs no network request, has no import action, and never applies an LLM response automatically.
 
 Media setup is deliberately two steps:
 
@@ -166,11 +166,11 @@ A logical reference can be reused in several generations. A physical file connec
 
 This distinction allows slot reuse across chained generations without changing asset identity. The same slot may represent a different asset in another generation, but one generation cannot bind two active assets of the same type to the same slot.
 
-### Compose · Camera
+### Storyboard · Camera
 
-Compose · Build keeps camera context compact and opens **Camera** without changing the selected Shot. Camera replaces the central editor at workspace scale while the Shot strip remains visible, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Z in −1…1, Y height in −1…1, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. Its 3D view uses a four-corner isometric floor rather than a perspective funnel. Camera height does not alter the icon's position on that floor: dragging the camera changes X/Z while preserving Y, and the **Camera height** slider represents height by scaling the icon (larger when low, smaller when high). Top view isolates horizontal placement; Front view shows elevation directly. **Distance from anchor** moves the camera nearer or farther along its current direction without changing height. Camera height uses five semantic bands: **Very low, Low, Eye level, Elevated, Very elevated**. The normalized number remains storage detail rather than the primary label, and untouched paths start at neutral eye level. Between positions, the compiler classifies the real height delta as held, drifting, moving, or sweeping; it states rise/descent at the destination, marks crossings of the eye line, and summarizes the whole vertical profile before listing waypoints. Horizontal distance is also compiled even when framing is explicitly set. Small slider jitter remains silent. Camera-body height and lens tilt are independent, so **Very elevated** does not silently force an overhead or high-angle view. The toolbar exposes the overall path shape, pace, speed change and reference frame, and each position exposes framing, angle, aim and timing. A four-second **Preview** and scrubber interpolate by each waypoint's actual `at` value, so uneven timing remains visible. All three views edit the same data and are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Build and Camera read and write the same Shot object in `shot_plan_json` v2, so switching modes does not copy or reconcile data.
+**Storyboard · Content** keeps camera context compact and opens **Camera** without changing the selected Shot. Camera replaces the central editor at workspace scale while the Shot strip remains visible, and exposes precise Start/Path/End fields. A path may use 2–6 positions with normalized progress, relative X/Z in −1…1, Y height in −1…1, subject- or scene-relative coordinates, and straight, smooth, or directed arc interpolation. Its 3D view uses a four-corner isometric floor rather than a perspective funnel. Camera height does not alter the icon's position on that floor: dragging the camera changes X/Z while preserving Y, and the **Camera height** slider represents height by scaling the icon (larger when low, smaller when high). Top view isolates horizontal placement; Front view shows elevation directly. **Distance from anchor** moves the camera nearer or farther along its current direction without changing height. Camera height uses five semantic bands: **Very low, Low, Eye level, Elevated, Very elevated**. The normalized number remains storage detail rather than the primary label, and untouched paths start at neutral eye level. Between positions, the compiler classifies the real height delta as held, drifting, moving, or sweeping; it states rise/descent at the destination, marks crossings of the eye line, and summarizes the whole vertical profile before listing waypoints. Horizontal distance is also compiled even when framing is explicitly set. Small slider jitter remains silent. Camera-body height and lens tilt are independent, so **Very elevated** does not silently force an overhead or high-angle view. The toolbar exposes the overall path shape, pace, speed change and reference frame, and each position exposes framing, angle, aim and timing. A four-second **Preview** and scrubber interpolate by each waypoint's actual `at` value, so uneven timing remains visible. All three views edit the same data and are direction previews, not a physical simulation. Classic motion presets remain available in a collapsed disclosure. Content and Camera read and write the same Shot in Studio Project v3, so switching modes does not copy or reconcile data.
 
-### Compose · Stage
+### Storyboard · Stage
 
 Stage shares the selected Shot with Build and Camera. **Create staging** places the Shot's present cast across the frame only after that explicit action. Drag each named subject in 3D, Top, or Front view; choose Start or End positions, a movement verb, and whether the subject faces the camera, travel, a side of frame, away from camera, or another named subject. It compiles as qualitative blocking and eyeline prose—not XYZ values. Free-text blocking remains available for nuance; Review notes when both are present so contradictory arrangements are not silently merged.
 
@@ -178,13 +178,13 @@ Camera **Anchor** and **Aim target** are deliberately separate. Anchor establish
 
 ### Before-generation checks and Review
 
-Prompt Studio checks the current in-browser v2 documents immediately, before the node runs. It catches missing Shot actions, invalid generation links, incomplete declared presence, empty action beats, invalid spatial timing, deleted references, and reference uses without file-slot assignments. **Review** holds post-run diagnostics and the collapsed **Import & source tools** block, so advanced transfer and source repair remain accessible without adding a separate workspace.
+Prompt Studio checks Studio Project v3 immediately, before the node runs. It catches missing Shot actions, invalid Generation links, incomplete presence, empty action beats, invalid spatial timing, deleted Files and quota overflow. **Review & Generate** calls the Python compiler and displays the exact output map before queueing, so prompt aliases and physical lists cannot drift.
 
 These checks are intentionally bounded and do not replace backend validation. **Review** is populated after execution and remains authoritative for compiled continuity, camera ownership, H3 contract quality, and Prompt Coach guidance.
 
-### Project v2 transfer
+### Legacy project transfer
 
-**Review > Import & source tools > Project v2 transfer** copies or imports one portable JSON package containing any current native-v2 Shot Plan, Media Project, Creative Treatment, and Cinematography documents. Import validates nested arrays, identifiers, field types, limits, and supported schema versions, then shows a preview with document counts. **Replace project** applies the complete preview atomically: all target storage widgets are available before writing, and exact raw snapshots are restored if a widget callback or hydration step fails. **Append generations** retains the current project and adds the package's generations and Shots with collision-safe IDs; shared Subjects, Environments, appearances, and assets must be identical when their IDs match, so append cannot silently merge conflicting definitions. The package never contains physical image, video, or audio files. Legacy v1 sources remain a separate compatibility/import concern and are not promoted into the normal editing flow.
+Older portable Project v2 packages remain importable from the collapsed source tools for migration. Import validates and applies them atomically, then Prompt Studio consolidates the result into Studio Project v3. They are compatibility input, not the current authoring format, and never include physical image, video or audio payloads.
 
 Start and End are temporal phases, not competing owners. An omitted End field inherits Start and is not serialized redundantly.
 
@@ -230,13 +230,21 @@ Coach advice is conservative and bounded to two items per shot and twelve global
 
 Coach findings are advisory. They do not change `valid`, `qualityValid`, the prompt, or the repair request sent to the LLM.
 
-## Canonical structured inputs
+## Canonical Studio Project v3
+
+The normative authoring schema is [`schemas/studio_project_v3.schema.json`](schemas/studio_project_v3.schema.json). Its top-level arrays are `files`, `subjects`, `environments`, `generations`, `shots`, and `links`; `project.look` owns creative treatment and cinematography. Files carry their provenanced ComfyUI source. Subjects point to identity Files and an optional default voice File. Environment views point to background Files. Shots select cast, Environment/view, semantic reference bindings, staging, action/dialogue and camera.
+
+Drafts may remain incomplete while editing. **Review & Generate** rejects missing visible actions, broken IDs, unavailable physical sources and per-Generation quota overflow. The compiler assigns slots deterministically in H3 order (9 pictures, 3 videos and 3 audio inputs), builds the LLM reference context and emits the physical lists from that same result.
+
+## Hidden runtime projections and compatibility
+
+The following v2 shapes remain documented because the established prompt engine and saved workflows still consume them. They are no longer separate Prompt Studio documents: when v3 is present, the Python compiler derives them immediately before enhancement.
 
 ### `media_manifest` v2
 
-Manifest v2 is the only project library. It contains:
+Manifest v2 is the internal library projection. It contains:
 
-Its canonical JSON remains an internal, serialized node input; Prompt Studio never expands the technical textarea on the node. Inspect the exact read-only source under **Review > Import & source tools > Media project v2 > View source**, and make normal changes through **Compose**, **Cast & Places**, and **Media**.
+Its JSON remains a hidden compatibility input. Make normal changes through **Storyboard** and **Library**.
 
 ```text
 assets ─┬─ subjects ─ appearance states
@@ -252,7 +260,7 @@ The normative schema is [`schemas/media_manifest_v2.schema.json`](schemas/media_
 
 ### `shot_plan_json` v2
 
-Shot-plan v2 is the temporal source of truth. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode. Spatial camera paths distinguish camera position from camera aim: `anchorTarget` names the project subject used as the origin, while each waypoint may inherit aim, keep the anchor framed, follow travel, aim at a named `aimTarget`, or use a custom editor direction. Optional `staging` places each subject at qualitative start/end positions with movement and facing. The compiler resolves all of this into names and natural camera/blocking prose; internal XYZ, timing percentages, angle degrees, and enum tokens do not become camera instructions.
+Shot-plan v2 is the internal temporal projection. It references project IDs rather than redefining subjects, appearances, environments, or assets. It supports up to 64 shots and groups them by `generationId` in chained mode. Spatial camera paths distinguish camera position from camera aim: `anchorTarget` names the project subject used as the origin, while each waypoint may inherit aim, keep the anchor framed, follow travel, aim at a named `aimTarget`, or use a custom editor direction. Optional `staging` places each subject at qualitative start/end positions with movement and facing. The compiler resolves all of this into names and natural camera/blocking prose; internal XYZ, timing percentages, angle degrees, and enum tokens do not become camera instructions.
 
 `timingMode: "auto"` omits per-shot duration. `timingMode: "exact"` requires it, and durations are checked per generation. `actionBeats[].at`, optional `actionBeats[].endAt`, and camera waypoint `at` values are normalized from 0 to 1, so their rhythm survives duration changes. Beats may use neutral projected **calls out** delivery as well as the other documented verbs. The editor warns about overlaps, large fully-authored gaps, and dialogue that is likely too dense for its exact span using a transparent 150-words-per-minute estimate. Beat percentages and editor labels never appear in the enhanced prompt; they compile to natural temporal flow. Camera timing may also target **during dialogue** or **after dialogue**. `cameraEnd` is stored as a delta from `cameraStart`; omitted End properties inherit Start. Shot transitions include ordinary cuts plus cross dissolve and fade through black. `scaleRelationships` describes only explicitly authored relative scale between present subjects and never supplies invented measurements.
 
@@ -260,7 +268,7 @@ The normative schema is [`schemas/shot_plan_v2.schema.json`](schemas/shot_plan_v
 
 ### `creative_treatment_json` v2
 
-Creative Treatment v2 is the canonical editable document for content format, genre, visual language, world aesthetic, scene-wide **Mood (tone)**, and title-screen style. Mood affects staging, camera, light, performance, and mix; line-level speech remains under **Delivery** and **Voice color** below the Basic prompt. The stored key remains `tone`. The normative schema is [`schemas/creative_treatment_v2.schema.json`](schemas/creative_treatment_v2.schema.json).
+Creative Treatment v2 is the internal Look projection for content format, genre, visual language, world aesthetic, scene-wide **Mood (tone)**, and title-screen style. Its normative runtime schema is [`schemas/creative_treatment_v2.schema.json`](schemas/creative_treatment_v2.schema.json).
 
 The Mood control is searchable and grouped by creative intent. Every option includes a short description that distinguishes nearby choices and states its anti-invention boundary; a persistent footer clarifies that Mood never adds facts, dialogue, or music. Search indexes the label, stored token, group, and description, so both **pulp** and **heightened** find the same `pulp_heightened` option. Unknown future values display as **Unavailable — token** and remain byte-preserved until deliberately replaced.
 
@@ -268,7 +276,7 @@ Legacy v1 remains accepted by the runtime so saved workflows continue to generat
 
 ### `cinematography_json` v2
 
-The 13 existing cinematography controls remain supported in the canonical v2 document. It supplies global defaults and does not outrank an explicit shot value, source fact, or authorized video-camera transfer. The normative schema is [`schemas/cinematography_v2.schema.json`](schemas/cinematography_v2.schema.json).
+The 13 existing cinematography controls remain supported in the internal v2 projection. It supplies global defaults and does not outrank an explicit shot value, source fact, or authorized video-camera transfer. The normative runtime schema is [`schemas/cinematography_v2.schema.json`](schemas/cinematography_v2.schema.json).
 
 As with Creative Treatment, runtime parsing accepts a legacy v1 source and canonicalizes it to v2 only in memory. The Studio keeps v1 read-only; only explicit import persists a converted v2 document.
 

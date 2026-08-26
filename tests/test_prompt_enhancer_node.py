@@ -223,13 +223,13 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
     assert math.isnan(MiniMaxH3UnloadGGUFServer.IS_CHANGED(unload=True))
 
 
-def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
+def test_new_controls_are_appended_without_shifting_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
         expected_tail = ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
         if node is MiniMaxH3PromptEnhancer:
             expected_tail += ["title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement"]
-        expected_tail += ["reference_director_json", "generation_id"]
+        expected_tail += ["reference_director_json", "generation_id", "studio_project_json"]
         assert list(optional)[-len(expected_tail):] == expected_tail
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False

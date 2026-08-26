@@ -141,6 +141,7 @@ try:
     from .title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
     from .reference_director import REFERENCE_PROJECT_TYPE, build_reference_project, reference_context_for_project
     from .reference_media import load_generation_media
+    from .studio_project import compile_studio_project
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -155,6 +156,7 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     from title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
     from reference_director import REFERENCE_PROJECT_TYPE, build_reference_project, reference_context_for_project
     from reference_media import load_generation_media
+    from studio_project import compile_studio_project
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -320,6 +322,38 @@ def _native_reference_bundle(reference_context="", reference_director_json="", m
     manual_context = str(reference_context or "").strip()
     combined = "\n\n".join(part for part in (native_context.strip(), manual_context) if part)
     return combined, project, loaded
+
+
+def _studio_runtime_inputs(
+    studio_project_json="", generation_id="", mode="auto", duration_seconds=5.0,
+    media_manifest="", shot_plan_json="", creative_treatment_json="",
+    cinematography_json="", reference_director_json="",
+):
+    """Let v3 own all authoring documents while preserving the node's runtime contract."""
+    if not str(studio_project_json or "").strip():
+        return {
+            "mode": mode, "duration_seconds": duration_seconds, "media_manifest": media_manifest,
+            "shot_plan_json": shot_plan_json, "creative_treatment_json": creative_treatment_json,
+            "cinematography_json": cinematography_json,
+            "reference_director_json": reference_director_json,
+        }
+    compiled = compile_studio_project(studio_project_json, generation_id)
+    selected_shots = [
+        shot for shot in compiled["shotPlan"]["shots"]
+        if shot.get("generationId") == compiled["generationId"]
+    ]
+    compiled_duration = duration_seconds
+    if compiled["shotPlan"].get("timingMode") == "exact" and selected_shots:
+        compiled_duration = sum(float(shot.get("durationSeconds", 0)) for shot in selected_shots)
+    return {
+        "mode": compiled["mediaProject"].get("mode", mode),
+        "duration_seconds": compiled_duration,
+        "media_manifest": json.dumps(compiled["mediaProject"], ensure_ascii=False),
+        "shot_plan_json": json.dumps(compiled["shotPlan"], ensure_ascii=False),
+        "creative_treatment_json": json.dumps(compiled["creativeTreatment"], ensure_ascii=False),
+        "cinematography_json": json.dumps(compiled["cinematography"], ensure_ascii=False),
+        "reference_director_json": json.dumps(compiled["referenceDirector"], ensure_ascii=False),
+    }
 
 
 class MiniMaxH3PromptGuideBuilder:
@@ -491,6 +525,7 @@ class MiniMaxH3PromptEnhancer:
             "title_placement": (["after credits", "before credits"], {"default": "after credits"}),
             "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
             "generation_id": ("STRING", {"default": "", "tooltip": "Prompt Studio generation to emit. Blank selects the first generation."}),
+            "studio_project_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio v3 aggregate. When present, it owns resources, Shots, Look and deterministic reference outputs."}),
         }}
 
     @classmethod
@@ -525,11 +560,23 @@ class MiniMaxH3PromptEnhancer:
                 invent_scene=False, creative_latitude=None,
                 lora_trigger_words="", title_sequence_recipe=TITLE_RECIPE_DISABLED,
                 title_sequence_energy="balanced", title_text="", credit_lines="",
-                title_placement="after credits", reference_director_json="", generation_id=""):
+                title_placement="after credits", reference_director_json="", generation_id="",
+                studio_project_json=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
+        studio_inputs = _studio_runtime_inputs(
+            studio_project_json, generation_id, mode, duration_seconds, media_manifest,
+            shot_plan_json, creative_treatment_json, cinematography_json, reference_director_json,
+        )
+        mode = studio_inputs["mode"]
+        duration_seconds = studio_inputs["duration_seconds"]
+        media_manifest = studio_inputs["media_manifest"]
+        shot_plan_json = studio_inputs["shot_plan_json"]
+        creative_treatment_json = studio_inputs["creative_treatment_json"]
+        cinematography_json = studio_inputs["cinematography_json"]
+        reference_director_json = studio_inputs["reference_director_json"]
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
         reference_context, reference_project, loaded_references = _native_reference_bundle(
@@ -699,6 +746,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
             "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
             "generation_id": ("STRING", {"default": "", "tooltip": "Prompt Studio generation to emit. Blank selects the first generation."}),
+            "studio_project_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio v3 aggregate. When present, it owns resources, Shots, Look and deterministic reference outputs."}),
         }}
 
     @classmethod
@@ -721,11 +769,23 @@ class MiniMaxH3GGUFPromptEnhancer:
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
-              lora_trigger_words="", reference_director_json="", generation_id=""):
+              lora_trigger_words="", reference_director_json="", generation_id="",
+              studio_project_json=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
+        studio_inputs = _studio_runtime_inputs(
+            studio_project_json, generation_id, mode, duration_seconds, media_manifest,
+            shot_plan_json, creative_treatment_json, cinematography_json, reference_director_json,
+        )
+        mode = studio_inputs["mode"]
+        duration_seconds = studio_inputs["duration_seconds"]
+        media_manifest = studio_inputs["media_manifest"]
+        shot_plan_json = studio_inputs["shot_plan_json"]
+        creative_treatment_json = studio_inputs["creative_treatment_json"]
+        cinematography_json = studio_inputs["cinematography_json"]
+        reference_director_json = studio_inputs["reference_director_json"]
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)

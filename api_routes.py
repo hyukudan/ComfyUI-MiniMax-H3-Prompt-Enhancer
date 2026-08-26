@@ -21,6 +21,7 @@ from .reference_director import (
     media_type_for_filename,
     safe_source_filename,
 )
+from .studio_project import compile_studio_project
 
 
 @PromptServer.instance.routes.post("/minimax_h3_prompt_enhancer/models")
@@ -133,6 +134,32 @@ async def minimax_h3_reference_probe(request):
             "matches": not expected or digest == expected,
             "sha256": digest,
             "sizeBytes": path.stat().st_size,
+        })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/minimax_h3_prompt_enhancer/studio/compile")
+async def minimax_h3_studio_compile(request):
+    """Compile v3 authoring state without running an LLM or decoding physical media."""
+    try:
+        payload = await request.json()
+        compiled = await asyncio.to_thread(
+            compile_studio_project,
+            payload.get("project"),
+            str(payload.get("generationId", "")),
+        )
+        reference_project = compiled["referenceProject"]
+        return web.json_response({
+            "schemaVersion": compiled["schemaVersion"],
+            "projectDigest": compiled["projectDigest"],
+            "generationId": compiled["generationId"],
+            "digest": compiled["digest"],
+            "inputMap": compiled["inputMap"],
+            "quotas": compiled["quotas"],
+            "referenceContext": compiled["referenceContext"],
+            "inputs": reference_project["inputsByGeneration"].get(compiled["generationId"], []),
+            "issues": compiled["issues"],
         })
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=400)

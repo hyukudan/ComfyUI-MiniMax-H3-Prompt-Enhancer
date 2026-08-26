@@ -1,9 +1,8 @@
 import { renderCameraLookTab } from "./tab_camera_look.js";
 import { renderCoachTab } from "./tab_coach.js";
-import { renderReferencesTab } from "./tab_references.js";
 import { createStudioIcon } from "./components/icons.js";
 import { createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
-import { renderCastPlaces, renderDirectorCompose, renderDirectorLibrary, renderDirectorLook, renderDirectorWiring } from "./director_workspace.js";
+import { renderDirectorCompose, renderDirectorLibrary, renderDirectorLook, renderDirectorWiring } from "./director_workspace.js";
 import { ensureStudioStyles } from "./styles.js";
 import { STUDIO_MAX_WIDTH, STUDIO_MIN_WIDTH, STUDIO_UI_LEGACY_STORAGE_KEY, STUDIO_UI_STORAGE_KEY } from "./tokens.js";
 
@@ -15,9 +14,8 @@ export function createPanelElement(tagName, className, textContent = "") {
 }
 
 export const STUDIO_SECTIONS = Object.freeze([
-    { id: "compose", label: "Compose", icon: "shots", render: renderDirectorCompose },
-    { id: "cast_places", label: "Cast & Places", icon: "subjects", render: renderCastPlaces },
-    { id: "media", label: "Media", icon: "media", render: renderReferencesTab },
+    { id: "storyboard", label: "Storyboard", icon: "shots", render: renderDirectorCompose },
+    { id: "library", label: "Library", icon: "subjects", render: renderDirectorLibrary },
     { id: "look", label: "Look", icon: "look", render: renderCameraLookTab },
 ]);
 
@@ -29,15 +27,15 @@ export const DIRECTOR_SECTIONS = Object.freeze([
 ]);
 
 const SECTION_ALIASES = Object.freeze({
-    overview: "compose", shots: "compose", staging: "compose", camera: "compose",
-    subjects: "cast_places", environments: "cast_places", references: "media",
+    overview: "storyboard", compose: "storyboard", shots: "storyboard", staging: "storyboard", camera: "storyboard",
+    subjects: "library", environments: "library", cast_places: "library", media: "library", references: "library",
     camera_look: "look", coach: "review",
 });
 const SECTION_IDS = new Set(STUDIO_SECTIONS.map((item) => item.id));
 
 export function normalizeStudioSection(section) {
     const normalized = SECTION_ALIASES[section] ?? section;
-    return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "compose";
+    return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "storyboard";
 }
 
 export function normalizeDirectorSection(section) {
@@ -120,7 +118,7 @@ export function clampDrawerWidth(width, viewportWidth = globalThis.innerWidth ??
 
 const DEFAULT_PREFS = Object.freeze({
     width: null,
-    lastSection: "compose",
+    lastSection: "storyboard",
     railCollapsed: false,
     detailMode: "guided",
     collapsedBlocks: {},
@@ -264,7 +262,7 @@ function createHeader(controller, onReview, onClose) {
     saved.title = "Every explicit edit is stored immediately in the authoritative workflow data.";
     const review = createPanelElement("button", "minimax-h3-review-button");
     review.type = "button";
-    review.append(createStudioIcon("review"), createPanelElement("span", "minimax-h3-review-label", "Review"));
+    review.append(createStudioIcon("review"), createPanelElement("span", "minimax-h3-review-label", "Review & Generate"));
     review.setAttribute("aria-live", "polite");
     review.addEventListener("click", onReview);
     const help = createIconButton("help", "Keyboard shortcuts");
@@ -321,12 +319,12 @@ function createHeader(controller, onReview, onClose) {
         const generations = projectValue?.generations?.length ?? 1;
         context.textContent = controller.isVisualReferenceDirector
             ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · physical + semantic references`
-            : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · native Compose project` : "Visual prompt workspace";
+            : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · Studio Project v3` : "Visual prompt workspace";
         const counts = reportCounts(controller);
         review.dataset.state = counts.stale ? "stale" : counts.errors ? "error" : counts.warnings ? "warning" : "ready";
         review.querySelector(".minimax-h3-review-label").textContent = counts.stale
             ? `Review · stale`
-            : counts.total ? `Review · ${counts.errors} errors · ${counts.warnings + counts.tips} notes` : "Review";
+            : counts.total ? `Review · ${counts.errors} errors · ${counts.warnings + counts.tips} notes` : "Review & Generate";
         const contextModel = productionContext(controller);
         for (const [key, target] of productionFields) target.textContent = String(contextModel[key]);
     };
@@ -371,7 +369,7 @@ function createNavigation(node, sections, onNavigate, onCollapse, director = fal
 
 function sourceGate(sectionId, controller, panel) {
     const documents = sourceDocuments(controller);
-    if (["compose", "shots", "staging", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
+    if (["storyboard", "shots", "staging", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Shot plan",
             documentState: documents.shot,
@@ -380,12 +378,12 @@ function sourceGate(sectionId, controller, panel) {
         }));
         return true;
     }
-    if (["compose", "cast_places", "media"].includes(sectionId) && documents.project.kind === "v1") {
+    if (["storyboard", "library"].includes(sectionId) && documents.project.kind === "v1") {
         panel.classList.add("minimax-h3-source-gated");
         const unavailable = createPanelElement("section", "minimax-h3-empty-state minimax-h3-source-unavailable");
         unavailable.append(
-            createPanelElement("h3", "", "Project v2 workspace"),
-            createPanelElement("p", "", "This section becomes editable when a Project v2 source is connected."),
+            createPanelElement("h3", "", "Import this legacy project"),
+            createPanelElement("p", "", "Convert this older source once to continue in Studio Project v3."),
         );
         const tools = createPanelElement("details", "minimax-h3-source-tools minimax-h3-source-tools-gate");
         tools.append(
@@ -394,18 +392,18 @@ function sourceGate(sectionId, controller, panel) {
                 name: "Media project",
                 documentState: documents.project,
                 acceptedVersions: [2],
-                legacyDescription: "This legacy manifest is preserved unchanged. Prompt Studio edits Project v2 only.",
+                legacyDescription: "The legacy source stays unchanged until you explicitly import it into Studio Project v3.",
             }),
         );
         panel.append(unavailable, tools);
         return true;
     }
-    if (["compose", "cast_places", "media"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
+    if (["storyboard", "library"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Media project",
             documentState: documents.project,
             acceptedVersions: [2],
-            legacyDescription: "This legacy manifest is preserved unchanged. Prompt Studio edits Project v2 only.",
+            legacyDescription: "Fix or replace this source before importing it into Studio Project v3.",
             onApplyRaw: controller.replaceProjectRaw ? (raw) => controller.replaceProjectRaw(raw) : null,
         }));
         return true;
@@ -479,12 +477,59 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
         back.type = "button";
         back.prepend(createStudioIcon("chevronLeft"));
         back.addEventListener("click", () => render(previousSection));
-        const title = createPanelElement("h2", "", "Review");
+        const title = createPanelElement("h2", "", "Review & Generate");
         toolbar.append(back, title);
         panel.appendChild(toolbar);
         const content = createPanelElement("div", "minimax-h3-review-content");
         panel.appendChild(content);
         renderCoachTab(content, controller);
+        if (typeof controller.compileStudioProject === "function") {
+            const output = createPanelElement("section", "minimax-h3-review-card minimax-h3-studio-output");
+            const heading = createPanelElement("header");
+            const copy = createPanelElement("div");
+            copy.append(
+                createPanelElement("h3", "", "Studio Project v3 output"),
+                createPanelElement("p", "", "Compile the selected Generation to verify the exact H3 image, video and audio outputs before queueing."),
+            );
+            const generation = createPanelElement("select");
+            generation.setAttribute("aria-label", "Generation to compile");
+            for (const id of controller.generationIds?.() ?? ["g1"]) {
+                const option = createPanelElement("option", "", id); option.value = id; generation.appendChild(option);
+            }
+            heading.append(copy, generation); output.appendChild(heading);
+            const actions = createPanelElement("div", "minimax-h3-studio-toolbar");
+            const compile = createPanelElement("button", "minimax-h3-button minimax-h3-button-secondary", "Compile outputs");
+            const queue = createPanelElement("button", "minimax-h3-button minimax-h3-button-primary", "Generate this node");
+            const status = createPanelElement("p", "minimax-h3-studio-status", "Not compiled yet");
+            const mapping = createPanelElement("div", "minimax-h3-reference-output-list");
+            const showCompilation = async () => {
+                compile.disabled = true; queue.disabled = true; status.dataset.valid = "true"; status.textContent = "Compiling Studio Project v3…";
+                mapping.replaceChildren();
+                try {
+                    const result = await controller.compileStudioProject(generation.value);
+                    const rows = Object.entries(result.inputMap ?? {});
+                    for (const [fileId, label] of rows) {
+                        const row = createPanelElement("div", "minimax-h3-reference-output-card");
+                        row.append(createPanelElement("strong", "", label), createPanelElement("span", "", fileId)); mapping.appendChild(row);
+                    }
+                    if (!rows.length) mapping.appendChild(createPanelElement("p", "minimax-h3-director-placeholder", "Text-only Generation · no physical reference outputs"));
+                    status.textContent = `${rows.length} physical output${rows.length === 1 ? "" : "s"} ready · v3 digest ${String(result.digest ?? "").slice(0, 10)}`;
+                    return true;
+                } catch (error) {
+                    status.dataset.valid = "false"; status.textContent = error?.message ?? "Studio Project compilation failed."; return false;
+                } finally { compile.disabled = false; queue.disabled = false; }
+            };
+            compile.type = queue.type = "button";
+            compile.addEventListener("click", showCompilation);
+            queue.addEventListener("click", async () => {
+                if (!await showCompilation()) return;
+                queue.disabled = true; status.textContent = "Queueing this Prompt Enhancer…";
+                try { await controller.runStudioNode(); status.textContent = "Queued successfully."; }
+                catch (error) { status.dataset.valid = "false"; status.textContent = error?.message ?? "Could not queue the node."; }
+                finally { queue.disabled = false; }
+            });
+            actions.append(compile, queue); output.append(actions, status, mapping); content.prepend(output);
+        }
     };
 
     render = (requestedSection) => {
@@ -498,6 +543,7 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             else if (legacyRoute === "shots" || legacyRoute === "overview") controller.directorUiState.composeMode = "build";
         }
         const sectionId = normalizeSection(requestedSection);
+        const changedSection = sectionId !== currentSection;
         currentSection = sectionId;
         panel.replaceChildren();
         panel.className = `minimax-h3-studio-panel minimax-h3-section-${sectionId}`;
@@ -524,6 +570,7 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             button.tabIndex = selected ? 0 : -1;
         }
         header.refresh();
+        if (changedSection) panel.scrollTop = 0;
         if (activeDrawer) activeDrawer.tabId = sectionId;
     };
 
@@ -676,8 +723,8 @@ export function createStudioDashboard(node, controller) {
     const open = createPanelElement("button", "minimax-h3-dashboard-open");
     open.type = "button";
     const workspaceName = controller.isVisualReferenceDirector ? "Director" : "Studio";
-    const primaryDestination = controller.isVisualReferenceDirector ? null : "compose";
-    const openLabel = controller.isVisualReferenceDirector ? "Open Director" : "Open Compose";
+    const primaryDestination = controller.isVisualReferenceDirector ? null : "storyboard";
+    const openLabel = controller.isVisualReferenceDirector ? "Open Director" : "Open Studio";
     open.append(createStudioIcon(controller.isVisualReferenceDirector ? "overview" : "shots", 20), createPanelElement("span", "", openLabel));
     open.addEventListener("click", () => {
         if (studioDrawerIsOpenFor(node.id)) closeStudioDrawer(node.id);
@@ -692,11 +739,10 @@ export function createStudioDashboard(node, controller) {
         ["look", "Look", "look", () => ""],
         ["review", "Review", "review", (summary) => summary.diagnostics],
     ] : [
-        ["compose", "Compose", "shots", (summary) => summary.shots],
-        ["cast_places", "Cast & Places", "subjects", (summary) => summary.subjects + summary.environments],
-        ["media", "Media", "media", (summary) => `${summary.active}/${summary.assets}`],
+        ["storyboard", "Storyboard", "shots", (summary) => summary.shots],
+        ["library", "Library", "subjects", (summary) => summary.subjects + summary.environments + summary.assets],
         ["look", "Look", "look", () => ""],
-        ["review", "Review", "review", (summary) => summary.diagnostics],
+        ["review", "Review & Generate", "review", (summary) => summary.diagnostics],
     ];
     const refresh = () => {
         const summary = dashboardSummaries(controller);

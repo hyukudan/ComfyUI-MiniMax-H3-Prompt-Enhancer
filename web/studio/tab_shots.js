@@ -460,7 +460,7 @@ function renderReferences(container, shot, project, commit, rerender) {
     section.body.appendChild(actionButton("+ Reference", () => {
         (shot.referenceUses ??= []).push({ assetId: available[0].id, role: "continuity" }); commit(); rerender();
     }, { disabled: !available.length }));
-    if (!available.length) section.body.appendChild(element("p", "minimax-h3-usage-note", `No available media is bound to ${shot.generationId}. Bind it in Media first.`));
+    if (!available.length) section.body.appendChild(element("p", "minimax-h3-usage-note", `No available file is active in ${shot.generationId}. Add or activate it in Library · Files first.`));
     container.appendChild(section.details);
 }
 

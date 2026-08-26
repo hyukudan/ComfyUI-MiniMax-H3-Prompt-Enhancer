@@ -192,7 +192,7 @@ export function slotCapacity(generation = {}, assets = []) {
     }
     return {
         picture: { used: used.picture.size, maximum: 9 },
-        video: { used: used.video.size, maximum: 9 },
+        video: { used: used.video.size, maximum: 3 },
         audio: { used: used.audio.size, maximum: 3 },
     };
 }

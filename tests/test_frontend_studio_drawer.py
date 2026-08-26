@@ -11,7 +11,7 @@ def test_studio_drawer_has_accessible_navigation_review_and_resizing():
     drawer = (WEB / "studio" / "drawer.js").read_text(encoding="utf-8")
     styles = (WEB / "studio" / "styles.js").read_text(encoding="utf-8")
     tokens = (WEB / "studio" / "tokens.js").read_text(encoding="utf-8")
-    for tab in ("Compose", "Cast & Places", "Media", "Look"):
+    for tab in ("Storyboard", "Library", "Look", "Review & Generate"):
         assert f'"{tab}"' in drawer
     for duplicate_tab in ('id: "overview"', 'id: "shots"', 'id: "staging"', 'id: "subjects"', 'id: "environments"', 'id: "camera"'):
         assert duplicate_tab not in drawer

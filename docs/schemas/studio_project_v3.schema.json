@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minimax-h3-prompt-enhancer.local/schemas/studio-project-v3.json",
+  "title": "MiniMax H3 Prompt Studio Project v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "files", "subjects", "environments", "generations", "shots", "links"],
+  "properties": {
+    "schemaVersion": {"const": 3},
+    "project": {"$ref": "#/$defs/project"},
+    "files": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/file"}},
+    "subjects": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/subject"}},
+    "environments": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/environment"}},
+    "generations": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/generation"}},
+    "shots": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/shot"}},
+    "links": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/link"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "shortText": {"type": "string", "minLength": 1, "maxLength": 500},
+    "text": {"type": "string", "maxLength": 8000},
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mode", "timingMode", "look"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/shortText"},
+        "mode": {"enum": ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]},
+        "timingMode": {"enum": ["auto", "exact"]},
+        "look": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["creativeTreatment", "cinematography"],
+          "properties": {
+            "creativeTreatment": {"type": "object"},
+            "cinematography": {"type": "object"}
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["storage", "file", "sha256", "mediaType", "sizeBytes"],
+      "properties": {
+        "storage": {"const": "comfy_input"},
+        "file": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "mediaType": {"enum": ["picture", "video", "audio"]},
+        "sizeBytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "type": {"enum": ["picture", "video", "audio"]},
+        "name": {"$ref": "#/$defs/shortText"},
+        "description": {"$ref": "#/$defs/text"},
+        "durationSeconds": {"type": "number", "minimum": 0, "maximum": 15},
+        "audioMode": {"enum": ["off", "paired", "alone"]},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "h3Index": {"type": "integer", "minimum": 1, "maximum": 64},
+        "name": {"$ref": "#/$defs/shortText"},
+        "description": {"$ref": "#/$defs/text"},
+        "identityFileIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "defaultVoiceFileId": {"$ref": "#/$defs/id"},
+        "baseAppearanceStateId": {"$ref": "#/$defs/id"},
+        "appearanceStates": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/shortText"},
+        "permanent": {"type": "object"},
+        "views": {"type": "array", "items": {"$ref": "#/$defs/view"}},
+        "defaultStateId": {"$ref": "#/$defs/id"},
+        "states": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name", "fileId"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/shortText"},
+        "role": {"enum": ["overview", "alternate", "detail", "lighting", "custom"]},
+        "fileId": {"$ref": "#/$defs/id"},
+        "description": {"$ref": "#/$defs/text"}
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "order"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "order": {"type": "integer", "minimum": 1, "maximum": 64}
+      }
+    },
+    "castUse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["subjectId"],
+      "properties": {
+        "subjectId": {"$ref": "#/$defs/id"},
+        "presence": {"enum": ["present", "enters", "exits", "absent"]},
+        "appearanceStateId": {"$ref": "#/$defs/id"}
+      }
+    },
+    "shot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "generationId", "action"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "generationId": {"$ref": "#/$defs/id"},
+        "title": {"$ref": "#/$defs/shortText"},
+        "action": {"$ref": "#/$defs/text"},
+        "durationSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 150},
+        "cast": {"type": "array", "items": {"$ref": "#/$defs/castUse"}},
+        "environment": {"type": "object"},
+        "background": {"type": "object"},
+        "referenceBindings": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["project", "subject", "environment", "shot"]},
+        "id": {"$ref": "#/$defs/id"}
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "fileId", "role", "owner"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "fileId": {"$ref": "#/$defs/id"},
+        "role": {"type": "string"},
+        "owner": {"$ref": "#/$defs/owner"},
+        "target": {"type": "object"},
+        "scope": {"type": "object"},
+        "cameraAspects": {"type": "array", "items": {"type": "string"}},
+        "note": {"$ref": "#/$defs/shortText"}
+      }
+    }
+  }
+}

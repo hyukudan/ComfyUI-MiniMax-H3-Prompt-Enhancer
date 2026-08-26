@@ -64,24 +64,24 @@ test("UI preferences persist only shell state and normalize legacy deep links", 
         collapsedBlocks: { camera: true },
         project: { shouldNotPersist: true },
     }, storage);
-    assert.equal(written.lastSection, "media");
+    assert.equal(written.lastSection, "library");
     assert.deepEqual(readStudioPrefs(storage), {
         width: 712,
-        lastSection: "media",
+        lastSection: "library",
         railCollapsed: true,
         detailMode: "advanced",
         collapsedBlocks: { camera: true },
     });
     assert.equal(JSON.parse(storage.value(STUDIO_UI_STORAGE_KEY)).project, undefined);
     assert.equal(normalizeStudioSection("coach"), "review");
-    assert.equal(normalizeStudioSection("unknown"), "compose");
+    assert.equal(normalizeStudioSection("unknown"), "storyboard");
 });
 
 test("malformed stored preferences fall back without throwing", () => {
     const storage = memoryStorage({ [STUDIO_UI_STORAGE_KEY]: "{" });
     assert.deepEqual(readStudioPrefs(storage), {
         width: null,
-        lastSection: "compose",
+        lastSection: "storyboard",
         railCollapsed: false,
         detailMode: "guided",
         collapsedBlocks: {},
@@ -106,19 +106,19 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
         detailMode: "advanced",
         collapsedBlocks: {},
     });
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "cast_places", "media", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["storyboard", "library", "look"]);
     assert.equal(normalizeStudioSection("camera_look"), "look");
 });
 
-test("Prompt Studio owns Compose while the Director remains a legacy workspace", () => {
+test("Prompt Studio owns one Storyboard and Library while the Director keeps its specialist wiring view", () => {
     assert.deepEqual(DIRECTOR_SECTIONS.map(({ id }) => id), ["compose", "library", "wiring", "look"]);
     assert.equal(normalizeDirectorSection("shots"), "compose");
     assert.equal(normalizeDirectorSection("media"), "library");
     assert.equal(normalizeDirectorSection("unknown"), "compose");
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "cast_places", "media", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["storyboard", "library", "look"]);
     const drawerSource = readFileSync(new URL("../drawer.js", import.meta.url), "utf8");
     const backendSource = readFileSync(new URL("../../backend_toggle.js", import.meta.url), "utf8");
-    assert.match(drawerSource, /Open Compose/);
+    assert.match(drawerSource, /Open Studio/);
     assert.doesNotMatch(drawerSource, /connectedVisualReferenceController/);
     assert.doesNotMatch(drawerSource, /preferredVisualReferenceController/);
     assert.doesNotMatch(drawerSource, /promptComposeController/);
