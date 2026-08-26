@@ -320,6 +320,58 @@ def test_prompt_enhancer_natively_compiles_and_emits_its_compose_references(monk
     assert json.loads(result[12])["digest"] == result[8]["digest"]
 
 
+def test_compose_shots_supply_basic_prompt_when_manual_text_is_blank():
+    studio = {
+        "schemaVersion": 3,
+        "project": {
+            "name": "Visual-only prompt", "mode": "t2va", "timingMode": "auto",
+            "look": {
+                "creativeTreatment": {"schemaVersion": 2},
+                "cinematography": {"schemaVersion": 2},
+            },
+        },
+        "files": [],
+        "subjects": [{
+            "id": "ana", "name": "Ana", "description": "A woman with dark hair.",
+            "identityFileIds": [],
+        }],
+        "environments": [],
+        "generations": [{"id": "g1", "order": 1}],
+        "shots": [{
+            "id": "s1", "generationId": "g1", "action": "Ana opens the door.",
+            "cast": [{"subjectId": "ana", "presence": "present"}],
+            "actionBeats": [{
+                "id": "b1", "at": 0.5,
+                "dialogue": {"speakerId": "ana", "delivery": "whispers", "text": "Ya estoy aquí."},
+            }],
+        }],
+        "links": [],
+    }
+
+    resolved = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json=json.dumps(studio), basic_prompt="",
+    )
+
+    assert resolved["basic_prompt"] == "Ana opens the door. Ana whispers “Ya estoy aquí.”"
+
+
+def test_manual_basic_prompt_remains_authoritative_over_compose_summary():
+    studio = {
+        "schemaVersion": 3,
+        "project": {"name": "Manual", "mode": "t2va", "timingMode": "auto", "look": {}},
+        "files": [], "subjects": [], "environments": [],
+        "generations": [{"id": "g1", "order": 1}],
+        "shots": [{"id": "s1", "generationId": "g1", "action": "Visual action."}],
+        "links": [],
+    }
+
+    resolved = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json=json.dumps(studio), basic_prompt="Manual direction.",
+    )
+
+    assert resolved["basic_prompt"] == "Manual direction."
+
+
 def test_api_key_widget_documents_the_environment_variable_fallback():
     tooltip = MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]["api_key"][1]["tooltip"]
     assert "MINIMAX_H3_PROMPT_ENHANCER_API_KEY" in tooltip

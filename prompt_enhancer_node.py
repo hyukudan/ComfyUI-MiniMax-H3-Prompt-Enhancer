@@ -350,11 +350,12 @@ def _numbered_reference_outputs(loaded_references):
 def _studio_runtime_inputs(
     studio_project_json="", generation_id="", mode="auto", duration_seconds=5.0,
     media_manifest="", shot_plan_json="", creative_treatment_json="",
-    cinematography_json="", reference_director_json="",
+    cinematography_json="", reference_director_json="", basic_prompt="",
 ):
     """Let v3 own all authoring documents while preserving the node's runtime contract."""
     if not str(studio_project_json or "").strip():
         return {
+            "basic_prompt": basic_prompt,
             "mode": mode, "duration_seconds": duration_seconds, "media_manifest": media_manifest,
             "shot_plan_json": shot_plan_json, "creative_treatment_json": creative_treatment_json,
             "cinematography_json": cinematography_json,
@@ -368,7 +369,34 @@ def _studio_runtime_inputs(
     compiled_duration = duration_seconds
     if compiled["shotPlan"].get("timingMode") == "exact" and selected_shots:
         compiled_duration = sum(float(shot.get("durationSeconds", 0)) for shot in selected_shots)
+    resolved_basic_prompt = str(basic_prompt or "").strip()
+    if not resolved_basic_prompt and selected_shots:
+        subject_names = {
+            str(subject.get("id")): str(subject.get("name") or subject.get("id"))
+            for subject in compiled["mediaProject"].get("subjects", [])
+        }
+        shot_summaries = []
+        for index, shot in enumerate(selected_shots, start=1):
+            action = str(shot.get("action") or "").strip()
+            parts = [action] if action else []
+            for beat in shot.get("actionBeats") or []:
+                beat_action = str(beat.get("action") or "").strip()
+                if beat_action:
+                    parts.append(beat_action)
+                dialogue = beat.get("dialogue") or {}
+                text = str(dialogue.get("text") or "").strip()
+                if text:
+                    speaker_id = str(dialogue.get("speakerId") or "").strip()
+                    speaker = subject_names.get(speaker_id, speaker_id or "A subject")
+                    delivery = str(dialogue.get("delivery") or "says").strip()
+                    parts.append(f"{speaker} {delivery} “{text}”")
+            summary = " ".join(part for part in parts if part).strip()
+            if len(selected_shots) > 1:
+                summary = f"Shot {index}: {summary}"
+            shot_summaries.append(summary)
+        resolved_basic_prompt = "\n".join(part for part in shot_summaries if part)
     return {
+        "basic_prompt": resolved_basic_prompt,
         "mode": compiled["mediaProject"].get("mode", mode),
         "duration_seconds": compiled_duration,
         "media_manifest": json.dumps(compiled["mediaProject"], ensure_ascii=False),
@@ -593,7 +621,9 @@ class MiniMaxH3PromptEnhancer:
         studio_inputs = _studio_runtime_inputs(
             studio_project_json, generation_id, mode, duration_seconds, media_manifest,
             shot_plan_json, creative_treatment_json, cinematography_json, reference_director_json,
+            basic_prompt=basic_prompt,
         )
+        basic_prompt = studio_inputs["basic_prompt"]
         mode = studio_inputs["mode"]
         duration_seconds = studio_inputs["duration_seconds"]
         media_manifest = studio_inputs["media_manifest"]
@@ -804,7 +834,9 @@ class MiniMaxH3GGUFPromptEnhancer:
         studio_inputs = _studio_runtime_inputs(
             studio_project_json, generation_id, mode, duration_seconds, media_manifest,
             shot_plan_json, creative_treatment_json, cinematography_json, reference_director_json,
+            basic_prompt=basic_prompt,
         )
+        basic_prompt = studio_inputs["basic_prompt"]
         mode = studio_inputs["mode"]
         duration_seconds = studio_inputs["duration_seconds"]
         media_manifest = studio_inputs["media_manifest"]
