@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, MEDIA_RECIPES,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeConnectionInput, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeConnectionInput, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -97,6 +97,14 @@ test("Compose creates one canonical LLM subject and places that stable ID in the
     assert.deepEqual(bundle.shotPlan.shots[0].subjects, [{ subjectId: "subject.1", presence: "present" }]);
     assert.equal(source.project.subjects.length, 0, "the UI proposal must not mutate before the atomic commit");
     assert.equal(source.shotPlan.shots[0].subjects, undefined);
+});
+
+test("direct target import prepares a typed immutable library asset before upload commit", () => {
+    const source = fixtures();
+    source.project.assets = [{ id: "asset.1", type: "picture", name: "Existing" }];
+    const draft = createImportedAssetDraft(source.project, { name: "Ana voice.wav" }, "audio", "Voice reference");
+    assert.deepEqual(draft.asset, { id: "asset.2", type: "audio", name: "Ana voice", available: true });
+    assert.equal(source.project.assets.length, 1);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {

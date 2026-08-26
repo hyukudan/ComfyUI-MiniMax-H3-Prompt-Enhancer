@@ -1824,6 +1824,10 @@ export function ensureStudioStyles() {
         .minimax-h3-director-lanes { display: grid; gap: 6px; grid-column: 1; padding: 12px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
         .minimax-h3-director-lanes h3 { margin: 0 0 4px; }
         .minimax-h3-director-subject-targets { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+        .minimax-h3-director-drop-wrapper { display: inline-flex; align-items: stretch; }
+        .minimax-h3-director-drop-wrapper .minimax-h3-director-drop-target { border-radius: 999px 0 0 999px !important; }
+        .minimax-h3-director-drop-import { min-width: 24px; min-height: 26px; border: 1px dashed color-mix(in srgb, var(--h3-accent) 52%, var(--h3-border)) !important; border-left: 0 !important; border-radius: 0 999px 999px 0 !important; padding: 2px 6px !important; background: color-mix(in srgb, var(--h3-accent) 7%, transparent) !important; color: var(--h3-accent) !important; font-size: 13px !important; }
+        .minimax-h3-director-drop-import:hover { border-style: solid !important; background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; }
         .minimax-h3-director-drop-target { min-height: 26px; border: 1px dashed color-mix(in srgb, var(--h3-accent) 52%, var(--h3-border)) !important; border-radius: 999px !important; padding: 3px 8px !important; background: color-mix(in srgb, var(--h3-accent) 7%, transparent) !important; color: var(--h3-text-muted) !important; font-size: 10px !important; white-space: nowrap; }
         .minimax-h3-director-drop-target:not(:disabled):hover, .minimax-h3-director-drop-target[data-drag="ready"] { border-style: solid !important; background: color-mix(in srgb, var(--h3-accent) 24%, var(--h3-surface)) !important; color: var(--h3-text) !important; }
         .minimax-h3-director-drop-target[data-connected="true"] { border-style: solid !important; border-color: color-mix(in srgb, var(--h3-success) 62%, var(--h3-border)) !important; color: var(--h3-success) !important; }
