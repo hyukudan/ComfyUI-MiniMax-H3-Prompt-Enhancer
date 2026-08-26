@@ -165,6 +165,38 @@ def test_project_default_voice_compiles_without_a_shot_use():
     assert "supplies no dialogue words" in context
 
 
+def test_visual_subject_identity_and_voice_compile_to_the_same_named_llm_subject():
+    project = {
+        "mediaProject": {
+            "assets": [
+                {"id": "ana.image", "type": "picture", "name": "Ana image"},
+                {"id": "ana.voice", "type": "audio", "name": "Ana voice"},
+            ],
+            "subjects": [{
+                "id": "subject.1", "h3Index": 1, "name": "Ana", "description": "",
+                "identityAssetIds": ["ana.image"], "defaultVoiceAssetId": "ana.voice",
+            }],
+            "environments": [],
+        },
+        "shotPlan": {"shots": [{
+            "id": "s1", "generationId": "g1", "action": "Ana turns.",
+            "subjects": [{"subjectId": "subject.1", "presence": "present"}],
+            "referenceUses": [
+                {"assetId": "ana.image", "role": "identity_reinforcement", "targetIds": ["subject.1"]},
+                {"assetId": "ana.voice", "role": "voice", "targetIds": ["subject.1"]},
+            ],
+        }]},
+        "inputsByGeneration": {"g1": [
+            {"label": "<Picture 1>", "assetId": "ana.image", "mediaType": "picture", "role": "reference"},
+            {"label": "<Audio 1>", "assetId": "ana.voice", "mediaType": "audio", "role": "reference"},
+        ]},
+    }
+    context = reference_context_for_project(project, "g1")
+    assert "<Picture 1> supplies only the stable visual identity of Ana in shot s1" in context
+    assert "<Audio 1> supplies voice timbre and delivery only for Ana in shot s1" in context
+    assert "supplies no dialogue words" in context
+
+
 def test_frame_mode_infers_the_same_effective_role_as_the_visual_editor():
     director = empty_reference_director()
     director["sources"]["frame"] = source(filename="frame.webp")

@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, MEDIA_RECIPES,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeConnectionInput, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeConnectionInput, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -84,6 +84,19 @@ test("Compose preserves complete presence declarations by marking removed cast a
     const shot = { subjectPresenceComplete: true, subjects: [{ subjectId: "subject.1", presence: "present" }] };
     setSceneSubjectPresence(shot, "subject.1", false);
     assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }]);
+});
+
+test("Compose creates one canonical LLM subject and places that stable ID in the scene atomically", () => {
+    const source = fixtures();
+    source.project.subjects = [];
+    const bundle = createSceneSubjectBundle(source.project, source.shotPlan, "s1", "Ana");
+    assert.deepEqual(bundle.subject, {
+        id: "subject.1", h3Index: 1, name: "Ana", description: "", identityAssetIds: [], baseAppearanceStateId: "base",
+        appearanceStates: [{ id: "base", name: "Base", controls: [], attributes: {} }],
+    });
+    assert.deepEqual(bundle.shotPlan.shots[0].subjects, [{ subjectId: "subject.1", presence: "present" }]);
+    assert.equal(source.project.subjects.length, 0, "the UI proposal must not mutate before the atomic commit");
+    assert.equal(source.shotPlan.shots[0].subjects, undefined);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {

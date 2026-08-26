@@ -19,10 +19,10 @@ function nextH3Index(subjects) {
     return 64;
 }
 
-function newSubject(project) {
+export function createSubjectDraft(project, name = "New subject") {
     const id = uniqueId(project.subjects, "subject.");
     return {
-        id, h3Index: nextH3Index(project.subjects), name: "New subject", description: "",
+        id, h3Index: nextH3Index(project.subjects), name: String(name).trim() || "New subject", description: "",
         identityAssetIds: [], baseAppearanceStateId: "base",
         appearanceStates: [{ id: "base", name: "Base", controls: [], attributes: {} }],
     };
@@ -146,7 +146,7 @@ export function renderSubjectsTab(container, controller) {
     };
     const toolbar = element("div", "minimax-h3-studio-toolbar");
     const addSubject = actionButton("+ Subject", () => {
-        const subject = newSubject(project);
+        const subject = createSubjectDraft(project);
         project.subjects.push(subject);
         ui.subjectSelectedId = subject.id;
         const generation = project.generations.find((item) => item.id === ui.selectedGenerationId)

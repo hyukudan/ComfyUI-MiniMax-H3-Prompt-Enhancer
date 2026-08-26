@@ -10,7 +10,7 @@ import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "
 import { renderReferencesTab } from "./tab_references.js";
 import { renderShotsTab } from "./tab_shots.js";
 import { renderStagingTab } from "./tab_staging.js";
-import { renderSubjectsTab } from "./tab_subjects.js";
+import { createSubjectDraft, renderSubjectsTab } from "./tab_subjects.js";
 
 function el(tag, className = "", text = "") {
     const node = document.createElement(tag);
@@ -101,6 +101,16 @@ export function setSceneEnvironment(shot, environmentId) {
     if (environmentId) shot.environment = { environmentId, viewIds: [] };
     else delete shot.environment;
     return shot;
+}
+
+export function createSceneSubjectBundle(project, shotPlan, shotId, name) {
+    const nextProject = structuredClone(project);
+    const nextPlan = structuredClone(shotPlan);
+    const subject = createSubjectDraft(nextProject, name);
+    nextProject.subjects.push(subject);
+    const shot = nextPlan.shots.find((candidate) => candidate.id === shotId);
+    if (shot) setSceneSubjectPresence(shot, subject.id, true);
+    return { project: nextProject, shotPlan: nextPlan, subject };
 }
 
 function composeMediaVisual(asset, source) {
@@ -239,7 +249,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, Boolean(subject?.defaultVoiceAssetId)),
             composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, performanceConnected),
         );
-        card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), targets);
+        card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`), targets);
         cast.appendChild(card);
     }
     const action = el("div", "minimax-h3-director-action");
@@ -275,8 +285,33 @@ function renderBoard(container, controller, plan, project, rerender) {
     inspector.append(el("span", "minimax-h3-director-kicker", `SCENE ${plan.shots.indexOf(selected) + 1}`), el("h3", "", selected.id));
     const setup = el("section", "minimax-h3-director-scene-setup");
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
-    setupHeading.append(el("strong", "", "Cast & set"), button("Manage Library", () => { controller.directorUiState.libraryMode = "subjects"; controller.navigateStudio?.("library"); }, "minimax-h3-director-text-button"));
+    const setupActions = el("div", "minimax-h3-director-setup-actions");
+    setupActions.append(
+        button("+ Subject", () => { controller.directorUiState.creatingSubject = true; rerender(); }, "minimax-h3-director-text-button"),
+        button("Manage Library", () => { controller.directorUiState.libraryMode = "subjects"; controller.navigateStudio?.("library"); }, "minimax-h3-director-text-button"),
+    );
+    setupHeading.append(el("strong", "", "Cast & set"), setupActions);
     setup.appendChild(setupHeading);
+    if (controller.directorUiState.creatingSubject) {
+        const creator = el("form", "minimax-h3-director-inline-creator");
+        const nameInput = el("input"); nameInput.type = "text"; nameInput.maxLength = 200; nameInput.placeholder = "Subject name, e.g. Ana"; nameInput.setAttribute("aria-label", "New subject name");
+        const status = el("span", "minimax-h3-director-inline-status"); status.setAttribute("role", "status");
+        const create = button("Create & place", () => {}, "minimax-h3-button minimax-h3-button-primary"); create.type = "submit";
+        const cancel = button("Cancel", () => { controller.directorUiState.creatingSubject = false; rerender(); }, "minimax-h3-button minimax-h3-button-secondary");
+        creator.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const name = nameInput.value.trim();
+            if (!name) { nameInput.setAttribute("aria-invalid", "true"); status.textContent = "Name the subject first."; nameInput.focus(); return; }
+            const bundle = createSceneSubjectBundle(project, plan, selected.id, name);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: bundle.project, shotPlan: bundle.shotPlan });
+            if (!committed?.ok) { status.textContent = committed?.message || "Could not create the subject and place it atomically."; return; }
+            controller.projectUiState.subjectSelectedId = bundle.subject.id;
+            controller.directorUiState.creatingSubject = false;
+            controller.directorUiState.composeFeedback = `${bundle.subject.name} created as <Subject ${bundle.subject.h3Index}> and placed in this scene.`;
+            rerender();
+        });
+        creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
+    }
     const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this scene");
     for (const subject of project?.subjects ?? []) {
         const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
