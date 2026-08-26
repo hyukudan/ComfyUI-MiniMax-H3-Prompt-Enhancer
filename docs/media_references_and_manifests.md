@@ -95,6 +95,9 @@ through a bounded same-origin upload, records a SHA-256 digest, and shows the pr
 Add **MiniMax H3 Visual Reference Director** to the graph and select **Open director** on the node. Its visual
 workspace imports and previews pictures, clips and audio, and lets you assign each card to a subject identity or
 voice, an environment/background, or a shot performance/camera role. The technical JSON widgets stay hidden.
+The visual **Plan by outcome** assistant can create or connect identity, voice, environment, performance, camera,
+soundtrack, continuity, appearance-edit and lighting relationships. Every selected target and shot scope is compiled
+into `reference_context`; these relationships are not merely presentation metadata in the browser.
 
 The node emits a typed `reference_project`, an authoritative `reference_context` string, ordered `pictures`,
 `videos` (IMAGE frame batches at H3's 24 fps reference rate), and `audios`, without changing the canonical outputs

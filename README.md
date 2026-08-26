@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 1086 Passed](https://img.shields.io/badge/tests-1086%20passed-brightgreen.svg)](tests/)
+[![Tests: 1095 Passed](https://img.shields.io/badge/tests-1095%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -133,6 +133,8 @@ The enhancer node stays compact through eight summary chips. Each opens a wide, 
 Instructional examples inside empty authoring fields are placeholders, not saved prompt text. They disappear when the field receives focus, return only if it is left empty, and never become JSON automatically. Review blocks generation when a required identity, dialogue line, or custom relationship is still unfinished.
 
 For reference workflows, **MiniMax H3 Visual Reference Director** is the connected source of truth. Choose **Open director** on that node to import and preview pictures, clips, and audio, then drag each card onto a subject identity/voice, environment/background, or shot performance/camera role. It compiles both the LLM context and the ordered tensors from the same assignments:
+
+Its visual assistant can also build the complete relationship by outcome—identity, voice, environment, performance, camera, soundtrack, continuity, bounded appearance edit, or lighting—and writes the chosen subject/environment and shot scope into the same prompt context sent to the LLM.
 
 ```text
 Visual Reference Director → reference_context → Prompt Enhancer → enhanced_prompt ─┐

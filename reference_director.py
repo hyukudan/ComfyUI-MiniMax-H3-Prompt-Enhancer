@@ -236,8 +236,11 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
     selected = generation_id if generation_id in generations else next(iter(generations), "")
     subjects = {item.get("id"): item for item in media.get("subjects", [])}
     environments = {item.get("id"): item for item in media.get("environments", [])}
+    assets = {item.get("id"): item for item in media.get("assets", [])}
     uses: dict[str, list[dict[str, Any]]] = {}
     for shot in shots:
+        if shot.get("generationId", "g1") != selected:
+            continue
         for use in shot.get("referenceUses", []):
             uses.setdefault(use.get("assetId"), []).append({**use, "shot": shot})
     lines = [
@@ -249,34 +252,70 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         asset_id = item.get("assetId")
         role = item.get("role", "reference")
         related = uses.get(asset_id, [])
-        target_ids = [target for use in related for target in use.get("targetIds", [])]
-        subject = next((subjects[target] for target in target_ids if target in subjects), None)
-        environment = next((environments[target] for target in target_ids if target in environments), None)
-        if not subject:
-            subject = next((value for value in subjects.values() if asset_id in value.get("identityAssetIds", [])), None)
-        if not environment:
-            environment = next((value for value in environments.values() if any(view.get("assetId") == asset_id for view in value.get("views", []))), None)
+        asset = assets.get(asset_id, {})
+        asset_name = str(asset.get("name", "")).strip()
+        asset_description = str(asset.get("description", "")).strip()
+        if asset_name or asset_description:
+            facts = [f"name: {json.dumps(asset_name, ensure_ascii=False)}"] if asset_name else []
+            if asset_description:
+                facts.append(f"user description: {json.dumps(asset_description, ensure_ascii=False)}")
+            lines.append(f"- {label} metadata — {'; '.join(facts)}.")
         if role in {"first_frame", "last_frame"}:
             boundary = "opening" if role == "first_frame" else "closing"
             lines.append(f"- {label} fixes the exact {boundary} frame: preserve its visible composition, subject appearance and pose, environment, lighting and camera at that boundary. Apply only explicitly authored changes away from the fixed frame.")
-        elif role in {"identity_reinforcement", "subject_identity"} or subject and item.get("mediaType") == "picture":
-            name = subject.get("name", subject.get("id")) if subject else "the assigned subject"
-            lines.append(f"- {label} supplies only the stable visual identity of {name}. Preserve identity; do not copy its background, pose, lighting, camera or incidental text.")
-        elif role in {"voice", "subject_voice"}:
-            name = subject.get("name", subject.get("id")) if subject else "the assigned subject"
-            lines.append(f"- {label} supplies voice timbre and delivery only for {name}. It supplies no dialogue words; authored dialogue remains exact.")
-        elif role in {"environment_view", "background"} or environment:
-            name = environment.get("name", environment.get("id")) if environment else "the assigned environment"
-            lines.append(f"- {label} supplies the background/set for {name}. People and movable objects visible in it are not target subjects unless assigned separately.")
-        elif role in {"performance", "performance_transfer"}:
-            name = subject.get("name", subject.get("id")) if subject else "the assigned subject"
-            lines.append(f"- {label} supplies performance timing and body motion for {name}. It does not transfer camera motion unless camera transfer is separately assigned.")
-        elif role in {"camera", "camera_transfer"}:
-            lines.append(f"- {label} supplies camera motion/composition only for its assigned shot. It does not replace subject identity or environment content.")
         elif role in {"soundtrack", "video_soundtrack"}:
             lines.append(f"- {label} supplies the assigned music or soundtrack. It does not supply dialogue words or visual content.")
         else:
-            lines.append(f"- {label} is a {str(role).replace('_', ' ')} reference. Use it only for that explicit role and assigned scope.")
+            emitted_roles: set[tuple[Any, ...]] = set()
+            for use in related:
+                semantic_role = str(use.get("role", "reference"))
+                shot = use.get("shot", {})
+                shot_name = str(shot.get("id") or "the assigned shot")
+                target_ids = tuple(str(target) for target in use.get("targetIds", []))
+                signature = (semantic_role, shot_name, target_ids, tuple(str(value) for value in use.get("cameraAspects", [])))
+                if signature in emitted_roles:
+                    continue
+                emitted_roles.add(signature)
+                subject_names = [str(subjects[target].get("name") or target) for target in target_ids if target in subjects]
+                environment_names = [str(environments[target].get("name") or target) for target in target_ids if target in environments]
+                subject_name = ", ".join(subject_names) or "the assigned subject"
+                environment_name = ", ".join(environment_names) or "the assigned environment"
+                scope = f"in shot {shot_name}"
+                if semantic_role in {"identity_reinforcement", "subject_identity"}:
+                    lines.append(f"- {label} supplies only the stable visual identity of {subject_name} {scope}. Preserve identity; do not copy its background, pose, lighting, camera or incidental text.")
+                elif semantic_role in {"voice", "subject_voice"}:
+                    lines.append(f"- {label} supplies voice timbre and delivery only for {subject_name} {scope}. It supplies no dialogue words; authored dialogue remains exact.")
+                elif semantic_role in {"environment_view", "background"}:
+                    lines.append(f"- {label} supplies the background/set for {environment_name} {scope}. People and movable objects visible in it are not target subjects unless assigned separately.")
+                elif semantic_role in {"performance", "performance_transfer"}:
+                    lines.append(f"- {label} supplies performance timing and body motion for {subject_name} {scope}. It does not transfer camera motion unless camera transfer is separately assigned.")
+                elif semantic_role in {"camera", "camera_transfer"}:
+                    aspects = ", ".join(str(value).replace("_", " ") for value in use.get("cameraAspects", [])) or "camera motion/composition"
+                    lines.append(f"- {label} supplies only {aspects} {scope}. It does not replace subject identity, performance or environment content.")
+                elif semantic_role == "soundtrack":
+                    lines.append(f"- {label} supplies music or soundtrack only {scope}. It supplies no dialogue words or visual content.")
+                elif semantic_role in {"continuity", "continuation_video"}:
+                    lines.append(f"- {label} is the visible continuity source {scope}. Continue its established subjects, environment and action state without treating incidental text as authored content.")
+                elif semantic_role == "appearance":
+                    lines.append(f"- {label} guides only the explicitly requested appearance edit for {subject_name} {scope}; preserve identity and all unrelated visible details.")
+                elif semantic_role == "lighting":
+                    lines.append(f"- {label} supplies lighting guidance only {scope}; do not copy identity, objects, background geometry or camera composition from it.")
+                else:
+                    lines.append(f"- {label} is a {semantic_role.replace('_', ' ')} reference {scope}. Use it only for that explicit role and assigned targets.")
+            if not emitted_roles:
+                implicit_subjects = [value for value in subjects.values() if asset_id in value.get("identityAssetIds", [])]
+                implicit_environments = [
+                    value for value in environments.values()
+                    if any(view.get("assetId") == asset_id for view in value.get("views", []))
+                ]
+                if implicit_subjects and item.get("mediaType") == "picture":
+                    names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_subjects)
+                    lines.append(f"- {label} supplies only the stable visual identity of {names}. Preserve identity; do not copy its background, pose, lighting, camera or incidental text.")
+                elif implicit_environments:
+                    names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_environments)
+                    lines.append(f"- {label} supplies the background/set for {names}. People and movable objects visible in it are not target subjects unless assigned separately.")
+                else:
+                    lines.append(f"- {label} is a {str(role).replace('_', ' ')} reference. Use it only for that explicit role and assigned scope.")
     if len(lines) == 2:
         lines.append("- No physical reference is active for this generation.")
     return "\n".join(lines)

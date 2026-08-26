@@ -147,3 +147,40 @@ def test_frame_mode_infers_the_same_effective_role_as_the_visual_editor():
 def test_reference_context_rejects_an_unknown_explicit_generation():
     with pytest.raises(ValueError, match="Unknown reference generation"):
         reference_context_for_project({"inputsByGeneration": {"g1": []}}, "missing")
+
+
+@pytest.mark.parametrize(("media_type", "role", "target_id", "expected"), [
+    ("picture", "identity_reinforcement", "subject.1", "stable visual identity of Ana in shot s1"),
+    ("audio", "voice", "subject.1", "voice timbre and delivery only for Ana in shot s1"),
+    ("picture", "environment_view", "environment.1", "background/set for Rooftop in shot s1"),
+    ("video", "performance", "subject.1", "performance timing and body motion for Ana in shot s1"),
+    ("video", "camera_transfer", None, "only motion, framing in shot s1"),
+    ("audio", "soundtrack", None, "music or soundtrack only in shot s1"),
+    ("picture", "continuity", None, "visible continuity source in shot s1"),
+    ("picture", "appearance", "subject.1", "appearance edit for Ana in shot s1"),
+    ("picture", "lighting", None, "lighting guidance only in shot s1"),
+])
+def test_assistant_relationships_reach_the_llm_context(media_type, role, target_id, expected):
+    use = {"assetId": "asset", "role": role}
+    if target_id:
+        use["targetIds"] = [target_id]
+    if role == "camera_transfer":
+        use["cameraAspects"] = ["motion", "framing"]
+    project = {
+        "mediaProject": {
+            "assets": [{"id": "asset", "type": media_type, "name": "Reference", "description": "User-authored observation"}],
+            "subjects": [{"id": "subject.1", "name": "Ana", "identityAssetIds": []}],
+            "environments": [{"id": "environment.1", "name": "Rooftop", "views": []}],
+        },
+        "shotPlan": {"shots": [
+            {"id": "wrong", "generationId": "g2", "referenceUses": [{"assetId": "asset", "role": "voice", "targetIds": ["subject.1"]}]},
+            {"id": "s1", "generationId": "g1", "referenceUses": [use]},
+        ]},
+        "inputsByGeneration": {"g1": [{
+            "label": f"<{media_type.title()} 1>", "assetId": "asset", "mediaType": media_type, "role": "reference",
+        }]},
+    }
+    context = reference_context_for_project(project, "g1")
+    assert expected in context
+    assert 'user description: "User-authored observation"' in context
+    assert "shot wrong" not in context
