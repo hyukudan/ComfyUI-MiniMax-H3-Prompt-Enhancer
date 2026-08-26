@@ -16,9 +16,16 @@ def test_compact_node_preserves_eight_legacy_outputs_before_native_compose_outpu
     )
     compose_types = ("H3_REFERENCE_PROJECT", "IMAGE", "IMAGE", "AUDIO", "STRING")
     compose_names = ("reference_project", "pictures", "videos", "audios", "reference_project_json")
+    numbered_types = ("IMAGE",) * 12 + ("AUDIO",) * 6
+    numbered_names = (
+        *(f"ref_image_{index}" for index in range(1, 10)),
+        *(f"ref_video_{index}" for index in range(1, 4)),
+        *(f"ref_video_audio_{index}" for index in range(1, 4)),
+        *(f"ref_audio_{index}" for index in range(1, 4)),
+    )
     for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
-        assert node_class.RETURN_TYPES == legacy_types + compose_types
-        assert node_class.RETURN_NAMES == legacy_names + compose_names
+        assert node_class.RETURN_TYPES == legacy_types + compose_types + numbered_types
+        assert node_class.RETURN_NAMES == legacy_names + compose_names + numbered_names
 
 
 def test_node_frontend_groups_controls_without_new_persistent_widgets():

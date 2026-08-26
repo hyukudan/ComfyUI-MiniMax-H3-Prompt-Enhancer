@@ -10,6 +10,7 @@ import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "
 import { renderReferencesTab } from "./tab_references.js";
 import { renderStagingTab } from "./tab_staging.js";
 import { createSubjectDraft, renderSubjectsTab } from "./tab_subjects.js";
+import { insertSubjectMention } from "../subject_mentions_model.js";
 
 function el(tag, className = "", text = "") {
     const node = document.createElement(tag);
@@ -777,6 +778,20 @@ function renderBoard(container, controller, plan, project, rerender) {
     actionInput.setAttribute("aria-label", "Visible action for selected Shot");
     actionInput.addEventListener("blur", () => { selected.action = actionInput.value.trim(); commitPlan(controller, plan); rerender(); });
     action.appendChild(actionInput);
+    const mentionRow = el("div", "minimax-h3-shot-mention-row");
+    mentionRow.appendChild(el("span", "", "Insert subject"));
+    for (const subject of project?.subjects ?? []) {
+        const mention = `<Subject ${subject.h3Index}>`;
+        const mentionButton = button(`${subject.name || mention} · ${mention}`, () => {
+            const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
+            actionInput.value = result.value;
+            actionInput.setSelectionRange(result.selectionStart, result.selectionEnd); actionInput.focus();
+            selected.action = result.value.trim(); commitPlan(controller, plan);
+        }, "minimax-h3-director-text-button");
+        mentionButton.title = [subject.description, subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
+        mentionRow.appendChild(mentionButton);
+    }
+    if ((project?.subjects ?? []).length) action.appendChild(mentionRow);
     const cameraSummary = composeCameraSummary(selected);
     const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-camera-line");
     camera.setAttribute("aria-label", `Direct camera for ${shotEditorialTitle(selected, plan.shots.indexOf(selected))}. ${cameraInstructionPreview(selected, project ?? {})}`);

@@ -78,6 +78,8 @@ def load_generation_media(reference_project: dict, generation_id: str = "") -> d
     pictures: list[Any] = []
     videos: list[Any] = []
     audios: list[Any] = []
+    video_audios: list[Any] = []
+    standalone_audios: list[Any] = []
     video_audio: dict[str, Any] = {}
     for item in generations.get(selected, []):
         source = item.get("source") or {}
@@ -92,6 +94,7 @@ def load_generation_media(reference_project: dict, generation_id: str = "") -> d
         elif media_type == "video":
             frames, soundtrack = load_video_frames(annotated, label)
             videos.append(frames)
+            video_audios.append(soundtrack)
             video_audio[item.get("assetId", "")] = soundtrack
         elif media_type == "audio" and role == "video_soundtrack":
             soundtrack = video_audio.get(item.get("assetId", ""))
@@ -101,5 +104,16 @@ def load_generation_media(reference_project: dict, generation_id: str = "") -> d
                 raise ValueError(f"{label} requests a video soundtrack, but the clip has no audio.")
             audios.append(soundtrack)
         elif media_type == "audio":
-            audios.append(load_audio(annotated, label))
-    return {"generationId": selected, "pictures": pictures, "videos": videos, "audios": audios}
+            decoded = load_audio(annotated, label)
+            audios.append(decoded)
+            standalone_audios.append(decoded)
+    return {
+        "generationId": selected,
+        "pictures": pictures,
+        "videos": videos,
+        # Keep the historical combined audio list for saved workflows. Numbered
+        # native outputs below distinguish video soundtracks from standalone audio.
+        "audios": audios,
+        "videoAudios": video_audios,
+        "standaloneAudios": standalone_audios,
+    }

@@ -33,7 +33,7 @@ Empty authoring fields use instructional placeholders. The example disappears on
 
 Prompt Studio is the planning layer for the prompt enhancer. Studio Project v3 compiles into `enhanced_prompt`, validation metadata, a typed `reference_project`, and aligned physical media lists.
 
-Prompt Studio imports pictures, video and audio into ComfyUI input storage. The enhancer emits ordered `pictures`, `videos` and `audios` lists plus a typed `reference_project`; these outputs are compiled from the same assignments used in `enhanced_prompt`.
+Prompt Studio imports pictures, video and audio into ComfyUI input storage. The enhancer emits native numbered H3 outputs plus compatibility `pictures`, `videos` and `audios` lists and a typed `reference_project`; all are compiled from the same assignments used in `enhanced_prompt`.
 
 The prompt, metadata, and physical media paths are separate until the generation node:
 
@@ -82,7 +82,7 @@ When Studio Project v3 is empty, Storyboard can start directly from the Basic pr
 2. In **Storyboard** or **Library · Files**, import pictures, video or audio. Prompt Studio copies them into ComfyUI input storage and creates stable Files with visual previews.
 3. Drop each visual card onto the subject identity/voice, environment/background, or shot performance/camera property it controls.
 4. In **Review & Generate**, compile the target Generation and verify every derived **physical slot** (`Picture N`, `Video N`, or `Audio N`).
-5. Connect the enhancer's ordered `pictures`, `videos` and `audios` list outputs to a list-aware H3 adapter (or split them into numbered native slots). The enhancer injects the matching reference context into its own LLM request automatically.
+5. Connect each active numbered output to the native H3 input with the same name: `ref_image_1`, `ref_video_1`, `ref_video_audio_1`, or `ref_audio_1`, continuing from 1 in each family. Review shows this exact socket map. The list outputs remain for compatibility with list-aware adapters. The enhancer injects the matching reference context into its own LLM request automatically.
 6. Optionally connect `reference_project` to **MiniMax H3 Reference Project Inspector** for the exact wiring report.
 
 ### Chained Multishot — several generation passes
@@ -131,7 +131,7 @@ For each Studio Project v3 Shot, the editor owns:
 
 ### Library · Subjects
 
-Subjects have a stable logical ID, an H3 subject index, an identity description, identity pictures, an optional default voice asset, and a base appearance state. Identity pictures appear as selectable thumbnails in the Subject itself; **+ Identity picture** uploads and attaches one without visiting Files. **+ Import voice** does the same for the reusable voice default. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that Shot. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension. Their detailed forms stay collapsed until selected so the common identity workflow remains compact.
+Subjects have a stable logical ID, an H3 subject index, an identity description, identity pictures, an optional default voice asset, and a base appearance state. Identity pictures appear as selectable thumbnails in the Subject itself; **+ Identity picture** uploads and attaches one without visiting Files. **+ Import voice** does the same for the reusable voice default. Below Basic prompt, and beside the selected Shot's Action, subject chips insert `<Subject N>` at the cursor. Hover or keyboard focus previews the identity image, description and default voice before insertion. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that Shot. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension. Their detailed forms stay collapsed until selected so the common identity workflow remains compact.
 
 A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a Shot through **Use in prompts → Always include in Generation …**; alternatively, cast them in the selected Shot under **Storyboard · Content**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library Subject is neither included in a Generation nor cast in a Shot, because it will not reach the LLM.
 
@@ -231,7 +231,7 @@ Coach findings are advisory. They do not change `valid`, `qualityValid`, the pro
 
 The normative authoring schema is [`schemas/studio_project_v3.schema.json`](schemas/studio_project_v3.schema.json). Its top-level arrays are `files`, `subjects`, `environments`, `generations`, `shots`, and `links`; `project.look` owns creative treatment and cinematography. Files carry their provenanced ComfyUI source. Subjects point to identity Files and an optional default voice File. Environment views point to background Files. Shots select cast, Environment/view, semantic reference bindings, staging, action/dialogue and camera.
 
-Drafts may remain incomplete while editing. **Review & Generate** rejects missing visible actions, broken IDs, unavailable physical sources and per-Generation quota overflow. The compiler assigns slots deterministically in H3 order (9 pictures, 3 videos and 3 audio inputs), builds the LLM reference context and emits the physical lists from that same result.
+Drafts may remain incomplete while editing. **Review & Generate** rejects missing visible actions, broken IDs, unavailable physical sources and per-Generation quota overflow. The compiler assigns slots deterministically in H3 order (9 pictures, 3 videos, their 3 aligned soundtracks, and 3 independent audio inputs), builds the LLM reference context and emits both the numbered native sockets and compatibility lists from that same result.
 
 ## Hidden runtime projections and compatibility
 

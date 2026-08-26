@@ -3224,7 +3224,11 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
                 previous: current.kind === "v3" ? current.value : undefined,
             });
             node.__minimaxSyncingStudioProject = true;
-            try { return writeJsonStorage(node, widget, stableStudioProjectJson(project)); }
+            try {
+                const changed = writeJsonStorage(node, widget, stableStudioProjectJson(project));
+                node.__minimaxSubjectMentions?.refresh?.();
+                return changed;
+            }
             finally { node.__minimaxSyncingStudioProject = false; }
         },
         async compileStudioProject(generationId = "") {

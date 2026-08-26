@@ -156,6 +156,7 @@ async def minimax_h3_studio_compile(request):
             "generationId": compiled["generationId"],
             "digest": compiled["digest"],
             "inputMap": compiled["inputMap"],
+            "socketMap": compiled["socketMap"],
             "quotas": compiled["quotas"],
             "referenceContext": compiled["referenceContext"],
             "inputs": reference_project["inputsByGeneration"].get(compiled["generationId"], []),

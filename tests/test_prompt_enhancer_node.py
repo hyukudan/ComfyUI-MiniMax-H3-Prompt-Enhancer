@@ -101,8 +101,14 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
         "duration_seconds", "aspect_ratio", "treatment_warnings", "width", "height",
     )
     assert MiniMaxH3PromptEnhancer.RETURN_TYPES[3:8] == ("FLOAT", "STRING", "STRING", "INT", "INT")
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-5:] == (
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[8:13] == (
         "reference_project", "pictures", "videos", "audios", "reference_project_json",
+    )
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[13:] == (
+        *(f"ref_image_{index}" for index in range(1, 10)),
+        *(f"ref_video_{index}" for index in range(1, 4)),
+        *(f"ref_video_audio_{index}" for index in range(1, 4)),
+        *(f"ref_audio_{index}" for index in range(1, 4)),
     )
 
 
@@ -318,6 +324,19 @@ def test_api_key_widget_documents_the_environment_variable_fallback():
     tooltip = MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]["api_key"][1]["tooltip"]
     assert "MINIMAX_H3_PROMPT_ENHANCER_API_KEY" in tooltip
     assert "no longer saved into workflow" in tooltip
+
+
+def test_numbered_reference_outputs_match_native_h3_slot_order():
+    outputs = prompt_enhancer_node._numbered_reference_outputs({
+        "pictures": ["image"], "videos": ["video"],
+        "videoAudios": ["video-audio"], "standaloneAudios": ["audio"],
+    })
+    assert len(outputs) == 18
+    assert outputs[0] == "image"
+    assert outputs[9] == "video"
+    assert outputs[12] == "video-audio"
+    assert outputs[15] == "audio"
+    assert outputs[1:9] == (None,) * 8
 
 
 def test_enhance_accepts_the_caching_flag_without_changing_the_result(monkeypatch):

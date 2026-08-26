@@ -188,7 +188,7 @@ def build_reference_project(reference_director: str | dict | None, media_project
             soundtrack_slot = binding.get("soundtrackSlotIndex")
             if media_type == "video" and isinstance(soundtrack_slot, int):
                 resolved.append({
-                    "label": f"<Audio {soundtrack_slot}>",
+                    "label": f"<Video {soundtrack_slot}> soundtrack",
                     "assetId": asset_id,
                     "mediaType": "audio",
                     "slotIndex": soundtrack_slot,
@@ -202,7 +202,10 @@ def build_reference_project(reference_director: str | dict | None, media_project
             str(item.get("assetId", "")),
         ))
         for media_type in ("picture", "video", "audio"):
-            slots = [item.get("slotIndex") for item in resolved if item.get("mediaType") == media_type]
+            slots = [
+                item.get("slotIndex") for item in resolved
+                if item.get("mediaType") == media_type and item.get("role") != "video_soundtrack"
+            ]
             if any(not isinstance(slot, int) or isinstance(slot, bool) or slot < 1 for slot in slots):
                 issues.append(f"{generation_id or 'Generation'} {media_type} slots must be positive integers.")
                 continue

@@ -309,6 +309,7 @@ def _native_reference_bundle(reference_context="", reference_director_json="", m
         project = build_reference_project("", None, None)
         return str(reference_context or "").strip(), project, {
             "generationId": "", "pictures": [], "videos": [], "audios": [],
+            "videoAudios": [], "standaloneAudios": [],
         }
     project = build_reference_project(
         reference_director_json,
@@ -322,6 +323,28 @@ def _native_reference_bundle(reference_context="", reference_director_json="", m
     manual_context = str(reference_context or "").strip()
     combined = "\n\n".join(part for part in (native_context.strip(), manual_context) if part)
     return combined, project, loaded
+
+
+H3_NUMBERED_RETURN_NAMES = (
+    *(f"ref_image_{index}" for index in range(1, 10)),
+    *(f"ref_video_{index}" for index in range(1, 4)),
+    *(f"ref_video_audio_{index}" for index in range(1, 4)),
+    *(f"ref_audio_{index}" for index in range(1, 4)),
+)
+H3_NUMBERED_RETURN_TYPES = ("IMAGE",) * 12 + ("AUDIO",) * 6
+
+
+def _numbered_reference_outputs(loaded_references):
+    """Pad native H3 autogrow slots without changing the historical list outputs."""
+    def padded(key, count):
+        values = list(loaded_references.get(key) or [])[:count]
+        return tuple(values + [None] * (count - len(values)))
+    return (
+        *padded("pictures", 9),
+        *padded("videos", 3),
+        *padded("videoAudios", 3),
+        *padded("standaloneAudios", 3),
+    )
 
 
 def _studio_runtime_inputs(
@@ -450,15 +473,16 @@ class MiniMaxH3PromptGuideBuilder:
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance_with_ui"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
-                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING")
+    RETURN_TYPES = (("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
+                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING") + H3_NUMBERED_RETURN_TYPES)
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
         "treatment_warnings", "width", "height",
         "reference_project", "pictures", "videos", "audios", "reference_project_json",
+        *H3_NUMBERED_RETURN_NAMES,
     )
-    OUTPUT_IS_LIST = (False, False, False, False, False, False, False, False,
-                      False, True, True, True, False)
+    OUTPUT_IS_LIST = ((False, False, False, False, False, False, False, False,
+                      False, True, True, True, False) + (False,) * len(H3_NUMBERED_RETURN_NAMES))
     DESCRIPTION = (
         "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
         "or a local GGUF launched with an isolated llama-server process."
@@ -667,6 +691,7 @@ class MiniMaxH3PromptEnhancer:
             loaded_references["videos"],
             loaded_references["audios"],
             json.dumps(reference_project, ensure_ascii=False, indent=2),
+            *_numbered_reference_outputs(loaded_references),
         )
 
     def enhance_with_ui(self, *args, **kwargs):
@@ -680,15 +705,16 @@ class MiniMaxH3PromptEnhancer:
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance_with_ui"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
-                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING")
+    RETURN_TYPES = (("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
+                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING") + H3_NUMBERED_RETURN_TYPES)
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
         "treatment_warnings", "width", "height",
         "reference_project", "pictures", "videos", "audios", "reference_project_json",
+        *H3_NUMBERED_RETURN_NAMES,
     )
-    OUTPUT_IS_LIST = (False, False, False, False, False, False, False, False,
-                      False, True, True, True, False)
+    OUTPUT_IS_LIST = ((False, False, False, False, False, False, False, False,
+                      False, True, True, True, False) + (False,) * len(H3_NUMBERED_RETURN_NAMES))
     DESCRIPTION = (
         "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
         "downloaded, and the server is terminated after every queued invocation."
@@ -826,6 +852,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             loaded_references["videos"],
             loaded_references["audios"],
             json.dumps(reference_project, ensure_ascii=False, indent=2),
+            *_numbered_reference_outputs(loaded_references),
         )
 
     def enhance_with_ui(self, *args, **kwargs):

@@ -171,8 +171,14 @@ def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
         "treatment_warnings", "width", "height",
     )
     native_reference_outputs = ("reference_project", "pictures", "videos", "audios", "reference_project_json")
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs
-    assert MiniMaxH3GGUFPromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs
+    numbered_outputs = (
+        *(f"ref_image_{index}" for index in range(1, 10)),
+        *(f"ref_video_{index}" for index in range(1, 4)),
+        *(f"ref_video_audio_{index}" for index in range(1, 4)),
+        *(f"ref_audio_{index}" for index in range(1, 4)),
+    )
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs + numbered_outputs
+    assert MiniMaxH3GGUFPromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs + numbered_outputs
     assert MiniMaxH3ShotSelector.RETURN_NAMES == (
         "shot_prompt", "timeline_body", "shot_description", "shot_id", "shot_count", "autonomous",
     )

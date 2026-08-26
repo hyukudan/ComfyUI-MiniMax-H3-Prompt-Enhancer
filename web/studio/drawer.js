@@ -510,7 +510,10 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
                     const rows = Object.entries(result.inputMap ?? {});
                     for (const [fileId, label] of rows) {
                         const row = createPanelElement("div", "minimax-h3-reference-output-card");
-                        row.append(createPanelElement("strong", "", label), createPanelElement("span", "", fileId)); mapping.appendChild(row);
+                        const details = createPanelElement("span", "", fileId);
+                        const socket = result.socketMap?.[fileId];
+                        if (socket) details.append(createPanelElement("code", "", `Enhancer ${socket} → H3 ${socket}`));
+                        row.append(createPanelElement("strong", "", label), details); mapping.appendChild(row);
                     }
                     if (!rows.length) mapping.appendChild(createPanelElement("p", "minimax-h3-director-placeholder", "Text-only Generation · no physical reference outputs"));
                     status.textContent = `${rows.length} physical output${rows.length === 1 ? "" : "s"} ready · v3 digest ${String(result.digest ?? "").slice(0, 10)}`;

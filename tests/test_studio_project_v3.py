@@ -64,6 +64,12 @@ def test_v3_compiles_subject_voice_environment_and_shot_audio_from_one_source():
         "ana.voice": "<Audio 1>",
         "score": "<Audio 2>",
     }
+    assert compiled["socketMap"] == {
+        "ana.face": "ref_image_1",
+        "cliff.view": "ref_image_2",
+        "ana.voice": "ref_audio_1",
+        "score": "ref_audio_2",
+    }
     shot = compiled["shotPlan"]["shots"][0]
     assert shot["subjects"] == [{"subjectId": "ana", "presence": "present"}]
     assert shot["environment"] == {"environmentId": "cliff", "viewIds": ["wide"]}
@@ -104,6 +110,23 @@ def test_v3_enforces_real_h3_video_limit_of_three():
     ]
     with pytest.raises(ValueError, match="allows 3"):
         compile_studio_project(project)
+
+
+def test_v3_keeps_video_soundtrack_aligned_without_consuming_an_audio_slot():
+    project = _project()
+    project["files"].insert(0, {
+        "id": "motion", "type": "video", "name": "Motion with sound",
+        "audioMode": "paired", "source": _source("motion.mp4", "video"),
+    })
+    project["shots"][0]["referenceBindings"].insert(0, {"fileId": "motion", "role": "performance"})
+    compiled = compile_studio_project(project)
+    assert compiled["inputMap"]["motion"] == "<Video 1>"
+    assert compiled["inputMap"]["motion:soundtrack"] == "<Video 1> soundtrack"
+    assert compiled["inputMap"]["ana.voice"] == "<Audio 1>"
+    assert compiled["socketMap"]["motion"] == "ref_video_1"
+    assert compiled["socketMap"]["motion:soundtrack"] == "ref_video_audio_1"
+    assert compiled["socketMap"]["ana.voice"] == "ref_audio_1"
+    assert compiled["quotas"]["g1"]["videoAudio"] == 1
 
 
 def test_v3_never_invents_a_missing_shot_action_at_compile_time():

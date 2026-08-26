@@ -397,6 +397,7 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
     for generation in generations:
         active_ids = _active_file_ids(generation, shots, subjects, environments, links)
         counters = {kind: 0 for kind in MEDIA_TYPES}
+        counters["videoAudio"] = 0
         bindings = []
         for file_id in active_ids:
             file = files_by_id[file_id]
@@ -404,8 +405,10 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
             counters[kind] += 1
             binding = {"assetId": file_id, "slotIndex": counters[kind]}
             if kind == "video" and file.get("audioMode") in {"paired", "alone"}:
-                counters["audio"] += 1
-                binding["soundtrackSlotIndex"] = counters["audio"]
+                # H3 aligns a video's soundtrack with that video's own slot. It
+                # does not consume one of the three independent ref_audio slots.
+                counters["videoAudio"] += 1
+                binding["soundtrackSlotIndex"] = counters["video"]
             bindings.append(binding)
         for kind, maximum in MEDIA_LIMITS.items():
             if counters[kind] > maximum:
@@ -454,6 +457,18 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
         item["assetId"] + (":soundtrack" if item.get("role") == "video_soundtrack" else ""): item["label"]
         for item in reference_project["inputsByGeneration"][selected]
     }
+    socket_map = {}
+    for item in reference_project["inputsByGeneration"][selected]:
+        key = item["assetId"] + (":soundtrack" if item.get("role") == "video_soundtrack" else "")
+        slot = item.get("slotIndex")
+        if item.get("role") == "video_soundtrack":
+            socket_map[key] = f"ref_video_audio_{slot}"
+        elif item.get("mediaType") == "picture":
+            socket_map[key] = f"ref_image_{slot}"
+        elif item.get("mediaType") == "video":
+            socket_map[key] = f"ref_video_{slot}"
+        elif item.get("mediaType") == "audio":
+            socket_map[key] = f"ref_audio_{slot}"
     payload = {
         "schemaVersion": STUDIO_PROJECT_SCHEMA_VERSION,
         "projectDigest": parsed["digest"],
@@ -466,6 +481,7 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
         "referenceProject": reference_project,
         "referenceContext": context,
         "inputMap": input_map,
+        "socketMap": socket_map,
         "quotas": quotas,
         "issues": [],
     }
