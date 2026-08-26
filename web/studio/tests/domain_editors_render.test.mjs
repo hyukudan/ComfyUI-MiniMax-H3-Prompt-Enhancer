@@ -245,6 +245,7 @@ test("Review renders successful checked families only after a clean execution", 
     }) });
     assert.match(clean.textContent, /Review passed/);
     assert.match(clean.textContent, /Checked: contract structure.*dialogue\/audio.*style/);
+    assert.match(clean.textContent, /Import & source tools/, "advanced project transfer stays reachable after Overview is removed from navigation");
 
     const untouched = new TestElement("section");
     renderCoachTab(untouched, { diagnostics: () => ({ diagnostics: [], stale: false }) });

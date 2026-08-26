@@ -1841,7 +1841,8 @@ export function ensureStudioStyles() {
         .minimax-h3-director-lanes { display: grid; gap: 6px; grid-column: 1; padding: 12px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
         .minimax-h3-director-lanes h3 { margin: 0 0 4px; }
         .minimax-h3-director-subject-targets { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
-        .minimax-h3-director-drop-wrapper { display: inline-flex; align-items: stretch; }
+        .minimax-h3-director-drop-wrapper { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+        .minimax-h3-reference-scope { padding: 2px 6px; border-radius: 999px; background: var(--h3-surface-strong); color: var(--h3-text-muted); font-size: 9px; font-weight: 700; white-space: nowrap; }
         .minimax-h3-director-drop-wrapper .minimax-h3-director-drop-target { border-radius: 999px 0 0 999px !important; }
         .minimax-h3-director-drop-import { min-width: 24px; min-height: 26px; border: 1px dashed color-mix(in srgb, var(--h3-accent) 52%, var(--h3-border)) !important; border-left: 0 !important; border-radius: 0 999px 999px 0 !important; padding: 2px 6px !important; background: color-mix(in srgb, var(--h3-accent) 7%, transparent) !important; color: var(--h3-accent) !important; font-size: 13px !important; }
         .minimax-h3-director-drop-import:hover { border-style: solid !important; background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; }

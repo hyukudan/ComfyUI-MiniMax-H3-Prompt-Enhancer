@@ -9,7 +9,7 @@ function shotLabel(shot, index) {
     return `Shot ${index + 1} · ${shot.id}${action ? ` · ${action.slice(0, 72)}` : ""}`;
 }
 
-export function renderCameraTab(container, controller) {
+export function renderCameraTab(container, controller, { embedded = false } = {}) {
     container.replaceChildren();
     const documentState = controller.shotDocument();
     const plan = editableShotPlan(documentState);
@@ -26,8 +26,8 @@ export function renderCameraTab(container, controller) {
     if (!plan.shots.length) {
         container.appendChild(emptyState(
             "Camera starts with a shot",
-            "Create a shot first, then direct its Start, Movement and End here. Camera uses the same shot_plan v2 data as Shots.",
-            actionButton("Open Shots", () => controller.navigateStudio?.("shots"), { disabled: typeof controller.navigateStudio !== "function" }),
+            "Create a Shot in Compose first, then direct its Start, Movement and End here.",
+            actionButton("Open Compose", () => controller.navigateStudio?.("compose"), { disabled: typeof controller.navigateStudio !== "function" }),
         ));
         return;
     }
@@ -35,7 +35,7 @@ export function renderCameraTab(container, controller) {
     const commit = () => commitPlan(controller, state);
     const rerender = () => {
         state.cameraPanelScroll = container.scrollTop;
-        renderCameraTab(container, controller);
+        renderCameraTab(container, controller, { embedded });
     };
     const project = shotProject(controller);
     const shot = plan.shots.find((candidate) => candidate.id === state.selectedId);
@@ -48,7 +48,7 @@ export function renderCameraTab(container, controller) {
         element("h2", "", "Shot camera"),
         element("p", "", "Direct one shot at a time. Changes are written to that shot's existing cameraStart, cameraPath and cameraEnd fields."),
     );
-    const backToShot = actionButton("Edit shot details", () => controller.navigateStudio?.("shots"), {
+    const backToShot = actionButton("Back to shot", () => controller.navigateStudio?.("compose"), {
         disabled: typeof controller.navigateStudio !== "function",
     });
     backToShot.className += " minimax-h3-button minimax-h3-button-secondary";
@@ -62,7 +62,7 @@ export function renderCameraTab(container, controller) {
     selector.addEventListener("change", () => { state.selectedId = selector.value; rerender(); });
     const selectorBar = element("div", "minimax-h3-camera-shot-selector");
     selectorBar.append(
-        field("Shot", selector, "Selection is shared with the Shots section."),
+        field("Shot", selector, "Selection is shared with Compose."),
         element("span", "minimax-h3-state-chip", `Generation ${shot.generationId || "g1"}`),
     );
 
@@ -80,6 +80,7 @@ export function renderCameraTab(container, controller) {
     preciseCamera.appendChild(preciseBody);
     workspace.appendChild(preciseCamera);
 
-    container.append(intro, selectorBar, workspace);
+    if (!embedded) container.append(intro, selectorBar, workspace);
+    else container.append(element("p", "minimax-h3-studio-status", `Camera · ${shotLabel(shot, plan.shots.indexOf(shot))}`), workspace);
     if (state.cameraPanelScroll !== undefined) container.scrollTop = state.cameraPanelScroll;
 }

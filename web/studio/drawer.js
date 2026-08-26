@@ -1,15 +1,9 @@
 import { renderCameraLookTab } from "./tab_camera_look.js";
-import { renderCameraTab } from "./tab_camera.js";
 import { renderCoachTab } from "./tab_coach.js";
-import { renderEnvironmentsTab } from "./tab_environments.js";
 import { renderReferencesTab } from "./tab_references.js";
-import { renderShotsTab } from "./tab_shots.js";
-import { renderSubjectsTab } from "./tab_subjects.js";
-import { renderStagingTab } from "./tab_staging.js";
 import { createStudioIcon } from "./components/icons.js";
 import { createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
-import { renderOverview } from "./overview.js";
-import { renderDirectorCompose, renderDirectorLibrary, renderDirectorLook, renderDirectorWiring } from "./director_workspace.js";
+import { renderCastPlaces, renderDirectorCompose, renderDirectorLibrary, renderDirectorLook, renderDirectorWiring } from "./director_workspace.js";
 import { ensureStudioStyles } from "./styles.js";
 import { STUDIO_MAX_WIDTH, STUDIO_MIN_WIDTH, STUDIO_UI_LEGACY_STORAGE_KEY, STUDIO_UI_STORAGE_KEY } from "./tokens.js";
 
@@ -22,13 +16,8 @@ export function createPanelElement(tagName, className, textContent = "") {
 
 export const STUDIO_SECTIONS = Object.freeze([
     { id: "compose", label: "Compose", icon: "shots", render: renderDirectorCompose },
-    { id: "overview", label: "Overview", icon: "overview", render: renderOverview },
-    { id: "shots", label: "Shots", icon: "shots", render: renderShotsTab },
-    { id: "staging", label: "Staging", icon: "subjects", render: renderStagingTab },
-    { id: "subjects", label: "Subjects", icon: "subjects", render: renderSubjectsTab },
-    { id: "environments", label: "Environments", icon: "environments", render: renderEnvironmentsTab },
+    { id: "cast_places", label: "Cast & Places", icon: "subjects", render: renderCastPlaces },
     { id: "media", label: "Media", icon: "media", render: renderReferencesTab },
-    { id: "camera", label: "Camera", icon: "camera", render: renderCameraTab },
     { id: "look", label: "Look", icon: "look", render: renderCameraLookTab },
 ]);
 
@@ -39,12 +28,16 @@ export const DIRECTOR_SECTIONS = Object.freeze([
     { id: "look", label: "Look", icon: "look", render: renderDirectorLook },
 ]);
 
-const SECTION_ALIASES = Object.freeze({ references: "media", camera_look: "look", coach: "review" });
+const SECTION_ALIASES = Object.freeze({
+    overview: "compose", shots: "compose", staging: "compose", camera: "compose",
+    subjects: "cast_places", environments: "cast_places", references: "media",
+    camera_look: "look", coach: "review",
+});
 const SECTION_IDS = new Set(STUDIO_SECTIONS.map((item) => item.id));
 
 export function normalizeStudioSection(section) {
     const normalized = SECTION_ALIASES[section] ?? section;
-    return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "overview";
+    return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "compose";
 }
 
 export function normalizeDirectorSection(section) {
@@ -127,7 +120,7 @@ export function clampDrawerWidth(width, viewportWidth = globalThis.innerWidth ??
 
 const DEFAULT_PREFS = Object.freeze({
     width: null,
-    lastSection: "overview",
+    lastSection: "compose",
     railCollapsed: false,
     detailMode: "guided",
     collapsedBlocks: {},
@@ -387,7 +380,7 @@ function sourceGate(sectionId, controller, panel) {
         }));
         return true;
     }
-    if (["compose", "subjects", "environments", "media", "staging"].includes(sectionId) && documents.project.kind === "v1") {
+    if (["compose", "cast_places", "media"].includes(sectionId) && documents.project.kind === "v1") {
         panel.classList.add("minimax-h3-source-gated");
         const unavailable = createPanelElement("section", "minimax-h3-empty-state minimax-h3-source-unavailable");
         unavailable.append(
@@ -407,7 +400,7 @@ function sourceGate(sectionId, controller, panel) {
         panel.append(unavailable, tools);
         return true;
     }
-    if (["compose", "subjects", "environments", "media", "staging"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
+    if (["compose", "cast_places", "media"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Media project",
             documentState: documents.project,
@@ -495,6 +488,15 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     };
 
     render = (requestedSection) => {
+        if (!controller.isVisualReferenceDirector) {
+            const legacyRoute = String(requestedSection ?? "");
+            controller.directorUiState ??= {};
+            if (legacyRoute === "subjects" || legacyRoute === "environments") {
+                controller.directorUiState.castPlacesMode = legacyRoute;
+            } else if (legacyRoute === "staging") controller.directorUiState.composeMode = "staging";
+            else if (legacyRoute === "camera") controller.directorUiState.composeMode = "camera";
+            else if (legacyRoute === "shots" || legacyRoute === "overview") controller.directorUiState.composeMode = "build";
+        }
         const sectionId = normalizeSection(requestedSection);
         currentSection = sectionId;
         panel.replaceChildren();
@@ -691,12 +693,8 @@ export function createStudioDashboard(node, controller) {
         ["review", "Review", "review", (summary) => summary.diagnostics],
     ] : [
         ["compose", "Compose", "shots", (summary) => summary.shots],
-        ["shots", "Shots", "shots", (summary) => summary.shots],
-        ["staging", "Staging", "subjects", (summary) => summary.staged],
-        ["subjects", "Subjects", "subjects", (summary) => summary.subjects],
-        ["environments", "Environments", "environments", (summary) => summary.environments],
+        ["cast_places", "Cast & Places", "subjects", (summary) => summary.subjects + summary.environments],
         ["media", "Media", "media", (summary) => `${summary.active}/${summary.assets}`],
-        ["camera", "Camera", "camera", () => ""],
         ["look", "Look", "look", () => ""],
         ["review", "Review", "review", (summary) => summary.diagnostics],
     ];

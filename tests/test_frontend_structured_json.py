@@ -81,7 +81,7 @@ def test_all_four_canonical_json_widgets_stay_hidden_without_contract_conversion
 
 def test_v2_media_source_is_available_only_inside_collapsed_source_tools():
     overview = (ROOT / "web" / "studio" / "overview.js").read_text(encoding="utf-8")
-    tools = overview.split("function sourceTools", 1)[1].split("function healthSummary", 1)[0]
+    tools = overview.split("function renderSourceTools", 1)[1].split("function healthSummary", 1)[0]
     assert 'model.sources.project.kind === "v2"' in tools
     assert 'name: "Media project v2"' in tools
     source_card = (ROOT / "web" / "studio" / "components" / "source_state.js").read_text(encoding="utf-8")

@@ -1,3 +1,5 @@
+import { renderSourceTools } from "./overview.js";
+
 const SEVERITY_ORDER = ["error", "warning", "advice", "info"];
 const SEVERITY_LABELS = { error: "Errors", warning: "Warnings", advice: "Tips", info: "Information" };
 const BASIS_LABELS = { contract: "Contract rule", configuration: "Configuration", derived: "Derived check", heuristic: "Heuristic advice" };
@@ -204,6 +206,7 @@ export function renderCoachTab(container, controller) {
     const diagnostics = report?.diagnostics ?? [];
     const dismissedCount = diagnostics.filter((item) => dismissed.has(item?.fingerprint)).length;
     controller.reviewUiState ??= { showDismissed: false };
+    const appendAdvancedTools = () => container.appendChild(renderSourceTools(controller));
     const header = document.createElement("div");
     header.className = "minimax-h3-studio-toolbar";
     const heading = document.createElement("div");
@@ -252,6 +255,7 @@ export function renderCoachTab(container, controller) {
                 : "Review has not run yet. Run the node to check the contract and receive Prompt Coach tips; advice never blocks generation.";
         }
         container.appendChild(empty);
+        appendAdvancedTools();
         return;
     }
     const visibleDiagnostics = diagnostics.filter((item) => controller.reviewUiState.showDismissed || !dismissed.has(item?.fingerprint));
@@ -260,6 +264,7 @@ export function renderCoachTab(container, controller) {
         locallyEmpty.className = "minimax-h3-empty-state";
         locallyEmpty.textContent = "All current findings are dismissed in this browser. Use Show dismissed to restore any of them.";
         container.appendChild(locallyEmpty);
+        appendAdvancedTools();
         return;
     }
     const onDismiss = (fingerprint, shouldDismiss) => {
@@ -280,4 +285,5 @@ export function renderCoachTab(container, controller) {
         }));
         container.appendChild(section);
     }
+    appendAdvancedTools();
 }

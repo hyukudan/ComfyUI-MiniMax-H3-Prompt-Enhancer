@@ -19,13 +19,13 @@ function fixtures() {
     };
 }
 
-test("purpose assistant creates identity asset, relation, shot use and binding together", () => {
+test("purpose assistant creates a reusable Subject identity default without a duplicate Shot use", () => {
     const source = fixtures();
     const result = createPurposeBinding({ ...source, purposeId: "subject_identity", generationId: "g1", shotId: "s1", relationId: "subject.1", name: "Ari identity" });
     assert.equal(result.ok, true);
     assert.equal(result.project.assets[0].type, "picture");
     assert.deepEqual(result.project.subjects[0].identityAssetIds, [result.assetId]);
-    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: result.assetId, role: "identity_reinforcement", targetIds: ["subject.1"] }]);
+    assert.equal(result.shotPlan.shots[0].referenceUses, undefined);
     assert.deepEqual(result.project.generations[0].bindings, [{ assetId: result.assetId, slotIndex: 1 }]);
     assert.equal(source.project.assets.length, 0, "planning must not mutate before atomic commit");
 });
@@ -41,14 +41,17 @@ test("visual Director connects existing picture, voice and background assets wit
     assert.equal(result.ok, true);
     assert.deepEqual(result.project.subjects[0].identityAssetIds, ["portrait"]);
     assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "portrait", slotIndex: 1 }]);
-    assert.deepEqual(result.shotPlan.shots[0].referenceUses[0], { assetId: "portrait", role: "identity_reinforcement", targetIds: ["subject.1"] });
+    assert.equal(result.shotPlan.shots[0].referenceUses, undefined);
 
     result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "voice", purposeId: "voice", generationId: "g1", shotId: "s1", relationId: "subject.1" });
     assert.deepEqual(result.project.generations[0].bindings.at(-1), { assetId: "voice", slotIndex: 1 });
-    assert.deepEqual(result.shotPlan.shots[0].referenceUses.at(-1), { assetId: "voice", role: "voice", targetIds: ["subject.1"] });
+    assert.equal(result.project.subjects[0].defaultVoiceAssetId, "voice");
+    assert.equal(result.shotPlan.shots[0].referenceUses, undefined);
 
     result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "room", purposeId: "environment_view", generationId: "g1", shotId: "s1", relationId: "environment.1" });
     assert.equal(result.project.environments[0].views[0].assetId, "room");
+    assert.deepEqual(result.shotPlan.shots[0].environment, { environmentId: "environment.1", viewIds: ["view.1"] });
+    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: "room", role: "environment_view", targetIds: ["environment.1"] }]);
     assert.deepEqual(result.project.generations[0].bindings.map((binding) => [binding.assetId, binding.slotIndex]), [["portrait", 1], ["voice", 1], ["room", 2]]);
     assert.equal(JSON.stringify(result).includes("<Picture"), false, "visual links store meaning and never hard-code physical labels");
     assert.equal(source.project.generations[0].bindings.length, 0, "the visual operation is atomic and immutable");
@@ -203,7 +206,7 @@ test("Compose LLM handoff derives subject and physical aliases from the same gen
     assert.equal(result.subjects[0].alias, "<Subject 1>");
     assert.deepEqual(result.subjects[0].links.map((item) => [item.role, item.physicalLabel]), [["Image", "<Picture 1>"], ["Voice", "<Audio 1>"]]);
     assert.deepEqual(result.environment.links.map((item) => item.physicalLabel), ["<Picture 2>"]);
-    assert.deepEqual(result.referenceUses.map((item) => [item.role, item.physicalLabel, item.target]), [["Soundtrack", "<Audio 2>", "This cut"]]);
+    assert.deepEqual(result.referenceUses.map((item) => [item.role, item.physicalLabel, item.target]), [["Soundtrack", "<Audio 2>", "This Shot"]]);
     assert.match(result.text, /<Subject 1> Ari \| Image <Picture 1> \| Voice <Audio 1>/);
     assert.match(result.text, /Set: Room \| <Picture 2>/);
 });
@@ -241,7 +244,7 @@ test("visual Director refuses incompatible media before writing either document"
     assert.deepEqual(source.project.generations[0].bindings, []);
 });
 
-test("Compose disconnects one semantic target, preserves Library media and prunes only unused wiring", () => {
+test("disconnecting a Subject default preserves an independent Shot override and its wiring", () => {
     const source = fixtures();
     source.project.assets = [
         { id: "portrait", type: "picture", name: "Ari portrait" },
@@ -256,13 +259,16 @@ test("Compose disconnects one semantic target, preserves Library media and prune
     const result = disconnectPurposeReference({ ...source, purposeId: "subject_identity", generationId: "g1", shotId: "s1", relationId: "subject.1" });
     assert.equal(result.ok, true);
     assert.deepEqual(result.project.subjects[0].identityAssetIds, []);
-    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: "shared", role: "continuity" }]);
-    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "shared", slotIndex: 2 }]);
+    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [
+        { assetId: "portrait", role: "identity_reinforcement", targetIds: ["subject.1"] },
+        { assetId: "shared", role: "continuity" },
+    ]);
+    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "portrait", slotIndex: 1 }, { assetId: "shared", slotIndex: 2 }]);
     assert.equal(result.project.assets.length, 2, "disconnect must not delete reusable Library media");
     assert.deepEqual(source.project.subjects[0].identityAssetIds, ["portrait"], "disconnect must remain immutable until commit");
 });
 
-test("Compose replaces a visual destination instead of leaving a hidden old voice use", () => {
+test("Compose replaces one Shot voice override without mutating the Subject default", () => {
     const source = fixtures();
     source.project.assets = [
         { id: "old-voice", type: "audio", name: "Old voice" },
@@ -271,11 +277,11 @@ test("Compose replaces a visual destination instead of leaving a hidden old voic
     source.project.subjects[0].defaultVoiceAssetId = "old-voice";
     source.project.generations[0].bindings = [{ assetId: "old-voice", slotIndex: 1 }];
     source.shotPlan.shots[0].referenceUses = [{ assetId: "old-voice", role: "voice", targetIds: ["subject.1"] }];
-    const result = replacePurposeReference({ ...source, assetId: "new-voice", purposeId: "voice", generationId: "g1", shotId: "s1", relationId: "subject.1" });
+    const result = replacePurposeReference({ ...source, assetId: "new-voice", purposeId: "voice_override", generationId: "g1", shotId: "s1", relationId: "subject.1" });
     assert.equal(result.ok, true);
-    assert.equal(result.project.subjects[0].defaultVoiceAssetId, "new-voice");
+    assert.equal(result.project.subjects[0].defaultVoiceAssetId, "old-voice");
     assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: "new-voice", role: "voice", targetIds: ["subject.1"] }]);
-    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "new-voice", slotIndex: 1 }]);
+    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "old-voice", slotIndex: 1 }, { assetId: "new-voice", slotIndex: 2 }]);
     assert.deepEqual(result.project.assets.map((asset) => asset.id), ["old-voice", "new-voice"]);
 });
 
@@ -289,7 +295,7 @@ test("visual Director presents semantic names while deriving physical H3 labels"
     assert.equal(model.shots[0].action, "Ari turns.");
 });
 
-test("project defaults connect identity, voice and environment without requiring a shot", () => {
+test("Subject defaults need no Shot while an Environment view is selected by a Shot", () => {
     const source = fixtures();
     source.shotPlan.shots = [];
     source.project.assets = [
@@ -301,9 +307,19 @@ test("project defaults connect identity, voice and environment without requiring
     assert.equal(result.ok, true);
     result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "voice", purposeId: "voice", generationId: "g1", relationId: "subject.1" });
     assert.equal(result.project.subjects[0].defaultVoiceAssetId, "voice");
-    result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "room", purposeId: "environment_view", generationId: "g1", relationId: "environment.1" });
-    assert.equal(result.project.environments[0].views[0].assetId, "room");
-    assert.equal(result.shotPlan.shots.length, 0);
+    const withoutShot = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "room", purposeId: "environment_view", generationId: "g1", relationId: "environment.1" });
+    assert.equal(withoutShot.ok, false);
+    result.shotPlan.shots.push({ id: "s1", generationId: "g1", action: "Ari enters.", environment: { environmentId: "environment.1", viewIds: [] } });
+    const withShot = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "room", purposeId: "environment_view", generationId: "g1", shotId: "s1", relationId: "environment.1" });
+    assert.equal(withShot.ok, true);
+    assert.equal(withShot.project.environments[0].views[0].assetId, "room");
+    assert.equal(withShot.shotPlan.shots[0].referenceUses[0].role, "environment_view");
+    assert.deepEqual(withShot.shotPlan.shots[0].environment.viewIds, ["view.1"]);
+    const detached = disconnectPurposeReference({ project: withShot.project, shotPlan: withShot.shotPlan, purposeId: "environment_view", generationId: "g1", shotId: "s1", relationId: "environment.1" });
+    assert.equal(detached.ok, true);
+    assert.equal(detached.project.environments[0].views[0].assetId, "room", "detaching one Shot must preserve the reusable Environment gallery");
+    assert.equal(detached.shotPlan.shots[0].referenceUses, undefined);
+    assert.deepEqual(detached.shotPlan.shots[0].environment, { environmentId: "environment.1", viewIds: [] });
 });
 
 test("purpose assistant records an authoritative frame role in frame modes", () => {

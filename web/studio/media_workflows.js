@@ -2,10 +2,12 @@ import { nextAvailableSlot } from "./media_model.js";
 
 export const MEDIA_BINDING_PURPOSES = Object.freeze([
     { id: "subject_identity", label: "Subject identity", type: "picture", role: "identity_reinforcement", relation: "subject", help: "Keep one subject recognizable from a connected picture." },
+    { id: "identity_override", label: "Shot identity override", type: "picture", role: "identity_reinforcement", relation: "subject", help: "Override identity guidance for one subject in one Shot without changing the Subject default." },
     { id: "environment_view", label: "Environment view", type: "picture", role: "environment_view", relation: "environment", help: "Anchor a place with a named, reusable view." },
     { id: "performance", label: "Performance", type: "video", role: "performance", relation: "subject", help: "Transfer observable timing and performance from a video to one subject." },
     { id: "camera", label: "Camera", type: "video", role: "camera_transfer", help: "Request camera motion only from an explicit video reference." },
     { id: "voice", label: "Voice", type: "audio", role: "voice", relation: "subject", help: "Guide one subject's voice qualities from a connected audio reference." },
+    { id: "voice_override", label: "Shot voice override", type: "audio", role: "voice", relation: "subject", help: "Override the Subject voice in one Shot without changing the project default." },
     { id: "soundtrack", label: "Music / soundtrack", type: "audio", role: "soundtrack", help: "Use an audio reference as shot-scoped music or soundtrack guidance." },
     { id: "continuity", label: "Continuity", type: "picture", role: "continuity", help: "Reinforce visible continuity in a selected shot." },
 ]);
@@ -25,7 +27,9 @@ function purposeDefinition(id) {
 }
 
 function purposeRequiresShot(purpose) {
-    return !["subject_identity", "voice", "environment_view"].includes(purpose?.id);
+    // Identity and voice are reusable Subject defaults. An Environment view is
+    // reusable too, but selecting it as the visible background is a Shot decision.
+    return !["subject_identity", "voice"].includes(purpose?.id);
 }
 
 export function mediaPurpose(id) {
@@ -37,6 +41,17 @@ function nextId(items, prefix) {
     let index = items.length + 1;
     while (used.has(`${prefix}${index}`)) index += 1;
     return `${prefix}${index}`;
+}
+
+function selectEnvironmentView(shot, environmentId, viewId) {
+    if (!shot || !environmentId || !viewId) return;
+    if (shot.environment?.environmentId !== environmentId) {
+        shot.environment = { environmentId, viewIds: [viewId] };
+        return;
+    }
+    const selected = new Set(shot.environment.viewIds ?? []);
+    selected.add(viewId);
+    shot.environment.viewIds = [...selected];
 }
 
 export function bindingPlanDiagnostics({ project, shotPlan, purposeId, generationId, shotId, relationId } = {}) {
@@ -85,8 +100,9 @@ export function createPurposeBinding(input = {}) {
         const environment = project.environments.find((item) => item.id === input.relationId);
         const viewId = nextId(environment.views ??= [], "view.");
         environment.views.push({ id: viewId, name: asset.name, role: "overview", assetId });
+        selectEnvironmentView(shot, environment.id, viewId);
     }
-    if (shot) {
+    if (shot && purposeRequiresShot(purpose)) {
         const use = { assetId, role: purpose.role };
         if (input.relationId) use.targetIds = [input.relationId];
         if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
@@ -146,13 +162,17 @@ export function connectExistingReference(input = {}) {
         subject.defaultVoiceAssetId = asset.id;
     } else if (purpose.id === "environment_view") {
         const environment = project.environments.find((item) => item.id === input.relationId);
-        if (!(environment.views ??= []).some((item) => item.assetId === asset.id)) {
-            environment.views.push({ id: nextId(environment.views, "view."), name: asset.name, role: "overview", assetId: asset.id });
+        const views = environment.views ??= [];
+        let view = views.find((item) => item.assetId === asset.id);
+        if (!view) {
+            view = { id: nextId(views, "view."), name: asset.name, role: "overview", assetId: asset.id };
+            views.push(view);
         }
+        selectEnvironmentView(shot, environment.id, view.id);
     }
     if (purpose.id === "camera") asset.cameraTransfer = { enabled: true, role: "camera_reference", aspects: ["motion"] };
 
-    if (shot) {
+    if (shot && purposeRequiresShot(purpose)) {
         const use = { assetId: asset.id, role: purpose.role };
         if (input.relationId) use.targetIds = [input.relationId];
         if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
@@ -201,17 +221,12 @@ export function disconnectPurposeReference(input = {}) {
         const subject = project.subjects.find((item) => item.id === input.relationId);
         if (subject.defaultVoiceAssetId) removedAssetIds.add(subject.defaultVoiceAssetId);
         delete subject.defaultVoiceAssetId;
-    } else if (purpose.id === "environment_view") {
-        const environment = project.environments.find((item) => item.id === input.relationId);
-        for (const view of environment.views ?? []) removedAssetIds.add(view.assetId);
-        environment.views = [];
     }
 
     const matchingUse = (use) => use.role === purpose.role
         && (!input.relationId || (use.targetIds ?? []).includes(input.relationId));
-    for (const candidate of shotPlan.shots ?? []) {
-        const applies = purposeRequiresShot(purpose) ? candidate.id === input.shotId : (candidate.generationId ?? "g1") === generation.id;
-        if (!applies) continue;
+    if (purposeRequiresShot(purpose)) for (const candidate of shotPlan.shots ?? []) {
+        if (candidate.id !== input.shotId) continue;
         const kept = [];
         for (const use of candidate.referenceUses ?? []) {
             if (matchingUse(use)) removedAssetIds.add(use.assetId);
@@ -219,6 +234,14 @@ export function disconnectPurposeReference(input = {}) {
         }
         if (kept.length) candidate.referenceUses = kept;
         else delete candidate.referenceUses;
+    }
+
+    if (purpose.id === "environment_view" && shot?.environment?.environmentId === input.relationId) {
+        const environment = project.environments.find((item) => item.id === input.relationId);
+        const removedViewIds = new Set((environment?.views ?? [])
+            .filter((view) => removedAssetIds.has(view.assetId))
+            .map((view) => view.id));
+        shot.environment.viewIds = (shot.environment.viewIds ?? []).filter((viewId) => !removedViewIds.has(viewId));
     }
 
     for (const assetId of removedAssetIds) {

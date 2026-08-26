@@ -8,7 +8,6 @@ import { disconnectPurposeReference, replacePurposeReference } from "./media_wor
 import { mediaTypeForFile, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
 import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "./schema.js";
 import { renderReferencesTab } from "./tab_references.js";
-import { renderShotsTab } from "./tab_shots.js";
 import { renderStagingTab } from "./tab_staging.js";
 import { createSubjectDraft, renderSubjectsTab } from "./tab_subjects.js";
 
@@ -27,7 +26,7 @@ function button(label, action, className = "minimax-h3-button minimax-h3-button-
 }
 
 function directorState(controller) {
-    return controller.directorUiState ??= { composeMode: "board", libraryMode: "media", generationId: "" };
+    return controller.directorUiState ??= { composeMode: "build", libraryMode: "media", castPlacesMode: "subjects", generationId: "" };
 }
 
 function shotPlanForController(controller) {
@@ -113,7 +112,9 @@ function environmentName(shot, project) {
 
 const COMPOSE_TARGETS = Object.freeze({
     subject_identity: { label: "Image", type: "picture" },
+    identity_override: { label: "Image override", type: "picture" },
     voice: { label: "Voice", type: "audio" },
+    voice_override: { label: "Voice override", type: "audio" },
     performance: { label: "Performance", type: "video" },
     environment_view: { label: "Background", type: "picture" },
     camera: { label: "Camera", type: "video" },
@@ -326,18 +327,18 @@ export function composeLlmHandoff(project, shotPlan, shot) {
         const target = subjectById.get(use.targetIds?.[0]) ?? (use.targetIds?.[0] === environment?.id ? environment : null);
         return {
             ...link(asset ?? { id: use.assetId, name: use.assetId }, readableToken(use.role, "Reference")),
-            target: target?.alias || target?.name || "This cut",
+            target: target?.alias || target?.name || "This Shot",
         };
     });
     const camera = composeCameraSummary(shot);
-    const lines = [`Scene ${shot?.id ?? "?"}`, `Action: ${shot?.action || "Unspecified"}`];
+    const lines = [`Shot ${shot?.id ?? "?"}`, `Action: ${shot?.action || "Unspecified"}`];
     if (subjects.length) {
         lines.push("Cast:");
         for (const subject of subjects) lines.push(`- ${subject.alias} ${subject.name}${subject.links.length ? ` | ${subject.links.map((item) => `${item.role} ${item.physicalLabel}`).join(" | ")}` : ""}`);
     }
     if (environment) lines.push(`Set: ${environment.name}${environment.links.length ? ` | ${environment.links.map((item) => item.physicalLabel).join(", ")}` : ""}`);
     if (referenceUses.length) {
-        lines.push("Cut references:");
+        lines.push("Shot references:");
         for (const item of referenceUses) lines.push(`- ${item.role} ${item.physicalLabel} → ${item.target}`);
     }
     lines.push(`Camera: ${camera.start} → ${camera.movement} → ${camera.end}`);
@@ -393,7 +394,7 @@ function composeLlmHandoffPanel(handoff, sources) {
         } catch (error) { status.textContent = error?.message || "Clipboard unavailable"; }
     }, "minimax-h3-director-text-button");
     heading.append(el("strong", "", "LLM handoff"), copy); section.appendChild(heading);
-    section.appendChild(el("p", "minimax-h3-director-llm-note", "Derived from this scene · aliases and H3 outputs are not editable here."));
+    section.appendChild(el("p", "minimax-h3-director-llm-note", "Derived from this Shot · aliases and H3 outputs are not editable here."));
     for (const subject of handoff.subjects) {
         const row = el("div", "minimax-h3-director-llm-row");
         const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", subject.alias), el("span", "", subject.name));
@@ -452,7 +453,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         const cancel = button("Cancel", () => { controller.directorUiState.creatingDialogue = false; rerender(); }, "minimax-h3-button minimax-h3-button-secondary");
         form.addEventListener("submit", (event) => {
             event.preventDefault();
-            if (!model.voices.length) { status.textContent = "Place a subject in this scene first."; return; }
+            if (!model.voices.length) { status.textContent = "Place a subject in this Shot first."; return; }
             const nextPlan = structuredClone(plan);
             const nextShot = nextPlan.shots.find((item) => item.id === shot.id);
             const beat = addSceneDialogueBeat(nextShot, speaker.value, words.value, delivery.value);
@@ -460,7 +461,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             if (commitPlan(controller, nextPlan) === false) { status.textContent = "Could not save the dialogue line."; return; }
             controller.shotUiState.plan = nextPlan;
             controller.directorUiState.creatingDialogue = false;
-            controller.directorUiState.composeFeedback = `Dialogue added to ${model.voices.find((item) => item.subjectId === speaker.value)?.name || "this cut"}.`;
+            controller.directorUiState.composeFeedback = `Dialogue added to ${model.voices.find((item) => item.subjectId === speaker.value)?.name || "this Shot"}.`;
             rerender();
         });
         form.append(speaker, delivery, words, create, cancel, status); section.appendChild(form);
@@ -476,7 +477,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
     }
     if (!model.voices.length) voiceGroup.appendChild(el("small", "", "Place a subject to assign dialogue and voice."));
     section.appendChild(voiceGroup);
-    const dialogueGroup = el("div", "minimax-h3-director-sound-group"); dialogueGroup.appendChild(el("small", "minimax-h3-director-kicker", "LINES IN THIS CUT"));
+    const dialogueGroup = el("div", "minimax-h3-director-sound-group"); dialogueGroup.appendChild(el("small", "minimax-h3-director-kicker", "LINES IN THIS SHOT"));
     for (const dialogue of model.dialogues) {
         const row = el("div", "minimax-h3-director-dialogue-row");
         const copy = el("span"); copy.append(el("b", "", `${dialogue.alias || "S?"} · ${dialogue.speaker}`), el("q", "", dialogue.text), el("small", "", `${readableToken(dialogue.delivery, "Says")} · ${Math.round(dialogue.at * 100)}%`));
@@ -491,9 +492,9 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         }, "minimax-h3-director-text-button");
         remove.setAttribute("aria-label", `Remove dialogue by ${dialogue.speaker}`); row.append(copy, remove); dialogueGroup.appendChild(row);
     }
-    if (!model.dialogues.length) dialogueGroup.appendChild(el("small", "", "No authored dialogue in this cut."));
+    if (!model.dialogues.length) dialogueGroup.appendChild(el("small", "", "No authored dialogue in this Shot."));
     section.appendChild(dialogueGroup);
-    const referenceGroup = el("div", "minimax-h3-director-sound-group"); referenceGroup.appendChild(el("small", "minimax-h3-director-kicker", "CUT AUDIO REFERENCES"));
+    const referenceGroup = el("div", "minimax-h3-director-sound-group"); referenceGroup.appendChild(el("small", "minimax-h3-director-kicker", "SHOT AUDIO REFERENCES"));
     for (const reference of model.references) {
         const row = el("div", "minimax-h3-director-audio-reference-row");
         row.appendChild(el("span", "", `${readableToken(reference.role)} · ${reference.asset?.name || reference.assetId}`));
@@ -503,7 +504,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
     if (!model.references.length) referenceGroup.appendChild(el("small", "", "No voice override, exact dialogue audio or soundtrack assigned."));
     section.appendChild(referenceGroup);
     const ambience = el("p", "minimax-h3-director-ambience-note");
-    ambience.append(el("b", "", "Ambience · "), document.createTextNode("derived from visible action and the Prompt Enhancer Audio policies; this scene does not create an unsupported parallel sound field."));
+    ambience.append(el("b", "", "Ambience · "), document.createTextNode("derived from visible action and the Prompt Enhancer Audio policies; this Shot does not create an unsupported parallel sound field."));
     section.appendChild(ambience);
     return section;
 }
@@ -512,6 +513,8 @@ function composeDropTarget(controller, purposeId, relationId, selectedAsset, con
     const definition = COMPOSE_TARGETS[purposeId];
     const wrapper = el("span", "minimax-h3-director-drop-wrapper");
     wrapper.dataset.connected = String(connected);
+    const projectDefault = ["subject_identity", "voice"].includes(purposeId);
+    wrapper.dataset.scope = projectDefault ? "project" : "shot";
     const target = button(`${definition.label}${connected ? " ✓" : ""}`, () => connect(purposeId, relationId), "minimax-h3-director-drop-target");
     target.dataset.purpose = purposeId;
     target.dataset.type = definition.type;
@@ -537,7 +540,7 @@ function composeDropTarget(controller, purposeId, relationId, selectedAsset, con
         if (file) importFile(file, purposeId, relationId);
         else connect(purposeId, relationId, controller.projectUiState.draggedAssetId);
     });
-    wrapper.append(target, importButton);
+    wrapper.append(target, el("small", "minimax-h3-reference-scope", projectDefault ? "Project default" : "This Shot"), importButton);
     if (connected) {
         const disconnectButton = button("×", () => disconnect(purposeId, relationId), "minimax-h3-director-drop-disconnect");
         disconnectButton.setAttribute("aria-label", `Disconnect ${definition.label.toLowerCase()} reference`);
@@ -597,8 +600,8 @@ function renderBoard(container, controller, plan, project, rerender) {
     const selected = plan.shots.find((shot) => shot.id === controller.shotUiState.selectedId) ?? plan.shots[0];
     if (!selected) {
         const empty = el("section", "minimax-h3-empty-state minimax-h3-director-empty");
-        empty.append(el("h3", "", "Build the first scene"), el("p", "", "Start with a visible action. Then place subjects, a background, references and camera direction around it."));
-        empty.appendChild(button("Create first scene", () => {
+        empty.append(el("h3", "", "Build the first Shot"), el("p", "", "A Shot is one continuous block between cuts. Start with visible action, then add cast, background, references and camera."));
+        empty.appendChild(button("Create first Shot", () => {
             const shot = { id: nextShotId(plan.shots), generationId: project?.generations?.[0]?.id ?? "g1", action: String(controller.basicPrompt?.() ?? "").trim() };
             if (plan.timingMode === "exact") shot.durationSeconds = 1;
             plan.shots.push(shot); controller.shotUiState.selectedId = shot.id; commitPlan(controller, plan); rerender();
@@ -704,7 +707,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
-    stage.setAttribute("aria-label", "Selected scene board");
+    stage.setAttribute("aria-label", "Selected Shot workspace");
     const backdrop = el("div", "minimax-h3-director-backdrop");
     const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
     backdrop.append(backdropCopy);
@@ -712,23 +715,29 @@ function renderBoard(container, controller, plan, project, rerender) {
     for (const asset of visualAssignments.backgroundAssets.slice(0, 2)) backgroundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Background"));
     if (backgroundMedia.childElementCount) backdrop.appendChild(backgroundMedia);
     const environmentTargetId = selected.environment?.environmentId || ((project?.environments ?? []).length === 1 ? project.environments[0].id : "");
-    const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === environmentTargetId);
-    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, Boolean(activeEnvironment?.views?.length)));
-    else if ((project?.environments ?? []).length) backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Choose the scene set in Cast & set"));
+    const backgroundConnected = (selected.referenceUses ?? []).some((use) =>
+        use.role === "environment_view" && (use.targetIds ?? []).includes(environmentTargetId));
+    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, backgroundConnected));
+    else if ((project?.environments ?? []).length) backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Choose this Shot's set in Cast & set"));
     else backdrop.appendChild(button("+ Environment", () => { directorState(controller).creatingEnvironment = true; directorState(controller).creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"));
     const cast = el("div", "minimax-h3-director-cast");
     const names = subjectNames(selected, project);
-    if (!names.length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "No subjects placed in this scene"));
+    if (!names.length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "No subjects placed in this Shot"));
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
         const name = subject?.name || entry.subjectId;
         const assigned = subjectAssignments.get(entry.subjectId) ?? { identityAssets: [], voiceAsset: null, performanceAssets: [] };
         const card = el("article", "minimax-h3-director-subject-card");
         const targets = el("div", "minimax-h3-director-subject-targets");
-        const performanceConnected = (selected.referenceUses ?? []).some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
+        const shotUses = selected.referenceUses ?? [];
+        const performanceConnected = shotUses.some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
+        const identityOverrideConnected = shotUses.some((use) => use.role === "identity_reinforcement" && (use.targetIds ?? []).includes(entry.subjectId));
+        const voiceOverrideConnected = shotUses.some((use) => use.role === "voice" && (use.targetIds ?? []).includes(entry.subjectId));
         targets.append(
             composeDropTarget(controller, "subject_identity", entry.subjectId, selectedAsset, connect, importFile, disconnect, Boolean(subject?.identityAssetIds?.length)),
             composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, importFile, disconnect, Boolean(subject?.defaultVoiceAssetId)),
+            composeDropTarget(controller, "identity_override", entry.subjectId, selectedAsset, connect, importFile, disconnect, identityOverrideConnected),
+            composeDropTarget(controller, "voice_override", entry.subjectId, selectedAsset, connect, importFile, disconnect, voiceOverrideConnected),
             composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, importFile, disconnect, performanceConnected),
         );
         const boundMedia = el("div", "minimax-h3-director-bound-strip");
@@ -745,12 +754,12 @@ function renderBoard(container, controller, plan, project, rerender) {
         cast.appendChild(card);
     }
     const action = el("div", "minimax-h3-director-action");
-    action.append(el("span", "minimax-h3-director-kicker", "ACTION"), el("p", "", selected.action || "Describe what visibly happens in this scene."));
+    action.append(el("span", "minimax-h3-director-kicker", "ACTION"), el("p", "", selected.action || "Describe what visibly happens in this Shot."));
     const cameraSummary = composeCameraSummary(selected);
     const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-camera-line");
     camera.setAttribute("aria-label", `Direct camera for ${selected.id}. ${cameraInstructionPreview(selected, project ?? {})}`);
     const cameraHeading = el("span", "minimax-h3-director-camera-heading");
-    cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA · THIS CUT"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
+    cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA · THIS SHOT"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
     const phases = el("span", "minimax-h3-director-camera-phases");
     for (const [index, label, value] of [["1", "Start", cameraSummary.start], [cameraSummary.icon, "Move", cameraSummary.movement], ["3", "End", cameraSummary.end]]) {
         const phase = el("span", "minimax-h3-director-camera-phase");
@@ -786,12 +795,12 @@ function renderBoard(container, controller, plan, project, rerender) {
     const inspector = el("aside", "minimax-h3-director-inspector");
     const selectedIndex = plan.shots.indexOf(selected);
     const sceneHeading = el("div", "minimax-h3-director-scene-heading");
-    const sceneIdentity = el("div"); sceneIdentity.append(el("span", "minimax-h3-director-kicker", `SCENE ${selectedIndex + 1}`), el("h3", "", selected.id));
+    const sceneIdentity = el("div"); sceneIdentity.append(el("span", "minimax-h3-director-kicker", `SHOT ${selectedIndex + 1}`), el("h3", "", selected.id));
     const sceneActions = el("div", "minimax-h3-director-scene-actions");
     const moveLeft = button("←", () => applySceneEdit(controller, moveScene(plan, selected.id, -1), rerender), "minimax-h3-director-text-button");
-    moveLeft.disabled = selectedIndex <= 0; moveLeft.title = "Move scene left"; moveLeft.setAttribute("aria-label", "Move selected scene left");
+    moveLeft.disabled = selectedIndex <= 0; moveLeft.title = "Move Shot left"; moveLeft.setAttribute("aria-label", "Move selected Shot left");
     const moveRight = button("→", () => applySceneEdit(controller, moveScene(plan, selected.id, 1), rerender), "minimax-h3-director-text-button");
-    moveRight.disabled = selectedIndex >= plan.shots.length - 1; moveRight.title = "Move scene right"; moveRight.setAttribute("aria-label", "Move selected scene right");
+    moveRight.disabled = selectedIndex >= plan.shots.length - 1; moveRight.title = "Move Shot right"; moveRight.setAttribute("aria-label", "Move selected Shot right");
     const duplicate = button("Duplicate", () => applySceneEdit(controller, duplicateScene(plan, selected.id), rerender), "minimax-h3-director-text-button");
     duplicate.disabled = plan.shots.length >= 64;
     sceneActions.append(moveLeft, moveRight, duplicate);
@@ -810,6 +819,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         button("+ Environment", () => { controller.directorUiState.creatingEnvironment = true; controller.directorUiState.creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"),
         button(controller.isVisualReferenceDirector ? "Manage Library" : "Manage Subjects", () => {
             controller.directorUiState.libraryMode = "subjects";
+            controller.directorUiState.castPlacesMode = "subjects";
             controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "subjects");
         }, "minimax-h3-director-text-button"),
     );
@@ -830,7 +840,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             if (!committed?.ok) { status.textContent = committed?.message || "Could not create the subject and place it atomically."; return; }
             controller.projectUiState.subjectSelectedId = bundle.subject.id;
             controller.directorUiState.creatingSubject = false;
-            controller.directorUiState.composeFeedback = `${bundle.subject.name} created as <Subject ${bundle.subject.h3Index}> and placed in this scene.`;
+            controller.directorUiState.composeFeedback = `${bundle.subject.name} created as <Subject ${bundle.subject.h3Index}> and placed in this Shot.`;
             rerender();
         });
         creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
@@ -850,12 +860,12 @@ function renderBoard(container, controller, plan, project, rerender) {
             if (!committed?.ok) { status.textContent = committed?.message || "Could not create and assign the environment atomically."; return; }
             controller.projectUiState.environmentSelectedId = bundle.environment.id;
             controller.directorUiState.creatingEnvironment = false;
-            controller.directorUiState.composeFeedback = `${bundle.environment.name} created and assigned to this scene. Use + Background to import its view.`;
+            controller.directorUiState.composeFeedback = `${bundle.environment.name} created and assigned to this Shot. Use + Background to import its view.`;
             rerender();
         });
         creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
     }
-    const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this scene");
+    const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this Shot");
     for (const subject of project?.subjects ?? []) {
         const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
         const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
@@ -887,7 +897,6 @@ function renderBoard(container, controller, plan, project, rerender) {
     inspector.append(
         summary,
         composeLlmHandoffPanel(llmHandoff, sources),
-        button("Edit scene details", () => { directorState(controller).composeMode = "details"; rerender(); }),
         button("Stage subjects", () => { directorState(controller).composeMode = "staging"; rerender(); }),
         button("Direct camera", () => { directorState(controller).composeMode = "camera"; rerender(); }),
     );
@@ -913,14 +922,10 @@ export function renderDirectorCompose(container, controller) {
             ? "Maintain a legacy reference project or migrate it into Prompt Studio."
             : "Create the complete prompt visually here: subjects, identity images, voices, backgrounds, action, dialogue, camera and physical H3 outputs share one native project."),
     );
-    top.append(copy, modeSwitch(state, rerender, [["board", "Board"], ["details", "Details"], ["staging", "Staging"], ["camera", "Camera"]]));
+    if (state.composeMode === "board" || state.composeMode === "details") state.composeMode = "build";
+    top.append(copy, modeSwitch(state, rerender, [["build", "Build"], ["staging", "Stage"], ["camera", "Camera"]]));
     container.appendChild(top);
-    if (state.composeMode !== "board") {
-        const host = el("div", "minimax-h3-director-embedded-editor"); container.appendChild(host);
-        ({ details: renderShotsTab, staging: renderStagingTab, camera: renderCameraTab }[state.composeMode] ?? renderShotsTab)(host, controller);
-        return;
-    }
-    const strip = el("div", "minimax-h3-director-scene-strip"); strip.setAttribute("aria-label", "Scene strip");
+    const strip = el("div", "minimax-h3-director-scene-strip"); strip.setAttribute("aria-label", "Shot strip");
     for (const [index, shot] of plan.shots.entries()) {
         const cameraSummary = composeCameraSummary(shot);
         const card = button("", () => { controller.shotUiState.selectedId = shot.id; rerender(); }, "minimax-h3-director-scene-card");
@@ -946,25 +951,47 @@ export function renderDirectorCompose(container, controller) {
         card.addEventListener("dragend", () => { delete state.draggedShotId; });
         card.append(
             el("span", "minimax-h3-director-scene-number", String(index + 1).padStart(2, "0")),
-            el("strong", "", shot.action || "Untitled scene"),
+            el("strong", "", shot.action || "Untitled shot"),
             el("small", "", `${shot.generationId || "g1"} · ${subjectNames(shot, project).length} subjects`),
             el("small", "minimax-h3-director-scene-camera", `${cameraSummary.icon} ${cameraSummary.movement}`),
         );
         strip.appendChild(card);
     }
-    const add = button("+ Scene", () => {
+    const add = button("+ Shot", () => {
         const shot = { id: nextShotId(plan.shots), generationId: project?.generations?.[0]?.id ?? "g1", action: "" };
         if (plan.timingMode === "exact") shot.durationSeconds = 1;
         plan.shots.push(shot); controller.shotUiState.selectedId = shot.id; commitPlan(controller, plan); rerender();
     }, "minimax-h3-director-add-scene"); add.disabled = plan.shots.length >= 64; strip.appendChild(add); container.appendChild(strip);
-    renderBoard(container, controller, plan, project, rerender);
+    if (state.composeMode === "build") renderBoard(container, controller, plan, project, rerender);
+    else {
+        const host = el("div", "minimax-h3-director-embedded-editor"); container.appendChild(host);
+        if (state.composeMode === "staging") renderStagingTab(host, controller, { embedded: true });
+        else renderCameraTab(host, controller, { embedded: true });
+    }
+}
+
+export function renderCastPlaces(container, controller) {
+    container.replaceChildren();
+    const state = directorState(controller);
+    if (!["subjects", "environments"].includes(state.castPlacesMode)) state.castPlacesMode = "subjects";
+    const top = el("header", "minimax-h3-director-workspace-header");
+    const copy = el("div");
+    copy.append(el("h2", "", "Cast & Places"), el("p", "", "Create reusable Subjects and Environments here. Compose decides which ones each Shot uses."));
+    const switcher = el("div", "minimax-h3-director-mode-switch");
+    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Environments"]]) {
+        const control = button(label, () => { state.castPlacesMode = id; renderCastPlaces(container, controller); }, "minimax-h3-director-mode");
+        control.setAttribute("aria-selected", String(state.castPlacesMode === id)); switcher.appendChild(control);
+    }
+    top.append(copy, switcher); container.appendChild(top);
+    const host = el("div", "minimax-h3-director-library-host"); container.appendChild(host);
+    (state.castPlacesMode === "environments" ? renderEnvironmentsTab : renderSubjectsTab)(host, controller);
 }
 
 export function renderDirectorLibrary(container, controller) {
     container.replaceChildren();
     const state = directorState(controller);
     const top = el("header", "minimax-h3-director-workspace-header");
-    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Import reusable media, define cast and environments, then connect them to the cut."));
+    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Import reusable media, define cast and places, then connect them to the selected Shot."));
     const switcher = el("div", "minimax-h3-director-mode-switch");
     for (const [id, label] of [["media", "Media"], ["subjects", "Subjects"], ["environments", "Environments"]]) {
         const control = button(label, () => { state.libraryMode = id; renderDirectorLibrary(container, controller); }, "minimax-h3-director-mode");
@@ -1036,7 +1063,7 @@ export function renderDirectorLook(container, controller) {
     handoff.append(
         el("span", "minimax-h3-director-kicker", "DOWNSTREAM OWNERSHIP"),
         el("h3", "", "Keep reference meaning here; style the final prompt in the enhancer"),
-        el("p", "", "The Director owns physical files, subjects, voices, environments and scene-scoped reference intent. Visual language, mood, global cinematography, titles and credits remain on MiniMax H3 Prompt Enhancer so there is only one authoritative Look."),
+        el("p", "", "Prompt Studio owns physical files, subjects, voices, environments and shot-scoped reference intent. Visual language, mood, global cinematography, titles and credits remain in the same MiniMax H3 Prompt Enhancer, so there is only one authoritative project."),
         el("p", "minimax-h3-studio-status", "Connect reference_context to the enhancer, then open its Look section. Reference camera intent still overrides only the explicit aspects assigned in Library."),
     );
     container.appendChild(handoff);

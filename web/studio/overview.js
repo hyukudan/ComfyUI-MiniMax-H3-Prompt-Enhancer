@@ -294,7 +294,7 @@ function starterExamples(controller) {
     return section;
 }
 
-function sourceTools(controller, model) {
+export function renderSourceTools(controller, model = overviewModel(controller)) {
     const section = document.createElement("details");
     section.className = "minimax-h3-source-tools";
     const summary = document.createElement("summary");
@@ -500,5 +500,5 @@ export function renderOverview(container, controller, { navigate = () => {}, ope
         if (continuity) container.appendChild(continuity);
         container.append(librarySection(model, navigate), preflightSummary(model, navigate), healthSummary(model, openReview));
     }
-    container.appendChild(sourceTools(controller, model));
+    container.appendChild(renderSourceTools(controller, model));
 }

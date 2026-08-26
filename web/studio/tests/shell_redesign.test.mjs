@@ -74,14 +74,14 @@ test("UI preferences persist only shell state and normalize legacy deep links", 
     });
     assert.equal(JSON.parse(storage.value(STUDIO_UI_STORAGE_KEY)).project, undefined);
     assert.equal(normalizeStudioSection("coach"), "review");
-    assert.equal(normalizeStudioSection("unknown"), "overview");
+    assert.equal(normalizeStudioSection("unknown"), "compose");
 });
 
 test("malformed stored preferences fall back without throwing", () => {
     const storage = memoryStorage({ [STUDIO_UI_STORAGE_KEY]: "{" });
     assert.deepEqual(readStudioPrefs(storage), {
         width: null,
-        lastSection: "overview",
+        lastSection: "compose",
         railCollapsed: false,
         detailMode: "guided",
         collapsedBlocks: {},
@@ -106,7 +106,7 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
         detailMode: "advanced",
         collapsedBlocks: {},
     });
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "cast_places", "media", "look"]);
     assert.equal(normalizeStudioSection("camera_look"), "look");
 });
 
@@ -115,7 +115,7 @@ test("Prompt Studio owns Compose while the Director remains a legacy workspace",
     assert.equal(normalizeDirectorSection("shots"), "compose");
     assert.equal(normalizeDirectorSection("media"), "library");
     assert.equal(normalizeDirectorSection("unknown"), "compose");
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "cast_places", "media", "look"]);
     const drawerSource = readFileSync(new URL("../drawer.js", import.meta.url), "utf8");
     const backendSource = readFileSync(new URL("../../backend_toggle.js", import.meta.url), "utf8");
     assert.match(drawerSource, /Open Compose/);
