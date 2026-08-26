@@ -9,6 +9,7 @@ import { renderStagingTab } from "./tab_staging.js";
 import { createStudioIcon } from "./components/icons.js";
 import { createSourceStateCard, normalizedSourceState } from "./components/source_state.js";
 import { renderOverview } from "./overview.js";
+import { renderDirectorCompose, renderDirectorLibrary, renderDirectorLook, renderDirectorWiring } from "./director_workspace.js";
 import { ensureStudioStyles } from "./styles.js";
 import { STUDIO_MAX_WIDTH, STUDIO_MIN_WIDTH, STUDIO_UI_LEGACY_STORAGE_KEY, STUDIO_UI_STORAGE_KEY } from "./tokens.js";
 
@@ -30,12 +31,25 @@ export const STUDIO_SECTIONS = Object.freeze([
     { id: "look", label: "Look", icon: "look", render: renderCameraLookTab },
 ]);
 
+export const DIRECTOR_SECTIONS = Object.freeze([
+    { id: "compose", label: "Compose", icon: "shots", render: renderDirectorCompose },
+    { id: "library", label: "Library", icon: "media", render: renderDirectorLibrary },
+    { id: "wiring", label: "Wiring", icon: "wiring", render: renderDirectorWiring },
+    { id: "look", label: "Look", icon: "look", render: renderDirectorLook },
+]);
+
 const SECTION_ALIASES = Object.freeze({ references: "media", camera_look: "look", coach: "review" });
 const SECTION_IDS = new Set(STUDIO_SECTIONS.map((item) => item.id));
 
 export function normalizeStudioSection(section) {
     const normalized = SECTION_ALIASES[section] ?? section;
     return SECTION_IDS.has(normalized) || normalized === "review" ? normalized : "overview";
+}
+
+export function normalizeDirectorSection(section) {
+    const aliases = { overview: "compose", shots: "compose", staging: "compose", camera: "compose", subjects: "library", environments: "library", media: "library", references: "library", camera_look: "look" };
+    const normalized = aliases[section] ?? section;
+    return DIRECTOR_SECTIONS.some((item) => item.id === normalized) || normalized === "review" ? normalized : "compose";
 }
 
 export function diagnosticFieldLabels(field) {
@@ -325,14 +339,14 @@ function createHeader(controller, onReview, onClose) {
     return { header, shortcuts, setShortcutsOpen, refresh, close };
 }
 
-function createNavigation(node, onNavigate, onCollapse) {
+function createNavigation(node, sections, onNavigate, onCollapse, director = false) {
     const rail = createPanelElement("nav", "minimax-h3-studio-rail");
-    rail.setAttribute("aria-label", "Prompt Studio sections");
+    rail.setAttribute("aria-label", director ? "Visual Reference Director sections" : "Prompt Studio sections");
     const tablist = createPanelElement("div", "minimax-h3-studio-tabs");
     tablist.setAttribute("role", "tablist");
     tablist.setAttribute("aria-orientation", "vertical");
     const buttons = new Map();
-    STUDIO_SECTIONS.forEach(({ id, label, icon }) => {
+    sections.forEach(({ id, label, icon }) => {
         const button = createPanelElement("button", "minimax-h3-studio-tab");
         button.type = "button";
         button.id = `minimax-h3-tab-${node.id}-${id}`;
@@ -344,11 +358,11 @@ function createNavigation(node, onNavigate, onCollapse) {
         button.addEventListener("keydown", (event) => {
             if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
-            const current = STUDIO_SECTIONS.findIndex((item) => item.id === id);
+            const current = sections.findIndex((item) => item.id === id);
             const forward = ["ArrowDown", "ArrowRight"].includes(event.key);
-            const next = event.key === "Home" ? 0 : event.key === "End" ? STUDIO_SECTIONS.length - 1
-                : (current + (forward ? 1 : -1) + STUDIO_SECTIONS.length) % STUDIO_SECTIONS.length;
-            const nextId = STUDIO_SECTIONS[next].id;
+            const next = event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1
+                : (current + (forward ? 1 : -1) + sections.length) % sections.length;
+            const nextId = sections[next].id;
             buttons.get(nextId)?.focus();
             onNavigate(nextId);
         });
@@ -431,7 +445,9 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     const panel = createPanelElement("main", "minimax-h3-studio-panel");
     panel.setAttribute("role", "tabpanel");
     panel.tabIndex = -1;
-    let previousSection = normalizeStudioSection(initialTab ?? prefs.lastSection);
+    const sections = controller.isVisualReferenceDirector ? DIRECTOR_SECTIONS : STUDIO_SECTIONS;
+    const normalizeSection = controller.isVisualReferenceDirector ? normalizeDirectorSection : normalizeStudioSection;
+    let previousSection = normalizeSection(initialTab ?? prefs.lastSection);
     if (previousSection === "review") previousSection = prefs.lastSection;
     let currentSection = previousSection;
 
@@ -456,12 +472,12 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
         () => render("review"),
         () => closeStudioDrawer(node.id),
     );
-    const navigation = createNavigation(node, (id) => render(id), () => {
+    const navigation = createNavigation(node, sections, (id) => render(id), () => {
         const collapsed = drawer.dataset.railCollapsed !== "true";
         drawer.dataset.railCollapsed = String(collapsed);
         navigation.collapse.setAttribute("aria-label", collapsed ? "Expand section rail" : "Collapse section rail");
         savePrefs({ railCollapsed: collapsed });
-    });
+    }, controller.isVisualReferenceDirector);
 
     const renderReview = () => {
         const toolbar = createPanelElement("div", "minimax-h3-review-toolbar");
@@ -478,15 +494,15 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     };
 
     render = (requestedSection) => {
-        const sectionId = normalizeStudioSection(requestedSection);
+        const sectionId = normalizeSection(requestedSection);
         currentSection = sectionId;
         panel.replaceChildren();
         panel.className = `minimax-h3-studio-panel minimax-h3-section-${sectionId}`;
         if (sectionId === "review") renderReview();
         else {
             previousSection = sectionId;
-            savePrefs({ lastSection: sectionId });
-            const section = STUDIO_SECTIONS.find((item) => item.id === sectionId) ?? STUDIO_SECTIONS[0];
+            if (!controller.isVisualReferenceDirector) savePrefs({ lastSection: sectionId });
+            const section = sections.find((item) => item.id === sectionId) ?? sections[0];
             panel.removeAttribute("aria-label");
             panel.setAttribute("aria-labelledby", `minimax-h3-tab-${node.id}-${section.id}`);
             if (section.id === "overview") {
@@ -564,9 +580,9 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             return;
         }
         if (isEditingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
-        if (/^[1-9]$/.test(event.key) && Number(event.key) <= STUDIO_SECTIONS.length) {
+        if (/^[1-9]$/.test(event.key) && Number(event.key) <= sections.length) {
             event.preventDefault();
-            render(STUDIO_SECTIONS[Number(event.key) - 1].id);
+            render(sections[Number(event.key) - 1].id);
             return;
         }
         if (event.key === "?") {
@@ -654,14 +670,21 @@ export function createStudioDashboard(node, controller) {
     const root = createPanelElement("div", "minimax-h3-dashboard");
     const open = createPanelElement("button", "minimax-h3-dashboard-open");
     open.type = "button";
-    open.append(createStudioIcon("overview", 20), createPanelElement("span", "", "Open Studio"));
+    const workspaceName = controller.isVisualReferenceDirector ? "Director" : "Studio";
+    open.append(createStudioIcon("overview", 20), createPanelElement("span", "", `Open ${workspaceName}`));
     open.addEventListener("click", () => {
         if (studioDrawerIsOpenFor(node.id)) closeStudioDrawer(node.id);
         else openStudioDrawer(node, controller, null, open);
     });
     root.appendChild(open);
     const strip = createPanelElement("div", "minimax-h3-dashboard-links");
-    const definitions = [
+    const definitions = controller.isVisualReferenceDirector ? [
+        ["compose", "Compose", "shots", (summary) => summary.shots],
+        ["library", "Library", "media", (summary) => summary.assets],
+        ["wiring", "Wiring", "wiring", (summary) => `${summary.active}/${summary.assets}`],
+        ["look", "Look", "look", () => ""],
+        ["review", "Review", "review", (summary) => summary.diagnostics],
+    ] : [
         ["shots", "Shots", "shots", (summary) => summary.shots],
         ["staging", "Staging", "subjects", (summary) => summary.staged],
         ["subjects", "Subjects", "subjects", (summary) => summary.subjects],
@@ -674,9 +697,9 @@ export function createStudioDashboard(node, controller) {
     const refresh = () => {
         const summary = dashboardSummaries(controller);
         const isOpen = studioDrawerIsOpenFor(node.id);
-        open.querySelector("span").textContent = isOpen ? "Close Studio" : "Open Studio";
+        open.querySelector("span").textContent = isOpen ? `Close ${workspaceName}` : `Open ${workspaceName}`;
         open.setAttribute("aria-pressed", String(isOpen));
-        open.title = isOpen ? "Close Prompt Studio and return to the workflow" : "Open Prompt Studio";
+        open.title = isOpen ? `Close ${workspaceName} and return to the workflow` : `Open ${workspaceName}`;
         for (const [id, label, , value] of definitions) {
             const chip = root.querySelector(`[data-studio-tab="${id}"]`);
             if (!chip) continue;

@@ -590,7 +590,9 @@ function renderAssetInspector(container, project, asset, controller) {
     inspector.className = "minimax-h3-inspector-pane";
     if (!asset) {
         inspector.classList.add("minimax-h3-empty-state");
-        inspector.textContent = "Add a reference to define its logical media contract. The file itself remains on the generator node.";
+        inspector.textContent = controller.isVisualReferenceDirector
+            ? "Import a file or add a logical placeholder, then connect what it controls. The Director keeps physical output and prompt meaning aligned."
+            : "Add a reference to define its logical media contract. The enhancer stores metadata only; connect physical media separately.";
         return inspector;
     }
     const directorDocument = controller.referenceDirectorDocument?.() ?? { kind: "v1", value: emptyReferenceDirector() };

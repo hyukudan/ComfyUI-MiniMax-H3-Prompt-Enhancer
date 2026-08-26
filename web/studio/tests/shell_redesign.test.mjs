@@ -4,8 +4,10 @@ import test from "node:test";
 
 import {
     clampDrawerWidth,
+    DIRECTOR_SECTIONS,
     defaultDrawerWidth,
     normalizeStudioSection,
+    normalizeDirectorSection,
     productionContext,
     readStudioPrefs,
     STUDIO_SECTIONS,
@@ -106,6 +108,14 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
     });
     assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
     assert.equal(normalizeStudioSection("camera_look"), "look");
+});
+
+test("Visual Reference Director has a focused workspace without changing Prompt Studio sections", () => {
+    assert.deepEqual(DIRECTOR_SECTIONS.map(({ id }) => id), ["compose", "library", "wiring", "look"]);
+    assert.equal(normalizeDirectorSection("shots"), "compose");
+    assert.equal(normalizeDirectorSection("media"), "library");
+    assert.equal(normalizeDirectorSection("unknown"), "compose");
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
 });
 
 test("Overview derives pipeline, library, continuity and diagnostic health", () => {

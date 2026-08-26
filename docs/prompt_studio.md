@@ -2,6 +2,15 @@
 
 Prompt Studio is the structured planning interface embedded in the two enhancer nodes. It keeps the node compact while exposing shots, subjects, appearance states, environments, logical references, camera controls, and diagnostics in a viewport-level drawer.
 
+The separate **MiniMax H3 Visual Reference Director** uses the same v2 contracts but has a production-oriented workspace of its own:
+
+- **Compose** — a scene strip, visual stage, reference lanes and contextual inspector, with deeper Details, Staging and Camera modes.
+- **Library** — physical media import and preview alongside reusable Subjects and Environments.
+- **Wiring** — the resolved picture, video and audio slots, their semantic roles, activation and physical-file readiness.
+- **Look** — an explicit handoff to the connected Prompt Enhancer, which remains the sole owner of creative direction and global cinematography.
+
+This dedicated navigation does not replace or reorder the eight sections in the enhancer nodes' Prompt Studio.
+
 It does not add a project manager, a network service, or another ComfyUI output. The canonical project remains in the existing `media_manifest`, `shot_plan_json`, `creative_treatment_json`, and `cinematography_json` widgets saved with the workflow.
 
 ## Open the Studio
