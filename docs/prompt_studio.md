@@ -131,7 +131,7 @@ For each Studio Project v3 Shot, the editor owns:
 
 ### Library · Subjects
 
-Subjects have a stable logical ID, an H3 subject index, an identity description, identity assets, an optional default voice asset, and a base appearance state. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that Shot. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension.
+Subjects have a stable logical ID, an H3 subject index, an identity description, identity pictures, an optional default voice asset, and a base appearance state. Identity pictures appear as selectable thumbnails in the Subject itself; **+ Identity picture** uploads and attaches one without visiting Files. **+ Import voice** does the same for the reusable voice default. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that Shot. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension. Their detailed forms stay collapsed until selected so the common identity workflow remains compact.
 
 A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a Shot through **Use in prompts → Always include in Generation …**; alternatively, cast them in the selected Shot under **Storyboard · Content**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library Subject is neither included in a Generation nor cast in a Shot, because it will not reach the LLM.
 
@@ -145,11 +145,11 @@ An environment separates permanent facts from temporary state:
 - reference views with bounded roles such as overview, alternate, detail, or lighting;
 - temporary lighting, weather, atmosphere, condition, time of day, and temporary elements.
 
-A temporary state does not own permanent geometry. A detail view does not become an overview, and a lighting view does not redefine architecture.
+A temporary state does not own permanent geometry. A detail view does not become an overview, and a lighting view does not redefine architecture. **+ Import view picture** uploads a picture, creates the logical File and attaches a new Environment view in one atomic action; existing pictures remain available as visual thumbnail choices inside each view.
 
 ### Library · Files and semantic references
 
-The Files library stores physical sources and stable semantic meaning without asking users to manage slot numbers. H3 labels such as `<Picture 1>` or `<Video 2>` are derived deterministically for each Generation during v3 compilation.
+The Files library is the project-wide shelf for physical sources and stable semantic meaning, but it is not a mandatory first stop. Subjects can import identity pictures and voices directly, Environments can import view pictures directly, and Storyboard can import Shot-scoped references at their destination. Every such action also registers the reusable File atomically. H3 labels such as `<Picture 1>` or `<Video 2>` are derived deterministically for each Generation during v3 compilation.
 
 **Plan by outcome** provides an inline, cancelable first-binding assistant for subject identity, environment view, performance, camera, voice, and continuity. It chooses only from existing shots, generations, subjects, and environments, then prepares the logical asset, its subject/environment relationship when required, a shot-scoped `referenceUse`, and the generation binding as one atomic Media + Shot Plan update. It never connects or uploads the physical file. If a shot belongs to another generation, a required relationship is absent, or the matching physical slot quota is full, the assistant reports that prerequisite deterministically and writes nothing.
 
@@ -157,10 +157,7 @@ The adjacent user-first recipes are contract-safe starting points rather than ne
 
 **Export LLM planning context** emits `minimax-h3-planning-context` format version 1. It is a read-only discussion artifact projected from Studio Project v3, with explicit instructions to preserve IDs and Generation boundaries. It contains no physical files, performs no network request, has no import action, and never applies an LLM response automatically.
 
-Media setup is deliberately two steps:
-
-1. Choose **+ Add reference** to register the logical reference, its type, identity, analysis, transcript, or camera-transfer intent. This creates metadata only; Prompt Studio does not upload or connect a file.
-2. Connect the physical picture, video, or audio in the generation node. The selected reference proposes the first compatible generation and slot — for example, **Assign to Generation 1 · Picture 1** — and writes that binding explicitly.
+Reference setup follows the visible destination. Import from a Subject, Environment or Shot when the intended meaning is already known; use **Library · Files** for batch import or when meaning will be assigned later. Prompt Studio stores the physical source and logical relationship together, while the v3 compiler derives Generation activation and physical H3 slots.
 
 A logical reference can be reused in several generations. A physical file connection is local to the generation that consumes it; registering the logical reference alone does not make media available to H3.
 

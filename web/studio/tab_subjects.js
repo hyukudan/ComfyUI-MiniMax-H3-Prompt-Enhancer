@@ -1,8 +1,9 @@
 import {
-    actionButton, bindCommit, captureOpenDisclosures, checkboxPicker, createMasterDetail, element, emptyState, field,
+    actionButton, bindCommit, captureOpenDisclosures, createMasterDetail, element, emptyState, field,
     inspectorSection, masterRow, restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
 } from "./domain_components.js";
 import { usageIndex } from "./derive.js";
+import { importEntityAsset, visualAssetPicker } from "./entity_media.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
 
 const APPEARANCE_CONTROLS = [
@@ -44,13 +45,13 @@ export function setSubjectGenerationPromptUse(generation, subjectId, included) {
     return true;
 }
 
-function renderAppearanceState(container, subject, appearance, project, uses, commit, rerender) {
+function renderAppearanceState(container, subject, appearance, project, uses, commit, rerender, selectedAppearanceId) {
     const key = `${subject.id}:${appearance.id}`;
     const stateUses = uses.appearanceStates.get(key) ?? [];
     const section = inspectorSection(
         appearance.name || appearance.id,
         [appearance.id === subject.baseAppearanceStateId ? "Base" : "", ...(appearance.controls ?? [])].filter(Boolean).join(" · ") || "No controlled changes",
-        appearance.id === subject.baseAppearanceStateId,
+        appearance.id === selectedAppearanceId,
     );
     const stable = element("p", "minimax-h3-field-hint", `Stable ID: ${appearance.id}`);
     const name = textInput(appearance.name);
@@ -190,21 +191,59 @@ export function renderSubjectsTab(container, controller) {
     const description = textArea(legacyInstruction ? "" : subject.description, "Describe stable face, body and identity traits…");
     bindCommit(description, (value) => { subject.description = value.trim(); }, commit, "blur");
     identity.body.append(field("Name", name), field("Identity description", description));
-    const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture").map((asset) => ({ id: asset.id, label: asset.name || asset.id }));
-    identity.body.appendChild(field("Identity pictures", checkboxPicker(pictures, subject.identityAssetIds, (ids) => {
-        subject.identityAssetIds = ids; commit();
-    }, "Identity picture assets"), "Only picture assets can reinforce identity."));
+    const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture");
+    const identityHeading = element("div", "minimax-h3-entity-media-heading");
+    const pictureInput = document.createElement("input");
+    pictureInput.type = "file"; pictureInput.accept = "image/*"; pictureInput.hidden = true;
+    const importPicture = actionButton("+ Identity picture", () => pictureInput.click());
+    importPicture.disabled = typeof controller.uploadReferenceFile !== "function";
+    const importStatus = element("span", "minimax-h3-field-hint"); importStatus.hidden = true;
+    pictureInput.addEventListener("change", async () => {
+        const file = pictureInput.files?.[0];
+        if (!file) return;
+        importPicture.disabled = true; importStatus.hidden = false; importStatus.textContent = "Importing…";
+        const result = await importEntityAsset(controller, project, file, "picture", (nextProject, assetId) => {
+            const nextSubject = nextProject.subjects.find((item) => item.id === subject.id);
+            nextSubject.identityAssetIds = [...new Set([...(nextSubject.identityAssetIds ?? []), assetId])];
+        });
+        ui.subjectImportFeedback = result.message; ui.subjectImportValid = result.ok;
+        if (result.ok) ui.subjectSelectedId = subject.id;
+        rerender();
+    });
+    identityHeading.append(element("strong", "", "Identity pictures"), importPicture, pictureInput);
+    identity.body.append(identityHeading, visualAssetPicker({
+        assets: pictures, controller, selectedIds: subject.identityAssetIds,
+        ariaLabel: "Identity picture assets", onChange: (ids) => { subject.identityAssetIds = ids; commit(); rerender(); },
+    }), importStatus);
+    if (ui.subjectImportFeedback) {
+        importStatus.hidden = false; importStatus.textContent = ui.subjectImportFeedback;
+        importStatus.dataset.valid = String(ui.subjectImportValid !== false);
+        delete ui.subjectImportFeedback;
+    }
     const voiceAssets = (project.assets ?? []).filter((asset) => asset.type === "audio");
     const voice = selectInput(subject.defaultVoiceAssetId ?? "", [
         ["", "No default voice"],
         ...voiceAssets.map((asset) => [asset.id, asset.name || asset.id]),
     ]);
     bindCommit(voice, (value) => setOptional(subject, "defaultVoiceAssetId", value), commit);
-    identity.body.appendChild(field(
-        "Default voice",
-        voice,
-        "Inherited whenever this subject is active. A shot-level voice reference can override it for one scene.",
-    ));
+    const voiceInput = document.createElement("input");
+    voiceInput.type = "file"; voiceInput.accept = "audio/*"; voiceInput.hidden = true;
+    const importVoice = actionButton("+ Import voice", () => voiceInput.click());
+    importVoice.disabled = typeof controller.uploadReferenceFile !== "function";
+    voiceInput.addEventListener("change", async () => {
+        const file = voiceInput.files?.[0];
+        if (!file) return;
+        importVoice.disabled = true; importVoice.textContent = "Importing…";
+        const result = await importEntityAsset(controller, project, file, "audio", (nextProject, assetId) => {
+            nextProject.subjects.find((item) => item.id === subject.id).defaultVoiceAssetId = assetId;
+        });
+        ui.subjectImportFeedback = result.message; ui.subjectImportValid = result.ok;
+        if (result.ok) ui.subjectSelectedId = subject.id;
+        rerender();
+    });
+    const voiceField = field("Default voice", voice, "Inherited whenever this subject is active; a Shot can override it.");
+    voiceField.append(importVoice, voiceInput);
+    identity.body.appendChild(voiceField);
     inspector.appendChild(identity.details);
 
     const promptUse = inspectorSection("Use in prompts", "generation casting", true);
@@ -238,7 +277,9 @@ export function renderSubjectsTab(container, controller) {
         commit(); rerender(id);
     }));
     inspector.appendChild(statesHeading);
-    for (const appearance of subject.appearanceStates ?? []) renderAppearanceState(inspector, subject, appearance, project, uses, commit, rerender);
+    for (const appearance of subject.appearanceStates ?? []) {
+        renderAppearanceState(inspector, subject, appearance, project, uses, commit, rerender, ui.subjectAppearanceId);
+    }
 
     const subjectActions = element("div", "minimax-h3-studio-toolbar");
     subjectActions.appendChild(actionButton("Duplicate subject", () => {

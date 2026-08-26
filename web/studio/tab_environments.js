@@ -3,6 +3,7 @@ import {
     masterRow, restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
 } from "./domain_components.js";
 import { usageIndex } from "./derive.js";
+import { importEntityAsset, visualAssetPicker } from "./entity_media.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
 
 const VIEW_ROLES = [["overview", "Overview"], ["alternate", "Alternate"], ["detail", "Detail"], ["lighting", "Lighting"], ["custom", "Custom"]];
@@ -19,15 +20,18 @@ export function createEnvironmentDraft(project, name = "New environment") {
     };
 }
 
-function renderView(container, environment, view, project, uses, commit, rerender) {
+function renderView(container, environment, view, project, uses, commit, rerender, controller) {
     const section = inspectorSection(view.name || view.id, view.role || "View", false);
     section.body.appendChild(element("p", "minimax-h3-field-hint", `Stable ID: ${view.id}`));
     const name = textInput(view.name); bindCommit(name, (value) => { view.name = value.trim() || view.id; }, commit);
     name.addEventListener("change", rerender);
     const role = selectInput(view.role, VIEW_ROLES); bindCommit(role, (value) => { view.role = value; }, commit);
     const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture");
-    const asset = selectInput(view.assetId, [["", "Select a picture…"], ...pictures.map((item) => [item.id, item.name || item.id])]);
-    bindCommit(asset, (value) => { view.assetId = value; }, commit);
+    const asset = visualAssetPicker({
+        assets: pictures, controller, selectedIds: view.assetId ? [view.assetId] : [], multiple: false,
+        ariaLabel: `Picture for ${view.name || view.id}`,
+        onChange: (value) => { view.assetId = value; commit(); rerender(); },
+    });
     const description = textArea(view.description, "What this view establishes");
     bindCommit(description, (value) => setOptional(view, "description", value.trim()), commit, "blur");
     section.body.append(field("View name", name), field("Role", role), field("Picture", asset), field("Description", description));
@@ -137,14 +141,35 @@ export function renderEnvironmentsTab(container, controller) {
 
     const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture");
     const viewsHeading = element("div", "minimax-h3-studio-toolbar");
-    viewsHeading.append(element("strong", "", "Views"), actionButton("+ View", () => {
+    const addView = actionButton("+ View", () => {
         const id = uniqueId(environment.views ?? [], "view.");
         (environment.views ??= []).push({ id, name: "New view", role: "overview", assetId: pictures[0].id });
         commit(); rerender();
-    }, { disabled: !pictures.length || environment.views?.length >= 24 }));
+    }, { disabled: !pictures.length || environment.views?.length >= 24 });
+    const viewInput = document.createElement("input"); viewInput.type = "file"; viewInput.accept = "image/*"; viewInput.hidden = true;
+    const importView = actionButton("+ Import view picture", () => viewInput.click(), { disabled: typeof controller.uploadReferenceFile !== "function" || environment.views?.length >= 24 });
+    viewInput.addEventListener("change", async () => {
+        const file = viewInput.files?.[0];
+        if (!file) return;
+        importView.disabled = true; importView.textContent = "Importing…";
+        const result = await importEntityAsset(controller, project, file, "picture", (nextProject, assetId) => {
+            const nextEnvironment = nextProject.environments.find((item) => item.id === environment.id);
+            const id = uniqueId(nextEnvironment.views ??= [], "view.");
+            nextEnvironment.views.push({ id, name: String(file.name).replace(/\.[^.]+$/, "") || "New view", role: "overview", assetId });
+        });
+        ui.environmentImportFeedback = result.message; ui.environmentImportValid = result.ok;
+        if (result.ok) ui.environmentSelectedId = environment.id;
+        rerender();
+    });
+    viewsHeading.append(element("strong", "", "Views"), addView, importView, viewInput);
     inspector.appendChild(viewsHeading);
-    if (!pictures.length) inspector.appendChild(element("p", "minimax-h3-usage-note", "Add a picture in Library · Files before creating an environment view."));
-    for (const view of environment.views ?? []) renderView(inspector, environment, view, project, uses, commit, rerender);
+    if (!pictures.length) inspector.appendChild(element("p", "minimax-h3-usage-note", "Import a view picture here to create the first visual view."));
+    if (ui.environmentImportFeedback) {
+        const feedback = element("p", "minimax-h3-studio-status", ui.environmentImportFeedback);
+        feedback.dataset.valid = String(ui.environmentImportValid !== false); inspector.appendChild(feedback);
+        delete ui.environmentImportFeedback;
+    }
+    for (const view of environment.views ?? []) renderView(inspector, environment, view, project, uses, commit, rerender, controller);
 
     const statesHeading = element("div", "minimax-h3-studio-toolbar");
     statesHeading.append(element("strong", "", "Temporary states"), actionButton("+ Temporary state", () => {

@@ -1206,7 +1206,7 @@ export function ensureStudioStyles() {
             position: relative;
             display: grid;
             min-height: var(--h3-row-height);
-            grid-template-columns: 42px minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr);
             align-items: center;
             gap: 8px;
             border: 0;
@@ -1228,6 +1228,17 @@ export function ensureStudioStyles() {
         .minimax-h3-master-row strong,
         .minimax-h3-master-row small { min-width: 0; overflow-wrap: anywhere; }
         .minimax-h3-master-row small { color: var(--h3-text-muted); }
+        .minimax-h3-entity-media-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .minimax-h3-visual-asset-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+        .minimax-h3-visual-asset-tile { position: relative; display: grid; min-width: 0; grid-template-rows: 88px auto; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: var(--h3-surface); cursor: pointer; }
+        .minimax-h3-visual-asset-tile:hover { border-color: var(--h3-border-strong); }
+        .minimax-h3-visual-asset-tile[data-selected="true"] { border-color: var(--h3-accent); box-shadow: 0 0 0 1px var(--h3-accent); }
+        .minimax-h3-visual-asset-tile > input { position: absolute; z-index: 1; top: 7px; right: 7px; margin: 0; accent-color: var(--h3-accent); }
+        .minimax-h3-visual-asset-preview { display: grid; min-width: 0; place-items: center; overflow: hidden; background: var(--h3-surface-raised); color: var(--h3-text-muted); font-size: 28px; }
+        .minimax-h3-visual-asset-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .minimax-h3-visual-asset-copy { display: grid; min-width: 0; gap: 1px; padding: 7px 8px; }
+        .minimax-h3-visual-asset-copy strong, .minimax-h3-visual-asset-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-visual-asset-copy small { color: var(--h3-text-muted); font-size: 10px; }
         .minimax-h3-media-row-copy { display: grid; min-width: 0; gap: 2px; }
         .minimax-h3-media-visual {
             position: relative;
