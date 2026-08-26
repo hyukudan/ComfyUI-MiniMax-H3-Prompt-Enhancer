@@ -11,10 +11,10 @@ const TEMPORARY_FIELDS = [
     ["condition", "Condition"], ["timeOfDay", "Time of day"], ["other", "Other temporary detail"],
 ];
 
-function newEnvironment(project) {
+export function createEnvironmentDraft(project, name = "New environment") {
     const id = uniqueId(project.environments, "environment.");
     return {
-        id, name: "New environment", permanent: {}, views: [], defaultStateId: "base",
+        id, name: String(name ?? "").trim() || "New environment", permanent: {}, views: [], defaultStateId: "base",
         states: [{ id: "base", name: "Base", temporary: {} }],
     };
 }
@@ -95,7 +95,7 @@ export function renderEnvironmentsTab(container, controller) {
     };
     const toolbar = element("div", "minimax-h3-studio-toolbar");
     const addEnvironment = actionButton("+ Environment", () => {
-        const environment = newEnvironment(project); project.environments.push(environment); ui.environmentSelectedId = environment.id; commit(); rerender();
+        const environment = createEnvironmentDraft(project); project.environments.push(environment); ui.environmentSelectedId = environment.id; commit(); rerender();
     }, { disabled: project.environments.length >= 64 });
     toolbar.append(addEnvironment, element("span", "minimax-h3-field-hint", `${project.environments.length}/64 environments`));
     container.appendChild(toolbar);

@@ -338,6 +338,27 @@ test("Media shell keeps cards separated and dense editors inside the panel", () 
     assert.doesNotMatch(mediaSource, /actionButton\("\+ Asset"/);
 });
 
+test("Visual Compose keeps environment, dialogue and audio controls usable on narrow panels", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
+    assert.match(directorSource, /\+ Environment/);
+    assert.match(directorSource, /Dialogue & sound/);
+    assert.match(directorSource, /Exact spoken words/);
+    assert.match(directorSource, /audio\.controls = true/);
+    assert.match(stylesSource, /@container h3-studio-panel \(max-width: 460px\)[\s\S]*?\.minimax-h3-director-dialogue-form\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(stylesSource, /\.minimax-h3-director-audio-player\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*230px/s);
+});
+
+test("direct Compose import validates its logical transaction before physical upload", () => {
+    const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
+    const importStart = directorSource.indexOf("const importFile = async");
+    const importEnd = directorSource.indexOf("const disconnect =", importStart);
+    const importSource = directorSource.slice(importStart, importEnd);
+    assert.ok(importStart >= 0 && importEnd > importStart);
+    assert.ok(importSource.indexOf("replacePurposeReference") < importSource.indexOf("await controller.uploadReferenceFile"));
+    assert.match(importSource, /Project data was rolled back/);
+});
+
 test("source repair validates object shape and supported schema versions", () => {
     assert.equal(validateStructuredRaw('{"schemaVersion":2}', { acceptedVersions: [2] }).valid, true);
     assert.equal(validateStructuredRaw('{"schemaVersion":3}', { acceptedVersions: [2] }).valid, false);

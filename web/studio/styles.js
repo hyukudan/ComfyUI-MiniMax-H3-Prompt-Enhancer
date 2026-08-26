@@ -1868,6 +1868,22 @@ export function ensureStudioStyles() {
         .minimax-h3-director-inspector textarea { min-height: 104px; }
         .minimax-h3-director-scene-setup { display: grid; gap: 9px; padding: 10px 0; border-block: 1px solid var(--h3-border); }
         .minimax-h3-director-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .minimax-h3-director-dialogue-sound { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: var(--h3-surface); }
+        .minimax-h3-director-dialogue-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; border: 1px solid color-mix(in srgb, var(--h3-accent) 38%, var(--h3-border)); border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-accent) 5%, transparent); }
+        .minimax-h3-director-dialogue-form textarea { grid-column: 1 / -1; min-height: 66px; }
+        .minimax-h3-director-dialogue-form .minimax-h3-director-inline-status { grid-column: 1 / -1; }
+        .minimax-h3-director-sound-group { display: grid; gap: 5px; padding-top: 7px; border-top: 1px solid var(--h3-border); }
+        .minimax-h3-director-sound-group > small:not(.minimax-h3-director-kicker) { color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-director-voice-row, .minimax-h3-director-audio-reference-row { display: grid; gap: 5px; padding: 6px; border-radius: var(--h3-radius-sm); background: var(--h3-surface-raised); }
+        .minimax-h3-director-voice-row > span { display: grid; gap: 2px; }
+        .minimax-h3-director-voice-row b { font-size: 10px; }
+        .minimax-h3-director-voice-row small { color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-director-dialogue-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 7px; border-left: 2px solid var(--h3-accent); border-radius: var(--h3-radius-sm); background: var(--h3-surface-raised); }
+        .minimax-h3-director-dialogue-row > span { display: grid; min-width: 0; gap: 3px; }
+        .minimax-h3-director-dialogue-row b, .minimax-h3-director-dialogue-row q { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-director-dialogue-row small { color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-director-audio-player { width: 100%; max-width: 230px; height: 28px; }
+        .minimax-h3-director-ambience-note { margin: 0; padding: 7px; border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-accent) 6%, transparent); color: var(--h3-text-muted); font-size: 9px; line-height: 1.4; }
         .minimax-h3-director-setup-actions { display: inline-flex; align-items: center; gap: 6px; }
         .minimax-h3-director-text-button { min-height: 24px; border: 0 !important; padding: 2px 4px !important; background: transparent !important; color: var(--h3-accent) !important; font-size: 11px !important; }
         .minimax-h3-director-inline-creator { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; padding: 8px; border: 1px solid color-mix(in srgb, var(--h3-accent) 42%, var(--h3-border)); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-accent) 7%, var(--h3-surface)); }
@@ -1924,6 +1940,8 @@ export function ensureStudioStyles() {
             .minimax-h3-director-lane > span { grid-column: 1 / -1; }
             .minimax-h3-director-tray-header { align-items: flex-start; flex-direction: column; }
             .minimax-h3-director-camera-phases { grid-template-columns: 1fr; }
+            .minimax-h3-director-dialogue-form { grid-template-columns: 1fr; }
+            .minimax-h3-director-dialogue-form textarea { grid-column: 1; }
             .minimax-h3-director-inline-creator { grid-template-columns: 1fr 1fr; }
             .minimax-h3-director-inline-creator input { grid-column: 1 / -1; }
         }

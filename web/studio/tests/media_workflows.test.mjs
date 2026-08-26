@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, reorderScene, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -117,6 +117,19 @@ test("Compose creates one canonical LLM subject and places that stable ID in the
     assert.equal(source.shotPlan.shots[0].subjects, undefined);
 });
 
+test("Compose creates one canonical environment and assigns it to the scene atomically", () => {
+    const source = fixtures();
+    source.project.environments = [];
+    const bundle = createSceneEnvironmentBundle(source.project, source.shotPlan, "s1", "Ana's apartment");
+    assert.deepEqual(bundle.environment, {
+        id: "environment.1", name: "Ana's apartment", permanent: {}, views: [], defaultStateId: "base",
+        states: [{ id: "base", name: "Base", temporary: {} }],
+    });
+    assert.deepEqual(bundle.shotPlan.shots[0].environment, { environmentId: "environment.1", viewIds: [] });
+    assert.equal(source.project.environments.length, 0);
+    assert.equal(source.shotPlan.shots[0].environment, undefined);
+});
+
 test("direct target import prepares a typed immutable library asset before upload commit", () => {
     const source = fixtures();
     source.project.assets = [{ id: "asset.1", type: "picture", name: "Existing" }];
@@ -193,6 +206,30 @@ test("Compose LLM handoff derives subject and physical aliases from the same gen
     assert.deepEqual(result.referenceUses.map((item) => [item.role, item.physicalLabel, item.target]), [["Soundtrack", "<Audio 2>", "This cut"]]);
     assert.match(result.text, /<Subject 1> Ari \| Image <Picture 1> \| Voice <Audio 1>/);
     assert.match(result.text, /Set: Room \| <Picture 2>/);
+});
+
+test("Compose authors exact dialogue against the visible subject and keeps voice, override and soundtrack roles distinct", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "voice", type: "audio", name: "Ari voice" },
+        { id: "override", type: "audio", name: "Close mic" },
+        { id: "music", type: "audio", name: "Score" },
+    ];
+    source.project.subjects[0].defaultVoiceAssetId = "voice";
+    const shot = source.shotPlan.shots[0];
+    shot.subjects = [{ subjectId: "subject.1", presence: "present" }];
+    shot.referenceUses = [
+        { assetId: "override", role: "voice", targetIds: ["subject.1"] },
+        { assetId: "music", role: "soundtrack" },
+    ];
+    assert.equal(addSceneDialogueBeat(shot, "subject.1", "  We leave now.  ", "whispers").id, "beat1");
+    assert.equal(addSceneDialogueBeat(shot, "subject.1", "", "says"), null);
+    const model = composeSceneAudio(source.project, shot);
+    assert.deepEqual(model.voices.map((item) => [item.alias, item.asset.id]), [["<Subject 1>", "voice"]]);
+    assert.deepEqual(model.dialogues.map((item) => [item.speaker, item.text, item.delivery]), [["Ari", "We leave now.", "whispers"]]);
+    assert.deepEqual(model.references.map((item) => item.role), ["voice", "soundtrack"]);
+    assert.equal(removeSceneDialogueBeat(shot, "beat1"), true);
+    assert.equal(shot.actionBeats, undefined);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {
