@@ -283,7 +283,15 @@ export function connectSubjectAssetToScene(project, shotPlan, shotId, assetId, s
     const shot = nextPlan.shots?.find((item) => item.id === shotId);
     if (!shot) return { ok: false, issues: ["Choose an existing shot."] };
     setSceneSubjectPresence(shot, subjectId, true);
-    return replacePurposeReference(composeConnectionInput(project, nextPlan, shot, assetId, purposeId, subjectId));
+    const result = replacePurposeReference(composeConnectionInput(project, nextPlan, shot, assetId, purposeId, subjectId));
+    if (result.ok && purposeId === "subject_identity") {
+        const subject = result.project.subjects.find((item) => item.id === subjectId);
+        if (subject && /^(?:new\s+)?subject(?:\s+\d+)?$/i.test(String(subject.name ?? "").trim())) {
+            subject.name = asset.name || subject.name;
+            result.summary = `${asset.name} → identity and Subject name`;
+        }
+    }
+    return result;
 }
 
 export function createImportedAssetDraft(project, file, mediaType, fallbackName = "Reference") {
@@ -838,13 +846,21 @@ function renderBoard(container, controller, plan, project, rerender) {
     mentionRow.appendChild(el("span", "", "Insert subject"));
     for (const subject of project?.subjects ?? []) {
         const mention = `<Subject ${subject.h3Index}>`;
-        const mentionButton = button(subject.name || mention, () => {
+        const identityAsset = (subject.identityAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
+        const mentionButton = button("", () => {
             const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
             actionInput.value = result.value;
             actionInput.setSelectionRange(result.selectionStart, result.selectionEnd); actionInput.focus();
             selected.action = result.value.trim(); commitPlan(controller, plan);
-        }, "minimax-h3-director-text-button");
-        mentionButton.title = [subject.description, subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
+        }, "minimax-h3-director-text-button minimax-h3-shot-subject-chip");
+        const avatar = el("span", "minimax-h3-shot-subject-avatar");
+        const previewUrl = sourcePreviewUrl(sources[identityAsset?.id]);
+        if (previewUrl) { const image = el("img"); image.src = previewUrl; image.alt = ""; avatar.appendChild(image); }
+        else avatar.textContent = String(subject.name || "S").slice(0, 1).toUpperCase();
+        const chipCopy = el("span", "minimax-h3-shot-subject-copy");
+        chipCopy.append(el("strong", "", subject.name || mention), el("small", "", identityAsset ? `Identity · ${identityAsset.name || identityAsset.id}` : "No identity image"));
+        mentionButton.append(avatar, chipCopy, el("span", "minimax-h3-shot-subject-status", identityAsset ? "✓" : "+"));
+        mentionButton.title = [subject.description, identityAsset ? `Identity: ${identityAsset.name || identityAsset.id}` : "No identity image", subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
         mentionButton.setAttribute("aria-label", `Insert ${subject.name || mention}, ${mention}`);
         mentionRow.appendChild(mentionButton);
     }

@@ -1249,6 +1249,14 @@ export function ensureStudioStyles() {
         .minimax-h3-shot-mention-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 5px; padding-top: 7px; }
         .minimax-h3-shot-mention-row > span { color: var(--h3-text-muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
         .minimax-h3-shot-mention-row > button { border-radius: 999px; padding: 3px 8px; }
+        .minimax-h3-shot-mention-row > .minimax-h3-shot-subject-chip { display: inline-grid; min-height: 34px; grid-template-columns: 24px minmax(0, auto) 14px; align-items: center; gap: 6px; border: 1px solid var(--h3-border) !important; padding: 3px 7px 3px 4px !important; background: var(--h3-surface) !important; color: var(--h3-text) !important; text-align: left; }
+        .minimax-h3-shot-subject-avatar { display: grid; width: 24px; height: 24px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--h3-accent) 18%, var(--h3-surface)); color: var(--h3-accent); font-size: 10px; font-weight: 750; }
+        .minimax-h3-shot-subject-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .minimax-h3-shot-subject-copy { display: grid; min-width: 0; gap: 0; }
+        .minimax-h3-shot-subject-copy strong, .minimax-h3-shot-subject-copy small { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-shot-subject-copy strong { font-size: 10px; }
+        .minimax-h3-shot-subject-copy small { color: var(--h3-text-muted); font-size: 8.5px; font-weight: 500; text-transform: none; }
+        .minimax-h3-shot-subject-status { color: var(--h3-success) !important; font-size: 11px !important; font-weight: 800; letter-spacing: 0 !important; }
         .minimax-h3-media-row-copy { display: grid; min-width: 0; gap: 2px; }
         .minimax-h3-media-visual {
             position: relative;

@@ -341,6 +341,16 @@ test("dropping a reference on an absent Subject places it and assigns the semant
     assert.deepEqual(source.shotPlan.shots[0].subjects, [], "drop remains atomic and immutable before commit");
 });
 
+test("an identity drop gives a still-placeholder Subject the useful asset name", () => {
+    const source = fixtures();
+    source.project.subjects[0].name = "New subject";
+    source.project.assets = [{ id: "portrait", type: "picture", name: "Malako" }];
+    const result = connectSubjectAssetToScene(source.project, source.shotPlan, "s1", "portrait", "subject.1");
+    assert.equal(result.ok, true);
+    assert.equal(result.project.subjects[0].name, "Malako");
+    assert.equal(source.project.subjects[0].name, "New subject", "rename remains immutable before commit");
+});
+
 test("purpose assistant records an authoritative frame role in frame modes", () => {
     const source = fixtures();
     source.project.mode = "i2va";
