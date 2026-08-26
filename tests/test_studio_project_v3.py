@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from planning_context import compile_planning_context
 from studio_project import compile_studio_project, empty_studio_project, parse_studio_project
 
 
@@ -147,4 +148,30 @@ def test_v3_generation_roots_activate_a_subject_without_casting_a_shot():
         "ana.face": "<Picture 1>",
         "ana.voice": "<Audio 1>",
         "score": "<Audio 2>",
+    }
+    assert compiled["mediaProject"]["generations"][0]["activation"] == {
+        "mode": "explicit", "roots": [{"kind": "subject", "id": "ana"}],
+    }
+    planning = compile_planning_context(
+        compiled["mediaProject"], compiled["shotPlan"], 5, mode="ref2va",
+    )
+    assert planning["valid"] is True
+    assert not any(
+        item.get("code") == "reference.binding.inactive"
+        for item in planning["diagnosticReport"]["diagnostics"]
+    )
+
+
+def test_v3_file_root_is_projected_as_a_v2_asset_root():
+    project = _project()
+    project["subjects"] = []
+    project["environments"] = []
+    project["shots"] = []
+    project["generations"][0]["activation"] = {
+        "mode": "explicit", "roots": [{"kind": "file", "id": "cliff.view"}],
+    }
+    compiled = compile_studio_project(project)
+    assert compiled["inputMap"] == {"cliff.view": "<Picture 1>"}
+    assert compiled["mediaProject"]["generations"][0]["activation"] == {
+        "mode": "explicit", "roots": [{"kind": "asset", "id": "cliff.view"}],
     }

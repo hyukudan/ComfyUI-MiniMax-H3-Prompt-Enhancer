@@ -414,9 +414,26 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
             if counters[kind] > maximum:
                 issues.append(f"Generation {generation['id']} uses {counters[kind]} {kind} files; H3 allows {maximum}.")
         quotas[generation["id"]] = {**counters, "files": len(active_ids)}
+        source_activation = generation.get("activation") or {"mode": "auto"}
+        roots = []
+        for root in source_activation.get("roots", []):
+            kind = "asset" if root.get("kind") == "file" else root.get("kind")
+            if kind in {"asset", "subject", "environment"} and root.get("id"):
+                roots.append({"kind": kind, "id": root["id"]})
+        activation = {"mode": "explicit", "roots": roots} if roots else {"mode": "auto"}
+        excluded = []
+        for item in source_activation.get("exclude", []):
+            kind = "asset" if item.get("kind") == "file" else item.get("kind")
+            if kind in {"asset", "subject", "environment"} and item.get("id"):
+                excluded.append({"kind": kind, "id": item["id"]})
+        if excluded:
+            activation["exclude"] = excluded
         compiled_generations.append({
             "id": generation["id"], "order": int(generation.get("order", len(compiled_generations) + 1)),
-            "activation": {"mode": "auto"}, "bindings": bindings,
+            # Keep semantic activation authoritative. Dropping these roots leaves
+            # correctly derived physical bindings looking inactive to the joint
+            # Media + Shot compiler.
+            "activation": activation, "bindings": bindings,
             "subjectStates": deepcopy(generation.get("subjectStates") or []),
             "environmentStates": deepcopy(generation.get("environmentStates") or []),
         })
