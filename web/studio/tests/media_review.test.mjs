@@ -134,6 +134,16 @@ test("first-reference assistant chooses a compatible generation and physical slo
     assert.equal(suggestion.binding.soundtrackSlotIndex, 1);
 });
 
+test("picture binding suggestions inherit explicit frame modes", () => {
+    const project = projectFixture();
+    project.mode = "i2va";
+    project.generations[0].bindings = project.generations[0].bindings.filter((binding) => binding.assetId !== "portrait");
+    const portrait = project.assets.find((asset) => asset.id === "portrait");
+    assert.equal(bindingSuggestion(project, portrait, "g1").binding.role, "first_frame");
+    project.mode = "l2va";
+    assert.equal(bindingSuggestion(project, portrait, "g1").binding.role, "last_frame");
+});
+
 test("Visual language popover stays inside 720, 820 and 920 viewports", () => {
     for (const viewportWidth of [720, 820, 920]) {
         const rect = { left: viewportWidth - 278, right: viewportWidth - 18, top: 174, bottom: 206, width: 260 };
@@ -171,6 +181,7 @@ test("Media opens the purpose assistant inline without writing project data", as
         const container = new FakeElement();
         renderReferencesTab(container, controller);
         assert.ok(container.children.length >= 4);
+        assert.ok(descendants(container).some((element) => element.tagName === "DETAILS" && element.open === true), "first Media visit keeps its default disclosures open");
         assert.equal(controller.projectUiState.selectedGenerationId, "g1");
         assert.equal(controller.projectUiState.selectedAssetId, "portrait");
         const labels = descendants(container).map((element) => element.textContent).filter(Boolean);

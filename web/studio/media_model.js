@@ -1,5 +1,18 @@
 export const MEDIA_LIMITS = Object.freeze({ picture: 9, video: 3, audio: 3 });
 
+export function effectivePictureBindingRole(project = {}, generation = {}, binding = {}) {
+    const asset = (project.assets ?? []).find((item) => item.id === binding.assetId);
+    if (asset?.type !== "picture") return "reference";
+    if (["first_frame", "last_frame"].includes(binding.role)) return binding.role;
+    if (project.mode === "i2va") return "first_frame";
+    if (project.mode === "l2va") return "last_frame";
+    if (project.mode !== "fl2va") return "reference";
+    const pictures = (generation.bindings ?? []).filter((item) => (project.assets ?? []).find((assetItem) => assetItem.id === item.assetId)?.type === "picture")
+        .sort((left, right) => Number(left.slotIndex ?? 0) - Number(right.slotIndex ?? 0));
+    const index = pictures.indexOf(binding);
+    return index === 0 ? "first_frame" : index === pictures.length - 1 ? "last_frame" : "reference";
+}
+
 function resourceKey(kind, id) {
     return `${kind}:${id}`;
 }

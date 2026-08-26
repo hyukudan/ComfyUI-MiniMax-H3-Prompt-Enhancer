@@ -2096,6 +2096,37 @@ function effectiveDuration(node) {
         ?? DEFAULT_EXACT_SHOT_DURATION;
 }
 
+function displayResolvedMode(node) {
+    const requested = String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto").toLowerCase();
+    if (requested !== "auto") return requested;
+    const editingIntent = String(node.widgets?.find((widget) => widget.name === "editing_intent")?.value ?? "none");
+    if (editingIntent !== "none") return "ref2va";
+    const rawManifest = String(node.widgets?.find((widget) => widget.name === "media_manifest")?.value ?? "");
+    let manifest = null;
+    try { manifest = rawManifest.trim() ? JSON.parse(rawManifest) : null; } catch { /* Keep the unresolved badge honest. */ }
+    const explicit = String(manifest?.mode ?? "").toLowerCase();
+    if (explicit && explicit !== "auto") return explicit;
+    let items = Array.isArray(manifest) ? manifest : (manifest?.items ?? manifest?.assets ?? []);
+    if (manifest?.schemaVersion === 2 && Array.isArray(manifest.assets)) {
+        const firstGeneration = [...(Array.isArray(manifest.generations) ? manifest.generations : [])]
+            .sort((left, right) => Number(left?.order ?? 0) - Number(right?.order ?? 0))[0];
+        const bindings = new Map((firstGeneration?.bindings ?? []).map((binding) => [binding?.assetId, binding]));
+        items = manifest.assets.filter((asset) => bindings.has(asset?.id)).map((asset) => ({ ...asset, role: bindings.get(asset.id)?.role }));
+    }
+    const active = (Array.isArray(items) ? items : []).filter((item) => item && item.enabled !== false && item.available !== false);
+    if (active.length) {
+        const pictures = active.filter((item) => ["picture", "image"].includes(String(item.type ?? item.kind).toLowerCase()));
+        const others = active.filter((item) => !["picture", "image"].includes(String(item.type ?? item.kind).toLowerCase()));
+        const roles = new Set(pictures.map((item) => String(item.role ?? item.purpose ?? "").toLowerCase().replaceAll(" ", "_")));
+        if (!others.length && pictures.length === 1 && roles.size && [...roles].every((role) => role === "first_frame")) return "i2va";
+        if (!others.length && pictures.length === 1 && roles.size && [...roles].every((role) => ["last_frame", "final_frame"].includes(role))) return "l2va";
+        if (!others.length && pictures.length === 2 && roles.has("first_frame") && (roles.has("last_frame") || roles.has("final_frame"))) return "fl2va";
+        return "ref2va";
+    }
+    const context = `${node.widgets?.find((widget) => widget.name === "reference_context")?.value ?? ""}\n${node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? ""}`;
+    return /<(?:picture|video|audio)\s+\d+>|\b(?:image|picture|imagen|video|audio)\s*\d+\b/i.test(context) ? "ref2va" : "t2va";
+}
+
 function rebalanceExactDurations(node, state = node.__minimaxShotPlanState) {
     if (!state || state.timingMode !== "exact" || !state.shots.length) return;
     const total = effectiveDuration(node);
@@ -3085,6 +3116,18 @@ function createStudioController(node) {
         projectUiState: { sourceRaw: null, project: null },
         mode() {
             return String(node.widgets?.find((widget) => widget.name === "mode")?.value ?? "auto");
+        },
+        resolvedMode() {
+            return displayResolvedMode(node);
+        },
+        generationTiming() {
+            const frameValue = Number(node.widgets?.find((widget) => widget.name === "frame_count")?.value);
+            const seconds = effectiveDuration(node);
+            return {
+                seconds,
+                frames: Number.isInteger(frameValue) && frameValue > 0 ? frameValue : Math.round(seconds * 24),
+                fps: 24,
+            };
         },
         basicPrompt() {
             return String(node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? "").trim();

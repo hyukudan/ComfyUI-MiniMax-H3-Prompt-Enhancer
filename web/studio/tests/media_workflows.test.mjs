@@ -28,6 +28,13 @@ test("purpose assistant creates identity asset, relation, shot use and binding t
     assert.equal(source.project.assets.length, 0, "planning must not mutate before atomic commit");
 });
 
+test("purpose assistant records an authoritative frame role in frame modes", () => {
+    const source = fixtures();
+    source.project.mode = "i2va";
+    const result = createPurposeBinding({ ...source, purposeId: "subject_identity", generationId: "g1", shotId: "s1", relationId: "subject.1", name: "Opening" });
+    assert.equal(result.project.generations[0].bindings[0].role, "first_frame");
+});
+
 test("camera and environment purposes use existing v2 contract fields", () => {
     const camera = createPurposeBinding({ ...fixtures(), purposeId: "camera", generationId: "g1", shotId: "s1", name: "Move" });
     assert.deepEqual(camera.project.assets[0].cameraTransfer, { enabled: true, role: "camera_reference", aspects: ["motion"] });

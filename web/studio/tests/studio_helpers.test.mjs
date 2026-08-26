@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { dashboardSummaries } from "../drawer.js";
+import { effectivePictureBindingRole } from "../media_model.js";
 import { groupDiagnostics } from "../tab_coach.js";
-import { physicalLabel } from "../tab_references.js";
+import { bindingRoleLabel, physicalLabel } from "../tab_references.js";
 import { SHOT_ROW_HEIGHT, shotRowModel, visibleShotRange } from "../tab_shots.js";
 
 test("64-shot virtualization mounts only visible rows plus ten overscan rows", () => {
@@ -33,6 +34,16 @@ test("physical reference labels derive from type and per-generation slot", () =>
     assert.equal(physicalLabel({ type: "picture" }, { slotIndex: 2 }), "<Picture 2>");
     assert.equal(physicalLabel({ type: "video" }, { slotIndex: 1 }), "<Video 1>");
     assert.equal(physicalLabel({ type: "audio" }, { slotIndex: 3 }), "<Audio 3>");
+    assert.equal(bindingRoleLabel({ role: "first_frame" }), "First frame");
+    assert.equal(bindingRoleLabel({ role: "last_frame" }), "Last frame");
+    assert.equal(bindingRoleLabel({}), "Reference");
+});
+
+test("legacy frame-mode projects infer frame roles without hydration writes", () => {
+    const project = { mode: "fl2va", assets: [{ id: "a", type: "picture" }, { id: "b", type: "picture" }] };
+    const generation = { bindings: [{ assetId: "a", slotIndex: 1 }, { assetId: "b", slotIndex: 2 }] };
+    assert.equal(effectivePictureBindingRole(project, generation, generation.bindings[0]), "first_frame");
+    assert.equal(effectivePictureBindingRole(project, generation, generation.bindings[1]), "last_frame");
 });
 
 test("coach groups repeated stable codes without reimplementing heuristics", () => {

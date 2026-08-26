@@ -62,6 +62,13 @@ export function createPurposeBinding(input = {}) {
     if (purpose.id === "camera") asset.cameraTransfer = { enabled: true, role: "camera_reference", aspects: ["motion"] };
     project.assets.push(asset);
     const binding = { assetId, slotIndex: nextAvailableSlot(project, generation, purpose.type) };
+    if (purpose.type === "picture") {
+        const role = project.mode === "i2va" ? "first_frame" : project.mode === "l2va" ? "last_frame"
+            : project.mode === "fl2va"
+                ? (generation.bindings ?? []).some((item) => item.role === "first_frame") ? "last_frame" : "first_frame"
+                : "reference";
+        if (role !== "reference") binding.role = role;
+    }
     generation.bindings.push(binding);
     if (purpose.relation === "subject") {
         const subject = project.subjects.find((item) => item.id === input.relationId);

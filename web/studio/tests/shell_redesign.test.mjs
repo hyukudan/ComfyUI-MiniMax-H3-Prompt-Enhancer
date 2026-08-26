@@ -6,11 +6,13 @@ import {
     clampDrawerWidth,
     defaultDrawerWidth,
     normalizeStudioSection,
+    productionContext,
     readStudioPrefs,
     STUDIO_SECTIONS,
     writeStudioPrefs,
 } from "../drawer.js";
 import { alignmentGuidance, overviewModel, sourceToolAttention } from "../overview.js";
+import { frameAnchorModel, shotTimelineModel } from "../tab_shots.js";
 import { validateStructuredRaw } from "../components/source_state.js";
 import { STUDIO_UI_LEGACY_STORAGE_KEY, STUDIO_UI_STORAGE_KEY } from "../tokens.js";
 
@@ -131,6 +133,61 @@ test("Overview derives pipeline, library, continuity and diagnostic health", () 
     assert.deepEqual(model.generations.map((item) => [item.shots, item.bindings]), [[1, 1], [1, 2]]);
     assert.deepEqual(model.diagnostics, { errors: 1, warnings: 0, tips: 1 });
     assert.equal(model.stale, true);
+});
+
+test("production context summarizes the live plan without mutating it", () => {
+    const model = productionContext({
+        mode: () => "fl2va",
+        shotDocument: () => ({ kind: "v2", value: {
+            timingMode: "exact",
+            shots: [{ durationSeconds: 1.25 }, { durationSeconds: 2.75 }],
+        } }),
+        projectDocument: () => ({ kind: "v2", value: {
+            generations: [{}, {}], assets: [{}, {}, {}],
+        } }),
+    });
+    assert.deepEqual(model, { mode: "FL2VA", shots: 2, timing: "4.00 s · 96f", generations: 2, media: 3 });
+});
+
+test("production context shows deterministic auto resolution and generation frames", () => {
+    const model = productionContext({
+        mode: () => "auto",
+        resolvedMode: () => "i2va",
+        generationTiming: () => ({ seconds: 5.17, frames: 124, fps: 24 }),
+        shotDocument: blankDocument,
+        projectDocument: blankDocument,
+    });
+    assert.deepEqual(model, { mode: "AUTO → I2VA", shots: 0, timing: "5.17 s · 124f", generations: 0, media: 0 });
+});
+
+test("shot timeline uses exact durations as proportional visual widths", () => {
+    const timeline = shotTimelineModel({ timingMode: "exact", shots: [
+        { id: "s1", durationSeconds: 1, action: "Open" },
+        { id: "s2", durationSeconds: 3, action: "Resolve" },
+    ] });
+    assert.deepEqual(timeline.map(({ start, end, width }) => [start, end, width]), [[0, 1, 25], [1, 4, 75]]);
+    assert.deepEqual(shotTimelineModel({ timingMode: "auto", shots: [{ id: "a" }, { id: "b" }] }).map((item) => item.width), [50, 50]);
+});
+
+test("frame anchors land on generation boundaries and expose physical frames", () => {
+    const plan = { timingMode: "exact", shots: [
+        { id: "s1", generationId: "g1", durationSeconds: 1 },
+        { id: "s2", generationId: "g1", durationSeconds: 3 },
+        { id: "s3", generationId: "g2", durationSeconds: 2 },
+    ] };
+    const project = {
+        assets: [{ id: "open", type: "picture", name: "Opening" }, { id: "close", type: "picture", name: "Closing" }],
+        generations: [{ id: "g1", bindings: [
+            { assetId: "open", slotIndex: 1, role: "first_frame" },
+            { assetId: "close", slotIndex: 2, role: "last_frame" },
+        ] }],
+    };
+    const anchors = frameAnchorModel(project, plan);
+    assert.deepEqual(anchors.map(({ role, shotId, frame, physicalLabel }) => [role, shotId, frame, physicalLabel]), [
+        ["first_frame", "s1", 0, "<Picture 1>"],
+        ["last_frame", "s2", 95, "<Picture 2>"],
+    ]);
+    assert.equal(Math.round(anchors[1].position * 10) / 10, 66.7);
 });
 
 test("Overview uses the live node mode for contextual boundary alignment", () => {

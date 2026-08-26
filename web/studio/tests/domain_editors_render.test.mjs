@@ -38,6 +38,8 @@ class TestElement {
     remove() { if (!this.parentElement) return; this.parentElement.children = this.parentElement.children.filter((child) => child !== this); this.parentElement = null; }
     click() { for (const listener of this.listeners.get("click") ?? []) listener({ preventDefault() {} }); }
     focus() {}
+    getBoundingClientRect() { return { width: 1000, left: 0, right: 1000, top: 0, bottom: 60, height: 60 }; }
+    setPointerCapture() {}
     querySelector(selector) {
         for (const child of this.children) {
             if (matches(child, selector)) return child;
@@ -61,6 +63,15 @@ function findByClass(root, className) {
     if (String(root.className ?? "").split(/\s+/).includes(className)) return root;
     for (const child of root.children ?? []) {
         const match = findByClass(child, className);
+        if (match) return match;
+    }
+    return null;
+}
+
+function findByDataset(root, key, value) {
+    if (root.dataset?.[key] === value) return root;
+    for (const child of root.children ?? []) {
+        const match = findByDataset(child, key, value);
         if (match) return match;
     }
     return null;
@@ -362,4 +373,23 @@ test("rendered shot rows keep compact metadata separate from the full accessible
     assert.equal(row.children[1].textContent, "Rain begins");
     assert.equal(row.children[1].attributes.get("title"), "Rain begins");
     assert.match(row.attributes.get("aria-label"), /Shot 1, starts at 0\.00s, generation g1\. Rain begins/);
+});
+
+test("dragging a shot boundary resizes only its adjacent pair", () => {
+    const controller = controllerFixture();
+    const twoShots = structuredClone(plan);
+    twoShots.shots.push({ id: "s2", generationId: "g1", action: "Second beat", durationSeconds: 2 });
+    controller.shotDocument = () => ({ kind: "v2", raw: JSON.stringify(twoShots), value: structuredClone(twoShots) });
+    const container = new TestElement("div");
+    renderShotsTab(container, controller);
+    const handle = findByDataset(container, "timelineBoundary", "0");
+    assert.ok(handle);
+    const down = handle.listeners.get("pointerdown")[0];
+    down({ button: 0, clientX: 100, pointerId: 1, preventDefault() {} });
+    const move = handle.listeners.get("pointermove")[0];
+    move({ clientX: 200 });
+    const [first, second] = controller.shotUiState.plan.shots.map((shot) => shot.durationSeconds);
+    assert.ok(first > 4);
+    assert.ok(second < 2);
+    assert.equal(Math.round((first + second) * 1000) / 1000, 6);
 });

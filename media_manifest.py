@@ -408,13 +408,18 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
         for binding_index, binding in enumerate(generation.get("bindings", ()) if isinstance(generation.get("bindings"), list) else ()):
             binding_field = f"{field}.bindings.{binding_index}"
             if _require_object(binding, binding_field, issues):
-                _unknown_keys(binding, {"assetId", "slotIndex", "soundtrackSlotIndex"}, binding_field, issues)
+                _unknown_keys(binding, {"assetId", "slotIndex", "soundtrackSlotIndex", "role"}, binding_field, issues)
                 _required_fields(binding, {"assetId", "slotIndex"}, binding_field, issues)
                 if not _valid_id(binding.get("assetId")):
                     issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid asset ID at {binding_field}", f"{binding_field}.assetId"))
                 for slot_field in ("slotIndex", "soundtrackSlotIndex"):
                     if slot_field in binding and (not isinstance(binding[slot_field], int) or isinstance(binding[slot_field], bool) or not 1 <= binding[slot_field] <= (3 if slot_field == "soundtrackSlotIndex" else 9)):
                         issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid {slot_field}", f"{binding_field}.{slot_field}"))
+                if binding.get("role", "reference") not in {"reference", "first_frame", "last_frame"}:
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid binding role {binding.get('role')!r}", f"{binding_field}.role"))
+                asset = next((item for item in project["assets"] if item.get("id") == binding.get("assetId")), None)
+                if binding.get("role") in {"first_frame", "last_frame"} and asset and asset.get("type") != "picture":
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", "Only picture bindings may be first-frame or last-frame anchors", f"{binding_field}.role"))
         for selection_index, selection in enumerate(generation.get("subjectStates", ()) if isinstance(generation.get("subjectStates"), list) else ()):
             selection_field = f"{field}.subjectStates.{selection_index}"
             if _require_object(selection, selection_field, issues):
@@ -632,6 +637,9 @@ def _legacy_projection_v2(compiled: dict[str, Any]) -> dict[str, Any]:
     project = compiled["project"]
     first_generation = next(iter(compiled.get("generations", {}).values()), {"inputMap": {}})
     input_map = first_generation.get("inputMap", {})
+    first_generation_id = next(iter(compiled.get("generations", {})), None)
+    generation_contract = next((item for item in project.get("generations", ()) if item.get("id") == first_generation_id), {})
+    binding_by_asset = {item.get("assetId"): item for item in generation_contract.get("bindings", ())}
     items: list[dict[str, Any]] = []
     for position, asset in enumerate(project["assets"], start=1):
         label = input_map.get(asset["id"])
@@ -639,6 +647,25 @@ def _legacy_projection_v2(compiled: dict[str, Any]) -> dict[str, Any]:
             continue
         item = dict(asset)
         item.update({"label": label, "position": position, "duration_seconds": float(asset.get("durationSeconds", 0))})
+        role = binding_by_asset.get(asset["id"], {}).get("role")
+        if not role and project.get("mode") in {"i2va", "l2va", "fl2va"} and asset.get("type") == "picture":
+            if project["mode"] == "i2va":
+                role = "first_frame"
+            elif project["mode"] == "l2va":
+                role = "last_frame"
+            else:
+                picture_bindings = sorted(
+                    (binding for binding in generation_contract.get("bindings", ())
+                     if next((candidate for candidate in project["assets"] if candidate.get("id") == binding.get("assetId") and candidate.get("type") == "picture"), None)),
+                    key=lambda binding: binding.get("slotIndex", 0),
+                )
+                position_in_pictures = next((index for index, binding in enumerate(picture_bindings) if binding.get("assetId") == asset["id"]), -1)
+                if position_in_pictures == 0:
+                    role = "first_frame"
+                elif position_in_pictures == len(picture_bindings) - 1:
+                    role = "last_frame"
+        if role and role != "reference":
+            item["role"] = role
         soundtrack = input_map.get(f"{asset['id']}:soundtrack")
         if soundtrack:
             item["soundtrack_label"] = soundtrack

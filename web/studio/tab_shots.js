@@ -6,6 +6,7 @@ import { resolveEntryStates } from "./derive.js";
 import { projectForController } from "./project_editor.js";
 import { editableShotPlan, normalizeShotPlanV2, parseStructuredJson, serializeStructuredJson } from "./schema.js";
 import { cameraInstructionPreview } from "./camera_planner.js";
+import { effectivePictureBindingRole } from "./media_model.js";
 
 export const SHOT_ROW_HEIGHT = 60;
 export const SHOT_OVERSCAN = 5;
@@ -599,6 +600,231 @@ function renderShotList(list, state, selectShot, reorder) {
     list.scrollTop = state.listScroll ?? 0; drawRows();
 }
 
+export function shotTimelineModel(plan = {}) {
+    const shots = Array.isArray(plan.shots) ? plan.shots : [];
+    const exact = plan.timingMode === "exact";
+    const durations = shots.map((shot) => exact ? Math.max(0.01, Number(shot?.durationSeconds) || 1) : 1);
+    const total = durations.reduce((sum, duration) => sum + duration, 0);
+    let elapsed = 0;
+    return shots.map((shot, index) => {
+        const duration = durations[index];
+        const item = {
+            id: shot.id,
+            index,
+            title: `Shot ${index + 1}`,
+            action: String(shot.action ?? "").trim() || "No action yet",
+            start: exact ? elapsed : null,
+            end: exact ? elapsed + duration : null,
+            duration: exact ? duration : null,
+            width: total > 0 ? duration / total * 100 : 100 / Math.max(1, shots.length),
+        };
+        elapsed += duration;
+        return item;
+    });
+}
+
+export function frameAnchorModel(project = {}, plan = {}) {
+    const timeline = shotTimelineModel(plan);
+    const assets = new Map((project.assets ?? []).map((asset) => [asset.id, asset]));
+    const anchors = [];
+    for (const generation of project.generations ?? []) {
+        const shotIndexes = timeline.filter((item) => plan.shots[item.index]?.generationId === generation.id).map((item) => item.index);
+        if (!shotIndexes.length) continue;
+        const firstIndex = Math.min(...shotIndexes); const lastIndex = Math.max(...shotIndexes);
+        for (const binding of generation.bindings ?? []) {
+            const asset = assets.get(binding.assetId);
+            if (asset?.type !== "picture") continue;
+            const role = effectivePictureBindingRole(project, generation, binding);
+            if (!["first_frame", "last_frame"].includes(role)) continue;
+            const targetIndex = role === "first_frame" ? firstIndex : lastIndex;
+            const target = timeline[targetIndex];
+            const position = role === "first_frame"
+                ? timeline.slice(0, targetIndex).reduce((sum, item) => sum + item.width, 0)
+                : timeline.slice(0, targetIndex + 1).reduce((sum, item) => sum + item.width, 0);
+            const seconds = role === "first_frame" ? target.start : target.end;
+            const frame = seconds === null ? null : role === "first_frame"
+                ? Math.round(seconds * 24) : Math.max(0, Math.round(seconds * 24) - 1);
+            anchors.push({
+                assetId: asset.id,
+                assetName: asset.name || asset.id,
+                generationId: generation.id,
+                role,
+                shotId: plan.shots[targetIndex]?.id,
+                position,
+                frame,
+                physicalLabel: `<Picture ${binding.slotIndex ?? "?"}>`,
+            });
+        }
+    }
+    return anchors;
+}
+
+function compactSeconds(value) {
+    return Number(value).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
+
+function timelineSummary(plan) {
+    const model = shotTimelineModel(plan);
+    const total = model.reduce((sum, item) => sum + (item.duration ?? 0), 0);
+    return plan.timingMode === "exact"
+        ? `${compactSeconds(total)} s · ${Math.round(total * 24)}f`
+        : `${model.length} equal shot${model.length === 1 ? "" : "s"}`;
+}
+
+function attributeSelectorValue(value) {
+    return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function renderShotTimeline(plan, project, state, selectShot, commit, rerender) {
+    const section = element("section", "minimax-h3-shot-timeline");
+    const heading = element("div", "minimax-h3-shot-timeline-heading");
+    heading.append(
+        element("strong", "", "Shot timeline"),
+        element("span", "", plan.timingMode === "exact"
+            ? `${timelineSummary(plan)} · drag a boundary · double-click to split evenly`
+            : "Equal-width overview · switch to Exact for time scale"),
+    );
+    const track = element("div", "minimax-h3-shot-timeline-track");
+    track.setAttribute("role", "group");
+    track.setAttribute("aria-label", "Shot timeline");
+    const strip = element("div", "minimax-h3-shot-timeline-strip");
+    strip.style.minWidth = `${Math.max(1, plan.shots.length) * 86}px`;
+    const model = shotTimelineModel(plan);
+    const clips = [];
+    const choose = (id, focus = true) => {
+        state.timelineScroll = track.scrollLeft;
+        selectShot(id, focus ? `[data-timeline-shot-id="${attributeSelectorValue(id)}"]` : "");
+    };
+    for (const item of model) {
+        const button = element("button", "minimax-h3-shot-timeline-clip");
+        button.type = "button";
+        button.style.width = `${item.width}%`;
+        button.dataset.shotId = item.id;
+        button.dataset.timelineShotId = item.id;
+        button.setAttribute("aria-pressed", String(item.id === state.selectedId));
+        button.tabIndex = item.id === state.selectedId ? 0 : -1;
+        button.setAttribute("aria-label", item.start === null
+            ? `${item.title}. ${item.action}`
+            : `${item.title}, ${item.start.toFixed(2)} to ${item.end.toFixed(2)} seconds. ${item.action}`);
+        const label = element("strong", "", item.title);
+        const timing = element("span", "minimax-h3-shot-timeline-time", item.start === null
+            ? "Auto"
+            : `${compactSeconds(item.start)}–${compactSeconds(item.end)}s · ${Math.round(item.start * 24)}–${Math.max(Math.round(item.start * 24), Math.round(item.end * 24) - 1)}f`);
+        const action = element("span", "minimax-h3-shot-timeline-action", item.action);
+        action.title = item.action;
+        button.append(label, timing, action);
+        button.addEventListener("click", () => choose(item.id));
+        button.addEventListener("keydown", (event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            let next = item.index;
+            if (event.key === "ArrowLeft") next -= 1;
+            if (event.key === "ArrowRight") next += 1;
+            if (event.key === "Home") next = 0;
+            if (event.key === "End") next = model.length - 1;
+            const target = model[Math.max(0, Math.min(model.length - 1, next))];
+            if (target) choose(target.id);
+        });
+        clips.push(button);
+        strip.appendChild(button);
+    }
+    if (plan.timingMode === "exact") {
+        let boundary = 0;
+        for (let index = 0; index < model.length - 1; index += 1) {
+            boundary += model[index].width;
+            const handle = element("div", "minimax-h3-shot-timeline-boundary");
+            handle.dataset.timelineBoundary = String(index);
+            handle.tabIndex = 0;
+            handle.setAttribute("role", "separator");
+            handle.setAttribute("aria-orientation", "vertical");
+            handle.setAttribute("aria-label", `Boundary between Shot ${index + 1} and Shot ${index + 2}`);
+            handle.setAttribute("aria-valuemin", compactSeconds(model[index].start + .01));
+            handle.setAttribute("aria-valuemax", compactSeconds(model[index + 1].end - .01));
+            handle.setAttribute("aria-valuenow", compactSeconds(model[index].end));
+            handle.style.left = `${boundary}%`;
+            const resizePair = (leftDuration) => {
+                const left = plan.shots[index]; const right = plan.shots[index + 1];
+                const pairTotal = Math.max(.02, Number(left.durationSeconds) + Number(right.durationSeconds));
+                const adjusted = Math.max(.01, Math.min(pairTotal - .01, leftDuration));
+                left.durationSeconds = Math.round(adjusted * 1000) / 1000;
+                right.durationSeconds = Math.round((pairTotal - left.durationSeconds) * 1000) / 1000;
+            };
+            handle.addEventListener("dblclick", () => {
+                state.timelineScroll = track.scrollLeft;
+                const pairTotal = Number(plan.shots[index].durationSeconds) + Number(plan.shots[index + 1].durationSeconds);
+                resizePair(pairTotal / 2); commit(); rerender(`[data-timeline-boundary="${index}"]`);
+            });
+            handle.addEventListener("keydown", (event) => {
+                if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+                event.preventDefault(); state.timelineScroll = track.scrollLeft;
+                const step = event.shiftKey ? .5 : 1 / 24;
+                resizePair(Number(plan.shots[index].durationSeconds) + (event.key === "ArrowRight" ? step : -step));
+                commit(); rerender(`[data-timeline-boundary="${index}"]`);
+            });
+            handle.addEventListener("pointerdown", (event) => {
+                if (event.button !== 0) return;
+                event.preventDefault(); handle.setPointerCapture?.(event.pointerId);
+                const startX = event.clientX;
+                const startLeft = Number(plan.shots[index].durationSeconds);
+                const total = model.at(-1)?.end ?? 0;
+                const width = strip.getBoundingClientRect().width || 1;
+                let moved = false;
+                const move = (moveEvent) => {
+                    if (Math.abs(moveEvent.clientX - startX) < 2) return;
+                    moved = true;
+                    resizePair(startLeft + (moveEvent.clientX - startX) / width * total);
+                    const current = shotTimelineModel(plan);
+                    clips[index].style.width = `${current[index].width}%`;
+                    clips[index + 1].style.width = `${current[index + 1].width}%`;
+                    handle.style.left = `${current[index].end / total * 100}%`;
+                    handle.setAttribute("aria-valuenow", compactSeconds(current[index].end));
+                };
+                const finish = () => {
+                    handle.removeEventListener("pointermove", move);
+                    handle.removeEventListener("pointerup", finish);
+                    handle.removeEventListener("pointercancel", finish);
+                    if (moved) {
+                        state.timelineScroll = track.scrollLeft; commit(); rerender(`[data-timeline-boundary="${index}"]`);
+                    }
+                };
+                handle.addEventListener("pointermove", move);
+                handle.addEventListener("pointerup", finish);
+                handle.addEventListener("pointercancel", finish);
+            });
+            strip.appendChild(handle);
+        }
+    }
+    track.appendChild(strip);
+    const anchors = frameAnchorModel(project, plan);
+    if (anchors.length) {
+        const lane = element("div", "minimax-h3-shot-anchor-lane");
+        lane.style.minWidth = strip.style.minWidth;
+        lane.setAttribute("aria-label", "Image frame anchors");
+        for (const anchor of anchors) {
+            const marker = element("button", "minimax-h3-shot-anchor");
+            marker.type = "button";
+            marker.style.left = `${anchor.position}%`;
+            marker.dataset.edge = anchor.position >= 99.999 ? "end" : "start";
+            const accessibleLabel = `${anchor.assetName}, ${anchor.role === "first_frame" ? "first frame" : "last frame"}${anchor.frame === null ? "" : `, frame ${anchor.frame}`}`;
+            marker.setAttribute("aria-label", accessibleLabel);
+            marker.title = accessibleLabel;
+            const visual = element("span", "minimax-h3-shot-anchor-thumb", `P${String(anchor.physicalLabel).match(/\d+/)?.[0] ?? "?"}`);
+            const copy = element("span", "minimax-h3-shot-anchor-copy");
+            copy.append(
+                element("strong", "", `${anchor.physicalLabel} · ${anchor.role === "first_frame" ? "First" : "Last"}`),
+                element("small", "", anchor.frame === null ? anchor.assetName : `${anchor.assetName} · F${anchor.frame}`),
+            );
+            marker.append(visual, copy);
+            marker.addEventListener("click", () => choose(anchor.shotId));
+            lane.appendChild(marker);
+        }
+        track.appendChild(lane);
+    }
+    queueMicrotask(() => { track.scrollLeft = state.timelineScroll ?? 0; });
+    section.append(heading, track);
+    return section;
+}
+
 export function renderShotsTab(container, controller) {
     container.replaceChildren();
     const documentState = controller.shotDocument();
@@ -638,6 +864,12 @@ export function renderShotsTab(container, controller) {
         container.appendChild(emptyState("No shots yet", "Divide the scene into visible beats. Each shot can define cast, location, references and camera independently.", actionButton("Create first shot", () => add.click())));
         return;
     }
+
+    container.appendChild(renderShotTimeline(
+        plan, project, state,
+        (id, focusSelector = "") => { state.selectedId = id; rerender(focusSelector); },
+        commit, rerender,
+    ));
 
     const grid = element("div", "minimax-h3-studio-grid minimax-h3-master-detail");
     const list = element("div", "minimax-h3-virtual-list");

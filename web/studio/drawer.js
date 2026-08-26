@@ -207,6 +207,34 @@ function reportCounts(controller) {
     return result;
 }
 
+export function productionContext(controller) {
+    const shot = safeDocument(() => controller.shotDocument());
+    const project = safeDocument(() => controller.projectDocument());
+    const shots = Array.isArray(shot.value?.shots) ? shot.value.shots : [];
+    const exact = shot.value?.timingMode === "exact";
+    const duration = exact
+        ? shots.reduce((total, item) => total + Math.max(0, Number(item?.durationSeconds) || 0), 0)
+        : null;
+    const projectValue = project.kind === "v2" ? project.value : null;
+    const generatedTiming = controller.generationTiming?.() ?? null;
+    const seconds = exact ? duration : Number(generatedTiming?.seconds);
+    const frames = exact ? Math.round(duration * 24) : Number(generatedTiming?.frames);
+    const requestedMode = String(controller.mode?.() ?? projectValue?.mode ?? "auto").toLowerCase();
+    const resolvedMode = String(controller.resolvedMode?.() ?? "").toLowerCase();
+    const mode = requestedMode === "auto" && resolvedMode && resolvedMode !== "auto"
+        ? `AUTO → ${resolvedMode.toUpperCase()}`
+        : requestedMode.toUpperCase();
+    return {
+        mode,
+        shots: shots.length,
+        timing: Number.isFinite(seconds) && seconds > 0
+            ? `${seconds.toFixed(2)} s · ${Number.isFinite(frames) && frames > 0 ? Math.round(frames) : Math.round(seconds * 24)}f`
+            : "Auto",
+        generations: Array.isArray(projectValue?.generations) ? projectValue.generations.length : 0,
+        media: Array.isArray(projectValue?.assets) ? projectValue.assets.length : 0,
+    };
+}
+
 function createIconButton(icon, label, className = "minimax-h3-icon-button") {
     const button = createPanelElement("button", className);
     button.type = "button";
@@ -259,7 +287,24 @@ function createHeader(controller, onReview, onClose) {
         help.setAttribute("aria-expanded", String(open));
     };
     help.addEventListener("click", () => setShortcutsOpen(shortcuts.hidden));
-    header.append(main, shortcuts);
+    const production = createPanelElement("div", "minimax-h3-production-context");
+    production.setAttribute("role", "group");
+    production.setAttribute("aria-label", "Production context");
+    const productionFields = new Map();
+    for (const [key, label] of [
+        ["mode", "Mode"], ["shots", "Shots"], ["timing", "Duration"],
+        ["generations", "Generations"], ["media", "Media"],
+    ]) {
+        const item = createPanelElement("span", "minimax-h3-production-context-item");
+        item.dataset.contextKey = key;
+        item.append(
+            createPanelElement("small", "", label),
+            createPanelElement("strong", "", "—"),
+        );
+        productionFields.set(key, item.querySelector("strong"));
+        production.appendChild(item);
+    }
+    header.append(main, production, shortcuts);
 
     const refresh = () => {
         const project = safeDocument(() => controller.projectDocument());
@@ -271,6 +316,8 @@ function createHeader(controller, onReview, onClose) {
         review.querySelector(".minimax-h3-review-label").textContent = counts.stale
             ? `Review · stale`
             : counts.total ? `Review · ${counts.errors} errors · ${counts.warnings + counts.tips} notes` : "Review";
+        const contextModel = productionContext(controller);
+        for (const [key, target] of productionFields) target.textContent = String(contextModel[key]);
     };
     return { header, shortcuts, setShortcutsOpen, refresh, close };
 }

@@ -1,4 +1,4 @@
-import { assetUsage, generationMediaModel, MEDIA_LIMITS, nextAvailableSlot } from "./media_model.js";
+import { assetUsage, effectivePictureBindingRole, generationMediaModel, MEDIA_LIMITS, nextAvailableSlot } from "./media_model.js";
 import { commitProject, labeledInput, labeledSelect, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
 import { captureOpenDisclosures, restoreOpenDisclosures } from "./domain_components.js";
 import {
@@ -8,10 +8,35 @@ import {
 
 const CAMERA_TRANSFER_ASPECTS = ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"];
 const PROJECT_MODES = [["auto", "Auto"], ["t2va", "T2VA"], ["i2va", "I2VA"], ["fl2va", "FL2VA"], ["l2va", "L2VA"], ["ref2va", "Ref2VA"], ["chained_multishot", "Chained"]];
+const PICTURE_BINDING_ROLES = [["reference", "General reference"], ["first_frame", "First frame"], ["last_frame", "Last frame"]];
 
 export function physicalLabel(asset, binding) {
     const prefix = asset?.type === "video" ? "Video" : asset?.type === "audio" ? "Audio" : "Picture";
     return `<${prefix} ${binding?.slotIndex ?? "?"}>`;
+}
+
+export function bindingRoleLabel(binding = {}) {
+    return binding.role === "first_frame" ? "First frame" : binding.role === "last_frame" ? "Last frame" : "Reference";
+}
+
+function suggestedPictureRole(project, generation) {
+    if (project.mode === "i2va") return "first_frame";
+    if (project.mode === "l2va") return "last_frame";
+    if (project.mode !== "fl2va") return "reference";
+    return (generation.bindings ?? []).some((binding) => binding.role === "first_frame") ? "last_frame" : "first_frame";
+}
+
+function mediaVisual(asset, compact = false) {
+    const visual = document.createElement("span");
+    visual.className = `minimax-h3-media-visual${compact ? " is-compact" : ""}`;
+    visual.dataset.type = asset?.type ?? "picture";
+    visual.setAttribute("aria-hidden", "true");
+    const glyph = document.createElement("strong");
+    glyph.textContent = asset?.type === "video" ? "▶" : asset?.type === "audio" ? "≋" : "▧";
+    const caption = document.createElement("small");
+    caption.textContent = compact ? String(asset?.name ?? "").slice(0, 2).toUpperCase() : "Physical preview stays on generator";
+    visual.append(glyph, caption);
+    return visual;
 }
 
 export function bindingSuggestion(project, asset, preferredGenerationId = "") {
@@ -26,6 +51,10 @@ export function bindingSuggestion(project, asset, preferredGenerationId = "") {
         const slotIndex = nextAvailableSlot(project, generation, asset.type);
         if (slotIndex === null) continue;
         const suggestion = { generation, binding: { assetId: asset.id, slotIndex } };
+        if (asset.type === "picture") {
+            const role = suggestedPictureRole(project, generation);
+            if (role !== "reference") suggestion.binding.role = role;
+        }
         if (asset.type === "video" && ["paired", "alone"].includes(asset.audioMode)) {
             const soundtrackSlotIndex = nextAvailableSlot(project, generation, "audio");
             if (soundtrackSlotIndex === null) continue;
@@ -298,9 +327,12 @@ function renderAssetMaster(container, project, controller) {
         const icon = asset.type === "video" ? "Video" : asset.type === "audio" ? "Audio" : "Picture";
         const meta = [icon, asset.available === false ? "unavailable" : "available"];
         if (asset.type === "video" && asset.cameraTransfer?.enabled) meta.push(`camera: ${asset.cameraTransfer.aspects.join(", ")}`);
-        row.innerHTML = `<strong></strong><small></small>`;
-        row.querySelector("strong").textContent = asset.name;
-        row.querySelector("small").textContent = meta.join(" · ");
+        const copy = document.createElement("span");
+        copy.className = "minimax-h3-media-row-copy";
+        const name = document.createElement("strong"); name.textContent = asset.name;
+        const detail = document.createElement("small"); detail.textContent = meta.join(" · ");
+        copy.append(name, detail);
+        row.append(mediaVisual(asset, true), copy);
         list.appendChild(row);
     }
     if (!project.assets.length) {
@@ -352,6 +384,13 @@ function renderAssetInspector(container, project, asset, controller) {
         return inspector;
     }
     const identity = section("Reference details", `${asset.type} · ${asset.id}`);
+    const hero = document.createElement("div");
+    hero.className = "minimax-h3-media-preview-card";
+    const heroCopy = document.createElement("div");
+    const heroTitle = document.createElement("strong"); heroTitle.textContent = asset.name;
+    const heroNote = document.createElement("span"); heroNote.textContent = "Logical reference · connect the physical file on the matching generator input.";
+    heroCopy.append(heroTitle, heroNote); hero.append(mediaVisual(asset), heroCopy);
+    identity.body.appendChild(hero);
     identity.body.append(
         labeledInput("Name", asset.name, (value) => { asset.name = value || asset.id; commitProject(controller); }),
         labeledSelect("Type", asset.type, [["picture", "Picture"], ["video", "Video"], ["audio", "Audio"]], (value) => {
@@ -603,19 +642,26 @@ function renderBindings(container, project, generation, model, controller) {
             const replacement = project.assets.find((item) => item.id === value);
             binding.slotIndex = nextAvailableSlot(project, generation, replacement?.type, binding) ?? 1;
             if (replacement?.type !== "video") delete binding.soundtrackSlotIndex;
+            if (replacement?.type !== "picture") delete binding.role;
             commitAndRender(container, controller);
         }));
         const type = asset?.type ?? "picture";
         const occupied = occupiedSlots(project, generation, type, binding);
         const choices = Array.from({ length: MEDIA_LIMITS[type] ?? 0 }, (_, index) => index + 1).filter((slot) => slot === Number(binding.slotIndex) || !occupied.has(slot)).map((slot) => [String(slot), `${type} ${slot}`]);
         row.appendChild(labeledSelect("Slot", String(binding.slotIndex), choices, (value) => { binding.slotIndex = Number(value); commitAndRender(container, controller); }));
+        if (asset?.type === "picture") {
+            row.appendChild(labeledSelect("Frame role", effectivePictureBindingRole(project, generation, binding), PICTURE_BINDING_ROLES, (value) => {
+                if (value === "reference") delete binding.role; else binding.role = value;
+                commitAndRender(container, controller);
+            }));
+        }
         if (asset?.type === "video" && ["paired", "alone"].includes(asset.audioMode)) {
             const audioOccupied = occupiedSlots(project, generation, "audio", binding);
             const audioChoices = Array.from({ length: MEDIA_LIMITS.audio }, (_, index) => index + 1).filter((slot) => slot === Number(binding.soundtrackSlotIndex) || !audioOccupied.has(slot)).map((slot) => [String(slot), `Audio ${slot}`]);
             row.appendChild(labeledSelect("Soundtrack slot", String(binding.soundtrackSlotIndex ?? audioChoices[0]?.[0] ?? ""), audioChoices, (value) => { binding.soundtrackSlotIndex = Number(value); commitProject(controller); }));
         }
         const label = document.createElement("strong");
-        label.textContent = physicalLabel(asset, binding);
+        label.textContent = `${physicalLabel(asset, binding)} · ${bindingRoleLabel({ role: effectivePictureBindingRole(project, generation, binding) })}`;
         row.append(label, actionButton("Remove", () => { generation.bindings.splice(generation.bindings.indexOf(binding), 1); commitAndRender(container, controller); }));
         block.body.appendChild(row);
     }
@@ -625,6 +671,10 @@ function renderBindings(container, project, generation, model, controller) {
     const add = actionButton("+ Binding", () => {
         if (!candidate) return;
         const binding = { assetId: candidate.id, slotIndex: nextAvailableSlot(project, generation, candidate.type) };
+        if (candidate.type === "picture") {
+            const role = suggestedPictureRole(project, generation);
+            if (role !== "reference") binding.role = role;
+        }
         if (candidate.type === "video" && ["paired", "alone"].includes(candidate.audioMode)) binding.soundtrackSlotIndex = nextAvailableSlot(project, generation, "audio");
         generation.bindings.push(binding);
         commitAndRender(container, controller);
@@ -739,8 +789,10 @@ function renderGenerationInspector(container, project, generation, controller) {
 }
 
 export function renderReferencesTab(container, controller) {
-    const remembered = captureOpenDisclosures(container);
-    if (remembered !== null) controller.projectUiState.mediaOpenDisclosures = remembered;
+    if ((container.children?.length ?? container.childElementCount ?? 0) > 0) {
+        const remembered = captureOpenDisclosures(container);
+        if (remembered !== null) controller.projectUiState.mediaOpenDisclosures = remembered;
+    }
     container.replaceChildren();
     const documentState = controller.projectDocument();
     const project = projectForController(controller);

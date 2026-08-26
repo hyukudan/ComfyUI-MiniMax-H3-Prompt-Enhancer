@@ -6,6 +6,7 @@ from media_manifest import (
     parse_media_manifest,
     parse_media_project,
 )
+from prompt_guides import resolve_mode
 
 
 def _project():
@@ -134,6 +135,33 @@ def test_manifest_v2_legacy_adapter_projects_first_generation_without_changing_v
     projected = parse_media_manifest(_project())
     assert projected["items"][0]["label"] == "<Picture 1>"
     assert projected["subjects"][0]["label"] == "<Subject 1>"
+
+
+def test_manifest_v2_projects_picture_frame_roles_for_auto_mode_resolution():
+    project = _project()
+    project["mode"] = "auto"
+    project["subjects"] = []
+    project["assets"] = [{"id": "opening", "type": "picture", "name": "Opening frame"}]
+    project["generations"][0]["bindings"] = [{"assetId": "opening", "slotIndex": 1, "role": "first_frame"}]
+    project["generations"][0]["subjectStates"] = []
+    project["generations"][0]["activation"] = {"mode": "explicit", "roots": [{"kind": "asset", "id": "opening"}]}
+    parsed = parse_media_manifest(project)
+    assert parsed["items"][0]["role"] == "first_frame"
+    assert resolve_mode("auto", media_manifest=json.dumps(project)) == "i2va"
+
+    del project["generations"][0]["bindings"][0]["role"]
+    project["mode"] = "i2va"
+    assert parse_media_manifest(project)["items"][0]["role"] == "first_frame"
+
+
+def test_manifest_v2_rejects_frame_role_on_non_picture_binding():
+    project = _project()
+    project["assets"][0]["type"] = "video"
+    project["assets"][0]["audioMode"] = "off"
+    project["generations"][0]["bindings"][0]["role"] = "first_frame"
+    compiled = parse_media_project(project)
+    assert not compiled["valid"]
+    assert any("Only picture bindings" in item["message"] for item in compiled["diagnostics"])
 
 
 def test_manifest_v2_environment_inheritance_and_carry_are_resolved():
