@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -18,6 +18,13 @@ function fixtures() {
         shotPlan: { schemaVersion: 2, timingMode: "auto", shots: [{ id: "s1", generationId: "g1", action: "Ari turns." }] },
     };
 }
+
+test("Compose shows editorial Shot names without persistence tokens or internal IDs", () => {
+    assert.equal(
+        shotEditorialTitle({ id: "s1", action: "SHOT-PERSIST-240826: el faro gira" }, 0),
+        "Shot 01 — el faro gira",
+    );
+});
 
 test("purpose assistant creates a reusable Subject identity default without a duplicate Shot use", () => {
     const source = fixtures();

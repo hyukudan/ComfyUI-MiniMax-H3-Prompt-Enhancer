@@ -110,6 +110,23 @@ function environmentName(shot, project) {
     return (project?.environments ?? []).find((environment) => environment.id === id)?.name || id || "No background assigned";
 }
 
+function shotEditorialName(shot) {
+    const raw = String(shot?.title || shot?.action || "").trim();
+    const cleaned = raw.replace(/^SHOT-[A-Z0-9_-]+:\s*/i, "").replace(/\s+/g, " ");
+    const title = cleaned || "Untitled shot";
+    return title.length > 72 ? `${title.slice(0, 69)}…` : title;
+}
+
+export function shotEditorialTitle(shot, index = 0) {
+    return `Shot ${String(index + 1).padStart(2, "0")} — ${shotEditorialName(shot)}`;
+}
+
+function generationDisplay(project, generationId) {
+    const generation = (project?.generations ?? []).find((item) => item.id === generationId);
+    const inferred = Math.max(1, (project?.generations ?? []).indexOf(generation) + 1);
+    return `Generation ${generation?.order ?? inferred}`;
+}
+
 const COMPOSE_TARGETS = Object.freeze({
     subject_identity: { label: "Image", type: "picture" },
     identity_override: { label: "Image override", type: "picture" },
@@ -297,6 +314,7 @@ export function composeVisualAssignments(project, shot) {
 
 export function composeLlmHandoff(project, shotPlan, shot) {
     const generationId = shot?.generationId ?? project?.generations?.[0]?.id ?? "g1";
+    const shotIndex = Math.max(0, (shotPlan?.shots ?? []).findIndex((candidate) => candidate.id === shot?.id));
     const model = referenceDirectorModel(project, shotPlan, generationId);
     const byAsset = new Map(model.assets.map((asset) => [asset.id, asset]));
     const visual = composeVisualAssignments(project, shot);
@@ -331,7 +349,7 @@ export function composeLlmHandoff(project, shotPlan, shot) {
         };
     });
     const camera = composeCameraSummary(shot);
-    const lines = [`Shot ${shot?.id ?? "?"}`, `Action: ${shot?.action || "Unspecified"}`];
+    const lines = [`Shot ${String(shotIndex + 1).padStart(2, "0")}`, `Action: ${shot?.action || "Unspecified"}`];
     if (subjects.length) {
         lines.push("Cast:");
         for (const subject of subjects) lines.push(`- ${subject.alias} ${subject.name}${subject.links.length ? ` | ${subject.links.map((item) => `${item.role} ${item.physicalLabel}`).join(" | ")}` : ""}`);
@@ -414,7 +432,7 @@ function composeLlmHandoffPanel(handoff, sources) {
     const shotOnly = handoff.referenceUses.filter((item) => !["Identity reinforcement", "Voice", "Environment view"].includes(item.role));
     if (shotOnly.length) {
         const row = el("div", "minimax-h3-director-llm-row");
-        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "CUT"), el("span", "", handoff.generationId));
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "CUT"), el("span", "", generationDisplay(project, handoff.generationId)));
         const links = el("span", "minimax-h3-director-llm-links");
         for (const item of shotOnly) links.appendChild(composeLlmLinkChip(item, sources));
         row.append(identity, links); section.appendChild(row);
@@ -753,11 +771,15 @@ function renderBoard(container, controller, plan, project, rerender) {
         );
         cast.appendChild(card);
     }
-    const action = el("div", "minimax-h3-director-action");
-    action.append(el("span", "minimax-h3-director-kicker", "ACTION"), el("p", "", selected.action || "Describe what visibly happens in this Shot."));
+    const action = el("label", "minimax-h3-director-action");
+    action.appendChild(el("span", "minimax-h3-director-kicker", "VISIBLE ACTION · THIS SHOT"));
+    const actionInput = el("textarea"); actionInput.value = selected.action ?? ""; actionInput.placeholder = "Describe what visibly changes during this Shot.";
+    actionInput.setAttribute("aria-label", "Visible action for selected Shot");
+    actionInput.addEventListener("blur", () => { selected.action = actionInput.value.trim(); commitPlan(controller, plan); rerender(); });
+    action.appendChild(actionInput);
     const cameraSummary = composeCameraSummary(selected);
     const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-camera-line");
-    camera.setAttribute("aria-label", `Direct camera for ${selected.id}. ${cameraInstructionPreview(selected, project ?? {})}`);
+    camera.setAttribute("aria-label", `Direct camera for ${shotEditorialTitle(selected, plan.shots.indexOf(selected))}. ${cameraInstructionPreview(selected, project ?? {})}`);
     const cameraHeading = el("span", "minimax-h3-director-camera-heading");
     cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA · THIS SHOT"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
     const phases = el("span", "minimax-h3-director-camera-phases");
@@ -769,7 +791,11 @@ function renderBoard(container, controller, plan, project, rerender) {
     stage.append(backdrop, cast, action, camera);
 
     const lanes = el("section", "minimax-h3-director-lanes");
-    lanes.appendChild(el("h3", "", "Reference lanes"));
+    const lanesHeading = el("div", "minimax-h3-director-scene-heading");
+    const lanesIdentity = el("div");
+    lanesIdentity.append(el("h3", "", "References"), el("small", "", "Connect here or manage reusable files in Media."));
+    lanesHeading.append(lanesIdentity, el("span", "minimax-h3-scope-chip", "This Shot"));
+    lanes.appendChild(lanesHeading);
     const roles = new Map();
     for (const use of selected.referenceUses ?? []) {
         const lane = ["voice", "exact_dialogue", "soundtrack"].includes(use.role) ? "Audio"
@@ -793,24 +819,9 @@ function renderBoard(container, controller, plan, project, rerender) {
     layout.append(stage, lanes);
 
     const inspector = el("aside", "minimax-h3-director-inspector");
-    const selectedIndex = plan.shots.indexOf(selected);
-    const sceneHeading = el("div", "minimax-h3-director-scene-heading");
-    const sceneIdentity = el("div"); sceneIdentity.append(el("span", "minimax-h3-director-kicker", `SHOT ${selectedIndex + 1}`), el("h3", "", selected.id));
-    const sceneActions = el("div", "minimax-h3-director-scene-actions");
-    const moveLeft = button("←", () => applySceneEdit(controller, moveScene(plan, selected.id, -1), rerender), "minimax-h3-director-text-button");
-    moveLeft.disabled = selectedIndex <= 0; moveLeft.title = "Move Shot left"; moveLeft.setAttribute("aria-label", "Move selected Shot left");
-    const moveRight = button("→", () => applySceneEdit(controller, moveScene(plan, selected.id, 1), rerender), "minimax-h3-director-text-button");
-    moveRight.disabled = selectedIndex >= plan.shots.length - 1; moveRight.title = "Move Shot right"; moveRight.setAttribute("aria-label", "Move selected Shot right");
-    const duplicate = button("Duplicate", () => applySceneEdit(controller, duplicateScene(plan, selected.id), rerender), "minimax-h3-director-text-button");
-    duplicate.disabled = plan.shots.length >= 64;
-    sceneActions.append(moveLeft, moveRight, duplicate);
-    if (directorState(controller).confirmDeleteShotId === selected.id) {
-        sceneActions.append(
-            button("Confirm delete", () => applySceneEdit(controller, removeScene(plan, selected.id), rerender), "minimax-h3-director-text-button minimax-h3-director-delete-confirm"),
-            button("Cancel", () => { delete directorState(controller).confirmDeleteShotId; rerender(); }, "minimax-h3-director-text-button"),
-        );
-    } else sceneActions.appendChild(button("Delete", () => { directorState(controller).confirmDeleteShotId = selected.id; rerender(); }, "minimax-h3-director-text-button minimax-h3-director-delete"));
-    sceneHeading.append(sceneIdentity, sceneActions); inspector.appendChild(sceneHeading);
+    const inspectorHeading = el("div", "minimax-h3-director-scene-heading");
+    const inspectorIdentity = el("div"); inspectorIdentity.append(el("span", "minimax-h3-director-kicker", "SHOT INSPECTOR"), el("h3", "", "This Shot"));
+    inspectorHeading.append(inspectorIdentity, el("span", "minimax-h3-scope-chip", "This Shot")); inspector.appendChild(inspectorHeading);
     const setup = el("section", "minimax-h3-director-scene-setup");
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
     const setupActions = el("div", "minimax-h3-director-setup-actions");
@@ -823,7 +834,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "subjects");
         }, "minimax-h3-director-text-button"),
     );
-    setupHeading.append(el("strong", "", "Cast & set"), setupActions);
+    setupHeading.append(el("strong", "", "Cast & background"), setupActions);
     setup.appendChild(setupHeading);
     if (controller.directorUiState.creatingSubject) {
         const creator = el("form", "minimax-h3-director-inline-creator");
@@ -873,7 +884,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
     if (!(project?.subjects ?? []).length) castPicker.appendChild(el(
         "span", "minimax-h3-director-placeholder",
-        `Create subjects in ${controller.isVisualReferenceDirector ? "Library" : "Subjects"}`,
+        `Create a Subject here or open ${controller.isVisualReferenceDirector ? "Library" : "Cast & Places"}`,
     ));
     setup.appendChild(castPicker);
     const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
@@ -884,14 +895,9 @@ function renderBoard(container, controller, plan, project, rerender) {
     environmentSelect.value = selected.environment?.environmentId ?? "";
     environmentSelect.addEventListener("change", () => { setSceneEnvironment(selected, environmentSelect.value); commitPlan(controller, plan); rerender(); });
     environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); inspector.appendChild(setup);
-    const actionField = el("label", "minimax-h3-studio-field");
-    actionField.appendChild(el("span", "", "Visible action"));
-    const textarea = el("textarea"); textarea.value = selected.action ?? ""; textarea.placeholder = "What changes on screen?";
-    textarea.addEventListener("blur", () => { selected.action = textarea.value.trim(); commitPlan(controller, plan); rerender(); });
-    actionField.appendChild(textarea); inspector.appendChild(actionField);
     inspector.appendChild(composeDialogueSoundPanel(controller, project, plan, selected, sources, rerender));
     const summary = el("dl", "minimax-h3-director-scene-summary");
-    for (const [term, value] of [["Generation", selected.generationId || "g1"], ["Cast", names.length || "—"], ["References", selected.referenceUses?.length || "—"], ["Duration", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto"]]) {
+    for (const [term, value] of [["Generation", generationDisplay(project, selected.generationId)], ["Cast", names.length || "—"], ["References", selected.referenceUses?.length || "—"], ["Duration", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto"]]) {
         summary.append(el("dt", "", term), el("dd", "", String(value)));
     }
     inspector.append(
@@ -923,8 +929,39 @@ export function renderDirectorCompose(container, controller) {
             : "Create the complete prompt visually here: subjects, identity images, voices, backgrounds, action, dialogue, camera and physical H3 outputs share one native project."),
     );
     if (state.composeMode === "board" || state.composeMode === "details") state.composeMode = "build";
-    top.append(copy, modeSwitch(state, rerender, [["build", "Build"], ["staging", "Stage"], ["camera", "Camera"]]));
-    container.appendChild(top);
+    top.appendChild(copy); container.appendChild(top);
+    const selected = plan.shots.find((shot) => shot.id === controller.shotUiState.selectedId) ?? plan.shots[0] ?? null;
+    const selectedIndex = selected ? plan.shots.indexOf(selected) : -1;
+    const context = el("section", "minimax-h3-director-shot-context");
+    const contextTop = el("div", "minimax-h3-director-shot-context-top");
+    const identity = el("div", "minimax-h3-director-shot-context-identity");
+    identity.append(
+        el("span", "minimax-h3-director-kicker", selected ? "EDITING" : "COMPOSE"),
+        el("strong", "", selected ? shotEditorialTitle(selected, selectedIndex) : "No Shot selected"),
+    );
+    const metadata = el("div", "minimax-h3-director-shot-context-meta");
+    if (selected) metadata.append(
+        el("span", "", generationDisplay(project, selected.generationId)),
+        el("span", "", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto duration"),
+        el("span", "minimax-h3-scope-chip", "This Shot"),
+    );
+    identity.appendChild(metadata);
+    const contextActions = el("div", "minimax-h3-director-scene-actions");
+    if (selected) {
+        const moveLeft = button("←", () => applySceneEdit(controller, moveScene(plan, selected.id, -1), rerender), "minimax-h3-director-text-button");
+        moveLeft.disabled = selectedIndex <= 0; moveLeft.title = "Move Shot left"; moveLeft.setAttribute("aria-label", "Move selected Shot left");
+        const moveRight = button("→", () => applySceneEdit(controller, moveScene(plan, selected.id, 1), rerender), "minimax-h3-director-text-button");
+        moveRight.disabled = selectedIndex >= plan.shots.length - 1; moveRight.title = "Move Shot right"; moveRight.setAttribute("aria-label", "Move selected Shot right");
+        const duplicate = button("Duplicate", () => applySceneEdit(controller, duplicateScene(plan, selected.id), rerender), "minimax-h3-director-text-button");
+        duplicate.disabled = plan.shots.length >= 64; contextActions.append(moveLeft, moveRight, duplicate);
+        if (state.confirmDeleteShotId === selected.id) contextActions.append(
+            button("Confirm delete", () => applySceneEdit(controller, removeScene(plan, selected.id), rerender), "minimax-h3-director-text-button minimax-h3-director-delete-confirm"),
+            button("Cancel", () => { delete state.confirmDeleteShotId; rerender(); }, "minimax-h3-director-text-button"),
+        );
+        else contextActions.appendChild(button("Delete", () => { state.confirmDeleteShotId = selected.id; rerender(); }, "minimax-h3-director-text-button minimax-h3-director-delete"));
+    }
+    contextTop.append(identity, modeSwitch(state, rerender, [["build", "Build"], ["staging", "Stage"], ["camera", "Camera"]]), contextActions);
+    context.appendChild(contextTop);
     const strip = el("div", "minimax-h3-director-scene-strip"); strip.setAttribute("aria-label", "Shot strip");
     for (const [index, shot] of plan.shots.entries()) {
         const cameraSummary = composeCameraSummary(shot);
@@ -951,8 +988,8 @@ export function renderDirectorCompose(container, controller) {
         card.addEventListener("dragend", () => { delete state.draggedShotId; });
         card.append(
             el("span", "minimax-h3-director-scene-number", String(index + 1).padStart(2, "0")),
-            el("strong", "", shot.action || "Untitled shot"),
-            el("small", "", `${shot.generationId || "g1"} · ${subjectNames(shot, project).length} subjects`),
+            el("strong", "", shotEditorialName(shot)),
+            el("small", "", `${generationDisplay(project, shot.generationId)} · ${subjectNames(shot, project).length} subjects`),
             el("small", "minimax-h3-director-scene-camera", `${cameraSummary.icon} ${cameraSummary.movement}`),
         );
         strip.appendChild(card);
@@ -961,7 +998,7 @@ export function renderDirectorCompose(container, controller) {
         const shot = { id: nextShotId(plan.shots), generationId: project?.generations?.[0]?.id ?? "g1", action: "" };
         if (plan.timingMode === "exact") shot.durationSeconds = 1;
         plan.shots.push(shot); controller.shotUiState.selectedId = shot.id; commitPlan(controller, plan); rerender();
-    }, "minimax-h3-director-add-scene"); add.disabled = plan.shots.length >= 64; strip.appendChild(add); container.appendChild(strip);
+    }, "minimax-h3-director-add-scene"); add.disabled = plan.shots.length >= 64; strip.appendChild(add); context.appendChild(strip); container.appendChild(context);
     if (state.composeMode === "build") renderBoard(container, controller, plan, project, rerender);
     else {
         const host = el("div", "minimax-h3-director-embedded-editor"); container.appendChild(host);

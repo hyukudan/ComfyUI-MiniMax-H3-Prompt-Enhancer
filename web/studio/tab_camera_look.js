@@ -143,9 +143,17 @@ function lookDetailMode(controller) {
 export function renderCameraLookTab(container, controller) {
     container.replaceChildren();
     const sourceTools = [];
+    const header = document.createElement("header");
+    header.className = "minimax-h3-director-workspace-header minimax-h3-look-workspace-header";
+    const heading = document.createElement("div");
+    const title = document.createElement("h2"); title.textContent = "Look";
+    const description = document.createElement("p"); description.textContent = "Project-wide creative direction and cinematography defaults.";
+    heading.append(title, description);
+    const scope = document.createElement("span"); scope.className = "minimax-h3-scope-chip"; scope.textContent = "Project default";
+    header.append(heading, scope); container.appendChild(header);
     const intro = document.createElement("p");
     intro.className = "minimax-h3-studio-status";
-    intro.textContent = "Global camera values are calm defaults. A shot or an explicit camera-reference video may own an aspect without creating a conflict.";
+    intro.textContent = "Applies to every Shot unless that Shot explicitly overrides an aspect. Inherited values remain visible in Compose.";
     container.append(intro, lookDetailMode(controller));
 
     const creativeDocument = controller.creativeDocument();

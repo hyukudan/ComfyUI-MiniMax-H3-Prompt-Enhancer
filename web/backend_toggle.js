@@ -3155,6 +3155,14 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
         basicPrompt() {
             return String(node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? "").trim();
         },
+        async runStudioNode() {
+            if (typeof app.queuePrompt !== "function") throw new Error("ComfyUI queue is unavailable.");
+            return app.queuePrompt(0, 1, [String(node.id)]);
+        },
+        async runFullWorkflow() {
+            if (typeof app.queuePrompt !== "function") throw new Error("ComfyUI queue is unavailable.");
+            return app.queuePrompt(0, 1);
+        },
         resolvedDiagnosticFingerprints: new Set(),
         shotDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);

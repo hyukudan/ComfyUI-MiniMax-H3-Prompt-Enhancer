@@ -5,8 +5,8 @@ import { editableShotPlan } from "./schema.js";
 import { commitPlan, renderCameraPath, renderFrame, shotProject } from "./tab_shots.js";
 
 function shotLabel(shot, index) {
-    const action = String(shot.action ?? "").trim();
-    return `Shot ${index + 1} · ${shot.id}${action ? ` · ${action.slice(0, 72)}` : ""}`;
+    const action = String(shot.action ?? "").trim().replace(/^SHOT-[A-Z0-9_-]+:\s*/i, "");
+    return `Shot ${String(index + 1).padStart(2, "0")}${action ? ` — ${action.slice(0, 72)}` : ""}`;
 }
 
 export function renderCameraTab(container, controller, { embedded = false } = {}) {
@@ -81,6 +81,6 @@ export function renderCameraTab(container, controller, { embedded = false } = {}
     workspace.appendChild(preciseCamera);
 
     if (!embedded) container.append(intro, selectorBar, workspace);
-    else container.append(element("p", "minimax-h3-studio-status", `Camera · ${shotLabel(shot, plan.shots.indexOf(shot))}`), workspace);
+    else container.append(element("p", "minimax-h3-studio-status", `Camera workspace · ${shotLabel(shot, plan.shots.indexOf(shot))} · This Shot`), workspace);
     if (state.cameraPanelScroll !== undefined) container.scrollTop = state.cameraPanelScroll;
 }

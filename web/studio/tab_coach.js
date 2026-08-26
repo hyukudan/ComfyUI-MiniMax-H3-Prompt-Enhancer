@@ -212,9 +212,10 @@ export function renderCoachTab(container, controller) {
     const heading = document.createElement("div");
     heading.innerHTML = "<strong>Review</strong><span>Contract checks and contextual Prompt Coach guidance</span>";
     const summary = report?.summary;
+    const reportState = reviewReportState(report);
     const status = document.createElement("strong");
     status.className = "minimax-h3-review-summary";
-    status.textContent = summary
+    status.textContent = reportState === "not-run" ? "Not run" : summary
         ? `${summary.errors ?? 0} errors · ${summary.warnings ?? 0} warnings · ${summary.advice ?? 0} tips`
         : `${report?.diagnostics?.length ?? 0} findings`;
     header.append(heading, status);
@@ -227,6 +228,28 @@ export function renderCoachTab(container, controller) {
         header.appendChild(toggle);
     }
     container.appendChild(header);
+    const runBar = document.createElement("div");
+    runBar.className = "minimax-h3-review-run-bar";
+    const runCopy = document.createElement("div");
+    runCopy.innerHTML = "<strong>Validate the current project</strong><span>Run only Prompt Studio for a fresh review, or queue the complete graph when you are ready to generate.</span>";
+    const runActions = document.createElement("div");
+    const runFeedback = document.createElement("span"); runFeedback.setAttribute("role", "status");
+    const runAction = (label, method, runningLabel, className) => {
+        const control = button(label, async () => {
+            if (typeof controller[method] !== "function") return;
+            control.disabled = true; runFeedback.dataset.valid = "true"; runFeedback.textContent = runningLabel;
+            try { await controller[method](); runFeedback.textContent = "Queued. Review will refresh when execution finishes."; }
+            catch (error) { runFeedback.dataset.valid = "false"; runFeedback.textContent = error?.message || "Could not queue execution."; }
+            finally { control.disabled = false; }
+        });
+        control.className = className; control.disabled = typeof controller[method] !== "function";
+        return control;
+    };
+    runActions.append(
+        runAction("Run Prompt Studio", "runStudioNode", "Queueing Prompt Studio…", "minimax-h3-button minimax-h3-button-primary"),
+        runAction("Queue full workflow", "runFullWorkflow", "Queueing full workflow…", "minimax-h3-button minimax-h3-button-secondary"),
+    );
+    runBar.append(runCopy, runActions, runFeedback); container.appendChild(runBar);
     if (report?.stale) {
         const stale = document.createElement("div");
         stale.className = "minimax-h3-studio-status";
@@ -239,7 +262,7 @@ export function renderCoachTab(container, controller) {
     if (!report?.diagnostics?.length) {
         const empty = document.createElement("div");
         empty.className = "minimax-h3-empty-state";
-        const state = reviewReportState(report);
+        const state = reportState;
         empty.dataset.kind = state;
         if (state === "clean") {
             const success = document.createElement("strong");
@@ -249,10 +272,15 @@ export function renderCoachTab(container, controller) {
             const families = document.createElement("small");
             families.textContent = "Checked: contract structure, timing, references, dialogue/audio, camera, continuity, appearance and style.";
             empty.append(success, copy, families);
+        } else if (state === "stale-clean") {
+            const staleTitle = document.createElement("strong"); staleTitle.textContent = "Previous review passed · refresh required";
+            const staleCopy = document.createElement("p"); staleCopy.textContent = "The project changed after that run. Run Prompt Studio again to validate the current version.";
+            empty.append(staleTitle, staleCopy);
         } else {
-            empty.textContent = state === "stale-clean"
-                ? "The previous review had no findings. Run the node again to confirm the edited project."
-                : "Review has not run yet. Run the node to check the contract and receive Prompt Coach tips; advice never blocks generation.";
+            const notRun = document.createElement("strong"); notRun.textContent = "Not run";
+            const copy = document.createElement("p"); copy.textContent = "Run Prompt Studio to check structure, references, dialogue, camera and continuity.";
+            const note = document.createElement("small"); note.textContent = "No result is shown until a real execution completes.";
+            empty.append(notRun, copy, note);
         }
         container.appendChild(empty);
         appendAdvancedTools();

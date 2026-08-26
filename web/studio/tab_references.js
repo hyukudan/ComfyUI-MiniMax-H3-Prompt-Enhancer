@@ -147,13 +147,13 @@ function renderReferenceDirector(container, project, controller) {
     const readyAssets = new Set(resolvedInputs.filter((item) => item.sourceReady && item.active && meaningfulAssets.has(item.assetId)).map((item) => item.assetId));
     const director = document.createElement("section");
     director.className = "minimax-h3-reference-director";
-    director.setAttribute("aria-label", "Visual reference director");
+    director.setAttribute("aria-label", "Media connections");
 
     const header = document.createElement("div");
     header.className = "minimax-h3-reference-director-header";
     const copy = document.createElement("div");
-    const title = document.createElement("h3"); title.textContent = "Visual reference director";
-    const subtitle = document.createElement("p"); subtitle.textContent = "Select or drag a reference onto the exact subject, background or shot property it controls.";
+    const title = document.createElement("h3"); title.textContent = "Media connections";
+    const subtitle = document.createElement("p"); subtitle.textContent = "Import reusable files here. Assign them to the active Shot in Compose or use the same semantic targets below.";
     copy.append(title, subtitle);
     const status = document.createElement("span");
     status.className = "minimax-h3-reference-director-status";
@@ -164,8 +164,8 @@ function renderReferenceDirector(container, project, controller) {
     board.className = "minimax-h3-reference-director-board";
     const library = document.createElement("section");
     library.className = "minimax-h3-reference-library-rail";
-    const libraryHeading = document.createElement("h4"); libraryHeading.textContent = "1 · Library";
-    const libraryHint = document.createElement("p"); libraryHint.textContent = "Import files, then connect each card to what it controls. Drag and drop is optional.";
+    const libraryHeading = document.createElement("h4"); libraryHeading.textContent = "1 · Media library · Project";
+    const libraryHint = document.createElement("p"); libraryHint.textContent = "Import pictures, video or audio once. Files remain reusable when a Shot connection is removed.";
     library.append(libraryHeading, libraryHint);
     const importStatus = document.createElement("p");
     importStatus.className = "minimax-h3-reference-director-feedback"; importStatus.setAttribute("role", "status");
@@ -256,7 +256,7 @@ function renderReferenceDirector(container, project, controller) {
     const relationships = document.createElement("section");
     relationships.className = "minimax-h3-reference-relationship-rail";
     const relationHeading = document.createElement("h4"); relationHeading.textContent = "2 · Connect meaning";
-    const relationHint = document.createElement("p"); relationHint.textContent = "Targets store semantic relationships, never physical numbering.";
+    const relationHint = document.createElement("p"); relationHint.textContent = "Select or drag a reference onto the exact subject, background or shot property it controls. Targets store meaning, never physical numbering.";
     relationships.append(relationHeading, relationHint);
     const feedback = document.createElement("p");
     feedback.className = "minimax-h3-reference-director-feedback";
@@ -287,7 +287,12 @@ function renderReferenceDirector(container, project, controller) {
         const heading = document.createElement("strong"); heading.textContent = headingText; group.appendChild(heading);
         for (const item of items) {
             const entity = document.createElement("article"); entity.className = "minimax-h3-reference-entity";
-            const entityLabel = item.name || item.action || item.id;
+            const shotIndex = targetKind === "shot" ? model.shots.findIndex((candidate) => candidate.id === item.id) : -1;
+            const rawLabel = item.name || item.action || "";
+            const cleanLabel = String(rawLabel).replace(/^SHOT-[A-Z0-9_-]+:\s*/i, "").trim();
+            const entityLabel = targetKind === "shot"
+                ? `Shot ${String(shotIndex + 1).padStart(2, "0")}${cleanLabel ? ` — ${cleanLabel.slice(0, 72)}` : ""}`
+                : cleanLabel || item.id;
             const entityName = document.createElement("span"); entityName.textContent = entityLabel; entity.appendChild(entityName);
             const zones = document.createElement("div"); zones.className = "minimax-h3-reference-dropzones";
             for (const target of model.targets.filter((candidate) => candidate.targetKind === targetKind)) {

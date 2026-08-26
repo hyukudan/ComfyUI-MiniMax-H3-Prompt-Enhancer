@@ -17,11 +17,19 @@ export function renderStagingTab(container, controller, { embedded = false } = {
     if (!plan) return;
     const state = controller.shotUiState ??= {}; state.plan = plan;
     if (!state.selectedId || !plan.shots.some((shot) => shot.id === state.selectedId)) state.selectedId = plan.shots[0]?.id ?? null;
-    if (!plan.shots.length || !(project.subjects ?? []).length) {
+    if (!plan.shots.length) {
         container.appendChild(emptyState(
-            "Staging needs a shot and subjects",
-            "Create the cast and a shot first. Then place each subject in the frame and direct where they move or face.",
-            actionButton(!plan.shots.length ? "Open Compose" : "Open Cast & Places", () => controller.navigateStudio?.(!plan.shots.length ? "compose" : "cast_places")),
+            "Stage starts with a Shot",
+            "Create a Shot in Compose first. Stage will then arrange its visible Subjects.",
+            actionButton("Open Compose", () => controller.navigateStudio?.("compose")),
+        ));
+        return;
+    }
+    if (!(project.subjects ?? []).length) {
+        container.appendChild(emptyState(
+            "This Shot has no Subjects to stage",
+            "Create a reusable Subject in Cast & Places, then add it to the selected Shot.",
+            actionButton("Open Cast & Places", () => controller.navigateStudio?.("cast_places")),
         ));
         return;
     }
@@ -33,7 +41,7 @@ export function renderStagingTab(container, controller, { embedded = false } = {
     const selector = selectInput(shot.id, plan.shots.map((item, index) => [item.id, shotLabel(item, index)]));
     selector.addEventListener("change", () => { state.selectedId = selector.value; rerender(); });
     if (!embedded) container.append(header, field("Shot", selector, "Selection is shared with Compose and Camera."));
-    else container.appendChild(element("p", "minimax-h3-studio-status", `Staging · ${shotLabel(shot, plan.shots.indexOf(shot))}`));
+    else container.appendChild(element("p", "minimax-h3-studio-status", `Stage workspace · ${shotLabel(shot, plan.shots.indexOf(shot))} · This Shot`));
     if (!shot.staging?.length) {
         const present = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
         const candidates = project.subjects.filter((subject) => !present.size || present.has(subject.id));

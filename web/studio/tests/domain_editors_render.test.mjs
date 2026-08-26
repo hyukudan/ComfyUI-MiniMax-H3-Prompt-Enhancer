@@ -218,7 +218,7 @@ test("Camera mounts the selected shot planner and precise controls without hydra
     const container = new TestElement("section");
     renderCameraTab(container, controller);
     assert.equal(controller.writes, 0);
-    for (const label of ["Shot camera", "Shot 1", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
+    for (const label of ["Shot camera", "Shot 01", "Visual camera planner", "Preview", "Precise camera controls", "Camera start", "Camera end", "Composition", "Focus"]) {
         assert.match(container.textContent, new RegExp(label));
     }
     assert.match(container.textContent, /Camera summary/);
@@ -249,7 +249,7 @@ test("Review renders successful checked families only after a clean execution", 
 
     const untouched = new TestElement("section");
     renderCoachTab(untouched, { diagnostics: () => ({ diagnostics: [], stale: false }) });
-    assert.match(untouched.textContent, /Review has not run yet/);
+    assert.match(untouched.textContent, /Not run/);
     assert.doesNotMatch(untouched.textContent, /Review passed/);
 });
 
