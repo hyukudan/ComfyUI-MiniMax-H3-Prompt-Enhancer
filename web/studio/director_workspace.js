@@ -4,6 +4,8 @@ import { renderCameraLookTab } from "./tab_camera_look.js";
 import { renderEnvironmentsTab } from "./tab_environments.js";
 import { projectForController } from "./project_editor.js";
 import { referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
+import { connectExistingReference } from "./media_workflows.js";
+import { sourcePreviewUrl } from "./reference_sources.js";
 import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "./schema.js";
 import { renderReferencesTab } from "./tab_references.js";
 import { renderShotsTab } from "./tab_shots.js";
@@ -62,6 +64,88 @@ function environmentName(shot, project) {
     return (project?.environments ?? []).find((environment) => environment.id === id)?.name || id || "No background assigned";
 }
 
+const COMPOSE_TARGETS = Object.freeze({
+    subject_identity: { label: "Image", type: "picture" },
+    voice: { label: "Voice", type: "audio" },
+    performance: { label: "Performance", type: "video" },
+    environment_view: { label: "Background", type: "picture" },
+    camera: { label: "Camera", type: "video" },
+    soundtrack: { label: "Audio", type: "audio" },
+    continuity: { label: "Continuity", type: "picture" },
+});
+
+export function composeConnectionInput(project, shotPlan, shot, assetId, purposeId, relationId = "") {
+    return {
+        project,
+        shotPlan,
+        assetId,
+        purposeId,
+        generationId: shot?.generationId || project?.generations?.[0]?.id || "g1",
+        shotId: shot?.id || "",
+        relationId,
+    };
+}
+
+function composeMediaVisual(asset, source) {
+    const visual = el("span", "minimax-h3-director-asset-visual");
+    visual.dataset.type = asset.type;
+    const url = sourcePreviewUrl(source);
+    if (url && asset.type === "picture") {
+        const image = el("img"); image.src = url; image.alt = ""; image.loading = "lazy"; visual.appendChild(image);
+    } else if (url && asset.type === "video") {
+        const video = el("video"); video.src = url; video.muted = true; video.preload = "metadata"; video.playsInline = true; visual.appendChild(video);
+    } else visual.appendChild(el("strong", "", asset.type === "video" ? "▶" : asset.type === "audio" ? "≋" : "▧"));
+    return visual;
+}
+
+function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect) {
+    const definition = COMPOSE_TARGETS[purposeId];
+    const target = button(definition.label, () => connect(purposeId, relationId), "minimax-h3-director-drop-target");
+    target.dataset.purpose = purposeId;
+    target.dataset.type = definition.type;
+    target.disabled = Boolean(selectedAsset && selectedAsset.type !== definition.type);
+    target.title = `${definition.type} reference → ${definition.label}`;
+    for (const eventName of ["dragenter", "dragover"]) target.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        const dragged = controller.projectUiState.draggedAssetId;
+        const asset = controller.projectUiState.project?.assets?.find((item) => item.id === dragged);
+        target.dataset.drag = asset?.type === definition.type ? "ready" : "invalid";
+    });
+    target.addEventListener("dragleave", () => delete target.dataset.drag);
+    target.addEventListener("drop", (event) => {
+        event.preventDefault(); delete target.dataset.drag;
+        connect(purposeId, relationId, controller.projectUiState.draggedAssetId);
+    });
+    return target;
+}
+
+function renderComposeAssetTray(container, controller, project, shotPlan, shot, rerender) {
+    const assets = project?.assets ?? [];
+    const sourceDocument = controller.referenceDirectorDocument?.();
+    const sources = sourceDocument?.value?.sources ?? {};
+    const selectedId = controller.projectUiState.selectedAssetId;
+    const tray = el("section", "minimax-h3-director-asset-tray");
+    const header = el("div", "minimax-h3-director-tray-header");
+    header.append(el("div", "", "References"), el("span", "", assets.length ? "Select or drag onto a highlighted destination" : "Import files in Library first"));
+    tray.appendChild(header);
+    const rail = el("div", "minimax-h3-director-asset-rail");
+    for (const asset of assets) {
+        const card = button("", () => { controller.projectUiState.selectedAssetId = asset.id; rerender(); }, "minimax-h3-director-asset-card");
+        card.draggable = true; card.dataset.selected = String(asset.id === selectedId); card.dataset.type = asset.type;
+        card.setAttribute("aria-label", `${asset.name || asset.id}, ${asset.type}${sources[asset.id] ? ", file ready" : ", missing physical file"}`);
+        card.addEventListener("dragstart", (event) => {
+            controller.projectUiState.draggedAssetId = asset.id;
+            event.dataTransfer?.setData("text/plain", asset.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = "link";
+        });
+        card.addEventListener("dragend", () => { delete controller.projectUiState.draggedAssetId; });
+        const copy = el("span", "minimax-h3-director-asset-copy");
+        copy.append(el("strong", "", asset.name || asset.id), el("small", "", `${asset.type} · ${sources[asset.id] ? "ready" : "needs file"}`));
+        card.append(composeMediaVisual(asset, sources[asset.id]), copy); rail.appendChild(card);
+    }
+    if (!assets.length) rail.appendChild(button("Open Library", () => controller.navigateStudio?.("library"), "minimax-h3-director-tray-empty"));
+    tray.appendChild(rail); container.appendChild(tray);
+}
+
 function modeSwitch(state, rerender, options) {
     const group = el("div", "minimax-h3-director-mode-switch");
     group.setAttribute("role", "tablist");
@@ -88,17 +172,49 @@ function renderBoard(container, controller, plan, project, rerender) {
         return;
     }
 
+    renderComposeAssetTray(container, controller, project, plan, selected, rerender);
+    const selectedAsset = (project?.assets ?? []).find((asset) => asset.id === controller.projectUiState.selectedAssetId) ?? null;
+    const feedback = el("p", "minimax-h3-director-compose-feedback"); feedback.setAttribute("role", "status");
+    const connect = (purposeId, relationId = "", explicitAssetId = "") => {
+        const assetId = explicitAssetId || controller.projectUiState.selectedAssetId;
+        let workingPlan = plan;
+        if (purposeId === "environment_view" && relationId && !selected.environment?.environmentId) {
+            workingPlan = structuredClone(plan);
+            const workingShot = workingPlan.shots.find((shot) => shot.id === selected.id);
+            if (workingShot) workingShot.environment = { environmentId: relationId, viewIds: [] };
+        }
+        const workingShot = workingPlan.shots.find((shot) => shot.id === selected.id) ?? selected;
+        const result = connectExistingReference(composeConnectionInput(project, workingPlan, workingShot, assetId, purposeId, relationId));
+        if (!result.ok) {
+            feedback.dataset.valid = "false"; feedback.textContent = result.issues.join(" "); return;
+        }
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+        if (!committed?.ok) {
+            feedback.dataset.valid = "false"; feedback.textContent = committed?.message || "Could not update Project and Shot Plan together."; return;
+        }
+        controller.projectUiState.selectedAssetId = assetId;
+        delete controller.projectUiState.draggedAssetId;
+        controller.directorUiState.composeFeedback = result.summary;
+        rerender();
+    };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
     stage.setAttribute("aria-label", "Selected scene board");
     const backdrop = el("div", "minimax-h3-director-backdrop");
-    backdrop.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
+    const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
+    backdrop.append(backdropCopy);
+    const environmentTargetId = selected.environment?.environmentId || ((project?.environments ?? []).length === 1 ? project.environments[0].id : "");
+    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect));
+    else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", (project?.environments ?? []).length ? "Choose the scene set in Details" : "Create an environment in Library"));
     const cast = el("div", "minimax-h3-director-cast");
     const names = subjectNames(selected, project);
     if (!names.length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "No subjects placed in this scene"));
-    for (const name of names) {
+    for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
+        const name = (project?.subjects ?? []).find((subject) => subject.id === entry.subjectId)?.name || entry.subjectId;
         const card = el("article", "minimax-h3-director-subject-card");
-        card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name));
+        const targets = el("div", "minimax-h3-director-subject-targets");
+        for (const purpose of ["subject_identity", "voice", "performance"]) targets.appendChild(composeDropTarget(controller, purpose, entry.subjectId, selectedAsset, connect));
+        card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), targets);
         cast.appendChild(card);
     }
     const action = el("div", "minimax-h3-director-action");
@@ -116,11 +232,16 @@ function renderBoard(container, controller, plan, project, rerender) {
         const asset = (project?.assets ?? []).find((item) => item.id === use.assetId);
         const values = roles.get(lane) ?? []; values.push(asset?.name || use.assetId); roles.set(lane, values);
     }
+    const lanePurpose = { Camera: "camera", Audio: "soundtrack", "Continuity & look": "continuity" };
+    const presentSubjects = (selected.subjects ?? []).filter((item) => item.presence !== "absent");
     for (const laneName of ["Performance", "Camera", "Audio", "Continuity & look"]) {
         const lane = el("div", "minimax-h3-director-lane");
         lane.appendChild(el("strong", "", laneName));
         const values = roles.get(laneName) ?? [];
         lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ") || "Drop or connect a reference in Library"));
+        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect));
+        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect));
+        else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
         lanes.appendChild(lane);
     }
     layout.append(stage, lanes);
@@ -139,6 +260,8 @@ function renderBoard(container, controller, plan, project, rerender) {
     inspector.append(summary, button("Edit scene details", () => { directorState(controller).composeMode = "details"; rerender(); }), button("Stage subjects", () => { directorState(controller).composeMode = "staging"; rerender(); }), button("Direct camera", () => { directorState(controller).composeMode = "camera"; rerender(); }));
     layout.appendChild(inspector);
     container.appendChild(layout);
+    feedback.textContent = controller.directorUiState.composeFeedback || "";
+    feedback.dataset.valid = "true"; feedback.hidden = !feedback.textContent; container.appendChild(feedback);
 }
 
 export function renderDirectorCompose(container, controller) {

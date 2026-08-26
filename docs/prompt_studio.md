@@ -4,7 +4,7 @@ Prompt Studio is the structured planning interface embedded in the two enhancer 
 
 The separate **MiniMax H3 Visual Reference Director** uses the same v2 contracts but has a production-oriented workspace of its own:
 
-- **Compose** — a scene strip, visual stage, reference lanes and contextual inspector, with deeper Details, Staging and Camera modes.
+- **Compose** — a scene strip, visual stage, draggable reference tray, semantic drop destinations, reference lanes and contextual inspector, with deeper Details, Staging and Camera modes. Selecting a tray card also enables the same destinations as buttons for keyboard and touch use.
 - **Library** — physical media import and preview alongside reusable Subjects and Environments.
 - **Wiring** — the resolved picture, video and audio slots, their semantic roles, activation and physical-file readiness.
 - **Look** — an explicit handoff to the connected Prompt Enhancer, which remains the sole owner of creative direction and global cinematography.

@@ -5,6 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, MEDIA_RECIPES,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
+import { composeConnectionInput } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -51,6 +52,20 @@ test("visual Director connects existing picture, voice and background assets wit
     assert.deepEqual(result.project.generations[0].bindings.map((binding) => [binding.assetId, binding.slotIndex]), [["portrait", 1], ["voice", 1], ["room", 2]]);
     assert.equal(JSON.stringify(result).includes("<Picture"), false, "visual links store meaning and never hard-code physical labels");
     assert.equal(source.project.generations[0].bindings.length, 0, "the visual operation is atomic and immutable");
+});
+
+test("Compose drop destinations inherit the selected scene generation and semantic target", () => {
+    const source = fixtures();
+    const shot = source.shotPlan.shots[0];
+    assert.deepEqual(composeConnectionInput(source.project, source.shotPlan, shot, "portrait", "subject_identity", "subject.1"), {
+        project: source.project,
+        shotPlan: source.shotPlan,
+        assetId: "portrait",
+        purposeId: "subject_identity",
+        generationId: "g1",
+        shotId: "s1",
+        relationId: "subject.1",
+    });
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {
