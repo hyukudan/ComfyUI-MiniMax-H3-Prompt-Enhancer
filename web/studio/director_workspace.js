@@ -273,6 +273,19 @@ export function createSceneEnvironmentBundle(project, shotPlan, shotId, name) {
     return { project: nextProject, shotPlan: nextPlan, environment };
 }
 
+export function connectSubjectAssetToScene(project, shotPlan, shotId, assetId, subjectId) {
+    const asset = project?.assets?.find((item) => item.id === assetId);
+    const purposeId = asset?.type === "picture" ? "subject_identity"
+        : asset?.type === "audio" ? "voice"
+        : asset?.type === "video" ? "performance" : "";
+    if (!purposeId) return { ok: false, issues: ["Choose an image, audio or video reference for the Subject."] };
+    const nextPlan = structuredClone(shotPlan);
+    const shot = nextPlan.shots?.find((item) => item.id === shotId);
+    if (!shot) return { ok: false, issues: ["Choose an existing shot."] };
+    setSceneSubjectPresence(shot, subjectId, true);
+    return replacePurposeReference(composeConnectionInput(project, nextPlan, shot, assetId, purposeId, subjectId));
+}
+
 export function createImportedAssetDraft(project, file, mediaType, fallbackName = "Reference") {
     const nextProject = structuredClone(project);
     const asset = {
@@ -724,6 +737,38 @@ function renderBoard(container, controller, plan, project, rerender) {
         controller.directorUiState.composeFeedback = `${result.summary}. The file remains in Library · Files.`;
         rerender();
     };
+    const connectSubjectAsset = (subjectId, explicitAssetId = "") => {
+        const assetId = explicitAssetId || controller.projectUiState.selectedAssetId;
+        const result = connectSubjectAssetToScene(project, plan, selected.id, assetId, subjectId);
+        if (!result.ok) {
+            feedback.dataset.valid = "false"; feedback.hidden = false;
+            feedback.textContent = result.issues.join(" "); return;
+        }
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+        if (!committed?.ok) {
+            feedback.dataset.valid = "false"; feedback.hidden = false;
+            feedback.textContent = committed?.message || "Could not place the Subject and connect its reference together."; return;
+        }
+        controller.projectUiState.selectedAssetId = assetId;
+        delete controller.projectUiState.draggedAssetId;
+        controller.directorUiState.composeFeedback = `${result.summary}; Subject placed in this Shot.`;
+        rerender();
+    };
+    const makeSubjectDropReceiver = (control, subjectId) => {
+        control.dataset.subjectDrop = "true";
+        for (const eventName of ["dragenter", "dragover"]) control.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            const assetId = controller.projectUiState.draggedAssetId || event.dataTransfer?.getData("text/plain");
+            const asset = project?.assets?.find((item) => item.id === assetId);
+            control.dataset.drag = ["picture", "audio", "video"].includes(asset?.type) ? "ready" : "invalid";
+        });
+        control.addEventListener("dragleave", () => delete control.dataset.drag);
+        control.addEventListener("drop", (event) => {
+            event.preventDefault(); delete control.dataset.drag;
+            connectSubjectAsset(subjectId, controller.projectUiState.draggedAssetId || event.dataTransfer?.getData("text/plain"));
+        });
+        return control;
+    };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
     stage.setAttribute("aria-label", "Selected Shot workspace");
@@ -741,7 +786,18 @@ function renderBoard(container, controller, plan, project, rerender) {
     else backdrop.appendChild(button("+ Environment", () => { directorState(controller).creatingEnvironment = true; directorState(controller).creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"));
     const cast = el("div", "minimax-h3-director-cast");
     const names = subjectNames(selected, project);
-    if (!names.length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "No subjects placed in this Shot"));
+    if (!names.length) {
+        const onlySubject = (project?.subjects ?? []).length === 1 ? project.subjects[0] : null;
+        if (onlySubject) {
+            const emptyTarget = button(
+                selectedAsset ? `Place ${onlySubject.name || onlySubject.id} with ${selectedAsset.name || selectedAsset.id}` : `Drop a reference to place ${onlySubject.name || onlySubject.id}`,
+                () => connectSubjectAsset(onlySubject.id),
+                "minimax-h3-director-empty-subject-target",
+            );
+            emptyTarget.setAttribute("aria-label", `Place ${onlySubject.name || onlySubject.id} in this Shot and connect the selected reference`);
+            makeSubjectDropReceiver(emptyTarget, onlySubject.id); cast.appendChild(emptyTarget);
+        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Choose a Subject below, then drop its reference onto that Subject"));
+    }
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
         const name = subject?.name || entry.subjectId;
@@ -782,13 +838,14 @@ function renderBoard(container, controller, plan, project, rerender) {
     mentionRow.appendChild(el("span", "", "Insert subject"));
     for (const subject of project?.subjects ?? []) {
         const mention = `<Subject ${subject.h3Index}>`;
-        const mentionButton = button(`${subject.name || mention} · ${mention}`, () => {
+        const mentionButton = button(subject.name || mention, () => {
             const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
             actionInput.value = result.value;
             actionInput.setSelectionRange(result.selectionStart, result.selectionEnd); actionInput.focus();
             selected.action = result.value.trim(); commitPlan(controller, plan);
         }, "minimax-h3-director-text-button");
         mentionButton.title = [subject.description, subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
+        mentionButton.setAttribute("aria-label", `Insert ${subject.name || mention}, ${mention}`);
         mentionRow.appendChild(mentionButton);
     }
     if ((project?.subjects ?? []).length) action.appendChild(mentionRow);
@@ -896,6 +953,8 @@ function renderBoard(container, controller, plan, project, rerender) {
         const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
         const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
         chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
+        chip.setAttribute("aria-label", `${present ? "Remove" : "Place"} ${subject.name || subject.id}; drop a reference to connect it`);
+        makeSubjectDropReceiver(chip, subject.id);
     }
     if (!(project?.subjects ?? []).length) castPicker.appendChild(el(
         "span", "minimax-h3-director-placeholder",

@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -327,6 +327,18 @@ test("Subject defaults need no Shot while an Environment view is selected by a S
     assert.equal(detached.project.environments[0].views[0].assetId, "room", "detaching one Shot must preserve the reusable Environment gallery");
     assert.equal(detached.shotPlan.shots[0].referenceUses, undefined);
     assert.deepEqual(detached.shotPlan.shots[0].environment, { environmentId: "environment.1", viewIds: [] });
+});
+
+test("dropping a reference on an absent Subject places it and assigns the semantic role atomically", () => {
+    const source = fixtures();
+    source.shotPlan.shots[0].subjects = [];
+    source.project.assets = [{ id: "portrait", type: "picture", name: "Ari portrait" }];
+    const result = connectSubjectAssetToScene(source.project, source.shotPlan, "s1", "portrait", "subject.1");
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.shotPlan.shots[0].subjects, [{ subjectId: "subject.1", presence: "present" }]);
+    assert.deepEqual(result.project.subjects[0].identityAssetIds, ["portrait"]);
+    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "portrait", slotIndex: 1 }]);
+    assert.deepEqual(source.shotPlan.shots[0].subjects, [], "drop remains atomic and immutable before commit");
 });
 
 test("purpose assistant records an authoritative frame role in frame modes", () => {

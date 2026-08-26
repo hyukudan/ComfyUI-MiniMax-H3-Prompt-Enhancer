@@ -2,6 +2,11 @@
 
 export function insertSubjectMention(value, selectionStart, selectionEnd, mention) {
     const source = String(value ?? "");
+    const existing = source.indexOf(mention);
+    if (existing >= 0) {
+        const cursor = existing + mention.length;
+        return { value: source, selectionStart: cursor, selectionEnd: cursor, existing: true };
+    }
     const start = Math.max(0, Math.min(source.length, Number(selectionStart) || 0));
     const end = Math.max(start, Math.min(source.length, Number(selectionEnd) || start));
     const before = source.slice(0, start);

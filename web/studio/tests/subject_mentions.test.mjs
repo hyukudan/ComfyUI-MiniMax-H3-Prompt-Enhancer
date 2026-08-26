@@ -14,3 +14,10 @@ test("subject mention replaces a selection without damaging surrounding prompt t
         value: "The <Subject 2> runs", selectionStart: 15, selectionEnd: 15,
     });
 });
+
+test("subject mention chips do not accumulate the same alias repeatedly", () => {
+    const result = insertSubjectMention("Ana enters as <Subject 1>", 25, 25, "<Subject 1>");
+    assert.equal(result.value, "Ana enters as <Subject 1>");
+    assert.equal(result.existing, true);
+    assert.equal(result.selectionStart, 25);
+});
