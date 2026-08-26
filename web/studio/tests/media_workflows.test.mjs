@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeConnectionInput, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeConnectionInput, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -105,6 +105,31 @@ test("direct target import prepares a typed immutable library asset before uploa
     const draft = createImportedAssetDraft(source.project, { name: "Ana voice.wav" }, "audio", "Voice reference");
     assert.deepEqual(draft.asset, { id: "asset.2", type: "audio", name: "Ana voice", available: true });
     assert.equal(source.project.assets.length, 1);
+});
+
+test("Compose resolves the visible portrait, voice, performance and selected background from canonical IDs", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "portrait", type: "picture", name: "Ari portrait" },
+        { id: "voice", type: "audio", name: "Ari voice" },
+        { id: "performance", type: "video", name: "Ari move" },
+        { id: "wide", type: "picture", name: "Room wide" },
+        { id: "detail", type: "picture", name: "Room detail" },
+    ];
+    source.project.subjects[0].identityAssetIds = ["portrait"];
+    source.project.subjects[0].defaultVoiceAssetId = "voice";
+    source.project.environments[0].views = [
+        { id: "view.wide", name: "Wide", assetId: "wide" },
+        { id: "view.detail", name: "Detail", assetId: "detail" },
+    ];
+    source.shotPlan.shots[0].subjects = [{ subjectId: "subject.1", presence: "present" }];
+    source.shotPlan.shots[0].environment = { environmentId: "environment.1", viewIds: ["view.detail"] };
+    source.shotPlan.shots[0].referenceUses = [{ assetId: "performance", role: "performance", targetIds: ["subject.1"] }];
+    const result = composeVisualAssignments(source.project, source.shotPlan.shots[0]);
+    assert.deepEqual(result.backgroundAssets.map((asset) => asset.id), ["detail"]);
+    assert.deepEqual(result.subjects[0].identityAssets.map((asset) => asset.id), ["portrait"]);
+    assert.equal(result.subjects[0].voiceAsset.id, "voice");
+    assert.deepEqual(result.subjects[0].performanceAssets.map((asset) => asset.id), ["performance"]);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {

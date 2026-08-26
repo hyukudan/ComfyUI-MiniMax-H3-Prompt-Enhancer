@@ -125,6 +125,34 @@ export function createImportedAssetDraft(project, file, mediaType, fallbackName 
     return { project: nextProject, asset };
 }
 
+export function composeVisualAssignments(project, shot) {
+    const assets = new Map((project?.assets ?? []).map((asset) => [asset.id, asset]));
+    const uses = shot?.referenceUses ?? [];
+    const environment = (project?.environments ?? []).find((item) => item.id === shot?.environment?.environmentId);
+    const selectedViewIds = new Set(shot?.environment?.viewIds ?? []);
+    const environmentViews = (environment?.views ?? []).filter((view) => !selectedViewIds.size || selectedViewIds.has(view.id));
+    const subjects = [];
+    for (const presence of shot?.subjects ?? []) {
+        if (presence.presence === "absent") continue;
+        const subject = (project?.subjects ?? []).find((item) => item.id === presence.subjectId);
+        if (!subject) continue;
+        const performanceAssetIds = uses
+            .filter((use) => use.role === "performance" && (use.targetIds ?? []).includes(subject.id))
+            .map((use) => use.assetId);
+        subjects.push({
+            subject,
+            identityAssets: (subject.identityAssetIds ?? []).map((id) => assets.get(id)).filter(Boolean),
+            voiceAsset: assets.get(subject.defaultVoiceAssetId) ?? null,
+            performanceAssets: performanceAssetIds.map((id) => assets.get(id)).filter(Boolean),
+        });
+    }
+    return {
+        environment,
+        backgroundAssets: environmentViews.map((view) => assets.get(view.assetId)).filter(Boolean),
+        subjects,
+    };
+}
+
 function composeMediaVisual(asset, source) {
     const visual = el("span", "minimax-h3-director-asset-visual");
     visual.dataset.type = asset.type;
@@ -135,6 +163,23 @@ function composeMediaVisual(asset, source) {
         const video = el("video"); video.src = url; video.muted = true; video.preload = "metadata"; video.playsInline = true; visual.appendChild(video);
     } else visual.appendChild(el("strong", "", asset.type === "video" ? "▶" : asset.type === "audio" ? "≋" : "▧"));
     return visual;
+}
+
+function composeBoundMedia(asset, source, role) {
+    const item = el("span", "minimax-h3-director-bound-media");
+    item.dataset.type = asset.type;
+    item.title = `${role}: ${asset.name || asset.id}`;
+    item.append(composeMediaVisual(asset, source), el("small", "", `${role} · ${asset.name || asset.id}`));
+    return item;
+}
+
+function composeSubjectAvatar(name, identityAsset, source) {
+    const avatar = el("span", "minimax-h3-director-avatar");
+    const url = identityAsset?.type === "picture" ? sourcePreviewUrl(source) : "";
+    if (url) {
+        const image = el("img"); image.src = url; image.alt = `${name} identity reference`; image.loading = "lazy"; avatar.appendChild(image);
+    } else avatar.textContent = name.slice(0, 1).toUpperCase();
+    return avatar;
 }
 
 function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect, importFile, disconnect, connected = false) {
@@ -231,6 +276,9 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
 
     renderComposeAssetTray(container, controller, project, plan, selected, rerender);
+    const sources = controller.referenceDirectorDocument?.()?.value?.sources ?? {};
+    const visualAssignments = composeVisualAssignments(project, selected);
+    const subjectAssignments = new Map(visualAssignments.subjects.map((entry) => [entry.subject.id, entry]));
     const selectedAsset = (project?.assets ?? []).find((asset) => asset.id === controller.projectUiState.selectedAssetId) ?? null;
     const feedback = el("p", "minimax-h3-director-compose-feedback"); feedback.setAttribute("role", "status");
     const connectionPlan = (purposeId, relationId) => {
@@ -320,6 +368,9 @@ function renderBoard(container, controller, plan, project, rerender) {
     const backdrop = el("div", "minimax-h3-director-backdrop");
     const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
     backdrop.append(backdropCopy);
+    const backgroundMedia = el("div", "minimax-h3-director-backdrop-media");
+    for (const asset of visualAssignments.backgroundAssets.slice(0, 2)) backgroundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Background"));
+    if (backgroundMedia.childElementCount) backdrop.appendChild(backgroundMedia);
     const environmentTargetId = selected.environment?.environmentId || ((project?.environments ?? []).length === 1 ? project.environments[0].id : "");
     const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === environmentTargetId);
     if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, Boolean(activeEnvironment?.views?.length)));
@@ -330,6 +381,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
         const name = subject?.name || entry.subjectId;
+        const assigned = subjectAssignments.get(entry.subjectId) ?? { identityAssets: [], voiceAsset: null, performanceAssets: [] };
         const card = el("article", "minimax-h3-director-subject-card");
         const targets = el("div", "minimax-h3-director-subject-targets");
         const performanceConnected = (selected.referenceUses ?? []).some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
@@ -338,7 +390,17 @@ function renderBoard(container, controller, plan, project, rerender) {
             composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, importFile, disconnect, Boolean(subject?.defaultVoiceAssetId)),
             composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, importFile, disconnect, performanceConnected),
         );
-        card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`), targets);
+        const boundMedia = el("div", "minimax-h3-director-bound-strip");
+        for (const asset of assigned.identityAssets.slice(0, 2)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Image"));
+        if (assigned.voiceAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceAsset, sources[assigned.voiceAsset.id], "Voice"));
+        for (const asset of assigned.performanceAssets.slice(0, 1)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Performance"));
+        card.append(
+            composeSubjectAvatar(name, assigned.identityAssets[0], sources[assigned.identityAssets[0]?.id]),
+            el("strong", "", name),
+            el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`),
+            boundMedia,
+            targets,
+        );
         cast.appendChild(card);
     }
     const action = el("div", "minimax-h3-director-action");

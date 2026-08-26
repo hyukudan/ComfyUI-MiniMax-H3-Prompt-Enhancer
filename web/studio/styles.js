@@ -1813,11 +1813,17 @@ export function ensureStudioStyles() {
         .minimax-h3-director-stage { position: relative; display: grid; min-height: 370px; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--h3-accent) 14%, transparent), transparent 43%), linear-gradient(180deg, var(--h3-surface-raised), var(--h3-surface)); }
         .minimax-h3-director-backdrop { display: flex; align-items: center; justify-content: space-between; gap: var(--h3-space-3); padding: 12px 14px; border-bottom: 1px solid var(--h3-border); background: color-mix(in srgb, var(--h3-surface-raised) 80%, transparent); }
         .minimax-h3-director-backdrop > div { display: grid; gap: 3px; }
+        .minimax-h3-director-backdrop-media { display: flex !important; min-width: 0; margin-left: auto; }
         .minimax-h3-director-kicker { color: var(--h3-text-muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; }
         .minimax-h3-director-cast { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--h3-space-3); padding: var(--h3-space-5); }
-        .minimax-h3-director-subject-card { display: grid; place-items: center; gap: 8px; min-width: 112px; padding: 14px; border: 1px solid color-mix(in srgb, var(--h3-accent) 40%, var(--h3-border)); border-radius: var(--h3-radius-lg); background: color-mix(in srgb, var(--h3-surface-raised) 88%, transparent); }
+        .minimax-h3-director-subject-card { display: grid; place-items: center; gap: 8px; min-width: 172px; max-width: 260px; padding: 14px; border: 1px solid color-mix(in srgb, var(--h3-accent) 40%, var(--h3-border)); border-radius: var(--h3-radius-lg); background: color-mix(in srgb, var(--h3-surface-raised) 88%, transparent); }
         .minimax-h3-director-llm-subject { margin-top: -5px; color: var(--h3-text-muted); font-size: 10px; }
-        .minimax-h3-director-avatar { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--h3-accent) 24%, var(--h3-surface)); color: var(--h3-accent); font-size: 22px; font-weight: 800; }
+        .minimax-h3-director-avatar { display: grid; width: 64px; height: 64px; place-items: center; overflow: hidden; border: 2px solid color-mix(in srgb, var(--h3-accent) 44%, var(--h3-border)); border-radius: 50%; background: color-mix(in srgb, var(--h3-accent) 24%, var(--h3-surface)); color: var(--h3-accent); font-size: 22px; font-weight: 800; }
+        .minimax-h3-director-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .minimax-h3-director-bound-strip { display: flex; width: 100%; flex-wrap: wrap; justify-content: center; gap: 5px; }
+        .minimax-h3-director-bound-media { display: grid; min-width: 0; max-width: 84px; gap: 3px; justify-items: center; padding: 4px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-surface) 78%, transparent); }
+        .minimax-h3-director-bound-media small { display: block; width: 100%; overflow: hidden; color: var(--h3-text-muted); font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-director-bound-media .minimax-h3-director-asset-visual { width: 46px; height: 38px; border-radius: 5px; }
         .minimax-h3-director-action, .minimax-h3-director-camera-line { padding: 11px 14px; border-top: 1px solid var(--h3-border); }
         .minimax-h3-director-action p, .minimax-h3-director-camera-line p { margin: 4px 0 0; }
         .minimax-h3-director-camera-line p { color: var(--h3-text-muted); font-size: 12px; }
