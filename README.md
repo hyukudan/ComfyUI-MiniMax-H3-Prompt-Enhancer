@@ -29,6 +29,7 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Multilingual & Dialects** | Generic or broken `[Original language]` | **17 Canonical Languages + 88 Dialect Aliases** (Castilian, Québécois, Flemish, etc.) |
 | **Audio Reference Binding** | Treated as background noise | **Cross-Modal Voice Binding** (`<Audio N>` $\rightarrow$ `<Subject N> (Sx)`) |
 | **Visual Text vs Speech** | Signs converted into dialogue | **Intelligent Separation** of signs/shirts/doors from spoken character dialogue |
+| **Titles & Credits** | Loose text requests and unstable spelling | **Seven deterministic cinematic recipes**, timed readable holds, exact text lock, hierarchy, fit checks, and final-frame preservation |
 | **Resolution & MP Scaling** | Manual calculation | **Direct `width` & `height` Outputs** aligned to 16 px from Aspect Ratio (shape) and Resolution Budget (area: Auto or Custom MP) |
 | **Visual Style Presets** | Generic prompt words | **52 Direct Preset Styles** + 116 Curated Profiles & 13-Axis Cinematography Engine |
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
@@ -49,6 +50,7 @@ Explore the specialized guides in [`docs/`](docs/):
 | 🎙️ [**Dialogue & Audio Architecture**](docs/dialogue_and_audio.md) | Multilingual engine, dialect recognition, audio reference binding (`<Audio N>`), and acoustic space policies. |
 | 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 61 Visual Languages, 19 World Aesthetics, 17 Tones, 11 Genres, 17 Content Formats, and 13 Cinematography Axes. |
 | 🖼️ [**Media References & Manifests**](docs/media_references_and_manifests.md) | Plain-text reference context vs structured JSON manifests, subject mapping, and retention analysis. |
+| ✦ [**Cinematic Titles & Credits**](docs/titles_and_credits.md) | Seven material/directorial recipes, exact title and credit syntax, timing, readability validation, and local workflow testing. |
 | ⚙️ [**Architecture, GGUF & Memory**](docs/architecture_and_gguf.md) | Standalone `llama-server` architecture, local GGUF discovery, memory reclaim policies, and troubleshooting. |
 
 ---
@@ -171,6 +173,23 @@ Instant dropdown selection for every curated directorial style (`live_action_cin
 The list is derived from the catalogue instead of maintained by hand, so the dropdown and the profiles cannot drift apart.
 
 This preset fills **one axis only**: `visualLanguage`. Genre, world aesthetic, and tone are separate axes that stack on top of it — a `film_noir` world aesthetic keeps tinting the shot in low-key chiaroscuro whichever visual language you select.
+
+### Cinematic Titles & Credits
+
+The main **MiniMax H3 Prompt Enhancer** can turn a concept into a complete cinematic title sequence while keeping every supplied character exact. Set **Titles & Credits recipe** to anything except `none`, choose an energy, then enter the main title and credits.
+
+```text
+Exact main title:
+THE SIGNAL
+
+Credit cards — one per line:
+A FILM BY | MALAK
+MUSIC BY | ANA TORRES
+```
+
+`Role | Name` creates a hierarchical credit card; a line without `|` creates a single-level card. Title line breaks are intentional and preserved. The director plans formation, settling, a completely still readable hold, causal transitions, synchronized sourced sound, and a final title composition that remains through the last frame. It rejects sequences that cannot fit the chosen duration or aspect ratio instead of silently producing unreadable cards.
+
+The seven recipes are **Auto director**, **Prestige imprint**, **Precision apparatus**, **Analog print lab**, **Unearthed archive**, **Optical luxury**, and **Living material**. The feature supports ordinary `auto`, T2VA and reference modes; it deliberately refuses `chained_multishot`, whose JSON output cannot carry one authoritative cross-shot text lock. See [Cinematic Titles & Credits](docs/titles_and_credits.md) for complete controls, constraints and testing instructions.
 
 ### Multilingual & Dialect Recognition
 Spoken dialogue is preserved verbatim in its natural language while all structural prose is translated into English for H3:
