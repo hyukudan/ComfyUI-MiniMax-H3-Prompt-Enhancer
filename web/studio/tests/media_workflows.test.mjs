@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-    bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, MEDIA_RECIPES,
+    bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
 import { composeConnectionInput, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
@@ -114,6 +114,44 @@ test("visual Director refuses incompatible media before writing either document"
     assert.equal(result.ok, false);
     assert.deepEqual(result.issues, ["Subject identity requires picture media."]);
     assert.deepEqual(source.project.generations[0].bindings, []);
+});
+
+test("Compose disconnects one semantic target, preserves Library media and prunes only unused wiring", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "portrait", type: "picture", name: "Ari portrait" },
+        { id: "shared", type: "picture", name: "Shared continuity" },
+    ];
+    source.project.subjects[0].identityAssetIds = ["portrait"];
+    source.project.generations[0].bindings = [{ assetId: "portrait", slotIndex: 1 }, { assetId: "shared", slotIndex: 2 }];
+    source.shotPlan.shots[0].referenceUses = [
+        { assetId: "portrait", role: "identity_reinforcement", targetIds: ["subject.1"] },
+        { assetId: "shared", role: "continuity" },
+    ];
+    const result = disconnectPurposeReference({ ...source, purposeId: "subject_identity", generationId: "g1", shotId: "s1", relationId: "subject.1" });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.project.subjects[0].identityAssetIds, []);
+    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: "shared", role: "continuity" }]);
+    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "shared", slotIndex: 2 }]);
+    assert.equal(result.project.assets.length, 2, "disconnect must not delete reusable Library media");
+    assert.deepEqual(source.project.subjects[0].identityAssetIds, ["portrait"], "disconnect must remain immutable until commit");
+});
+
+test("Compose replaces a visual destination instead of leaving a hidden old voice use", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "old-voice", type: "audio", name: "Old voice" },
+        { id: "new-voice", type: "audio", name: "New voice" },
+    ];
+    source.project.subjects[0].defaultVoiceAssetId = "old-voice";
+    source.project.generations[0].bindings = [{ assetId: "old-voice", slotIndex: 1 }];
+    source.shotPlan.shots[0].referenceUses = [{ assetId: "old-voice", role: "voice", targetIds: ["subject.1"] }];
+    const result = replacePurposeReference({ ...source, assetId: "new-voice", purposeId: "voice", generationId: "g1", shotId: "s1", relationId: "subject.1" });
+    assert.equal(result.ok, true);
+    assert.equal(result.project.subjects[0].defaultVoiceAssetId, "new-voice");
+    assert.deepEqual(result.shotPlan.shots[0].referenceUses, [{ assetId: "new-voice", role: "voice", targetIds: ["subject.1"] }]);
+    assert.deepEqual(result.project.generations[0].bindings, [{ assetId: "new-voice", slotIndex: 1 }]);
+    assert.deepEqual(result.project.assets.map((asset) => asset.id), ["old-voice", "new-voice"]);
 });
 
 test("visual Director presents semantic names while deriving physical H3 labels", () => {

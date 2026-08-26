@@ -167,6 +167,80 @@ export function connectExistingReference(input = {}) {
     };
 }
 
+function assetStillUsed(project, shotPlan, generationId, assetId) {
+    for (const subject of project?.subjects ?? []) {
+        if ((subject.identityAssetIds ?? []).includes(assetId) || subject.defaultVoiceAssetId === assetId) return true;
+        if ((subject.appearanceStates ?? []).some((state) => state.source?.mode === "asset" && state.source.assetId === assetId)) return true;
+    }
+    if ((project?.environments ?? []).some((environment) => (environment.views ?? []).some((view) => view.assetId === assetId))) return true;
+    return (shotPlan?.shots ?? []).some((shot) => (shot.generationId ?? "g1") === generationId
+        && (shot.referenceUses ?? []).some((use) => use.assetId === assetId));
+}
+
+/** Disconnect one Compose destination while keeping its media asset in Library. */
+export function disconnectPurposeReference(input = {}) {
+    const purpose = purposeDefinition(input.purposeId);
+    const project = structuredClone(input.project);
+    const shotPlan = structuredClone(input.shotPlan);
+    const generation = project?.generations?.find((item) => item.id === input.generationId);
+    const shot = shotPlan?.shots?.find((item) => item.id === input.shotId);
+    const issues = [];
+    if (!purpose) issues.push("Choose a reference purpose.");
+    if (!generation) issues.push("Choose an existing generation.");
+    if (purposeRequiresShot(purpose) && !shot) issues.push("Choose an existing shot.");
+    if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === input.relationId)) issues.push("Choose the subject this reference controls.");
+    if (purpose?.relation === "environment" && !project?.environments?.some((item) => item.id === input.relationId)) issues.push("Choose the environment this reference controls.");
+    if (issues.length) return { ok: false, issues };
+
+    const removedAssetIds = new Set();
+    if (purpose.id === "subject_identity") {
+        const subject = project.subjects.find((item) => item.id === input.relationId);
+        for (const assetId of subject.identityAssetIds ?? []) removedAssetIds.add(assetId);
+        subject.identityAssetIds = [];
+    } else if (purpose.id === "voice") {
+        const subject = project.subjects.find((item) => item.id === input.relationId);
+        if (subject.defaultVoiceAssetId) removedAssetIds.add(subject.defaultVoiceAssetId);
+        delete subject.defaultVoiceAssetId;
+    } else if (purpose.id === "environment_view") {
+        const environment = project.environments.find((item) => item.id === input.relationId);
+        for (const view of environment.views ?? []) removedAssetIds.add(view.assetId);
+        environment.views = [];
+    }
+
+    const matchingUse = (use) => use.role === purpose.role
+        && (!input.relationId || (use.targetIds ?? []).includes(input.relationId));
+    for (const candidate of shotPlan.shots ?? []) {
+        const applies = purposeRequiresShot(purpose) ? candidate.id === input.shotId : (candidate.generationId ?? "g1") === generation.id;
+        if (!applies) continue;
+        const kept = [];
+        for (const use of candidate.referenceUses ?? []) {
+            if (matchingUse(use)) removedAssetIds.add(use.assetId);
+            else kept.push(use);
+        }
+        if (kept.length) candidate.referenceUses = kept;
+        else delete candidate.referenceUses;
+    }
+
+    for (const assetId of removedAssetIds) {
+        if (!assetStillUsed(project, shotPlan, generation.id, assetId)) {
+            generation.bindings = (generation.bindings ?? []).filter((binding) => binding.assetId !== assetId);
+        }
+        if (purpose.id === "camera" && !(shotPlan.shots ?? []).some((candidate) =>
+            (candidate.referenceUses ?? []).some((use) => use.assetId === assetId && use.role === "camera_transfer"))) {
+            const asset = project.assets.find((item) => item.id === assetId);
+            if (asset) delete asset.cameraTransfer;
+        }
+    }
+    return { ok: true, project, shotPlan, removedAssetIds: [...removedAssetIds], summary: `${purpose.label} disconnected` };
+}
+
+/** Replace the singular visual destination used by Compose without deleting either Library asset. */
+export function replacePurposeReference(input = {}) {
+    const disconnected = disconnectPurposeReference(input);
+    if (!disconnected.ok) return disconnected;
+    return connectExistingReference({ ...input, project: disconnected.project, shotPlan: disconnected.shotPlan });
+}
+
 export function createPlanningContext({ projectDocument, shotDocument } = {}) {
     const project = projectDocument?.kind === "v2" ? structuredClone(projectDocument.value) : null;
     const shotPlan = shotDocument?.kind === "v2" ? structuredClone(shotDocument.value) : null;

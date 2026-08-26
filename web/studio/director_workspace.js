@@ -4,7 +4,7 @@ import { renderCameraLookTab } from "./tab_camera_look.js";
 import { renderEnvironmentsTab } from "./tab_environments.js";
 import { projectForController, uniqueId } from "./project_editor.js";
 import { referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
-import { connectExistingReference } from "./media_workflows.js";
+import { disconnectPurposeReference, replacePurposeReference } from "./media_workflows.js";
 import { mediaTypeForFile, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
 import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "./schema.js";
 import { renderReferencesTab } from "./tab_references.js";
@@ -137,9 +137,10 @@ function composeMediaVisual(asset, source) {
     return visual;
 }
 
-function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect, importFile, connected = false) {
+function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect, importFile, disconnect, connected = false) {
     const definition = COMPOSE_TARGETS[purposeId];
     const wrapper = el("span", "minimax-h3-director-drop-wrapper");
+    wrapper.dataset.connected = String(connected);
     const target = button(`${definition.label}${connected ? " ✓" : ""}`, () => connect(purposeId, relationId), "minimax-h3-director-drop-target");
     target.dataset.purpose = purposeId;
     target.dataset.type = definition.type;
@@ -165,7 +166,14 @@ function composeDropTarget(controller, purposeId, relationId, selectedAsset, con
         if (file) importFile(file, purposeId, relationId);
         else connect(purposeId, relationId, controller.projectUiState.draggedAssetId);
     });
-    wrapper.append(target, importButton, fileInput);
+    wrapper.append(target, importButton);
+    if (connected) {
+        const disconnectButton = button("×", () => disconnect(purposeId, relationId), "minimax-h3-director-drop-disconnect");
+        disconnectButton.setAttribute("aria-label", `Disconnect ${definition.label.toLowerCase()} reference`);
+        disconnectButton.title = `Disconnect from ${definition.label}; keep the file in Library`;
+        wrapper.appendChild(disconnectButton);
+    }
+    wrapper.appendChild(fileInput);
     return wrapper;
 }
 
@@ -238,7 +246,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         const assetId = explicitAssetId || controller.projectUiState.selectedAssetId;
         const workingPlan = connectionPlan(purposeId, relationId);
         const workingShot = workingPlan.shots.find((shot) => shot.id === selected.id) ?? selected;
-        const result = connectExistingReference(composeConnectionInput(project, workingPlan, workingShot, assetId, purposeId, relationId));
+        const result = replacePurposeReference(composeConnectionInput(project, workingPlan, workingShot, assetId, purposeId, relationId));
         if (!result.ok) {
             feedback.dataset.valid = "false"; feedback.textContent = result.issues.join(" "); return;
         }
@@ -275,7 +283,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             const name = draft.asset.name;
             const workingPlan = connectionPlan(purposeId, relationId);
             const workingShot = workingPlan.shots.find((shot) => shot.id === selected.id) ?? selected;
-            const connected = connectExistingReference(composeConnectionInput(nextProject, workingPlan, workingShot, assetId, purposeId, relationId));
+            const connected = replacePurposeReference(composeConnectionInput(nextProject, workingPlan, workingShot, assetId, purposeId, relationId));
             if (!connected.ok) throw new Error(connected.issues.join(" "));
             const nextDirector = setReferenceSource(directorDocument.value, assetId, source);
             const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: connected.project, shotPlan: connected.shotPlan, referenceDirector: nextDirector });
@@ -287,6 +295,25 @@ function renderBoard(container, controller, plan, project, rerender) {
             feedback.dataset.valid = "false"; feedback.hidden = false; feedback.textContent = error?.message || "Import failed.";
         }
     };
+    const disconnect = (purposeId, relationId = "") => {
+        const result = disconnectPurposeReference({
+            project,
+            shotPlan: plan,
+            purposeId,
+            generationId: selected.generationId || project?.generations?.[0]?.id || "g1",
+            shotId: selected.id,
+            relationId,
+        });
+        if (!result.ok) {
+            feedback.dataset.valid = "false"; feedback.textContent = result.issues.join(" "); return;
+        }
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+        if (!committed?.ok) {
+            feedback.dataset.valid = "false"; feedback.textContent = committed?.message || "Could not disconnect the reference atomically."; return;
+        }
+        controller.directorUiState.composeFeedback = `${result.summary}. The file remains in Library.`;
+        rerender();
+    };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
     stage.setAttribute("aria-label", "Selected scene board");
@@ -295,7 +322,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     backdrop.append(backdropCopy);
     const environmentTargetId = selected.environment?.environmentId || ((project?.environments ?? []).length === 1 ? project.environments[0].id : "");
     const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === environmentTargetId);
-    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, Boolean(activeEnvironment?.views?.length)));
+    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, Boolean(activeEnvironment?.views?.length)));
     else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", (project?.environments ?? []).length ? "Choose the scene set in Details" : "Create an environment in Library"));
     const cast = el("div", "minimax-h3-director-cast");
     const names = subjectNames(selected, project);
@@ -307,9 +334,9 @@ function renderBoard(container, controller, plan, project, rerender) {
         const targets = el("div", "minimax-h3-director-subject-targets");
         const performanceConnected = (selected.referenceUses ?? []).some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
         targets.append(
-            composeDropTarget(controller, "subject_identity", entry.subjectId, selectedAsset, connect, importFile, Boolean(subject?.identityAssetIds?.length)),
-            composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, importFile, Boolean(subject?.defaultVoiceAssetId)),
-            composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, importFile, performanceConnected),
+            composeDropTarget(controller, "subject_identity", entry.subjectId, selectedAsset, connect, importFile, disconnect, Boolean(subject?.identityAssetIds?.length)),
+            composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, importFile, disconnect, Boolean(subject?.defaultVoiceAssetId)),
+            composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, importFile, disconnect, performanceConnected),
         );
         card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`), targets);
         cast.appendChild(card);
@@ -336,8 +363,8 @@ function renderBoard(container, controller, plan, project, rerender) {
         lane.appendChild(el("strong", "", laneName));
         const values = roles.get(laneName) ?? [];
         lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ") || "Drop or connect a reference in Library"));
-        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, importFile, values.length > 0));
-        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, importFile, values.length > 0));
+        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, importFile, disconnect, values.length > 0));
+        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, importFile, disconnect, values.length > 0));
         else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
         lanes.appendChild(lane);
     }
