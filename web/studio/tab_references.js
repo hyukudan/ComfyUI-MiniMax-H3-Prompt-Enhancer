@@ -2,9 +2,10 @@ import { assetUsage, effectivePictureBindingRole, generationMediaModel, MEDIA_LI
 import { commitProject, labeledInput, labeledSelect, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
 import { captureOpenDisclosures, restoreOpenDisclosures } from "./domain_components.js";
 import {
-    bindingPlanDiagnostics, createPlanningContext, createPurposeBinding, mediaPurpose,
+    bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, mediaPurpose,
     MEDIA_BINDING_PURPOSES, MEDIA_RECIPES,
 } from "./media_workflows.js";
+import { directorTargetAccepts, referenceDirectorModel } from "./reference_director.js";
 
 const CAMERA_TRANSFER_ASPECTS = ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"];
 const PROJECT_MODES = [["auto", "Auto"], ["t2va", "T2VA"], ["i2va", "I2VA"], ["fl2va", "FL2VA"], ["l2va", "L2VA"], ["ref2va", "Ref2VA"], ["chained_multishot", "Chained"]];
@@ -145,6 +146,157 @@ function renderMediaOnboarding() {
     }
     guide.append(intro, steps);
     return guide;
+}
+
+function renderReferenceDirector(container, project, controller) {
+    const shotPlan = controller.shotDocument()?.value ?? { shots: [] };
+    const generation = selectedGeneration(project, controller);
+    const model = referenceDirectorModel(project, shotPlan, generation.id);
+    const director = document.createElement("section");
+    director.className = "minimax-h3-reference-director";
+    director.setAttribute("aria-label", "Visual reference director");
+
+    const header = document.createElement("div");
+    header.className = "minimax-h3-reference-director-header";
+    const copy = document.createElement("div");
+    const title = document.createElement("h3"); title.textContent = "Visual reference director";
+    const subtitle = document.createElement("p"); subtitle.textContent = "Select or drag a reference onto the exact subject, background or shot property it controls.";
+    copy.append(title, subtitle);
+    const status = document.createElement("span");
+    status.className = "minimax-h3-reference-director-status";
+    status.textContent = `${model.assigned}/${model.assets.length} wired · Generation ${generation.order ?? generation.id}`;
+    header.append(copy, status);
+
+    const board = document.createElement("div");
+    board.className = "minimax-h3-reference-director-board";
+    const library = document.createElement("section");
+    library.className = "minimax-h3-reference-library-rail";
+    const libraryHeading = document.createElement("h4"); libraryHeading.textContent = "1 · Library";
+    const libraryHint = document.createElement("p"); libraryHint.textContent = "Choose a card, then use a target. Drag and drop is optional.";
+    library.append(libraryHeading, libraryHint);
+    const assetList = document.createElement("div"); assetList.className = "minimax-h3-reference-card-grid";
+    for (const asset of model.assets) {
+        const card = actionButton("", () => {
+            controller.projectUiState.selectedAssetId = asset.id;
+            renderReferencesTab(container, controller);
+        }, "minimax-h3-reference-card");
+        card.draggable = true;
+        card.dataset.assetId = asset.id;
+        card.dataset.type = asset.type;
+        card.setAttribute("aria-pressed", String(controller.projectUiState.selectedAssetId === asset.id));
+        card.addEventListener("dragstart", (event) => {
+            controller.projectUiState.draggedAssetId = asset.id;
+            event.dataTransfer?.setData("application/x-minimax-h3-asset", asset.id);
+            event.dataTransfer?.setData("text/plain", asset.id);
+        });
+        const visual = mediaVisual(asset, true);
+        const cardCopy = document.createElement("span");
+        const name = document.createElement("strong"); name.textContent = asset.name;
+        const label = document.createElement("small"); label.textContent = asset.physicalLabel;
+        cardCopy.append(name, label);
+        const links = document.createElement("span");
+        links.className = "minimax-h3-reference-card-links";
+        links.textContent = asset.connections[0] ?? "Ready to connect";
+        card.append(visual, cardCopy, links);
+        assetList.appendChild(card);
+    }
+    if (!model.assets.length) {
+        const empty = document.createElement("p"); empty.className = "minimax-h3-empty-state";
+        empty.textContent = "Add a picture, video or audio reference below; it will appear here as a visual card.";
+        assetList.appendChild(empty);
+    }
+    library.appendChild(assetList);
+
+    const relationships = document.createElement("section");
+    relationships.className = "minimax-h3-reference-relationship-rail";
+    const relationHeading = document.createElement("h4"); relationHeading.textContent = "2 · Connect meaning";
+    const relationHint = document.createElement("p"); relationHint.textContent = "Targets store semantic relationships, never physical numbering.";
+    relationships.append(relationHeading, relationHint);
+    const feedback = document.createElement("p");
+    feedback.className = "minimax-h3-reference-director-feedback";
+    feedback.setAttribute("role", "status");
+
+    const commitConnection = (target, targetId = "") => {
+        const assetId = controller.projectUiState.draggedAssetId ?? controller.projectUiState.selectedAssetId;
+        const result = connectExistingReference({
+            project, shotPlan, assetId, purposeId: target.purposeId,
+            generationId: generation.id,
+            shotId: model.shots.find((shot) => shot.id === controller.shotUiState?.selectedId)?.id ?? model.shots[0]?.id ?? "",
+            relationId: targetId,
+        });
+        if (!result.ok) {
+            feedback.textContent = result.issues.join(" "); feedback.dataset.valid = "false"; return;
+        }
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+        if (!committed?.ok) {
+            feedback.textContent = committed?.message ?? "Atomic Media + Shot update is unavailable."; feedback.dataset.valid = "false"; return;
+        }
+        controller.projectUiState.selectedAssetId = assetId;
+        delete controller.projectUiState.draggedAssetId;
+        renderReferencesTab(container, controller);
+    };
+
+    const targetGroup = (headingText, items, targetKind) => {
+        const group = document.createElement("div"); group.className = "minimax-h3-reference-target-group";
+        const heading = document.createElement("strong"); heading.textContent = headingText; group.appendChild(heading);
+        for (const item of items) {
+            const entity = document.createElement("article"); entity.className = "minimax-h3-reference-entity";
+            const entityLabel = item.name || item.action || item.id;
+            const entityName = document.createElement("span"); entityName.textContent = entityLabel; entity.appendChild(entityName);
+            const zones = document.createElement("div"); zones.className = "minimax-h3-reference-dropzones";
+            for (const target of model.targets.filter((candidate) => candidate.targetKind === targetKind)) {
+                const selected = model.assets.find((asset) => asset.id === (controller.projectUiState.draggedAssetId ?? controller.projectUiState.selectedAssetId));
+                const zone = actionButton(target.label, () => commitConnection(target, targetKind === "shot" ? "" : item.id), "minimax-h3-reference-dropzone");
+                zone.dataset.purpose = target.purposeId;
+                zone.dataset.tone = target.tone;
+                zone.disabled = Boolean(selected && !directorTargetAccepts(target, selected));
+                zone.title = `${target.accepts} reference → ${entityLabel}`;
+                for (const eventName of ["dragenter", "dragover"]) zone.addEventListener(eventName, (event) => { event.preventDefault(); zone.dataset.drag = "ready"; });
+                zone.addEventListener("dragleave", () => { delete zone.dataset.drag; });
+                zone.addEventListener("drop", (event) => {
+                    event.preventDefault(); delete zone.dataset.drag;
+                    controller.projectUiState.draggedAssetId = event.dataTransfer?.getData("application/x-minimax-h3-asset") || controller.projectUiState.draggedAssetId;
+                    commitConnection(target, targetKind === "shot" ? "" : item.id);
+                });
+                zones.appendChild(zone);
+            }
+            entity.appendChild(zones); group.appendChild(entity);
+        }
+        if (!items.length) {
+            const empty = document.createElement("span"); empty.className = "minimax-h3-reference-target-empty";
+            empty.textContent = `Create a ${targetKind} to reveal its visual targets.`; group.appendChild(empty);
+        }
+        return group;
+    };
+    relationships.append(
+        targetGroup("Subjects", model.subjects, "subject"),
+        targetGroup("Environments", model.environments, "environment"),
+        targetGroup("Selected shot", model.shots.slice(0, 1), "shot"),
+        feedback,
+    );
+
+    const output = document.createElement("section");
+    output.className = "minimax-h3-reference-output-rail";
+    const outputHeading = document.createElement("h4"); outputHeading.textContent = "3 · H3 wiring";
+    const outputHint = document.createElement("p"); outputHint.textContent = "Labels are derived from generation bindings and stay stable when cards move.";
+    output.append(outputHeading, outputHint);
+    const outputList = document.createElement("div"); outputList.className = "minimax-h3-reference-output-list";
+    for (const asset of model.assets.filter((item) => item.binding)) {
+        const row = document.createElement("div"); row.className = "minimax-h3-reference-output-row";
+        const label = document.createElement("strong"); label.textContent = asset.physicalLabel;
+        const name = document.createElement("span"); name.textContent = asset.name;
+        const role = document.createElement("small"); role.textContent = asset.connections.join(" · ") || asset.bindingRole.replaceAll("_", " ");
+        row.append(label, name, role); outputList.appendChild(row);
+    }
+    if (!model.assigned) {
+        const empty = document.createElement("p"); empty.className = "minimax-h3-reference-target-empty";
+        empty.textContent = "Connect a card to see the exact H3 input map."; outputList.appendChild(empty);
+    }
+    output.appendChild(outputList);
+
+    board.append(library, relationships, output);
+    director.append(header, board);
+    return director;
 }
 
 function commitAndRender(container, controller) {
@@ -802,7 +954,7 @@ export function renderReferencesTab(container, controller) {
     const title = document.createElement("div");
     title.innerHTML = "<strong>Media references</strong><span>Describe logical references and map them to generator inputs</span>";
     toolbar.append(title, labeledSelect("Project mode", project.mode, PROJECT_MODES, (value) => { project.mode = value; commitProject(controller); }));
-    container.append(toolbar, renderMediaOnboarding(), renderMediaWorkflowTools(container, project, controller));
+    container.append(toolbar, renderReferenceDirector(container, project, controller), renderMediaOnboarding(), renderMediaWorkflowTools(container, project, controller));
 
     const assetArea = document.createElement("div");
     assetArea.className = "minimax-h3-master-detail minimax-h3-media-assets";

@@ -3,9 +3,10 @@ import { nextAvailableSlot } from "./media_model.js";
 export const MEDIA_BINDING_PURPOSES = Object.freeze([
     { id: "subject_identity", label: "Subject identity", type: "picture", role: "identity_reinforcement", relation: "subject", help: "Keep one subject recognizable from a connected picture." },
     { id: "environment_view", label: "Environment view", type: "picture", role: "environment_view", relation: "environment", help: "Anchor a place with a named, reusable view." },
-    { id: "performance", label: "Performance", type: "video", role: "performance", help: "Transfer observable timing and performance from a video." },
+    { id: "performance", label: "Performance", type: "video", role: "performance", relation: "subject", help: "Transfer observable timing and performance from a video to one subject." },
     { id: "camera", label: "Camera", type: "video", role: "camera_transfer", help: "Request camera motion only from an explicit video reference." },
-    { id: "voice", label: "Voice", type: "audio", role: "voice", help: "Guide voice qualities from a connected audio reference." },
+    { id: "voice", label: "Voice", type: "audio", role: "voice", relation: "subject", help: "Guide one subject's voice qualities from a connected audio reference." },
+    { id: "soundtrack", label: "Music / soundtrack", type: "audio", role: "soundtrack", help: "Use an audio reference as shot-scoped music or soundtrack guidance." },
     { id: "continuity", label: "Continuity", type: "picture", role: "continuity", help: "Reinforce visible continuity in a selected shot." },
 ]);
 
@@ -43,7 +44,7 @@ export function bindingPlanDiagnostics({ project, shotPlan, purposeId, generatio
     if (!generation) issues.push("Choose an existing generation.");
     if (!shot) issues.push("Choose an existing shot.");
     else if (generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
-    if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === relationId)) issues.push("Choose the subject whose identity this picture anchors.");
+    if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === relationId)) issues.push("Choose the subject this reference controls.");
     if (purpose?.relation === "environment" && !project?.environments?.some((item) => item.id === relationId)) issues.push("Choose the environment this view belongs to.");
     if (purpose && generation && nextAvailableSlot(project, generation, purpose.type) === null) issues.push(`No ${purpose.type} slot is available in this generation.`);
     return issues;
@@ -79,9 +80,76 @@ export function createPurposeBinding(input = {}) {
         environment.views.push({ id: viewId, name: asset.name, role: "overview", assetId });
     }
     const use = { assetId, role: purpose.role };
+    if (input.relationId) use.targetIds = [input.relationId];
     if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
     (shot.referenceUses ??= []).push(use);
     return { ok: true, project, shotPlan, assetId, summary: `${purpose.label} · ${shot.id} · Generation ${generation.order ?? generation.id}` };
+}
+
+function sameUse(left, right) {
+    return left.assetId === right.assetId && left.role === right.role
+        && JSON.stringify(left.targetIds ?? []) === JSON.stringify(right.targetIds ?? []);
+}
+
+/** Apply one visual Director connection without creating a second logical asset.
+ *
+ * The operation is immutable so the Media + Shot documents can be committed atomically. The UI
+ * never writes a physical H3 label: it writes semantic relations and the generation binding, then
+ * the ordinary reference resolver derives <Picture N>, <Video N> or <Audio N>.
+ */
+export function connectExistingReference(input = {}) {
+    const purpose = purposeDefinition(input.purposeId);
+    const project = structuredClone(input.project);
+    const shotPlan = structuredClone(input.shotPlan);
+    const asset = project?.assets?.find((item) => item.id === input.assetId);
+    const generation = project?.generations?.find((item) => item.id === input.generationId);
+    const shot = shotPlan?.shots?.find((item) => item.id === input.shotId);
+    const issues = [];
+    if (!purpose) issues.push("Choose a reference purpose.");
+    if (!asset) issues.push("Choose an existing reference.");
+    if (purpose && asset && asset.type !== purpose.type) issues.push(`${purpose.label} requires ${purpose.type} media.`);
+    if (!generation) issues.push("Choose an existing generation.");
+    if (!shot) issues.push("Choose an existing shot.");
+    else if (generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
+    if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === input.relationId)) issues.push("Choose the subject this reference controls.");
+    if (purpose?.relation === "environment" && !project?.environments?.some((item) => item.id === input.relationId)) issues.push("Choose the environment this reference controls.");
+    if (issues.length) return { ok: false, issues };
+
+    let binding = (generation.bindings ??= []).find((item) => item.assetId === asset.id);
+    if (!binding) {
+        const slotIndex = nextAvailableSlot(project, generation, asset.type);
+        if (slotIndex === null) return { ok: false, issues: [`No ${asset.type} slot is available in this generation.`] };
+        binding = { assetId: asset.id, slotIndex };
+        generation.bindings.push(binding);
+    }
+    if (asset.type === "video" && ["paired", "alone"].includes(asset.audioMode) && !binding.soundtrackSlotIndex) {
+        const soundtrackSlotIndex = nextAvailableSlot(project, generation, "audio");
+        if (soundtrackSlotIndex === null) return { ok: false, issues: ["No audio slot is available for this video's soundtrack."] };
+        binding.soundtrackSlotIndex = soundtrackSlotIndex;
+    }
+
+    if (purpose.id === "subject_identity") {
+        const subject = project.subjects.find((item) => item.id === input.relationId);
+        if (!(subject.identityAssetIds ??= []).includes(asset.id)) subject.identityAssetIds.push(asset.id);
+    } else if (purpose.id === "environment_view") {
+        const environment = project.environments.find((item) => item.id === input.relationId);
+        if (!(environment.views ??= []).some((item) => item.assetId === asset.id)) {
+            environment.views.push({ id: nextId(environment.views, "view."), name: asset.name, role: "overview", assetId: asset.id });
+        }
+    }
+    if (purpose.id === "camera") asset.cameraTransfer = { enabled: true, role: "camera_reference", aspects: ["motion"] };
+
+    const use = { assetId: asset.id, role: purpose.role };
+    if (input.relationId) use.targetIds = [input.relationId];
+    if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
+    if (!(shot.referenceUses ??= []).some((item) => sameUse(item, use))) shot.referenceUses.push(use);
+    return {
+        ok: true,
+        project,
+        shotPlan,
+        assetId: asset.id,
+        summary: `${asset.name} → ${purpose.label}`,
+    };
 }
 
 export function createPlanningContext({ projectDocument, shotDocument } = {}) {

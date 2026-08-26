@@ -422,10 +422,136 @@ export function ensureStudioStyles() {
             row-gap: var(--h3-space-3);
         }
         .minimax-h3-media-recipes + .minimax-h3-planning-context { margin-top: var(--h3-space-1); }
+        .minimax-h3-reference-director {
+            display: grid;
+            min-width: 0;
+            gap: var(--h3-space-3);
+            overflow: visible;
+            border: 1px solid color-mix(in srgb, var(--h3-accent) 46%, var(--h3-border));
+            border-radius: var(--h3-radius-lg);
+            padding: var(--h3-space-3);
+            background:
+                radial-gradient(circle at 18% 0, color-mix(in srgb, var(--h3-accent) 13%, transparent), transparent 34%),
+                var(--h3-surface);
+        }
+        .minimax-h3-reference-director-header {
+            display: flex;
+            min-width: 0;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: var(--h3-space-3);
+        }
+        .minimax-h3-reference-director-header > div { min-width: 220px; flex: 1; }
+        .minimax-h3-reference-director-header h3,
+        .minimax-h3-reference-director-header p,
+        .minimax-h3-reference-director h4,
+        .minimax-h3-reference-director section > p { margin: 0; }
+        .minimax-h3-reference-director-header h3 { font-size: 16px; }
+        .minimax-h3-reference-director-header p,
+        .minimax-h3-reference-director section > p { margin-top: 2px; color: var(--h3-text-muted); font-size: 10.5px; line-height: 1.4; }
+        .minimax-h3-reference-director-status {
+            border: 1px solid color-mix(in srgb, var(--h3-accent) 50%, var(--h3-border));
+            border-radius: 999px;
+            padding: 4px 8px;
+            background: color-mix(in srgb, var(--h3-accent) 10%, var(--h3-input-bg));
+            color: var(--h3-accent);
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .minimax-h3-reference-director-board {
+            display: grid;
+            min-width: 0;
+            grid-template-columns: minmax(150px, .8fr) minmax(250px, 1.35fr) minmax(160px, .85fr);
+            gap: var(--h3-space-2);
+        }
+        .minimax-h3-reference-director-board > section {
+            display: grid;
+            min-width: 0;
+            align-content: start;
+            gap: var(--h3-space-2);
+            border: 1px solid var(--h3-border);
+            border-radius: var(--h3-radius-md);
+            padding: var(--h3-space-2);
+            background: color-mix(in srgb, var(--h3-input-bg) 78%, var(--h3-surface));
+        }
+        .minimax-h3-reference-director-board h4 { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+        .minimax-h3-reference-card-grid,
+        .minimax-h3-reference-output-list,
+        .minimax-h3-reference-relationship-rail { display: grid; min-width: 0; align-content: start; gap: 6px; }
+        .minimax-h3-reference-card {
+            display: grid;
+            min-width: 0;
+            grid-template-columns: 40px minmax(0, 1fr);
+            align-items: center;
+            gap: 7px;
+            border-color: var(--h3-border) !important;
+            padding: 6px !important;
+            background: var(--h3-surface) !important;
+            text-align: left;
+        }
+        .minimax-h3-reference-card:hover,
+        .minimax-h3-reference-card[aria-pressed="true"] { border-color: var(--h3-accent) !important; box-shadow: inset 3px 0 var(--h3-accent); }
+        .minimax-h3-reference-card > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+        .minimax-h3-reference-card strong,
+        .minimax-h3-reference-card small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-reference-card small { color: var(--h3-text-muted); font-size: 9.5px; font-family: var(--h3-mono); }
+        .minimax-h3-reference-card-links { grid-column: 1 / -1; color: var(--h3-text-muted); font-size: 9.5px; }
+        .minimax-h3-reference-target-group { display: grid; min-width: 0; gap: 5px; }
+        .minimax-h3-reference-target-group > strong { color: var(--h3-text-muted); font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; }
+        .minimax-h3-reference-entity {
+            display: grid;
+            min-width: 0;
+            gap: 6px;
+            border: 1px solid var(--h3-border);
+            border-radius: var(--h3-radius-sm);
+            padding: 7px;
+            background: var(--h3-surface);
+        }
+        .minimax-h3-reference-entity > span { overflow-wrap: anywhere; font-size: 11px; font-weight: 650; }
+        .minimax-h3-reference-dropzones { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
+        .minimax-h3-reference-dropzone {
+            min-height: 28px !important;
+            border-style: dashed !important;
+            border-radius: 999px !important;
+            padding: 3px 8px !important;
+            background: var(--h3-input-bg) !important;
+            font-size: 9.5px;
+        }
+        .minimax-h3-reference-dropzone[data-tone="identity"] { color: color-mix(in srgb, var(--h3-accent) 78%, white); }
+        .minimax-h3-reference-dropzone[data-tone="voice"] { color: color-mix(in srgb, var(--h3-success) 78%, white); }
+        .minimax-h3-reference-dropzone[data-tone="environment"] { color: color-mix(in srgb, var(--h3-tip) 78%, white); }
+        .minimax-h3-reference-dropzone[data-tone="motion"] { color: color-mix(in srgb, var(--h3-warning) 78%, white); }
+        .minimax-h3-reference-dropzone[data-drag="ready"] { border-style: solid !important; border-color: var(--h3-accent) !important; background: color-mix(in srgb, var(--h3-accent) 16%, var(--h3-input-bg)) !important; }
+        .minimax-h3-reference-dropzone:disabled { cursor: not-allowed; opacity: .35; }
+        .minimax-h3-reference-output-row {
+            display: grid;
+            min-width: 0;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 2px 7px;
+            border-left: 2px solid var(--h3-accent);
+            padding: 5px 7px;
+            background: var(--h3-surface);
+        }
+        .minimax-h3-reference-output-row strong { color: var(--h3-accent); font: 700 10px/1.3 var(--h3-mono); }
+        .minimax-h3-reference-output-row span { min-width: 0; overflow: hidden; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-reference-output-row small { grid-column: 1 / -1; color: var(--h3-text-muted); font-size: 9px; overflow-wrap: anywhere; }
+        .minimax-h3-reference-target-empty,
+        .minimax-h3-reference-director-feedback { margin: 0; color: var(--h3-text-muted); font-size: 10px; line-height: 1.4; }
+        .minimax-h3-reference-director-feedback[data-valid="false"] { color: var(--h3-error); }
         @container h3-studio-panel (min-width: 600px) {
             .minimax-h3-media-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
+        @container h3-studio-panel (max-width: 760px) {
+            .minimax-h3-reference-director-board { grid-template-columns: minmax(150px, .8fr) minmax(250px, 1.2fr); }
+            .minimax-h3-reference-output-rail { grid-column: 1 / -1; }
+            .minimax-h3-reference-output-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         @container h3-studio-panel (max-width: 620px) {
+            .minimax-h3-reference-director-board { grid-template-columns: minmax(0, 1fr); }
+            .minimax-h3-reference-output-rail { grid-column: auto; }
+            .minimax-h3-reference-card-grid,
+            .minimax-h3-reference-output-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .minimax-h3-look-block .minimax-h3-studio-columns { grid-template-columns: minmax(0, 1fr); }
             .minimax-h3-look-intro-toolbar { grid-template-columns: minmax(0, 1fr); }
             .minimax-h3-look-intro-toolbar button { justify-self: start; }
@@ -1570,6 +1696,8 @@ export function ensureStudioStyles() {
             .minimax-h3-action-beat-dialogue { grid-template-columns: minmax(0, 1fr); }
         }
         @container h3-studio (max-width: 479px) {
+            .minimax-h3-reference-card-grid,
+            .minimax-h3-reference-output-list { grid-template-columns: minmax(0, 1fr); }
             .minimax-h3-studio-body { grid-template-columns: var(--h3-rail-compact-width) minmax(0, 1fr); }
             .minimax-h3-tab-label { display: none; }
             .minimax-h3-studio-tab { min-height: 42px; }
