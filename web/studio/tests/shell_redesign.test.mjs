@@ -321,7 +321,9 @@ test("Media shell keeps cards separated and dense editors inside the panel", () 
     }
     assert.match(mediaSource, /\+ Add reference/);
     assert.match(mediaSource, /Reference setup · 2 steps/);
-    assert.match(mediaSource, /actual files stay connected to the generator node/);
+    assert.match(mediaSource, /keeps meaning separate from physical ComfyUI input files/);
+    assert.match(mediaSource, /\+ Import files/);
+    assert.match(mediaSource, /reference_project/);
     assert.match(mediaSource, /File slot assignments/);
     assert.doesNotMatch(mediaSource, /actionButton\("\+ Asset"/);
 });

@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 764 Passed](https://img.shields.io/badge/tests-764%20passed-brightgreen.svg)](tests/)
+[![Tests: 1086 Passed](https://img.shields.io/badge/tests-1086%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -35,6 +35,7 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
 | **Production Planning** | Prompt prose or disconnected form fields | **Prompt Studio** with stateful shots, subjects, appearance states, environments, per-generation references, camera ownership, and structured diagnostics |
+| **Reference Wiring** | Separate loaders and hand-maintained slot labels | **Visual Reference Director** with previews, semantic drag/drop, safe imports, and aligned prompt + picture/video/audio outputs |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
 
 ---
@@ -115,8 +116,9 @@ graph LR
 2. **`MiniMaxH3GGUFPromptEnhancer`**: Direct local GGUF prompt enhancer with automatic process lifecycle management and resolution outputs.
 3. **`MiniMaxH3PromptGuideBuilder`**: Compiles system prompts and user instructions for existing ComfyUI LLM nodes.
 4. **`MiniMaxH3PromptValidator`**: Standalone structural validator checking 6-block contracts, tags, dialogue, and reference counts.
-5. **`MiniMaxH3MediaManifestValidator`**: Pre-validates structured JSON media inventories before prompting.
-6. **`MiniMaxH3ChainedMultishotOutput`**: Routes multi-prompt JSON arrays to independent chained generation passes.
+5. **`MiniMaxH3VisualReferenceDirector`**: Imports and previews reference files, maps them visually to semantic roles, then emits aligned prompt context and ordered picture/video/audio media.
+6. **`MiniMaxH3MediaManifestValidator`**: Pre-validates structured JSON media inventories before prompting.
+7. **`MiniMaxH3ChainedMultishotOutput`**: Routes multi-prompt JSON arrays to independent chained generation passes.
 
 ---
 
@@ -130,15 +132,15 @@ The enhancer node stays compact through eight summary chips. Each opens a wide, 
 
 Instructional examples inside empty authoring fields are placeholders, not saved prompt text. They disappear when the field receives focus, return only if it is left empty, and never become JSON automatically. Review blocks generation when a required identity, dialogue line, or custom relationship is still unfinished.
 
-Prompt Studio plans what H3 should do; it does not carry image/video tensors or upload files. The two paths meet at the H3 generation node:
+For reference workflows, **MiniMax H3 Visual Reference Director** is the connected source of truth. Choose **Open director** on that node to import and preview pictures, clips, and audio, then drag each card onto a subject identity/voice, environment/background, or shot performance/camera role. It compiles both the LLM context and the ordered tensors from the same assignments:
 
 ```text
-Idea → Prompt Enhancer / Prompt Studio → enhanced_prompt ───────────────┐
-Load Image / Load Video / audio source → physical H3 media inputs ────┼→ H3 generation node
-Add reference → logical reference → generation binding / physical slot ┘
+Visual Reference Director → reference_context → Prompt Enhancer → enhanced_prompt ─┐
+Visual Reference Director → pictures / videos / audios ────────────────────────────┼→ H3 generation node
+Visual Reference Director → reference_project → Inspector / compatible adapter ────┘
 ```
 
-Use **Shots** for visible beats, timed action/dialogue spans, scale, transitions, and compact camera context; **Staging** for cast positions, movement, and eyelines; **Subjects** for identity and appearances; **Environments** for places and states; **Media** for references and physical slots; **Camera** for the selected shot's visual route and named aim targets; **Look** for creative direction and global cinematography; and **Review** for diagnostics. Look keeps Mood separate from line-level Delivery and Voice color, and its Visual Language browser uses family → era/technique → variant. Camera, Staging, and Shots edit the same `shot_plan_json` v2 object rather than duplicate data. In T2V, media may remain empty; I2V and reference workflows still connect their physical files directly to H3.
+Use **Shots** for visible beats, timed action/dialogue spans, scale, transitions, and compact camera context; **Staging** for cast positions, movement, and eyelines; **Subjects** for identity and appearances; **Environments** for places and states; **Media** for references and physical slots; **Camera** for the selected shot's visual route and named aim targets; **Look** for creative direction and global cinematography; and **Review** for diagnostics. Look keeps Mood separate from line-level Delivery and Voice color, and its Visual Language browser uses family → era/technique → variant. Camera, Staging, and Shots edit the same `shot_plan_json` v2 object rather than duplicate data. In T2V, media may remain empty; the Visual Reference Director carries physical reference media for Ref2VA workflows.
 
 Every Shot needs a visible **Action**, but the common one-shot workflow does not require duplicate typing. A newly created Shot copies the current Basic prompt as an editable starting point; an existing single Shot with an empty Action inherits the Basic prompt at generation time without rewriting its saved JSON. Use **Use Basic prompt as Action** to materialize that inheritance, or replace it with more precise per-shot wording. Multiple Shots still require their own Actions because distributing one Basic prompt across several rows is ambiguous.
 

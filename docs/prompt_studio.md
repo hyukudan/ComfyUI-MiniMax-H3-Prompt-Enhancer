@@ -81,10 +81,12 @@ When all structured widgets are blank, Overview also offers three small editable
 
 ### Ref2VA — reusable picture, video, or audio references
 
-1. In **Media**, choose **Add reference** and register the logical reference and its intended role.
-2. Load the actual file in ComfyUI and connect it to the reference input of the H3 generation node.
-3. In the target generation, activate the logical reference and assign it to the matching **physical slot** (`Picture N`, `Video N`, or `Audio N`).
-4. Use the logical reference from Subjects, Environments, or a shot `referenceUse`, then verify quotas and diagnostics in **Review**.
+1. Add **MiniMax H3 Visual Reference Director** and choose **Open director**. Its raw storage widgets remain hidden.
+2. In **Media**, choose **Import files** and select pictures, video or audio. The Director copies them into ComfyUI input storage and creates stable logical assets with visual previews.
+3. Drop each visual card onto the subject identity/voice, environment/background, or shot performance/camera property it controls.
+4. In the target generation, verify the derived **physical slot** (`Picture N`, `Video N`, or `Audio N`).
+5. Connect `reference_context` to Prompt Enhancer. Connect the ordered `pictures`, `videos` and `audios` list outputs to a list-aware H3 adapter (or split them into its numbered native slots). They come from the same assignments, so the prompt and tensors stay aligned.
+6. Optionally connect `reference_project` to **MiniMax H3 Reference Project Inspector** for the exact wiring report.
 
 ### Chained Multishot — several generation passes
 

@@ -6,6 +6,9 @@ import {
     MEDIA_BINDING_PURPOSES, MEDIA_RECIPES,
 } from "./media_workflows.js";
 import { directorTargetAccepts, referenceDirectorModel } from "./reference_director.js";
+import {
+    emptyReferenceDirector, mediaTypeForFile, referenceSourceForAsset, setReferenceSource, sourcePreviewUrl,
+} from "./reference_sources.js";
 
 const CAMERA_TRANSFER_ASPECTS = ["motion", "framing", "angle", "viewpoint", "composition", "focus", "distance", "stability", "lens", "parallax"];
 const PROJECT_MODES = [["auto", "Auto"], ["t2va", "T2VA"], ["i2va", "I2VA"], ["fl2va", "FL2VA"], ["l2va", "L2VA"], ["ref2va", "Ref2VA"], ["chained_multishot", "Chained"]];
@@ -27,15 +30,37 @@ function suggestedPictureRole(project, generation) {
     return (generation.bindings ?? []).some((binding) => binding.role === "first_frame") ? "last_frame" : "first_frame";
 }
 
-function mediaVisual(asset, compact = false) {
+function mediaVisual(asset, source = null, compact = false) {
     const visual = document.createElement("span");
     visual.className = `minimax-h3-media-visual${compact ? " is-compact" : ""}`;
     visual.dataset.type = asset?.type ?? "picture";
-    visual.setAttribute("aria-hidden", "true");
+    visual.dataset.physical = source ? "ready" : "missing";
+    if (compact) visual.setAttribute("aria-hidden", "true");
+    const previewUrl = sourcePreviewUrl(source);
+    if (previewUrl && asset?.type === "picture") {
+        const image = document.createElement("img");
+        image.src = previewUrl; image.alt = compact ? "" : `${asset.name} preview`; image.loading = "lazy";
+        visual.appendChild(image); return visual;
+    }
+    if (previewUrl && asset?.type === "video") {
+        const video = document.createElement("video");
+        video.src = previewUrl; video.preload = "metadata"; video.muted = true; video.loop = true; video.playsInline = true;
+        if (!compact) video.controls = true;
+        else {
+            video.addEventListener("mouseenter", () => video.play().catch(() => {}));
+            video.addEventListener("mouseleave", () => { video.pause(); video.currentTime = 0; });
+        }
+        visual.appendChild(video); return visual;
+    }
+    if (previewUrl && asset?.type === "audio" && !compact) {
+        const audio = document.createElement("audio");
+        audio.src = previewUrl; audio.preload = "metadata"; audio.controls = true;
+        visual.appendChild(audio); return visual;
+    }
     const glyph = document.createElement("strong");
     glyph.textContent = asset?.type === "video" ? "▶" : asset?.type === "audio" ? "≋" : "▧";
     const caption = document.createElement("small");
-    caption.textContent = compact ? String(asset?.name ?? "").slice(0, 2).toUpperCase() : "Physical preview stays on generator";
+    caption.textContent = compact ? String(asset?.name ?? "").slice(0, 2).toUpperCase() : source ? "Physical file ready" : "Import a physical file";
     visual.append(glyph, caption);
     return visual;
 }
@@ -120,14 +145,14 @@ function renderMediaOnboarding() {
     const title = document.createElement("strong");
     title.textContent = "Reference setup · 2 steps";
     const note = document.createElement("span");
-    note.textContent = "Prompt Studio stores the logical contract; actual files stay connected to the generator node.";
+    note.textContent = "Prompt Studio keeps meaning separate from physical ComfyUI input files until Visual Reference Director compiles matching prompt and media outputs.";
     intro.append(title, note);
 
     const steps = document.createElement("ol");
     steps.className = "minimax-h3-media-steps";
     const content = [
-        ["Describe a reference", "Add a picture, video or audio reference and record what it represents."],
-        ["Connect and assign its file", "Load the actual file on the generator node, then map this reference to the matching Picture, Video or Audio slot below."],
+        ["Import and preview", "Choose pictures, video or audio; files are copied safely into ComfyUI input storage."],
+        ["Connect meaning", "Drop each card onto a subject, background or shot role; H3 slots are derived and Visual Reference Director emits the same ordered media and prompt context."],
     ];
     for (const [index, [heading, description]] of content.entries()) {
         const item = document.createElement("li");
@@ -150,6 +175,8 @@ function renderMediaOnboarding() {
 
 function renderReferenceDirector(container, project, controller) {
     const shotPlan = controller.shotDocument()?.value ?? { shots: [] };
+    const sourceDocument = controller.referenceDirectorDocument?.() ?? { kind: "v1", value: emptyReferenceDirector(), issues: [] };
+    const referenceDirector = sourceDocument.kind === "v1" ? sourceDocument.value : null;
     const generation = selectedGeneration(project, controller);
     const model = referenceDirectorModel(project, shotPlan, generation.id);
     const director = document.createElement("section");
@@ -172,8 +199,60 @@ function renderReferenceDirector(container, project, controller) {
     const library = document.createElement("section");
     library.className = "minimax-h3-reference-library-rail";
     const libraryHeading = document.createElement("h4"); libraryHeading.textContent = "1 · Library";
-    const libraryHint = document.createElement("p"); libraryHint.textContent = "Choose a card, then use a target. Drag and drop is optional.";
+    const libraryHint = document.createElement("p"); libraryHint.textContent = "Import files, then connect each card to what it controls. Drag and drop is optional.";
     library.append(libraryHeading, libraryHint);
+    const importStatus = document.createElement("p");
+    importStatus.className = "minimax-h3-reference-director-feedback"; importStatus.setAttribute("role", "status");
+    const pendingImportFeedback = controller.projectUiState.referenceImportFeedback;
+    if (pendingImportFeedback) {
+        importStatus.dataset.valid = "false";
+        importStatus.textContent = pendingImportFeedback;
+        delete controller.projectUiState.referenceImportFeedback;
+    }
+    const fileInput = document.createElement("input");
+    fileInput.type = "file"; fileInput.multiple = true; fileInput.accept = "image/*,video/*,audio/*"; fileInput.hidden = true;
+    const importFiles = async (files) => {
+        const selected = [...files];
+        if (!selected.length || !referenceDirector) return;
+        importStatus.dataset.valid = "true"; importStatus.textContent = `Importing ${selected.length} file${selected.length === 1 ? "" : "s"}…`;
+        let nextProject = structuredClone(project);
+        let nextDirector = structuredClone(referenceDirector);
+        let lastId = "";
+        const failures = [];
+        for (const file of selected) {
+            const mediaType = mediaTypeForFile(file);
+            if (!mediaType) { failures.push(`${file.name}: unsupported type`); continue; }
+            if (nextProject.assets.length >= 128) { failures.push("The library accepts at most 128 logical references."); break; }
+            try {
+                const source = await controller.uploadReferenceFile(file);
+                const id = uniqueId(nextProject.assets, "asset.");
+                const name = String(file.name).replace(/\.[^.]+$/, "") || `${mediaType} reference`;
+                nextProject.assets.push({ id, type: mediaType, name, available: true });
+                nextDirector = setReferenceSource(nextDirector, id, source);
+                lastId = id;
+            } catch (error) { failures.push(`${file.name}: ${error?.message ?? "upload failed"}`); }
+        }
+        if (lastId) {
+            const result = controller.replaceProjectBundleAtomically?.({ mediaProject: nextProject, referenceDirector: nextDirector });
+            if (!result?.ok) failures.push(result?.message ?? "Could not store the imported references.");
+            else {
+                controller.projectUiState.selectedAssetId = lastId;
+                if (failures.length) controller.projectUiState.referenceImportFeedback = failures.join(" ");
+                renderReferencesTab(container, controller);
+                return;
+            }
+        }
+        importStatus.dataset.valid = "false"; importStatus.textContent = failures.join(" ") || "No reference was imported.";
+    };
+    fileInput.addEventListener("change", () => importFiles(fileInput.files));
+    const importButton = actionButton("+ Import files", () => fileInput.click(), "minimax-h3-reference-import");
+    importButton.disabled = !referenceDirector || project.assets.length >= 128;
+    const importRow = document.createElement("div"); importRow.className = "minimax-h3-reference-import-row";
+    importRow.append(importButton, fileInput, importStatus); library.appendChild(importRow);
+    if (!referenceDirector) {
+        importStatus.dataset.valid = "false";
+        importStatus.textContent = sourceDocument.issues?.[0] ?? "Physical reference storage is unavailable.";
+    }
     const assetList = document.createElement("div"); assetList.className = "minimax-h3-reference-card-grid";
     for (const asset of model.assets) {
         const card = actionButton("", () => {
@@ -189,14 +268,15 @@ function renderReferenceDirector(container, project, controller) {
             event.dataTransfer?.setData("application/x-minimax-h3-asset", asset.id);
             event.dataTransfer?.setData("text/plain", asset.id);
         });
-        const visual = mediaVisual(asset, true);
+        const source = referenceSourceForAsset(referenceDirector, asset.id);
+        const visual = mediaVisual(asset, source, true);
         const cardCopy = document.createElement("span");
         const name = document.createElement("strong"); name.textContent = asset.name;
         const label = document.createElement("small"); label.textContent = asset.physicalLabel;
         cardCopy.append(name, label);
         const links = document.createElement("span");
         links.className = "minimax-h3-reference-card-links";
-        links.textContent = asset.connections[0] ?? "Ready to connect";
+        links.textContent = `${source ? "File ready" : "Needs file"} · ${asset.connections[0] ?? "Ready to connect"}`;
         card.append(visual, cardCopy, links);
         assetList.appendChild(card);
     }
@@ -398,7 +478,7 @@ function renderPurposeAssistant(container, project, controller) {
         const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
         if (!committed?.ok) { status.textContent = committed?.message ?? "Atomic Media + Shot update is unavailable."; status.dataset.valid = "false"; return; }
         controller.projectUiState.selectedAssetId = result.assetId;
-        controller.projectUiState.selectedGenerationId = state.generationId;
+        selectGeneration(controller, state.generationId);
         if (controller.shotUiState) controller.shotUiState.selectedId = state.shotId;
         delete controller.projectUiState.mediaAssistant;
         renderReferencesTab(container, controller);
@@ -444,13 +524,19 @@ function selectedAsset(project, controller) {
     return selected;
 }
 
+function selectGeneration(controller, generationId) {
+    controller.projectUiState.selectedGenerationId = generationId;
+    controller.commitGenerationSelection?.(generationId);
+}
+
 function selectedGeneration(project, controller) {
     const selected = project.generations.find((generation) => generation.id === controller.projectUiState.selectedGenerationId) ?? project.generations[0];
-    controller.projectUiState.selectedGenerationId = selected.id;
+    if (controller.projectUiState.selectedGenerationId !== selected.id) selectGeneration(controller, selected.id);
     return selected;
 }
 
 function renderAssetMaster(container, project, controller) {
+    const director = controller.referenceDirectorDocument?.()?.value ?? emptyReferenceDirector();
     const panel = document.createElement("section");
     panel.className = "minimax-h3-master-pane";
     const header = document.createElement("div");
@@ -484,13 +570,13 @@ function renderAssetMaster(container, project, controller) {
         const name = document.createElement("strong"); name.textContent = asset.name;
         const detail = document.createElement("small"); detail.textContent = meta.join(" · ");
         copy.append(name, detail);
-        row.append(mediaVisual(asset, true), copy);
+        row.append(mediaVisual(asset, referenceSourceForAsset(director, asset.id), true), copy);
         list.appendChild(row);
     }
     if (!project.assets.length) {
         const empty = document.createElement("div");
         empty.className = "minimax-h3-empty-state";
-        empty.textContent = "No references yet. Add one here to describe its role; connect the actual file on the generator node.";
+        empty.textContent = "No references yet. Import files above or add a logical placeholder.";
         list.appendChild(empty);
     }
     panel.append(header, list);
@@ -535,14 +621,53 @@ function renderAssetInspector(container, project, asset, controller) {
         inspector.textContent = "Add a reference to define its logical media contract. The file itself remains on the generator node.";
         return inspector;
     }
+    const directorDocument = controller.referenceDirectorDocument?.() ?? { kind: "v1", value: emptyReferenceDirector() };
+    const director = directorDocument.kind === "v1" ? directorDocument.value : null;
+    const physicalSource = referenceSourceForAsset(director, asset.id);
     const identity = section("Reference details", `${asset.type} · ${asset.id}`);
     const hero = document.createElement("div");
     hero.className = "minimax-h3-media-preview-card";
     const heroCopy = document.createElement("div");
     const heroTitle = document.createElement("strong"); heroTitle.textContent = asset.name;
-    const heroNote = document.createElement("span"); heroNote.textContent = "Logical reference · connect the physical file on the matching generator input.";
-    heroCopy.append(heroTitle, heroNote); hero.append(mediaVisual(asset), heroCopy);
+    const heroNote = document.createElement("span");
+    heroNote.textContent = physicalSource ? `${physicalSource.originalName} · physical file ready` : "Logical reference · import its physical file.";
+    heroCopy.append(heroTitle, heroNote); hero.append(mediaVisual(asset, physicalSource), heroCopy);
     identity.body.appendChild(hero);
+    const physicalActions = document.createElement("div"); physicalActions.className = "minimax-h3-inspector-actions";
+    const replaceInput = document.createElement("input"); replaceInput.type = "file"; replaceInput.hidden = true;
+    replaceInput.accept = asset.type === "picture" ? "image/*" : asset.type === "video" ? "video/*" : "audio/*";
+    const physicalStatus = document.createElement("span"); physicalStatus.setAttribute("role", "status");
+    replaceInput.addEventListener("change", async () => {
+        const file = replaceInput.files?.[0];
+        if (!file || !director) return;
+        if (mediaTypeForFile(file) !== asset.type) { physicalStatus.textContent = `Choose a ${asset.type} file.`; return; }
+        physicalStatus.textContent = "Importing…";
+        try {
+            const source = await controller.uploadReferenceFile(file);
+            const nextProject = structuredClone(project);
+            const nextAsset = nextProject.assets.find((item) => item.id === asset.id);
+            if (nextAsset) nextAsset.available = true;
+            const result = controller.replaceProjectBundleAtomically?.({
+                mediaProject: nextProject,
+                referenceDirector: setReferenceSource(director, asset.id, source),
+            });
+            if (!result?.ok) throw new Error(result?.message ?? "Could not store the file mapping.");
+            renderReferencesTab(container, controller);
+        } catch (error) { physicalStatus.textContent = error?.message ?? "Import failed."; }
+    });
+    const replace = actionButton(physicalSource ? "Replace file" : "Import file", () => replaceInput.click());
+    replace.disabled = !director;
+    physicalActions.append(replace, replaceInput);
+    if (physicalSource) {
+        physicalActions.appendChild(actionButton("Check file", async () => {
+            physicalStatus.textContent = "Checking…";
+            try {
+                const result = await controller.probeReferenceSource(physicalSource);
+                physicalStatus.textContent = !result.available ? "Missing file — replace it to keep the relationships." : result.matches ? "File verified." : "File changed on disk — replace it to refresh the digest.";
+            } catch (error) { physicalStatus.textContent = error?.message ?? "Could not check the file."; }
+        }));
+    }
+    physicalActions.appendChild(physicalStatus); identity.body.appendChild(physicalActions);
     identity.body.append(
         labeledInput("Name", asset.name, (value) => { asset.name = value || asset.id; commitProject(controller); }),
         labeledSelect("Type", asset.type, [["picture", "Picture"], ["video", "Video"], ["audio", "Audio"]], (value) => {
@@ -572,7 +697,7 @@ function renderAssetInspector(container, project, asset, controller) {
     {
         const structuredAnalysis = asset.analysis !== undefined && typeof asset.analysis !== "string";
         const analysis = section("Analysis", structuredAnalysis ? "structured source preserved" : "optional observations");
-        analysis.body.appendChild(helpText("Record only observations that should guide prompting. This does not upload or inspect the physical file."));
+        analysis.body.appendChild(helpText("Record only observations that should guide prompting. Importing a file does not invent analysis."));
         if (!structuredAnalysis) analysis.body.appendChild(labeledInput("Observed analysis", asset.analysis ?? "", (value) => { if (value) asset.analysis = value; else delete asset.analysis; commitProject(controller); }, { multiline: true }));
         else {
             const note = document.createElement("p");
@@ -669,16 +794,16 @@ function renderFirstAssignment(container, project, asset, controller) {
         ? suggestion.generation.id : generationChoices[0]?.[0];
     if (generationChoices.length > 1) {
         card.appendChild(labeledSelect("Target generation", selectedId, generationChoices, (value) => {
-            controller.projectUiState.selectedGenerationId = value;
+            selectGeneration(controller, value);
             renderReferencesTab(container, controller);
         }));
     }
     const chosen = availableSuggestions.find(({ generation }) => generation.id === selectedId) ?? suggestion;
     const explanation = document.createElement("p");
-    explanation.textContent = `Prompt Studio will refer to this file as ${physicalLabel(asset, chosen.binding)}. Connect the actual file to the matching generator input.`;
+    explanation.textContent = `Visual Reference Director will refer to this file as ${physicalLabel(asset, chosen.binding)} and emit it in that ordered media output.`;
     const assign = actionButton(`Assign to Generation ${chosen.generation.order ?? chosen.generation.id} · ${physicalLabel(asset, chosen.binding)}`, () => {
         (chosen.generation.bindings ??= []).push({ ...chosen.binding });
-        controller.projectUiState.selectedGenerationId = chosen.generation.id;
+        selectGeneration(controller, chosen.generation.id);
         commitAndRender(container, controller);
     }, "minimax-h3-button minimax-h3-button-primary");
     card.append(explanation, assign);
@@ -780,9 +905,9 @@ function occupiedSlots(project, generation, type, ignoredBinding = null) {
 
 function renderBindings(container, project, generation, model, controller) {
     const block = section("File slot assignments", `${generation.bindings?.length ?? 0} mapped`);
-    block.body.appendChild(helpText("Map each logical reference to the matching input slot on the generator node. This screen does not upload or connect the file."));
+    block.body.appendChild(helpText("Map each logical reference to the H3 slot compiled into reference_project. Imported files remain keyed by stable asset IDs."));
     if (!(generation.bindings ?? []).length) {
-        block.body.appendChild(helpText("No file slots mapped for this generation yet. Connect files on the generator node, then add a binding here.", "minimax-h3-media-empty-note"));
+        block.body.appendChild(helpText("No file slots mapped for this generation yet. Import a reference, then assign it here.", "minimax-h3-media-empty-note"));
     }
     for (const binding of generation.bindings ?? []) {
         const asset = project.assets.find((candidate) => candidate.id === binding.assetId);
@@ -908,7 +1033,7 @@ function renderGenerationInspector(container, project, generation, controller) {
     const tabs = document.createElement("div");
     tabs.className = "minimax-h3-segmented";
     for (const item of project.generations) {
-        const button = actionButton(item.id, () => { controller.projectUiState.selectedGenerationId = item.id; renderReferencesTab(container, controller); });
+        const button = actionButton(item.id, () => { selectGeneration(controller, item.id); renderReferencesTab(container, controller); });
         button.setAttribute("aria-pressed", String(item.id === generation.id));
         tabs.appendChild(button);
     }
@@ -917,7 +1042,7 @@ function renderGenerationInspector(container, project, generation, controller) {
         const id = uniqueId(project.generations, "g");
         project.generations.push({ id, order: project.generations.length + 1, activation: { mode: "auto" }, bindings: [], subjectStates: [], environmentStates: [] });
         project.mode = "chained_multishot";
-        controller.projectUiState.selectedGenerationId = id;
+        selectGeneration(controller, id);
         commitAndRender(container, controller);
     });
     add.disabled = project.generations.length >= 64;
@@ -930,7 +1055,7 @@ function renderGenerationInspector(container, project, generation, controller) {
         const remove = actionButton("Delete generation", () => {
             project.generations.splice(project.generations.indexOf(generation), 1);
             project.generations.forEach((item, index) => { item.order = index + 1; });
-            controller.projectUiState.selectedGenerationId = project.generations[0].id;
+            selectGeneration(controller, project.generations[0].id);
             commitAndRender(container, controller);
         });
         remove.disabled = generationShots.length > 0;
@@ -952,7 +1077,7 @@ export function renderReferencesTab(container, controller) {
     const toolbar = document.createElement("div");
     toolbar.className = "minimax-h3-studio-toolbar";
     const title = document.createElement("div");
-    title.innerHTML = "<strong>Media references</strong><span>Describe logical references and map them to generator inputs</span>";
+    title.innerHTML = "<strong>Media references</strong><span>Map visible references to semantic roles and matching H3 outputs</span>";
     toolbar.append(title, labeledSelect("Project mode", project.mode, PROJECT_MODES, (value) => { project.mode = value; commitProject(controller); }));
     container.append(toolbar, renderReferenceDirector(container, project, controller), renderMediaOnboarding(), renderMediaWorkflowTools(container, project, controller));
 

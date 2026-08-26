@@ -139,6 +139,8 @@ try:
     from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, generation_profile, manifest_context, parse_media_manifest, parse_media_project
     from .prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
     from .title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
+    from .reference_director import REFERENCE_PROJECT_TYPE, build_reference_project, reference_context_for_project
+    from .reference_media import load_generation_media
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -151,6 +153,8 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, generation_profile, manifest_context, parse_media_manifest, parse_media_project
     from prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
     from title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
+    from reference_director import REFERENCE_PROJECT_TYPE, build_reference_project, reference_context_for_project
+    from reference_media import load_generation_media
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -327,6 +331,7 @@ class MiniMaxH3PromptGuideBuilder:
             "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
+            "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -338,7 +343,7 @@ class MiniMaxH3PromptGuideBuilder:
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
               target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None,
-              lora_trigger_words=""):
+              lora_trigger_words="", reference_director_json=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
@@ -443,6 +448,7 @@ class MiniMaxH3PromptEnhancer:
             "title_text": ("STRING", {"multiline": True, "default": "", "placeholder": "Exact main title; line breaks create one stacked composition.", "dynamicPrompts": False}),
             "credit_lines": ("STRING", {"multiline": True, "default": "", "placeholder": "One card per line: Role | Name", "dynamicPrompts": False}),
             "title_placement": (["after credits", "before credits"], {"default": "after credits"}),
+            "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
         }}
 
     @classmethod
@@ -477,7 +483,7 @@ class MiniMaxH3PromptEnhancer:
                 invent_scene=False, creative_latitude=None,
                 lora_trigger_words="", title_sequence_recipe=TITLE_RECIPE_DISABLED,
                 title_sequence_energy="balanced", title_text="", credit_lines="",
-                title_placement="after credits"):
+                title_placement="after credits", reference_director_json=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
@@ -638,6 +644,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
+            "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
         }}
 
     @classmethod
@@ -660,7 +667,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
-              lora_trigger_words=""):
+              lora_trigger_words="", reference_director_json=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
@@ -728,6 +735,93 @@ class MiniMaxH3UnloadGGUFServer:
         stopped = unload_cached_server() if bool(unload) else False
         status = "Persistent GGUF server unloaded." if stopped else "No persistent GGUF server was loaded."
         return {"ui": {"text": [status]}, "result": (stopped, status)}
+
+
+class MiniMaxH3VisualReferenceDirector:
+    """Compile, explain and decode one visual reference project."""
+
+    CATEGORY = "MiniMax H3/References"
+    FUNCTION = "build"
+    RETURN_TYPES = (REFERENCE_PROJECT_TYPE, "STRING", "IMAGE", "IMAGE", "AUDIO", "STRING", "STRING")
+    RETURN_NAMES = ("reference_project", "reference_context", "pictures", "videos", "audios", "wiring_report", "reference_project_json")
+    OUTPUT_IS_LIST = (False, False, True, True, True, False, False)
+    DESCRIPTION = (
+        "Visual source of truth for H3 references: semantic prompt context, typed bundle and decoded "
+        "picture/video/audio outputs in the exact compiled order."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
+            "media_project": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
+            "shot_plan_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False}),
+        }, "optional": {
+            "generation_id": ("STRING", {"default": "", "tooltip": "Blank selects the first generation."}),
+        }}
+
+    def build(self, reference_director_json="", media_project="", shot_plan_json="", generation_id=""):
+        project = build_reference_project(reference_director_json, media_project, shot_plan_json)
+        if project.get("issues"):
+            raise ValueError("Reference project is not ready: " + " ".join(project["issues"]))
+        loaded = load_generation_media(project, generation_id)
+        context = reference_context_for_project(project, loaded["generationId"])
+        inputs = len(project.get("inputsByGeneration", {}).get(loaded["generationId"], []))
+        report = f"Generation {loaded['generationId'] or '(none)'} · {len(project['director']['sources'])} physical sources · {inputs} inputs"
+        return (
+            project,
+            context,
+            loaded["pictures"],
+            loaded["videos"],
+            loaded["audios"],
+            report,
+            json.dumps(project, ensure_ascii=False, indent=2),
+        )
+
+
+class MiniMaxH3ReferenceProjectInspector:
+    """Turn the typed Director bundle into deterministic, inspectable file lists."""
+
+    CATEGORY = "MiniMax H3/References"
+    FUNCTION = "inspect"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("reference_project_json", "wiring_report", "picture_files", "video_files", "audio_files")
+    DESCRIPTION = (
+        "Inspect the typed reference_project output before connecting it to an H3 conditioning adapter. "
+        "File lists preserve the same physical order used by the prompt labels."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"reference_project": (REFERENCE_PROJECT_TYPE,)}, "optional": {
+            "generation_id": ("STRING", {"default": "", "tooltip": "Blank selects the first generation in the bundle."}),
+        }}
+
+    def inspect(self, reference_project, generation_id=""):
+        if not isinstance(reference_project, dict) or reference_project.get("format") != "minimax-h3-reference-project":
+            raise ValueError("Connect a MiniMax H3 reference_project output.")
+        by_generation = reference_project.get("inputsByGeneration", {})
+        selected_id = str(generation_id or "")
+        if selected_id not in by_generation:
+            selected_id = next(iter(by_generation), "")
+        inputs = by_generation.get(selected_id, [])
+        files = {"picture": [], "video": [], "audio": []}
+        lines = [f"Generation: {selected_id or '(none)'}"]
+        for item in inputs:
+            source = item.get("source") or {}
+            filename = source.get("file")
+            media_type = item.get("mediaType")
+            lines.append(f"{item.get('label') or '?'} ← {item.get('assetId') or '?'} ← {filename or 'MISSING'}")
+            if filename and media_type in files:
+                files[media_type].append(filename)
+        lines.extend(f"Issue: {issue}" for issue in reference_project.get("issues", []))
+        return (
+            json.dumps(reference_project, ensure_ascii=False, indent=2),
+            "\n".join(lines),
+            json.dumps(files["picture"], ensure_ascii=False),
+            json.dumps(files["video"], ensure_ascii=False),
+            json.dumps(files["audio"], ensure_ascii=False),
+        )
 
 
 class MiniMaxH3MediaManifestValidator:

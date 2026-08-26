@@ -8,6 +8,8 @@ from prompt_enhancer_node import (
     MiniMaxH3GGUFPromptEnhancer,
     MiniMaxH3PromptEnhancer,
     MiniMaxH3PromptGuideBuilder,
+    MiniMaxH3VisualReferenceDirector,
+    MiniMaxH3ReferenceProjectInspector,
     MiniMaxH3UnloadGGUFServer,
 )
 
@@ -224,12 +226,50 @@ def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
         expected_tail = ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
         if node is MiniMaxH3PromptEnhancer:
             expected_tail += ["title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement"]
+        expected_tail += ["reference_director_json"]
         assert list(optional)[-len(expected_tail):] == expected_tail
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
         assert optional["editing_intent"][0] == list(prompt_enhancer_node.EDITING_INTENT_CHOICES)
         assert optional["editing_intent"][1]["default"] == "none"
     assert "always_re_enhance" not in MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]
+
+
+def test_visual_reference_director_and_inspector_preserve_h3_order(monkeypatch):
+    media = {
+        "schemaVersion": 2, "mode": "ref2va",
+        "assets": [{"id": "ana", "type": "picture", "name": "Ana"}],
+        "subjects": [{"id": "subject.1", "h3Index": 1, "name": "Ana", "identityAssetIds": ["ana"]}], "environments": [],
+        "generations": [{"id": "g1", "order": 1, "bindings": [{"assetId": "ana", "slotIndex": 1}], "subjectStates": [], "environmentStates": []}],
+    }
+    director = {
+        "format": "minimax-h3-reference-director", "formatVersion": 1,
+        "sources": {"ana": {
+            "storage": "comfy_input", "file": "minimax_h3_reference_director/ana.webp [input]",
+            "sha256": "a" * 64, "mediaType": "picture", "originalName": "ana.webp",
+            "sizeBytes": 42, "mimeType": "image/webp",
+        }},
+    }
+    monkeypatch.setattr(prompt_enhancer_node, "load_generation_media", lambda *_args, **_kwargs: {
+        "generationId": "g1", "pictures": ["picture-tensor"], "videos": [], "audios": [],
+    })
+    reference_project, context, pictures_out, videos_out, audios_out, builder_report, bundle_json = MiniMaxH3VisualReferenceDirector().build(
+        json.dumps(director), json.dumps(media), "",
+    )
+    assert reference_project["inputsByGeneration"]["g1"][0]["label"] == "<Picture 1>"
+    assert json.loads(bundle_json)["digest"] == reference_project["digest"]
+    assert "AUTHORITATIVE REFERENCE RELATIONSHIPS" in context
+    assert "<Picture 1> supplies only the stable visual identity of Ana" in context
+    assert pictures_out == ["picture-tensor"]
+    assert videos_out == []
+    assert audios_out == []
+    assert "1 physical sources" in builder_report
+    project_json, report, pictures, videos, audios = MiniMaxH3ReferenceProjectInspector().inspect(reference_project)
+    assert json.loads(project_json)["digest"] == reference_project["digest"]
+    assert "<Picture 1> ← ana" in report
+    assert json.loads(pictures) == ["minimax_h3_reference_director/ana.webp [input]"]
+    assert json.loads(videos) == []
+    assert json.loads(audios) == []
 
 
 def test_api_key_widget_documents_the_environment_variable_fallback():

@@ -12,6 +12,8 @@ if __package__:
         MiniMaxH3MediaManifestValidator,
         MiniMaxH3ChainedMultishotOutput,
         MiniMaxH3ShotSelector,
+        MiniMaxH3ReferenceProjectInspector,
+        MiniMaxH3VisualReferenceDirector,
     )
 
     NODE_CLASS_MAPPINGS = {
@@ -23,6 +25,8 @@ if __package__:
         "MiniMaxH3MediaManifestValidator": MiniMaxH3MediaManifestValidator,
         "MiniMaxH3ChainedMultishotOutput": MiniMaxH3ChainedMultishotOutput,
         "MiniMaxH3ShotSelector": MiniMaxH3ShotSelector,
+        "MiniMaxH3ReferenceProjectInspector": MiniMaxH3ReferenceProjectInspector,
+        "MiniMaxH3VisualReferenceDirector": MiniMaxH3VisualReferenceDirector,
     }
     NODE_DISPLAY_NAME_MAPPINGS = {
         "MiniMaxH3PromptGuideBuilder": "MiniMax H3 Prompt Guide Builder",
@@ -33,6 +37,8 @@ if __package__:
         "MiniMaxH3MediaManifestValidator": "MiniMax H3 Media Manifest Validator",
         "MiniMaxH3ChainedMultishotOutput": "MiniMax H3 Chained Multishot Output",
         "MiniMaxH3ShotSelector": "MiniMax H3 Shot Selector",
+        "MiniMaxH3ReferenceProjectInspector": "MiniMax H3 Reference Project Inspector",
+        "MiniMaxH3VisualReferenceDirector": "MiniMax H3 Visual Reference Director",
     }
 else:  # pragma: no cover
     NODE_CLASS_MAPPINGS = {}

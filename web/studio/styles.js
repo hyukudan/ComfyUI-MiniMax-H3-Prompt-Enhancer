@@ -10,6 +10,24 @@ export function ensureStudioStyles() {
     style.textContent = `
         .minimax-h3-studio-managed-section { display: none !important; }
 
+        .minimax-h3-reference-node-panel {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: var(--h3-space-3);
+            min-height: 58px;
+            padding: var(--h3-space-3);
+            border: 1px solid var(--h3-border);
+            border-radius: var(--h3-radius-lg);
+            background: linear-gradient(135deg, color-mix(in srgb, var(--h3-accent) 12%, var(--h3-surface)), var(--h3-surface));
+            color: var(--h3-text);
+            font: 12px/1.35 var(--h3-font);
+            box-sizing: border-box;
+        }
+        .minimax-h3-reference-node-copy { display: grid; min-width: 0; gap: 3px; }
+        .minimax-h3-reference-node-copy strong { font-size: 13px; }
+        .minimax-h3-reference-node-copy span { overflow: hidden; color: var(--h3-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+
         .minimax-h3-dashboard {
             display: grid;
             grid-template-columns: minmax(118px, 1fr) auto;
@@ -497,6 +515,9 @@ export function ensureStudioStyles() {
         .minimax-h3-reference-card small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-reference-card small { color: var(--h3-text-muted); font-size: 9.5px; font-family: var(--h3-mono); }
         .minimax-h3-reference-card-links { grid-column: 1 / -1; color: var(--h3-text-muted); font-size: 9.5px; }
+        .minimax-h3-reference-import-row { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .minimax-h3-reference-import-row .minimax-h3-reference-director-feedback { flex: 1 1 120px; }
+        .minimax-h3-reference-import { border-color: color-mix(in srgb, var(--h3-accent) 60%, var(--h3-border)) !important; color: var(--h3-accent) !important; }
         .minimax-h3-reference-target-group { display: grid; min-width: 0; gap: 5px; }
         .minimax-h3-reference-target-group > strong { color: var(--h3-text-muted); font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; }
         .minimax-h3-reference-entity {
@@ -1223,7 +1244,19 @@ export function ensureStudioStyles() {
         .minimax-h3-media-visual[data-type="audio"] { background-color: color-mix(in srgb, var(--h3-success) 9%, var(--h3-input-bg)); }
         .minimax-h3-media-visual > strong { color: var(--h3-text); font: 700 24px/1 var(--h3-mono); }
         .minimax-h3-media-visual > small { padding-inline: 6px; color: var(--h3-text-muted); font-size: 9.5px; }
+        .minimax-h3-media-visual > img,
+        .minimax-h3-media-visual > video {
+            display: block;
+            width: 100%;
+            height: 112px;
+            object-fit: cover;
+            background: #090b0f;
+        }
+        .minimax-h3-media-visual > audio { width: min(100%, 360px); margin: 10px; }
+        .minimax-h3-media-visual[data-physical="ready"] { border-color: color-mix(in srgb, var(--h3-success) 46%, var(--h3-border-strong)); }
         .minimax-h3-media-visual.is-compact { width: 40px; min-height: 40px; border-radius: 5px; }
+        .minimax-h3-media-visual.is-compact > img,
+        .minimax-h3-media-visual.is-compact > video { width: 40px; height: 40px; }
         .minimax-h3-media-visual.is-compact > strong { font-size: 15px; }
         .minimax-h3-media-visual.is-compact > small { overflow: hidden; font-size: 7.5px; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-media-preview-card {

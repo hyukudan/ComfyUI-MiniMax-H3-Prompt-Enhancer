@@ -86,10 +86,24 @@ role-scoped views, temporary environment states, activation, bindings, and expli
 
 ### Logical project v2
 
-Prompt Studio uses a two-step media workflow. **+ Add reference** registers a logical reference in the project
-library; it stores metadata and never uploads or connects a file. The physical picture, video, or audio must be
-connected in the generation node and assigned to that generation's binding. A logical record without a matching
-physical binding is not presented to H3 as connected media.
+Prompt Studio keeps two deliberately separate documents. Media Project v2 defines what every reference means;
+Reference Director v1 maps the same stable asset IDs to physical files under
+`ComfyUI/input/minimax_h3_reference_director`. **+ Import files** accepts pictures, video and audio, copies them
+through a bounded same-origin upload, records a SHA-256 digest, and shows the preview through ComfyUI's standard
+`/view` route. Replacing a file preserves its asset ID and therefore all subject, environment and shot relations.
+
+Add **MiniMax H3 Visual Reference Director** to the graph and select **Open director** on the node. Its visual
+workspace imports and previews pictures, clips and audio, and lets you assign each card to a subject identity or
+voice, an environment/background, or a shot performance/camera role. The technical JSON widgets stay hidden.
+
+The node emits a typed `reference_project`, an authoritative `reference_context` string, ordered `pictures`,
+`videos` (IMAGE frame batches at H3's 24 fps reference rate), and `audios`, without changing the canonical outputs
+of existing prompt nodes. Connect `reference_context` to the same input on Prompt Enhancer; connect the media lists
+to a list-aware H3 adapter or split them into its numbered native inputs. Both sides are compiled from one assignment map, so `<Picture N>`,
+`<Video N>` and `<Audio N>` cannot silently refer to different files. It also contains the physical source map,
+Media Project v2 and Shot Plan v2. The
+**MiniMax H3 Reference Project Inspector** accepts that output and exposes a wiring report plus
+ordered annotated-file lists for diagnosis.
 
 Each v2 generation independently resolves an active dependency closure and an `inputMap`. A logical asset such
 as `ana.identity` can therefore be `<Picture 1>` in one generation while that same physical slot is reused by a
@@ -110,6 +124,29 @@ requires a reason.
 Backend callers use `parse_media_project()` and `manifest_context_for_generation()`. The latter emits only the
 active definitions and bindings for the requested generation, preventing reference bleed. `parse_media_manifest()`
 and `manifest_context()` remain the legacy compatibility APIs.
+
+### Physical source contract
+
+```json
+{
+  "format": "minimax-h3-reference-director",
+  "formatVersion": 1,
+  "sources": {
+    "asset.ana": {
+      "storage": "comfy_input",
+      "file": "minimax_h3_reference_director/ana-a1b2c3d4e5f6.webp [input]",
+      "sha256": "…64 lowercase hex characters…",
+      "mediaType": "picture",
+      "originalName": "ana.webp",
+      "sizeBytes": 123456,
+      "mimeType": "image/webp"
+    }
+  }
+}
+```
+
+Only Director-owned annotated input names are accepted. Absolute paths and parent-directory traversal are
+rejected. Current upload limits are 64 MB per picture, 256 MB per audio file and 1 GB per video file.
 
 ---
 
