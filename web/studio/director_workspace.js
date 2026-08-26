@@ -1,4 +1,4 @@
-import { cameraInstructionPreview } from "./camera_planner.js";
+import { cameraInstructionPreview, cameraSceneModel, VISUAL_CAMERA_MOTIONS } from "./camera_planner.js";
 import { renderCameraTab } from "./tab_camera.js";
 import { renderCameraLookTab } from "./tab_camera_look.js";
 import { renderEnvironmentsTab } from "./tab_environments.js";
@@ -73,6 +73,29 @@ const COMPOSE_TARGETS = Object.freeze({
     soundtrack: { label: "Audio", type: "audio" },
     continuity: { label: "Continuity", type: "picture" },
 });
+
+const CAMERA_MOTION_LABELS = new Map(VISUAL_CAMERA_MOTIONS.flatMap((group) => group.items.map(([id, label]) => [id, label])));
+
+function readableToken(value, fallback) {
+    return value ? String(value).replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()) : fallback;
+}
+
+export function composeCameraSummary(shot = {}) {
+    const model = cameraSceneModel(shot);
+    const start = shot.cameraStart ?? {};
+    const end = { ...start, ...(shot.cameraEnd ?? {}) };
+    const path = shot.cameraPath ?? {};
+    const qualifiers = [path.amplitude && readableToken(path.amplitude), path.speed && readableToken(path.speed)].filter(Boolean);
+    const configured = Boolean(shot.cameraStart || shot.cameraPath || shot.cameraEnd);
+    return {
+        configured,
+        kind: model.kind,
+        icon: model.kind === "orientation" ? "↷" : model.kind === "optical" ? "◎" : model.kind === "expressive" ? "≈" : model.kind === "spatial" ? "→" : "●",
+        start: [readableToken(start.framing, "Inherited framing"), readableToken(start.angle, "Inherited angle")].join(" · "),
+        movement: `${CAMERA_MOTION_LABELS.get(path.motionType) ?? (path.motionType ? readableToken(path.motionType) : "Inherited movement")}${qualifiers.length ? ` · ${qualifiers.join(" · ")}` : ""}`,
+        end: [readableToken(end.framing, "Inherit start"), readableToken(end.angle, "Inherit start")].join(" · "),
+    };
+}
 
 export function composeConnectionInput(project, shotPlan, shot, assetId, purposeId, relationId = "") {
     return {
@@ -405,8 +428,17 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
     const action = el("div", "minimax-h3-director-action");
     action.append(el("span", "minimax-h3-director-kicker", "ACTION"), el("p", "", selected.action || "Describe what visibly happens in this scene."));
-    const camera = el("div", "minimax-h3-director-camera-line");
-    camera.append(el("span", "minimax-h3-director-kicker", "CAMERA"), el("p", "", cameraInstructionPreview(selected, project ?? {})));
+    const cameraSummary = composeCameraSummary(selected);
+    const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-camera-line");
+    camera.setAttribute("aria-label", `Direct camera for ${selected.id}. ${cameraInstructionPreview(selected, project ?? {})}`);
+    const cameraHeading = el("span", "minimax-h3-director-camera-heading");
+    cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA · THIS CUT"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
+    const phases = el("span", "minimax-h3-director-camera-phases");
+    for (const [index, label, value] of [["1", "Start", cameraSummary.start], [cameraSummary.icon, "Move", cameraSummary.movement], ["3", "End", cameraSummary.end]]) {
+        const phase = el("span", "minimax-h3-director-camera-phase");
+        phase.append(el("b", "", index), el("small", "", label), el("span", "", value)); phases.appendChild(phase);
+    }
+    camera.append(cameraHeading, phases);
     stage.append(backdrop, cast, action, camera);
 
     const lanes = el("section", "minimax-h3-director-lanes");
@@ -514,9 +546,15 @@ export function renderDirectorCompose(container, controller) {
     }
     const strip = el("div", "minimax-h3-director-scene-strip"); strip.setAttribute("aria-label", "Scene strip");
     for (const [index, shot] of plan.shots.entries()) {
+        const cameraSummary = composeCameraSummary(shot);
         const card = button("", () => { controller.shotUiState.selectedId = shot.id; rerender(); }, "minimax-h3-director-scene-card");
         card.dataset.selected = String(shot.id === controller.shotUiState.selectedId);
-        card.append(el("span", "minimax-h3-director-scene-number", String(index + 1).padStart(2, "0")), el("strong", "", shot.action || "Untitled scene"), el("small", "", `${shot.generationId || "g1"} · ${subjectNames(shot, project).length} subjects`));
+        card.append(
+            el("span", "minimax-h3-director-scene-number", String(index + 1).padStart(2, "0")),
+            el("strong", "", shot.action || "Untitled scene"),
+            el("small", "", `${shot.generationId || "g1"} · ${subjectNames(shot, project).length} subjects`),
+            el("small", "minimax-h3-director-scene-camera", `${cameraSummary.icon} ${cameraSummary.movement}`),
+        );
         strip.appendChild(card);
     }
     const add = button("+ Scene", () => {

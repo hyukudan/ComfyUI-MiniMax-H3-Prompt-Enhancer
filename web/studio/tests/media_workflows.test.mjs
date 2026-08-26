@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeConnectionInput, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeCameraSummary, composeConnectionInput, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -130,6 +130,23 @@ test("Compose resolves the visible portrait, voice, performance and selected bac
     assert.deepEqual(result.subjects[0].identityAssets.map((asset) => asset.id), ["portrait"]);
     assert.equal(result.subjects[0].voiceAsset.id, "voice");
     assert.deepEqual(result.subjects[0].performanceAssets.map((asset) => asset.id), ["performance"]);
+});
+
+test("Compose turns each cut's native camera fields into three visual phases", () => {
+    assert.deepEqual(composeCameraSummary({
+        cameraStart: { framing: "wide", angle: "eye_level" },
+        cameraPath: { motionType: "push_in", amplitude: "small", speed: "slow" },
+        cameraEnd: { framing: "close_up" },
+    }), {
+        configured: true,
+        kind: "spatial",
+        icon: "→",
+        start: "Wide · Eye level",
+        movement: "Dolly in · Small · Slow",
+        end: "Close up · Eye level",
+    });
+    assert.equal(composeCameraSummary({}).configured, false);
+    assert.equal(composeCameraSummary({}).movement, "Inherited movement");
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {
