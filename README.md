@@ -4,7 +4,7 @@ Production-grade, guide-constrained prompt enhancement, repair, and validation n
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](pyproject.toml)
-[![Tests: 1095 Passed](https://img.shields.io/badge/tests-1095%20passed-brightgreen.svg)](tests/)
+[![Tests: 1100 Passed](https://img.shields.io/badge/tests-1100%20passed-brightgreen.svg)](tests/)
 [![Status: Production Ready](https://img.shields.io/badge/status-production--ready-orange.svg)](#license)
 
 ---
@@ -35,7 +35,7 @@ This node pack transforms simple natural language ideas and multimodal reference
 | **Token Calibration** | Fixed or overflowing lengths | **Adaptive Description Budget** matching H3's cross-attention sweet spot |
 | **Validation & Self-Repair** | None | **Strict Syntactic Validation Gate** with automatic LLM repair loop |
 | **Production Planning** | Prompt prose or disconnected form fields | **Prompt Studio** with stateful shots, subjects, appearance states, environments, per-generation references, camera ownership, and structured diagnostics |
-| **Reference Wiring** | Separate loaders and hand-maintained slot labels | **Visual Reference Director** with previews, semantic drag/drop, safe imports, and aligned prompt + picture/video/audio outputs |
+| **Reference Wiring** | Separate loaders and hand-maintained slot labels | **Native Prompt Studio Compose** with previews, semantic drag/drop, safe imports, and aligned prompt + picture/video/audio outputs |
 | **VRAM Management** | May leak memory in ComfyUI | **Isolated Process Execution** with instant 100% VRAM release before diffusion |
 
 ---
@@ -47,7 +47,7 @@ Explore the specialized guides in [`docs/`](docs/):
 | Guide | Description |
 |---|---|
 | 📜 [**Prompt Contracts & Modes**](docs/prompt_contracts.md) | Full specifications for T2VA, Ref2VA, I2VA, FL2VA, L2VA, Chained Multishot, Frame Grid Math ($17 \times n + 5$), and Megapixel Scaling. |
-| 🎛️ [**Prompt Studio**](docs/prompt_studio.md) | Compact dashboard and wide responsive drawer, v2 planning contracts, appearance and environment continuity, logical-reference bindings, camera authority, Coach diagnostics, and no-clobber migration. |
+| 🎛️ [**Prompt Studio**](docs/prompt_studio.md) | One integrated Compose workspace, reusable Cast & Places, physical Media, contextual Stage/Camera editing, scope-safe reference bindings, Coach diagnostics, and no-clobber migration. |
 | 🎙️ [**Dialogue & Audio Architecture**](docs/dialogue_and_audio.md) | Multilingual engine, dialect recognition, audio reference binding (`<Audio N>`), and acoustic space policies. |
 | 🎨 [**Style Bible & Cinematography**](docs/style_bible_and_cinematography.md) | Complete catalog of 61 Visual Languages, 19 World Aesthetics, 17 Tones, 11 Genres, 17 Content Formats, and 13 Cinematography Axes. |
 | 🖼️ [**Media References & Manifests**](docs/media_references_and_manifests.md) | Plain-text reference context vs structured JSON manifests, subject mapping, and retention analysis. |
@@ -72,6 +72,17 @@ Explore the specialized guides in [`docs/`](docs/):
 3. Select your `.gguf` file from the dropdown.
 4. Leave `keep_server_loaded = false` to start the server during prompt enhancement and immediately reclaim 100% of your GPU VRAM before MiniMax H3 begins sampling.
 
+### 3. Building a visual reference prompt in Compose
+
+1. Add **MiniMax H3 Prompt Enhancer** or **MiniMax H3 GGUF Prompt Enhancer**, then select **Open Compose**.
+2. In **Cast & Places**, create a reusable Subject such as Ana and any reusable Environment the project needs.
+3. In **Compose · Build**, create or select a Shot, cast Ana, and import or drop her identity picture and voice onto the **Project default** destinations. Choose the Environment and attach its exact background view. Add **This Shot** image or voice overrides only when that Shot must differ from Ana's defaults.
+4. Use **Compose · Stage** for blocking and eyelines, then **Compose · Camera** for the same Shot's Start, Move, and End direction. The Shot strip remains visible in every mode.
+5. Import additional picture, video, or audio references in **Media** and connect them to semantic destinations such as performance, camera, soundtrack, continuity, or lighting.
+6. Connect `enhanced_prompt` and the ordered `pictures`, `videos`, and `audios` outputs to the H3 workflow. Use `reference_project` or `reference_project_json` when a downstream adapter needs the typed assignment graph.
+
+All visual edits are saved immediately with the ComfyUI workflow. A reusable Subject or Environment belongs to the project; casting, background-view selection, staging, camera, performance, and overrides belong to the selected Shot.
+
 ---
 
 ## Ready-to-Use Example Workflows
@@ -91,8 +102,8 @@ Drag and drop any of these JSON workflows from [`examples/`](examples/) directly
 graph LR
     subgraph Input
         A[Basic Prompt]
-        B[Reference Context / Manifest]
-        C[Presets & Resolution Budget]
+        B[Compose Project<br/>Cast · Places · Media · Shots]
+        C[Look & Resolution Budget]
     end
     subgraph Enhancer Pack
         D[MiniMax H3 Prompt Enhancer]
@@ -100,16 +111,18 @@ graph LR
     end
     subgraph Downstream H3
         F[H3 Video Conditioning]
-        G[Duration Input]
-        H[Width & Height Latents]
+        G[Picture · Video · Audio Inputs]
+        H[Reference Project / Adapter]
+        I[Duration · Width · Height]
     end
     A --> D
     B --> D
     C --> D
     D --> E
     E -->|enhanced_prompt| F
-    D -->|duration_seconds| G
-    D -->|width, height| H
+    D -->|pictures · videos · audios| G
+    D -->|reference_project| H
+    D -->|duration_seconds · width · height| I
 ```
 
 1. **`MiniMaxH3PromptEnhancer`**: Remote API / OpenAI-compatible endpoint prompt enhancer with native visual Compose storage, self-repair, resolution outputs, and aligned `pictures`, `videos`, `audios`, and `reference_project` outputs.
@@ -124,11 +137,11 @@ graph LR
 
 ## Key Highlights
 
-### Prompt Studio: Stateful Planning Without New Ports
+### Prompt Studio: Integrated Visual Planning and Reference Outputs
 
 Prompt Studio opens on **Compose**, the native visual prompt-authoring surface where subjects, identity images, voices, backgrounds, action, dialogue and camera are assembled per Shot. It owns the Media Project, Shot Plan and physical sources inside the enhancer itself; no second node is required. The same assignments are compiled into the LLM reference context and decoded into the enhancer's ordered media outputs, preventing prompt/media drift. Its integrated destinations are **Compose, Cast & Places, Media, Look, and Review**. The Shot strip remains visible while **Build**, **Stage**, and **Camera** change the contextual editor for the selected Shot. Camera keeps the spatial Anchor separate from each waypoint's Aim target, so a continuous move can pass behind Juan while smoothly reframing from Juan to Olivia. The editor stores normalized geometry, while H3 receives names and qualitative natural prose rather than XYZ coordinates, timing percentages, numeric angles, or internal IDs.
 
-The enhancer node stays compact through a primary **Open Compose** action and destination chips. Each opens a wide, resizable viewport-level drawer that does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays; it is bounded between 420 px and `min(1100px, 60vw)`, becomes full-width below 700 px, and stacks master/detail editors on narrow content. The node button changes to **Close Studio** while its drawer is open; `Esc` and the header close button do the same and return focus to the node. Every deliberate editor change is saved immediately into the authoritative v2 workflow data—there is no separate Save button. The **Guided / Advanced** selector lives inside **Look**, the only area it affects. The Studio edits existing structured widgets and adds no ports or duplicate project storage.
+The enhancer node stays compact through a primary **Open Compose** action and destination chips. Each opens a wide, resizable viewport-level drawer that does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays; it is bounded between 420 px and `min(1100px, 60vw)`, becomes full-width below 700 px, and stacks master/detail editors on narrow content. The node button changes to **Close Studio** while its drawer is open; `Esc` and the header close button do the same and return focus to the node. Every deliberate editor change is saved immediately into the authoritative v2 workflow data—there is no separate Save button. The **Guided / Advanced** selector lives inside **Look**, the only area it affects. Prompt Studio uses one project store and exposes five appended reference outputs; it does not create a second authoring node or duplicate project document.
 
 Instructional examples inside empty authoring fields are placeholders, not saved prompt text. They disappear when the field receives focus, return only if it is left empty, and never become JSON automatically. Review blocks generation when a required identity, dialogue line, or custom relationship is still unfinished.
 
@@ -158,7 +171,7 @@ Creative Treatment and Cinematography are native v2 documents; v1 remains runtim
 
 Camera direction is resolved per shot, phase, and aspect. An explicit source fact outranks an authorized video transfer, which outranks a shot plan, global cinematography, generated prose, and creative treatment. A shot overriding a global camera default is normal shadowing, while incompatible explicit owners are reported as configuration errors. A connected video receives no camera authority unless it declares `cameraTransfer`, is active and bound in that generation, and the shot explicitly uses it for named camera aspects.
 
-The existing `validation_report` now includes a versioned `diagnosticReport` with stable codes, locations, blocking policy, repair eligibility, fingerprints, and bounded Prompt Coach advice. The eight enhancer outputs and the direct Python `enhance()` tuple remain unchanged; ComfyUI receives diagnostics through an ephemeral UI payload instead of a new port.
+The existing `validation_report` includes a versioned `diagnosticReport` with stable codes, locations, blocking policy, repair eligibility, fingerprints, and bounded Prompt Coach advice. The original eight enhancer outputs keep their names and positions. Five native reference outputs are appended: `reference_project`, `pictures`, `videos`, `audios`, and `reference_project_json`. ComfyUI receives UI diagnostics through an ephemeral payload rather than another output.
 
 See [Prompt Studio](docs/prompt_studio.md) for the complete UI, schema, authority, diagnostic, migration, and compatibility contract.
 
