@@ -134,7 +134,7 @@ For shot-plan v2, the editor owns:
 
 ### Subjects
 
-Subjects have a stable logical ID, an H3 subject index, an identity description, identity assets, and a base appearance state. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension.
+Subjects have a stable logical ID, an H3 subject index, an identity description, identity assets, an optional default voice asset, and a base appearance state. The default voice is inherited whenever the subject is active; a shot-level `voice` reference is an explicit override for that scene. Appearance states can control wardrobe, hair, makeup, accessories, carried items, damage, wetness, body condition, transformation, or another explicitly declared dimension.
 
 A Subject is a reusable library definition, while prompt inclusion is an explicit casting decision. New subjects are included in the currently selected generation by default. Existing subjects can be sent without creating a shot through **Use in prompts → Always include in Generation …**; alternatively, mark them `present`, `enters`, or `exits` under **Shots → Who’s in it**. Active subjects compile into authoritative lines such as `<Subject 1> (Juan): …`. Review warns when a valid library subject is neither included in a generation nor cast in a shot, because it will not reach the LLM.
 
@@ -247,7 +247,7 @@ assets ─┬─ subjects ─ appearance states
 generations ─ activation roots / exclusions / bindings / initial states
 ```
 
-Each generation resolves its own active dependency closure and input map. Only active, available, physically bound assets enter that generation's prompt context. Dependencies include identity assets, active appearance sources, selected environment views, referenced audio, and explicitly transferred camera references.
+Each generation resolves its own active dependency closure and input map. Only active, available, physically bound assets enter that generation's prompt context. Dependencies include identity assets, the subject's optional default voice, active appearance sources, selected environment views, referenced audio, and explicitly transferred camera references.
 
 Activation can be automatic or explicit. An exclusion cannot remove a mandatory dependency. Bindings are validated against asset type, per-type capacity, duplicate slots, soundtrack requirements, total file count, and media-duration limits.
 

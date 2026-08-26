@@ -114,7 +114,8 @@ different asset in another. Logical IDs are authoritative; `<Picture N>`, `<Vide
 labels, never persistent identity.
 
 Activation may be `auto`, or `explicit` with logical roots. Required dependencies include subject identity
-pictures, the source of the selected appearance state, selected environment views, and enabled video
+pictures, the optional `defaultVoiceAssetId` audio reference, the source of the selected appearance state,
+selected environment views, and enabled video
 soundtracks. Excluding a required dependency is an error. Every active asset needs exactly one binding and an
 inactive asset cannot retain one. Slot collisions and per-generation H3 media quotas are validated
 deterministically.

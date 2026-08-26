@@ -70,6 +70,8 @@ def dependency_closure(
         if kind == "subject":
             subject = subjects[resource_id]
             queue.extend({"kind": "asset", "id": asset_id} for asset_id in subject["identityAssetIds"])
+            if subject.get("defaultVoiceAssetId"):
+                queue.append({"kind": "asset", "id": subject["defaultVoiceAssetId"]})
             selection = subject_selections.get(resource_id, {})
             state_id = selection.get("resolvedStateId", selection.get("stateId", subject["baseAppearanceStateId"]))
             states = {state["id"]: state for state in subject["appearanceStates"]}

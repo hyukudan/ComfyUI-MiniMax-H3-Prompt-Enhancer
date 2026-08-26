@@ -1,4 +1,4 @@
-import { effectivePictureBindingRole } from "./media_model.js";
+import { effectivePictureBindingRole, generationMediaModel } from "./media_model.js";
 
 export const DIRECTOR_DROP_TARGETS = Object.freeze([
     { purposeId: "subject_identity", label: "Identity", accepts: "picture", targetKind: "subject", tone: "identity" },
@@ -19,6 +19,7 @@ function assetConnections(project, shotPlan, asset) {
     const connections = [];
     for (const subject of project.subjects ?? []) {
         if ((subject.identityAssetIds ?? []).includes(asset.id)) connections.push(`Identity · ${subject.name}`);
+        if (subject.defaultVoiceAssetId === asset.id) connections.push(`Voice · ${subject.name}`);
     }
     for (const environment of project.environments ?? []) {
         if ((environment.views ?? []).some((view) => view.assetId === asset.id)) connections.push(`Background · ${environment.name}`);
@@ -36,6 +37,42 @@ function assetConnections(project, shotPlan, asset) {
     return [...new Set(connections)];
 }
 
+export function resolvedReferenceInputs(project = {}, generation = {}, director = {}) {
+    const assets = new Map((project.assets ?? []).map((asset) => [asset.id, asset]));
+    const media = generationMediaModel(project, generation, null);
+    const rows = [];
+    for (const binding of generation?.bindings ?? []) {
+        const asset = assets.get(binding.assetId);
+        if (!asset) continue;
+        rows.push({
+            assetId: asset.id,
+            name: asset.name || asset.id,
+            mediaType: asset.type,
+            slotIndex: binding.slotIndex,
+            label: physicalLabel(asset, binding),
+            role: asset.type === "picture" ? effectivePictureBindingRole(project, generation, binding) : "reference",
+            sourceReady: Boolean(director?.sources?.[asset.id]),
+            active: media.activeAssetIds.has(asset.id),
+        });
+        if (asset.type === "video" && Number.isInteger(binding.soundtrackSlotIndex)) {
+            rows.push({
+                assetId: asset.id,
+                name: `${asset.name || asset.id} soundtrack`,
+                mediaType: "audio",
+                slotIndex: binding.soundtrackSlotIndex,
+                label: `<Audio ${binding.soundtrackSlotIndex}>`,
+                role: "video_soundtrack",
+                sourceReady: Boolean(director?.sources?.[asset.id]),
+                active: media.activeAssetIds.has(asset.id),
+                derivedFrom: physicalLabel(asset, binding),
+            });
+        }
+    }
+    const order = { picture: 0, video: 1, audio: 2 };
+    return rows.sort((left, right) => (order[left.mediaType] ?? 99) - (order[right.mediaType] ?? 99)
+        || Number(left.slotIndex) - Number(right.slotIndex) || left.assetId.localeCompare(right.assetId));
+}
+
 export function referenceDirectorModel(project = {}, shotPlan = {}, generationId = "") {
     const generation = (project.generations ?? []).find((item) => item.id === generationId) ?? project.generations?.[0] ?? null;
     const assets = (project.assets ?? []).map((asset) => {
@@ -49,6 +86,7 @@ export function referenceDirectorModel(project = {}, shotPlan = {}, generationId
         };
     });
     const shots = (shotPlan?.shots ?? []).filter((shot) => !generation || (shot.generationId ?? "g1") === generation.id);
+    const media = generation ? generationMediaModel(project, generation, shotPlan) : { activeAssetIds: new Set() };
     return {
         generation,
         assets,
@@ -56,6 +94,7 @@ export function referenceDirectorModel(project = {}, shotPlan = {}, generationId
         environments: project.environments ?? [],
         shots,
         assigned: assets.filter((asset) => asset.binding).length,
+        activeAssetIds: media.activeAssetIds,
         targets: DIRECTOR_DROP_TARGETS,
     };
 }

@@ -288,13 +288,14 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
                         _text_field(entry.get("text"), f"{entry_field}.text", issues, 8000, required=True)
 
     state_fields = {"id", "name", "extends", "controls", "description", "attributes", "source"}
-    subject_fields = {"id", "h3Index", "name", "description", "identityAssetIds", "baseAppearanceStateId", "appearanceStates"}
+    subject_fields = {"id", "h3Index", "name", "description", "identityAssetIds", "defaultVoiceAssetId", "baseAppearanceStateId", "appearanceStates"}
+    required_subject_fields = subject_fields - {"defaultVoiceAssetId"}
     for index, subject in enumerate(project["subjects"]):
         field = f"media_manifest.subjects.{index}"
         if not _require_object(subject, field, issues):
             continue
         _unknown_keys(subject, subject_fields, field, issues)
-        _required_fields(subject, subject_fields, field, issues)
+        _required_fields(subject, required_subject_fields, field, issues)
         _text_field(subject.get("name"), f"{field}.name", issues, 500, required=True)
         _text_field(subject.get("description"), f"{field}.description", issues, 8000, required=True)
         if subject.get("description") == "Describe the stable identity.":
@@ -480,6 +481,10 @@ def _validate_v2_semantics(project: dict[str, Any]) -> list[dict[str, Any]]:
         for asset_id in subject["identityAssetIds"]:
             if not _valid_id(asset_id) or asset_id not in assets or assets[asset_id]["type"] != "picture":
                 issues.append(_project_issue("reference.binding.type_mismatch", f"Identity asset {asset_id!r} for subject {subject['id']!r} must be a picture", f"subjects.{subject['id']}.identityAssetIds"))
+        voice_asset_id = subject.get("defaultVoiceAssetId")
+        if voice_asset_id is not None:
+            if not _valid_id(voice_asset_id) or voice_asset_id not in assets or assets[voice_asset_id]["type"] != "audio":
+                issues.append(_project_issue("reference.binding.type_mismatch", f"Default voice asset {voice_asset_id!r} for subject {subject['id']!r} must be audio", f"subjects.{subject['id']}.defaultVoiceAssetId"))
         for state in subject["appearanceStates"]:
             source = state.get("source", {})
             if source.get("mode") == "asset":
@@ -676,6 +681,8 @@ def _legacy_projection_v2(compiled: dict[str, Any]) -> dict[str, Any]:
             "label": f"<Subject {subject['h3Index']}>",
             "description": subject["description"],
             "sources": [input_map[asset_id] for asset_id in subject["identityAssetIds"] if asset_id in input_map],
+            **({"voice_source": input_map[subject["defaultVoiceAssetId"]]}
+               if subject.get("defaultVoiceAssetId") in input_map else {}),
         }
         for subject in project["subjects"]
     ]
@@ -725,6 +732,12 @@ def manifest_context_for_generation(compiled: dict[str, Any], generation_id: str
         details = "; ".join(f"{key}: {value}" for key, value in appearance["attributes"].items() if value not in (None, "", [], {}))
         if details or appearance["description"]:
             lines.append(f"- Initial appearance {state_id}: {details or appearance['description']}")
+        voice_asset_id = subject.get("defaultVoiceAssetId")
+        if voice_asset_id in input_map:
+            lines.append(
+                f"- {input_map[voice_asset_id]} supplies the default voice timbre and delivery for "
+                f"<Subject {subject['h3Index']}>; it supplies no dialogue words."
+            )
     for environment in project["environments"]:
         if ("environment", environment["id"]) not in active_resources:
             continue
@@ -774,6 +787,8 @@ def manifest_context(value: str | dict | list | None) -> str:
         for subject in parsed["subjects"]:
             sources = ", ".join(subject["sources"])
             lines.append(f"{subject['label']} is {subject['description']} from {sources}.")
+            if subject.get("voice_source"):
+                lines.append(f"- {subject['voice_source']} supplies the default voice timbre and delivery for {subject['label']}; it supplies no dialogue words.")
     return "\n".join(lines)
 
 

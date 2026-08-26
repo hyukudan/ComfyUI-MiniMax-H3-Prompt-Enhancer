@@ -4041,6 +4041,68 @@ function applyRuntimeWidgetState(node) {
     enforceConditionalVisibility(node);
 }
 
+function updateVisualReferencePanelLayout(node) {
+    const panel = node.__minimaxVisualReferencePanel;
+    if (!panel) return;
+    const width = Math.max(340, (Number(node.size?.[0]) || 380) - 20);
+    panel.root.style.width = `${width}px`;
+    panel.root.style.maxWidth = `${width}px`;
+    const height = Math.max(78, Number(panel.root.scrollHeight) || 78);
+    panel.root.style.minHeight = `${height}px`;
+    panel.widget.__minimaxPreferredWidth = width;
+    panel.widget.__minimaxPreferredHeight = height;
+    panel.widget.computeSize = () => [width, height];
+}
+
+function scheduleVisualReferencePanelLayout(node) {
+    if (!node?.__minimaxVisualReferencePanel || node.__minimaxVisualReferenceLayoutPending) return;
+    node.__minimaxVisualReferenceLayoutPending = true;
+    requestAnimationFrame(() => {
+        node.__minimaxVisualReferenceLayoutPending = false;
+        updateVisualReferencePanelLayout(node);
+    });
+}
+
+function releaseVisualReferencePanel(node) {
+    closeStudioDrawer(node.id);
+    node.__minimaxVisualReferenceResizeObserver?.disconnect?.();
+    node.__minimaxVisualReferenceResizeObserver = null;
+    const panel = node.__minimaxVisualReferencePanel;
+    if (panel) {
+        if (panel.root?.isConnected) panel.root.remove();
+        const index = node.widgets?.indexOf(panel.widget) ?? -1;
+        if (index >= 0) node.widgets.splice(index, 1);
+    }
+    node.__minimaxVisualReferencePanel = null;
+    node.__minimaxVisualReferenceLayoutPending = false;
+    node.__minimaxStudioController = null;
+    node.__minimaxStudioDashboard = null;
+}
+
+function installVisualReferencePanelLifecycle(node) {
+    if (node.__minimaxVisualReferenceLifecycleInstalled) return;
+    node.__minimaxVisualReferenceLifecycleInstalled = true;
+    const originalResize = node.onResize;
+    node.onResize = function () {
+        const result = originalResize?.apply(this, arguments);
+        scheduleVisualReferencePanelLayout(this);
+        return result;
+    };
+    const originalCollapse = node.collapse;
+    node.collapse = function () {
+        const result = originalCollapse?.apply(this, arguments);
+        this.__minimaxVisualReferencePanel?.root?.classList.toggle("minimax-h3-panel-suspended", Boolean(this.flags?.collapsed));
+        if (this.flags?.collapsed) closeStudioDrawer(this.id);
+        return result;
+    };
+    const originalRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        const result = originalRemoved?.apply(this, arguments);
+        releaseVisualReferencePanel(this);
+        return result;
+    };
+}
+
 function configureVisualReferenceDirectorNode(node) {
     if (node.__minimaxVisualReferencePanel) {
         const generationWidget = node.widgets?.find((widget) => widget.name === "generation_id");
@@ -4094,8 +4156,14 @@ function configureVisualReferenceDirectorNode(node) {
     );
     markPanelWidgetNonPersistent(panelWidget);
     node.__minimaxVisualReferencePanel = { root, widget: panelWidget, refresh };
+    installVisualReferencePanelLifecycle(node);
+    if (typeof ResizeObserver === "function") {
+        node.__minimaxVisualReferenceResizeObserver = new ResizeObserver(() => scheduleVisualReferencePanelLayout(node));
+        node.__minimaxVisualReferenceResizeObserver.observe(root);
+    }
     refresh();
     if (Array.isArray(node.size)) node.setSize?.([Math.max(360, node.size[0]), Math.max(220, node.size[1])]);
+    scheduleVisualReferencePanelLayout(node);
 }
 
 api.addEventListener("executed", (event) => {

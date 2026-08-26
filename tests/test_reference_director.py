@@ -132,6 +132,39 @@ def test_frame_roles_compile_boundary_semantics_before_identity_fallback():
     assert "supplies only the stable visual identity" not in context
 
 
+def test_frame_boundary_keeps_an_explicit_secondary_identity_relationship():
+    project = {
+        "mediaProject": {"subjects": [{"id": "subject.1", "name": "Ana", "identityAssetIds": ["frame"]}], "environments": []},
+        "shotPlan": {"shots": [{
+            "id": "s1", "generationId": "g1",
+            "referenceUses": [{"assetId": "frame", "role": "identity_reinforcement", "targetIds": ["subject.1"]}],
+        }]},
+        "inputsByGeneration": {"g1": [{
+            "label": "<Picture 1>", "assetId": "frame", "mediaType": "picture", "role": "first_frame",
+        }]},
+    }
+    context = reference_context_for_project(project, "g1")
+    assert "fixes the exact opening frame" in context
+    assert "supplies only the stable visual identity of Ana in shot s1" in context
+
+
+def test_project_default_voice_compiles_without_a_shot_use():
+    project = {
+        "mediaProject": {
+            "assets": [{"id": "voice", "type": "audio", "name": "Ana voice"}],
+            "subjects": [{"id": "subject.1", "name": "Ana", "identityAssetIds": [], "defaultVoiceAssetId": "voice"}],
+            "environments": [],
+        },
+        "shotPlan": {"shots": []},
+        "inputsByGeneration": {"g1": [{
+            "label": "<Audio 1>", "assetId": "voice", "mediaType": "audio", "role": "reference",
+        }]},
+    }
+    context = reference_context_for_project(project, "g1")
+    assert "voice timbre and delivery only for Ana as the project default" in context
+    assert "supplies no dialogue words" in context
+
+
 def test_frame_mode_infers_the_same_effective_role_as_the_visual_editor():
     director = empty_reference_director()
     director["sources"]["frame"] = source(filename="frame.webp")

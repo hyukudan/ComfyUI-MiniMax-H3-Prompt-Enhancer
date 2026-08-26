@@ -260,10 +260,11 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
             if asset_description:
                 facts.append(f"user description: {json.dumps(asset_description, ensure_ascii=False)}")
             lines.append(f"- {label} metadata — {'; '.join(facts)}.")
-        if role in {"first_frame", "last_frame"}:
+        boundary_role = role in {"first_frame", "last_frame"}
+        if boundary_role:
             boundary = "opening" if role == "first_frame" else "closing"
             lines.append(f"- {label} fixes the exact {boundary} frame: preserve its visible composition, subject appearance and pose, environment, lighting and camera at that boundary. Apply only explicitly authored changes away from the fixed frame.")
-        elif role in {"soundtrack", "video_soundtrack"}:
+        if role in {"soundtrack", "video_soundtrack"}:
             lines.append(f"- {label} supplies the assigned music or soundtrack. It does not supply dialogue words or visual content.")
         else:
             emitted_roles: set[tuple[Any, ...]] = set()
@@ -302,8 +303,9 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                     lines.append(f"- {label} supplies lighting guidance only {scope}; do not copy identity, objects, background geometry or camera composition from it.")
                 else:
                     lines.append(f"- {label} is a {semantic_role.replace('_', ' ')} reference {scope}. Use it only for that explicit role and assigned targets.")
-            if not emitted_roles:
+            if not emitted_roles and not boundary_role:
                 implicit_subjects = [value for value in subjects.values() if asset_id in value.get("identityAssetIds", [])]
+                implicit_voices = [value for value in subjects.values() if asset_id == value.get("defaultVoiceAssetId")]
                 implicit_environments = [
                     value for value in environments.values()
                     if any(view.get("assetId") == asset_id for view in value.get("views", []))
@@ -311,10 +313,13 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                 if implicit_subjects and item.get("mediaType") == "picture":
                     names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_subjects)
                     lines.append(f"- {label} supplies only the stable visual identity of {names}. Preserve identity; do not copy its background, pose, lighting, camera or incidental text.")
+                elif implicit_voices and item.get("mediaType") == "audio":
+                    names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_voices)
+                    lines.append(f"- {label} supplies voice timbre and delivery only for {names} as the project default. It supplies no dialogue words; authored dialogue remains exact.")
                 elif implicit_environments:
                     names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_environments)
                     lines.append(f"- {label} supplies the background/set for {names}. People and movable objects visible in it are not target subjects unless assigned separately.")
-                else:
+                elif not boundary_role:
                     lines.append(f"- {label} is a {str(role).replace('_', ' ')} reference. Use it only for that explicit role and assigned scope.")
     if len(lines) == 2:
         lines.append("- No physical reference is active for this generation.")

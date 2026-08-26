@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, mediaPurpose,
     MEDIA_BINDING_PURPOSES, MEDIA_RECIPES,
 } from "./media_workflows.js";
-import { directorTargetAccepts, referenceDirectorModel } from "./reference_director.js";
+import { directorTargetAccepts, referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
 import {
     emptyReferenceDirector, mediaTypeForFile, referenceSourceForAsset, setReferenceSource, sourcePreviewUrl,
 } from "./reference_sources.js";
@@ -179,6 +179,10 @@ function renderReferenceDirector(container, project, controller) {
     const referenceDirector = sourceDocument.kind === "v1" ? sourceDocument.value : null;
     const generation = selectedGeneration(project, controller);
     const model = referenceDirectorModel(project, shotPlan, generation.id);
+    const selectedShot = model.shots.find((shot) => shot.id === controller.shotUiState?.selectedId) ?? model.shots[0] ?? null;
+    const resolvedInputs = resolvedReferenceInputs(project, generation, referenceDirector ?? {});
+    const meaningfulAssets = new Set(model.assets.filter((asset) => asset.connections.length).map((asset) => asset.id));
+    const readyAssets = new Set(resolvedInputs.filter((item) => item.sourceReady && item.active && meaningfulAssets.has(item.assetId)).map((item) => item.assetId));
     const director = document.createElement("section");
     director.className = "minimax-h3-reference-director";
     director.setAttribute("aria-label", "Visual reference director");
@@ -191,7 +195,7 @@ function renderReferenceDirector(container, project, controller) {
     copy.append(title, subtitle);
     const status = document.createElement("span");
     status.className = "minimax-h3-reference-director-status";
-    status.textContent = `${model.assigned}/${model.assets.length} wired · Generation ${generation.order ?? generation.id}`;
+    status.textContent = `${readyAssets.size}/${model.assets.length} ready · ${resolvedInputs.length} H3 input${resolvedInputs.length === 1 ? "" : "s"} · Generation ${generation.order ?? generation.id}`;
     header.append(copy, status);
 
     const board = document.createElement("div");
@@ -301,7 +305,7 @@ function renderReferenceDirector(container, project, controller) {
         const result = connectExistingReference({
             project, shotPlan, assetId, purposeId: target.purposeId,
             generationId: generation.id,
-            shotId: model.shots.find((shot) => shot.id === controller.shotUiState?.selectedId)?.id ?? model.shots[0]?.id ?? "",
+            shotId: selectedShot?.id ?? "",
             relationId: targetId,
         });
         if (!result.ok) {
@@ -351,24 +355,30 @@ function renderReferenceDirector(container, project, controller) {
     relationships.append(
         targetGroup("Subjects", model.subjects, "subject"),
         targetGroup("Environments", model.environments, "environment"),
-        targetGroup("Selected shot", model.shots.slice(0, 1), "shot"),
+        targetGroup("Selected shot", selectedShot ? [selectedShot] : [], "shot"),
         feedback,
     );
 
     const output = document.createElement("section");
     output.className = "minimax-h3-reference-output-rail";
     const outputHeading = document.createElement("h4"); outputHeading.textContent = "3 · H3 wiring";
-    const outputHint = document.createElement("p"); outputHint.textContent = "Labels are derived from generation bindings and stay stable when cards move.";
+    const outputHint = document.createElement("p"); outputHint.textContent = "This resolved map uses the same binding order as prompt context and media outputs, including video soundtracks.";
     output.append(outputHeading, outputHint);
     const outputList = document.createElement("div"); outputList.className = "minimax-h3-reference-output-list";
-    for (const asset of model.assets.filter((item) => item.binding)) {
+    for (const input of resolvedInputs) {
+        const asset = model.assets.find((item) => item.id === input.assetId);
         const row = document.createElement("div"); row.className = "minimax-h3-reference-output-row";
-        const label = document.createElement("strong"); label.textContent = asset.physicalLabel;
-        const name = document.createElement("span"); name.textContent = asset.name;
-        const role = document.createElement("small"); role.textContent = asset.connections.join(" · ") || asset.bindingRole.replaceAll("_", " ");
+        row.dataset.ready = String(input.sourceReady && input.active && Boolean(asset?.connections.length));
+        const label = document.createElement("strong"); label.textContent = input.label;
+        const name = document.createElement("span"); name.textContent = input.name;
+        const state = [input.sourceReady ? "file" : "missing file", input.active ? "active" : "inactive"];
+        const semantic = input.role === "video_soundtrack"
+            ? `Paired soundtrack from ${input.derivedFrom}`
+            : asset?.connections.join(" · ") || input.role.replaceAll("_", " ");
+        const role = document.createElement("small"); role.textContent = `${semantic} · ${state.join(" · ")}`;
         row.append(label, name, role); outputList.appendChild(row);
     }
-    if (!model.assigned) {
+    if (!resolvedInputs.length) {
         const empty = document.createElement("p"); empty.className = "minimax-h3-reference-target-empty";
         empty.textContent = "Connect a card to see the exact H3 input map."; outputList.appendChild(empty);
     }

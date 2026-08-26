@@ -15,7 +15,7 @@ export function ensureStudioStyles() {
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
             gap: var(--h3-space-3);
-            min-height: 58px;
+            min-height: 78px;
             padding: var(--h3-space-3);
             border: 1px solid var(--h3-border);
             border-radius: var(--h3-radius-lg);
@@ -25,8 +25,13 @@ export function ensureStudioStyles() {
             box-sizing: border-box;
         }
         .minimax-h3-reference-node-copy { display: grid; min-width: 0; gap: 3px; }
-        .minimax-h3-reference-node-copy strong { font-size: 13px; }
-        .minimax-h3-reference-node-copy span { overflow: hidden; color: var(--h3-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-reference-node-copy strong { overflow-wrap: anywhere; font-size: 13px; }
+        .minimax-h3-reference-node-copy span { display: -webkit-box; overflow: hidden; color: var(--h3-text-muted); overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+        .minimax-h3-reference-node-panel > button { min-width: 96px; min-height: 34px; white-space: normal; }
+        @media (max-width: 520px) {
+            .minimax-h3-reference-node-panel { grid-template-columns: 1fr; }
+            .minimax-h3-reference-node-panel > button { width: 100%; }
+        }
 
         .minimax-h3-dashboard {
             display: grid;

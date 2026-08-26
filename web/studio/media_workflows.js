@@ -24,6 +24,10 @@ function purposeDefinition(id) {
     return MEDIA_BINDING_PURPOSES.find((item) => item.id === id) ?? null;
 }
 
+function purposeRequiresShot(purpose) {
+    return !["subject_identity", "voice", "environment_view"].includes(purpose?.id);
+}
+
 export function mediaPurpose(id) {
     return purposeDefinition(id);
 }
@@ -42,8 +46,8 @@ export function bindingPlanDiagnostics({ project, shotPlan, purposeId, generatio
     const shot = shotPlan?.shots?.find((item) => item.id === shotId);
     if (!purpose) issues.push("Choose a reference purpose.");
     if (!generation) issues.push("Choose an existing generation.");
-    if (!shot) issues.push("Choose an existing shot.");
-    else if (generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
+    if (purposeRequiresShot(purpose) && !shot) issues.push("Choose an existing shot.");
+    else if (shot && generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
     if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === relationId)) issues.push("Choose the subject this reference controls.");
     if (purpose?.relation === "environment" && !project?.environments?.some((item) => item.id === relationId)) issues.push("Choose the environment this view belongs to.");
     if (purpose && generation && nextAvailableSlot(project, generation, purpose.type) === null) issues.push(`No ${purpose.type} slot is available in this generation.`);
@@ -71,19 +75,25 @@ export function createPurposeBinding(input = {}) {
         if (role !== "reference") binding.role = role;
     }
     generation.bindings.push(binding);
-    if (purpose.relation === "subject") {
+    if (purpose.id === "subject_identity") {
         const subject = project.subjects.find((item) => item.id === input.relationId);
         if (!(subject.identityAssetIds ??= []).includes(assetId)) subject.identityAssetIds.push(assetId);
+    } else if (purpose.id === "voice") {
+        const subject = project.subjects.find((item) => item.id === input.relationId);
+        subject.defaultVoiceAssetId = assetId;
     } else if (purpose.relation === "environment") {
         const environment = project.environments.find((item) => item.id === input.relationId);
         const viewId = nextId(environment.views ??= [], "view.");
         environment.views.push({ id: viewId, name: asset.name, role: "overview", assetId });
     }
-    const use = { assetId, role: purpose.role };
-    if (input.relationId) use.targetIds = [input.relationId];
-    if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
-    (shot.referenceUses ??= []).push(use);
-    return { ok: true, project, shotPlan, assetId, summary: `${purpose.label} · ${shot.id} · Generation ${generation.order ?? generation.id}` };
+    if (shot) {
+        const use = { assetId, role: purpose.role };
+        if (input.relationId) use.targetIds = [input.relationId];
+        if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
+        (shot.referenceUses ??= []).push(use);
+    }
+    const scope = purposeRequiresShot(purpose) ? shot.id : "Project default";
+    return { ok: true, project, shotPlan, assetId, summary: `${purpose.label} · ${scope} · Generation ${generation.order ?? generation.id}` };
 }
 
 function sameUse(left, right) {
@@ -109,8 +119,8 @@ export function connectExistingReference(input = {}) {
     if (!asset) issues.push("Choose an existing reference.");
     if (purpose && asset && asset.type !== purpose.type) issues.push(`${purpose.label} requires ${purpose.type} media.`);
     if (!generation) issues.push("Choose an existing generation.");
-    if (!shot) issues.push("Choose an existing shot.");
-    else if (generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
+    if (purposeRequiresShot(purpose) && !shot) issues.push("Choose an existing shot.");
+    else if (shot && generation && shot.generationId !== generation.id) issues.push("The selected shot belongs to a different generation.");
     if (purpose?.relation === "subject" && !project?.subjects?.some((item) => item.id === input.relationId)) issues.push("Choose the subject this reference controls.");
     if (purpose?.relation === "environment" && !project?.environments?.some((item) => item.id === input.relationId)) issues.push("Choose the environment this reference controls.");
     if (issues.length) return { ok: false, issues };
@@ -131,6 +141,9 @@ export function connectExistingReference(input = {}) {
     if (purpose.id === "subject_identity") {
         const subject = project.subjects.find((item) => item.id === input.relationId);
         if (!(subject.identityAssetIds ??= []).includes(asset.id)) subject.identityAssetIds.push(asset.id);
+    } else if (purpose.id === "voice") {
+        const subject = project.subjects.find((item) => item.id === input.relationId);
+        subject.defaultVoiceAssetId = asset.id;
     } else if (purpose.id === "environment_view") {
         const environment = project.environments.find((item) => item.id === input.relationId);
         if (!(environment.views ??= []).some((item) => item.assetId === asset.id)) {
@@ -139,10 +152,12 @@ export function connectExistingReference(input = {}) {
     }
     if (purpose.id === "camera") asset.cameraTransfer = { enabled: true, role: "camera_reference", aspects: ["motion"] };
 
-    const use = { assetId: asset.id, role: purpose.role };
-    if (input.relationId) use.targetIds = [input.relationId];
-    if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
-    if (!(shot.referenceUses ??= []).some((item) => sameUse(item, use))) shot.referenceUses.push(use);
+    if (shot) {
+        const use = { assetId: asset.id, role: purpose.role };
+        if (input.relationId) use.targetIds = [input.relationId];
+        if (purpose.role === "camera_transfer") use.cameraAspects = ["motion"];
+        if (!(shot.referenceUses ??= []).some((item) => sameUse(item, use))) shot.referenceUses.push(use);
+    }
     return {
         ok: true,
         project,

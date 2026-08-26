@@ -110,6 +110,22 @@ def test_manifest_v2_required_dependencies_need_bindings_and_cannot_be_excluded(
     assert any(item["code"] == "reference.activation.required_excluded" for item in compiled["diagnostics"])
 
 
+def test_subject_default_voice_is_optional_typed_and_activated_with_subject():
+    project = _project()
+    project["assets"].append({"id": "ana.voice", "type": "audio", "name": "Ana voice"})
+    project["subjects"][0]["defaultVoiceAssetId"] = "ana.voice"
+    project["generations"][0]["bindings"].append({"assetId": "ana.voice", "slotIndex": 1})
+    compiled = parse_media_project(project)
+    assert compiled["valid"], compiled["errors"]
+    assert compiled["generations"]["g1"]["inputMap"]["ana.voice"] == "<Audio 1>"
+    assert "default voice timbre" in manifest_context_for_generation(compiled, "g1")
+
+    project["assets"][-1]["type"] = "picture"
+    invalid = parse_media_project(project)
+    assert not invalid["valid"]
+    assert any(item["field"].endswith("defaultVoiceAssetId") for item in invalid["diagnostics"])
+
+
 def test_manifest_v2_allows_physical_slot_reuse_between_generations():
     project = {
         "schemaVersion": 2, "mode": "chained_multishot",

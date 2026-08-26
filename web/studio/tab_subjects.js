@@ -194,6 +194,17 @@ export function renderSubjectsTab(container, controller) {
     identity.body.appendChild(field("Identity pictures", checkboxPicker(pictures, subject.identityAssetIds, (ids) => {
         subject.identityAssetIds = ids; commit();
     }, "Identity picture assets"), "Only picture assets can reinforce identity."));
+    const voiceAssets = (project.assets ?? []).filter((asset) => asset.type === "audio");
+    const voice = selectInput(subject.defaultVoiceAssetId ?? "", [
+        ["", "No default voice"],
+        ...voiceAssets.map((asset) => [asset.id, asset.name || asset.id]),
+    ]);
+    bindCommit(voice, (value) => setOptional(subject, "defaultVoiceAssetId", value), commit);
+    identity.body.appendChild(field(
+        "Default voice",
+        voice,
+        "Inherited whenever this subject is active. A shot-level voice reference can override it for one scene.",
+    ));
     inspector.appendChild(identity.details);
 
     const promptUse = inspectorSection("Use in prompts", "generation casting", true);

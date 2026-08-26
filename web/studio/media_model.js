@@ -59,6 +59,7 @@ export function generationMediaModel(project, generation, shotPlan = null) {
             const subject = subjects.get(resource.id);
             if (!subject) continue;
             for (const assetId of subject.identityAssetIds ?? []) enqueue("asset", assetId, `identity of ${subject.name}`);
+            if (subject.defaultVoiceAssetId) enqueue("asset", subject.defaultVoiceAssetId, `default voice of ${subject.name}`);
             const selection = subjectStates.get(subject.id);
             const stateId = selection?.resolvedStateId ?? selection?.stateId ?? subject.baseAppearanceStateId;
             const states = new Map((subject.appearanceStates ?? []).map((state) => [state.id, state]));
@@ -143,6 +144,7 @@ export function assetUsage(project, assetId) {
     const usage = [];
     for (const subject of project?.subjects ?? []) {
         if ((subject.identityAssetIds ?? []).includes(assetId)) usage.push(`identity of ${subject.name}`);
+        if (subject.defaultVoiceAssetId === assetId) usage.push(`default voice of ${subject.name}`);
         for (const state of subject.appearanceStates ?? []) {
             if (state.source?.mode === "asset" && state.source.assetId === assetId) usage.push(`appearance “${state.name}” of ${subject.name}`);
         }

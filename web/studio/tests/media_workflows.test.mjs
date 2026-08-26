@@ -72,6 +72,23 @@ test("visual Director presents semantic names while deriving physical H3 labels"
     assert.equal(model.shots[0].action, "Ari turns.");
 });
 
+test("project defaults connect identity, voice and environment without requiring a shot", () => {
+    const source = fixtures();
+    source.shotPlan.shots = [];
+    source.project.assets = [
+        { id: "portrait", type: "picture", name: "Ari portrait" },
+        { id: "voice", type: "audio", name: "Ari voice" },
+        { id: "room", type: "picture", name: "Room" },
+    ];
+    let result = connectExistingReference({ ...source, assetId: "portrait", purposeId: "subject_identity", generationId: "g1", relationId: "subject.1" });
+    assert.equal(result.ok, true);
+    result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "voice", purposeId: "voice", generationId: "g1", relationId: "subject.1" });
+    assert.equal(result.project.subjects[0].defaultVoiceAssetId, "voice");
+    result = connectExistingReference({ project: result.project, shotPlan: result.shotPlan, assetId: "room", purposeId: "environment_view", generationId: "g1", relationId: "environment.1" });
+    assert.equal(result.project.environments[0].views[0].assetId, "room");
+    assert.equal(result.shotPlan.shots.length, 0);
+});
+
 test("purpose assistant records an authoritative frame role in frame modes", () => {
     const source = fixtures();
     source.project.mode = "i2va";
