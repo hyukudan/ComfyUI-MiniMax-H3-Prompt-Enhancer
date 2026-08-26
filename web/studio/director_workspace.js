@@ -176,6 +176,56 @@ export function composeVisualAssignments(project, shot) {
     };
 }
 
+export function composeLlmHandoff(project, shotPlan, shot) {
+    const generationId = shot?.generationId ?? project?.generations?.[0]?.id ?? "g1";
+    const model = referenceDirectorModel(project, shotPlan, generationId);
+    const byAsset = new Map(model.assets.map((asset) => [asset.id, asset]));
+    const visual = composeVisualAssignments(project, shot);
+    const link = (asset, role) => asset ? {
+        assetId: asset.id,
+        name: asset.name || asset.id,
+        role,
+        physicalLabel: byAsset.get(asset.id)?.physicalLabel ?? "Unassigned",
+    } : null;
+    const subjects = visual.subjects.map((entry) => ({
+        id: entry.subject.id,
+        name: entry.subject.name || entry.subject.id,
+        alias: `<Subject ${entry.subject.h3Index ?? "?"}>`,
+        links: [
+            ...entry.identityAssets.map((asset) => link(asset, "Image")),
+            link(entry.voiceAsset, "Voice"),
+            ...entry.performanceAssets.map((asset) => link(asset, "Performance")),
+        ].filter(Boolean),
+    }));
+    const environment = visual.environment ? {
+        id: visual.environment.id,
+        name: visual.environment.name || visual.environment.id,
+        links: visual.backgroundAssets.map((asset) => link(asset, "Background")).filter(Boolean),
+    } : null;
+    const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+    const referenceUses = (shot?.referenceUses ?? []).map((use) => {
+        const asset = byAsset.get(use.assetId);
+        const target = subjectById.get(use.targetIds?.[0]) ?? (use.targetIds?.[0] === environment?.id ? environment : null);
+        return {
+            ...link(asset ?? { id: use.assetId, name: use.assetId }, readableToken(use.role, "Reference")),
+            target: target?.alias || target?.name || "This cut",
+        };
+    });
+    const camera = composeCameraSummary(shot);
+    const lines = [`Scene ${shot?.id ?? "?"}`, `Action: ${shot?.action || "Unspecified"}`];
+    if (subjects.length) {
+        lines.push("Cast:");
+        for (const subject of subjects) lines.push(`- ${subject.alias} ${subject.name}${subject.links.length ? ` | ${subject.links.map((item) => `${item.role} ${item.physicalLabel}`).join(" | ")}` : ""}`);
+    }
+    if (environment) lines.push(`Set: ${environment.name}${environment.links.length ? ` | ${environment.links.map((item) => item.physicalLabel).join(", ")}` : ""}`);
+    if (referenceUses.length) {
+        lines.push("Cut references:");
+        for (const item of referenceUses) lines.push(`- ${item.role} ${item.physicalLabel} → ${item.target}`);
+    }
+    lines.push(`Camera: ${camera.start} → ${camera.movement} → ${camera.end}`);
+    return { generationId, subjects, environment, referenceUses, camera, text: lines.join("\n") };
+}
+
 function composeMediaVisual(asset, source) {
     const visual = el("span", "minimax-h3-director-asset-visual");
     visual.dataset.type = asset.type;
@@ -203,6 +253,55 @@ function composeSubjectAvatar(name, identityAsset, source) {
         const image = el("img"); image.src = url; image.alt = `${name} identity reference`; image.loading = "lazy"; avatar.appendChild(image);
     } else avatar.textContent = name.slice(0, 1).toUpperCase();
     return avatar;
+}
+
+function composeLlmLinkChip(item, sources) {
+    const chip = el("span", "minimax-h3-director-llm-link", `${item.role} · ${item.physicalLabel}`);
+    const state = item.physicalLabel === "Unassigned" ? "unassigned" : sources[item.assetId] ? "ready" : "missing";
+    chip.dataset.state = state;
+    chip.title = `${item.name} · ${state === "ready" ? "physical file ready" : state === "missing" ? "physical file missing" : "H3 slot unassigned"}`;
+    return chip;
+}
+
+function composeLlmHandoffPanel(handoff, sources) {
+    const section = el("section", "minimax-h3-director-llm-handoff");
+    const heading = el("div", "minimax-h3-director-inspector-heading");
+    const copy = button("Copy brief", async () => {
+        const status = section.querySelector("[role=status]");
+        try {
+            if (!globalThis.navigator?.clipboard?.writeText) throw new Error("Clipboard unavailable");
+            await globalThis.navigator.clipboard.writeText(handoff.text);
+            status.textContent = "Copied";
+        } catch (error) { status.textContent = error?.message || "Clipboard unavailable"; }
+    }, "minimax-h3-director-text-button");
+    heading.append(el("strong", "", "LLM handoff"), copy); section.appendChild(heading);
+    section.appendChild(el("p", "minimax-h3-director-llm-note", "Derived from this scene · aliases and H3 outputs are not editable here."));
+    for (const subject of handoff.subjects) {
+        const row = el("div", "minimax-h3-director-llm-row");
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", subject.alias), el("span", "", subject.name));
+        const links = el("span", "minimax-h3-director-llm-links");
+        for (const item of subject.links) links.appendChild(composeLlmLinkChip(item, sources));
+        if (!subject.links.length) links.appendChild(el("small", "", "No media assigned"));
+        row.append(identity, links); section.appendChild(row);
+    }
+    if (handoff.environment) {
+        const row = el("div", "minimax-h3-director-llm-row");
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "SET"), el("span", "", handoff.environment.name));
+        const links = el("span", "minimax-h3-director-llm-links");
+        for (const item of handoff.environment.links) links.appendChild(composeLlmLinkChip(item, sources));
+        if (!handoff.environment.links.length) links.appendChild(el("small", "", "No background media"));
+        row.append(identity, links); section.appendChild(row);
+    }
+    const shotOnly = handoff.referenceUses.filter((item) => !["Identity reinforcement", "Voice", "Environment view"].includes(item.role));
+    if (shotOnly.length) {
+        const row = el("div", "minimax-h3-director-llm-row");
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "CUT"), el("span", "", handoff.generationId));
+        const links = el("span", "minimax-h3-director-llm-links");
+        for (const item of shotOnly) links.appendChild(composeLlmLinkChip(item, sources));
+        row.append(identity, links); section.appendChild(row);
+    }
+    const status = el("small", "minimax-h3-director-llm-copy-status"); status.setAttribute("role", "status"); section.appendChild(status);
+    return section;
 }
 
 function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect, importFile, disconnect, connected = false) {
@@ -301,6 +400,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     renderComposeAssetTray(container, controller, project, plan, selected, rerender);
     const sources = controller.referenceDirectorDocument?.()?.value?.sources ?? {};
     const visualAssignments = composeVisualAssignments(project, selected);
+    const llmHandoff = composeLlmHandoff(project, plan, selected);
     const subjectAssignments = new Map(visualAssignments.subjects.map((entry) => [entry.subject.id, entry]));
     const selectedAsset = (project?.assets ?? []).find((asset) => asset.id === controller.projectUiState.selectedAssetId) ?? null;
     const feedback = el("p", "minimax-h3-director-compose-feedback"); feedback.setAttribute("role", "status");
@@ -520,7 +620,13 @@ function renderBoard(container, controller, plan, project, rerender) {
     for (const [term, value] of [["Generation", selected.generationId || "g1"], ["Cast", names.length || "—"], ["References", selected.referenceUses?.length || "—"], ["Duration", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto"]]) {
         summary.append(el("dt", "", term), el("dd", "", String(value)));
     }
-    inspector.append(summary, button("Edit scene details", () => { directorState(controller).composeMode = "details"; rerender(); }), button("Stage subjects", () => { directorState(controller).composeMode = "staging"; rerender(); }), button("Direct camera", () => { directorState(controller).composeMode = "camera"; rerender(); }));
+    inspector.append(
+        summary,
+        composeLlmHandoffPanel(llmHandoff, sources),
+        button("Edit scene details", () => { directorState(controller).composeMode = "details"; rerender(); }),
+        button("Stage subjects", () => { directorState(controller).composeMode = "staging"; rerender(); }),
+        button("Direct camera", () => { directorState(controller).composeMode = "camera"; rerender(); }),
+    );
     layout.appendChild(inspector);
     container.appendChild(layout);
     feedback.textContent = controller.directorUiState.composeFeedback || "";

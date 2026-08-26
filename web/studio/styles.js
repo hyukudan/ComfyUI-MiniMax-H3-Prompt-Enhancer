@@ -1872,6 +1872,18 @@ export function ensureStudioStyles() {
         .minimax-h3-director-scene-summary { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 0; padding: 10px 0; border-block: 1px solid var(--h3-border); }
         .minimax-h3-director-scene-summary dt { color: var(--h3-text-muted); }
         .minimax-h3-director-scene-summary dd { margin: 0; font-weight: 650; }
+        .minimax-h3-director-llm-handoff { display: grid; gap: 7px; padding: 10px; border: 1px solid color-mix(in srgb, var(--h3-accent) 36%, var(--h3-border)); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-accent) 5%, var(--h3-surface)); }
+        .minimax-h3-director-llm-note { margin: 0; color: var(--h3-text-muted); font-size: 10px; }
+        .minimax-h3-director-llm-row { display: grid; gap: 5px; padding-top: 7px; border-top: 1px solid var(--h3-border); }
+        .minimax-h3-director-llm-identity { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+        .minimax-h3-director-llm-identity b { flex: 0 0 auto; color: var(--h3-accent); font-family: var(--h3-font-mono); font-size: 10px; }
+        .minimax-h3-director-llm-identity span { overflow: hidden; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-director-llm-links { display: flex; flex-wrap: wrap; gap: 4px; }
+        .minimax-h3-director-llm-links > small { color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-director-llm-link { border: 1px solid var(--h3-border); border-radius: 999px; padding: 2px 6px; background: var(--h3-surface-raised); color: var(--h3-text-muted); font-family: var(--h3-font-mono); font-size: 8px; }
+        .minimax-h3-director-llm-link[data-state="ready"] { border-color: color-mix(in srgb, var(--h3-success) 62%, var(--h3-border)); color: var(--h3-success); }
+        .minimax-h3-director-llm-link[data-state="missing"], .minimax-h3-director-llm-link[data-state="unassigned"] { border-color: color-mix(in srgb, var(--h3-warning) 55%, var(--h3-border)); color: var(--h3-warning); }
+        .minimax-h3-director-llm-copy-status { min-height: 12px; color: var(--h3-success); font-size: 9px; }
         .minimax-h3-director-empty { min-height: 330px; place-content: center; }
         .minimax-h3-director-embedded-editor, .minimax-h3-director-library-host { min-width: 0; }
         .minimax-h3-director-wiring-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--h3-space-3); margin-bottom: var(--h3-space-4); }

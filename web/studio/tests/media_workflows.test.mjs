@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeCameraSummary, composeConnectionInput, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -147,6 +147,34 @@ test("Compose turns each cut's native camera fields into three visual phases", (
     });
     assert.equal(composeCameraSummary({}).configured, false);
     assert.equal(composeCameraSummary({}).movement, "Inherited movement");
+});
+
+test("Compose LLM handoff derives subject and physical aliases from the same generation bindings", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "portrait", type: "picture", name: "Ari portrait" },
+        { id: "voice", type: "audio", name: "Ari voice" },
+        { id: "room", type: "picture", name: "Room wide" },
+        { id: "music", type: "audio", name: "Score" },
+    ];
+    source.project.subjects[0].identityAssetIds = ["portrait"];
+    source.project.subjects[0].defaultVoiceAssetId = "voice";
+    source.project.environments[0].views = [{ id: "view.1", name: "Wide", assetId: "room" }];
+    source.project.generations[0].bindings = [
+        { assetId: "portrait", slotIndex: 1 }, { assetId: "room", slotIndex: 2 },
+        { assetId: "voice", slotIndex: 1 }, { assetId: "music", slotIndex: 2 },
+    ];
+    const shot = source.shotPlan.shots[0];
+    shot.subjects = [{ subjectId: "subject.1", presence: "present" }];
+    shot.environment = { environmentId: "environment.1", viewIds: ["view.1"] };
+    shot.referenceUses = [{ assetId: "music", role: "soundtrack" }];
+    const result = composeLlmHandoff(source.project, source.shotPlan, shot);
+    assert.equal(result.subjects[0].alias, "<Subject 1>");
+    assert.deepEqual(result.subjects[0].links.map((item) => [item.role, item.physicalLabel]), [["Image", "<Picture 1>"], ["Voice", "<Audio 1>"]]);
+    assert.deepEqual(result.environment.links.map((item) => item.physicalLabel), ["<Picture 2>"]);
+    assert.deepEqual(result.referenceUses.map((item) => [item.role, item.physicalLabel, item.target]), [["Soundtrack", "<Audio 2>", "This cut"]]);
+    assert.match(result.text, /<Subject 1> Ari \| Image <Picture 1> \| Voice <Audio 1>/);
+    assert.match(result.text, /Set: Room \| <Picture 2>/);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {
