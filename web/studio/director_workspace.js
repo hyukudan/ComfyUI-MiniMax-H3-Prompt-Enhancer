@@ -47,11 +47,58 @@ function commitPlan(controller, plan) {
     return changed;
 }
 
+function applySceneEdit(controller, result, rerender) {
+    if (!result || commitPlan(controller, result.plan) === false) return false;
+    controller.shotUiState.plan = result.plan;
+    controller.shotUiState.selectedId = result.selectedId;
+    delete directorState(controller).confirmDeleteShotId;
+    rerender();
+    return true;
+}
+
 function nextShotId(shots) {
     const ids = new Set(shots.map((shot) => shot.id));
     let index = shots.length + 1;
     while (ids.has(`s${index}`)) index += 1;
     return `s${index}`;
+}
+
+export function duplicateScene(plan, shotId) {
+    const next = structuredClone(plan);
+    const index = next.shots.findIndex((shot) => shot.id === shotId);
+    if (index < 0 || next.shots.length >= 64) return null;
+    const copy = structuredClone(next.shots[index]);
+    copy.id = nextShotId(next.shots);
+    next.shots.splice(index + 1, 0, copy);
+    return { plan: next, selectedId: copy.id };
+}
+
+export function removeScene(plan, shotId) {
+    const next = structuredClone(plan);
+    const index = next.shots.findIndex((shot) => shot.id === shotId);
+    if (index < 0) return null;
+    next.shots.splice(index, 1);
+    return { plan: next, selectedId: next.shots[Math.min(index, next.shots.length - 1)]?.id ?? null };
+}
+
+export function moveScene(plan, shotId, direction) {
+    const next = structuredClone(plan);
+    const index = next.shots.findIndex((shot) => shot.id === shotId);
+    const target = index + Math.sign(direction);
+    if (index < 0 || target < 0 || target >= next.shots.length) return null;
+    [next.shots[index], next.shots[target]] = [next.shots[target], next.shots[index]];
+    return { plan: next, selectedId: shotId };
+}
+
+export function reorderScene(plan, shotId, beforeShotId) {
+    if (!shotId || shotId === beforeShotId) return null;
+    const next = structuredClone(plan);
+    const from = next.shots.findIndex((shot) => shot.id === shotId);
+    const moving = from >= 0 ? next.shots.splice(from, 1)[0] : null;
+    const target = next.shots.findIndex((shot) => shot.id === beforeShotId);
+    if (!moving || target < 0) return null;
+    next.shots.splice(target, 0, moving);
+    return { plan: next, selectedId: shotId };
 }
 
 function subjectNames(shot, project) {
@@ -565,7 +612,24 @@ function renderBoard(container, controller, plan, project, rerender) {
     layout.append(stage, lanes);
 
     const inspector = el("aside", "minimax-h3-director-inspector");
-    inspector.append(el("span", "minimax-h3-director-kicker", `SCENE ${plan.shots.indexOf(selected) + 1}`), el("h3", "", selected.id));
+    const selectedIndex = plan.shots.indexOf(selected);
+    const sceneHeading = el("div", "minimax-h3-director-scene-heading");
+    const sceneIdentity = el("div"); sceneIdentity.append(el("span", "minimax-h3-director-kicker", `SCENE ${selectedIndex + 1}`), el("h3", "", selected.id));
+    const sceneActions = el("div", "minimax-h3-director-scene-actions");
+    const moveLeft = button("←", () => applySceneEdit(controller, moveScene(plan, selected.id, -1), rerender), "minimax-h3-director-text-button");
+    moveLeft.disabled = selectedIndex <= 0; moveLeft.title = "Move scene left"; moveLeft.setAttribute("aria-label", "Move selected scene left");
+    const moveRight = button("→", () => applySceneEdit(controller, moveScene(plan, selected.id, 1), rerender), "minimax-h3-director-text-button");
+    moveRight.disabled = selectedIndex >= plan.shots.length - 1; moveRight.title = "Move scene right"; moveRight.setAttribute("aria-label", "Move selected scene right");
+    const duplicate = button("Duplicate", () => applySceneEdit(controller, duplicateScene(plan, selected.id), rerender), "minimax-h3-director-text-button");
+    duplicate.disabled = plan.shots.length >= 64;
+    sceneActions.append(moveLeft, moveRight, duplicate);
+    if (directorState(controller).confirmDeleteShotId === selected.id) {
+        sceneActions.append(
+            button("Confirm delete", () => applySceneEdit(controller, removeScene(plan, selected.id), rerender), "minimax-h3-director-text-button minimax-h3-director-delete-confirm"),
+            button("Cancel", () => { delete directorState(controller).confirmDeleteShotId; rerender(); }, "minimax-h3-director-text-button"),
+        );
+    } else sceneActions.appendChild(button("Delete", () => { directorState(controller).confirmDeleteShotId = selected.id; rerender(); }, "minimax-h3-director-text-button minimax-h3-director-delete"));
+    sceneHeading.append(sceneIdentity, sceneActions); inspector.appendChild(sceneHeading);
     const setup = el("section", "minimax-h3-director-scene-setup");
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
     const setupActions = el("div", "minimax-h3-director-setup-actions");
@@ -655,6 +719,25 @@ export function renderDirectorCompose(container, controller) {
         const cameraSummary = composeCameraSummary(shot);
         const card = button("", () => { controller.shotUiState.selectedId = shot.id; rerender(); }, "minimax-h3-director-scene-card");
         card.dataset.selected = String(shot.id === controller.shotUiState.selectedId);
+        card.draggable = true;
+        card.addEventListener("dragstart", (event) => {
+            state.draggedShotId = shot.id;
+            event.dataTransfer?.setData("text/plain", shot.id);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragover", (event) => {
+            if (!state.draggedShotId || state.draggedShotId === shot.id) return;
+            event.preventDefault(); card.dataset.drag = "before";
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        });
+        card.addEventListener("dragleave", () => delete card.dataset.drag);
+        card.addEventListener("drop", (event) => {
+            event.preventDefault(); delete card.dataset.drag;
+            const movingId = state.draggedShotId || event.dataTransfer?.getData("text/plain");
+            delete state.draggedShotId;
+            applySceneEdit(controller, reorderScene(plan, movingId, shot.id), rerender);
+        });
+        card.addEventListener("dragend", () => { delete state.draggedShotId; });
         card.append(
             el("span", "minimax-h3-director-scene-number", String(index + 1).padStart(2, "0")),
             el("strong", "", shot.action || "Untitled scene"),

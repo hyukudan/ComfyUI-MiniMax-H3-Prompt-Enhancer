@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
+import { composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeVisualAssignments, createImportedAssetDraft, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, reorderScene, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -84,6 +84,24 @@ test("Compose preserves complete presence declarations by marking removed cast a
     const shot = { subjectPresenceComplete: true, subjects: [{ subjectId: "subject.1", presence: "present" }] };
     setSceneSubjectPresence(shot, "subject.1", false);
     assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }]);
+});
+
+test("Compose duplicates, moves, drags and removes complete cuts without reusing IDs", () => {
+    const plan = { schemaVersion: 2, timingMode: "exact", shots: [
+        { id: "s1", generationId: "g1", durationSeconds: 2, action: "First", cameraPath: { motionType: "push_in" }, referenceUses: [{ assetId: "portrait", role: "continuity" }] },
+        { id: "s2", generationId: "g1", durationSeconds: 3, action: "Second" },
+    ] };
+    const duplicated = duplicateScene(plan, "s1");
+    assert.deepEqual(duplicated.plan.shots.map((shot) => shot.id), ["s1", "s3", "s2"]);
+    assert.deepEqual(duplicated.plan.shots[1].cameraPath, { motionType: "push_in" });
+    duplicated.plan.shots[1].referenceUses[0].role = "lighting";
+    assert.equal(plan.shots[0].referenceUses[0].role, "continuity", "the duplicate must own its nested camera and reference data");
+    assert.deepEqual(moveScene(plan, "s2", -1).plan.shots.map((shot) => shot.id), ["s2", "s1"]);
+    assert.deepEqual(reorderScene(duplicated.plan, "s2", "s1").plan.shots.map((shot) => shot.id), ["s2", "s1", "s3"]);
+    const removed = removeScene(plan, "s1");
+    assert.deepEqual(removed.plan.shots.map((shot) => shot.id), ["s2"]);
+    assert.equal(removed.selectedId, "s2");
+    assert.equal(plan.shots.length, 2, "scene operations stay immutable until the widget commit succeeds");
 });
 
 test("Compose creates one canonical LLM subject and places that stable ID in the scene atomically", () => {

@@ -1791,6 +1791,7 @@ export function ensureStudioStyles() {
         .minimax-h3-director-scene-strip { display: flex; gap: var(--h3-space-2); margin-bottom: var(--h3-space-4); padding: 0 0 var(--h3-space-2); overflow-x: auto; scroll-snap-type: x proximity; }
         .minimax-h3-director-scene-card { display: grid; flex: 0 0 210px; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 8px; min-height: 82px; border: 1px solid var(--h3-border) !important; border-radius: var(--h3-radius-md) !important; padding: 9px !important; background: var(--h3-surface) !important; text-align: left; scroll-snap-align: start; }
         .minimax-h3-director-scene-card[data-selected="true"] { border-color: var(--h3-accent) !important; box-shadow: inset 0 0 0 1px var(--h3-accent); background: color-mix(in srgb, var(--h3-accent) 9%, var(--h3-surface)) !important; }
+        .minimax-h3-director-scene-card[data-drag="before"] { border-left: 4px solid var(--h3-accent) !important; transform: translateX(2px); }
         .minimax-h3-director-scene-card strong, .minimax-h3-director-scene-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-scene-card small { grid-column: 2; color: var(--h3-text-muted); }
         .minimax-h3-director-scene-camera { color: color-mix(in srgb, var(--h3-accent) 72%, var(--h3-text-muted)) !important; font-size: 10px; }
@@ -1858,6 +1859,12 @@ export function ensureStudioStyles() {
         .minimax-h3-director-lane-guidance { color: var(--h3-text-muted); white-space: nowrap; }
         .minimax-h3-director-inspector { display: flex; grid-column: 2; grid-row: 1 / 3; flex-direction: column; gap: var(--h3-space-3); padding: 14px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface-raised); }
         .minimax-h3-director-inspector h3 { margin: -5px 0 2px; }
+        .minimax-h3-director-scene-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+        .minimax-h3-director-scene-heading > div:first-child { display: grid; gap: 3px; }
+        .minimax-h3-director-scene-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
+        .minimax-h3-director-scene-actions .minimax-h3-director-text-button { min-height: 24px; padding: 2px 6px !important; font-size: 9px !important; }
+        .minimax-h3-director-scene-actions .minimax-h3-director-delete { color: var(--h3-warning) !important; }
+        .minimax-h3-director-scene-actions .minimax-h3-director-delete-confirm { color: var(--h3-error) !important; }
         .minimax-h3-director-inspector textarea { min-height: 104px; }
         .minimax-h3-director-scene-setup { display: grid; gap: 9px; padding: 10px 0; border-block: 1px solid var(--h3-border); }
         .minimax-h3-director-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
