@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, MEDIA_RECIPES,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { composeConnectionInput } from "../director_workspace.js";
+import { composeConnectionInput, setSceneEnvironment, setSceneSubjectPresence } from "../director_workspace.js";
 
 function fixtures() {
     return {
@@ -66,6 +66,24 @@ test("Compose drop destinations inherit the selected scene generation and semant
         shotId: "s1",
         relationId: "subject.1",
     });
+});
+
+test("Compose cast and set controls write only canonical shot-plan fields", () => {
+    const shot = { id: "s1", generationId: "g1", action: "" };
+    setSceneSubjectPresence(shot, "subject.1", true);
+    assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "present" }]);
+    setSceneEnvironment(shot, "environment.1");
+    assert.deepEqual(shot.environment, { environmentId: "environment.1", viewIds: [] });
+    setSceneSubjectPresence(shot, "subject.1", false);
+    setSceneEnvironment(shot, "");
+    assert.equal(shot.subjects, undefined);
+    assert.equal(shot.environment, undefined);
+});
+
+test("Compose preserves complete presence declarations by marking removed cast absent", () => {
+    const shot = { subjectPresenceComplete: true, subjects: [{ subjectId: "subject.1", presence: "present" }] };
+    setSceneSubjectPresence(shot, "subject.1", false);
+    assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }]);
 });
 
 test("visual Director refuses incompatible media before writing either document", () => {

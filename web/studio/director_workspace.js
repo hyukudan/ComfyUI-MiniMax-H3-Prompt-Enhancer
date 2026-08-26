@@ -86,6 +86,23 @@ export function composeConnectionInput(project, shotPlan, shot, assetId, purpose
     };
 }
 
+export function setSceneSubjectPresence(shot, subjectId, present) {
+    shot.subjects ??= [];
+    const index = shot.subjects.findIndex((entry) => entry.subjectId === subjectId);
+    if (present && index >= 0) shot.subjects[index].presence = "present";
+    else if (present) shot.subjects.push({ subjectId, presence: "present" });
+    else if (shot.subjectPresenceComplete && index >= 0) shot.subjects[index].presence = "absent";
+    else if (index >= 0) shot.subjects.splice(index, 1);
+    if (!shot.subjects.length) delete shot.subjects;
+    return shot;
+}
+
+export function setSceneEnvironment(shot, environmentId) {
+    if (environmentId) shot.environment = { environmentId, viewIds: [] };
+    else delete shot.environment;
+    return shot;
+}
+
 function composeMediaVisual(asset, source) {
     const visual = el("span", "minimax-h3-director-asset-visual");
     visual.dataset.type = asset.type;
@@ -98,11 +115,12 @@ function composeMediaVisual(asset, source) {
     return visual;
 }
 
-function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect) {
+function composeDropTarget(controller, purposeId, relationId, selectedAsset, connect, connected = false) {
     const definition = COMPOSE_TARGETS[purposeId];
-    const target = button(definition.label, () => connect(purposeId, relationId), "minimax-h3-director-drop-target");
+    const target = button(`${definition.label}${connected ? " ✓" : ""}`, () => connect(purposeId, relationId), "minimax-h3-director-drop-target");
     target.dataset.purpose = purposeId;
     target.dataset.type = definition.type;
+    target.dataset.connected = String(connected);
     target.disabled = Boolean(selectedAsset && selectedAsset.type !== definition.type);
     target.title = `${definition.type} reference → ${definition.label}`;
     for (const eventName of ["dragenter", "dragover"]) target.addEventListener(eventName, (event) => {
@@ -204,16 +222,23 @@ function renderBoard(container, controller, plan, project, rerender) {
     const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
     backdrop.append(backdropCopy);
     const environmentTargetId = selected.environment?.environmentId || ((project?.environments ?? []).length === 1 ? project.environments[0].id : "");
-    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect));
+    const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === environmentTargetId);
+    if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, Boolean(activeEnvironment?.views?.length)));
     else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", (project?.environments ?? []).length ? "Choose the scene set in Details" : "Create an environment in Library"));
     const cast = el("div", "minimax-h3-director-cast");
     const names = subjectNames(selected, project);
     if (!names.length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "No subjects placed in this scene"));
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
-        const name = (project?.subjects ?? []).find((subject) => subject.id === entry.subjectId)?.name || entry.subjectId;
+        const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
+        const name = subject?.name || entry.subjectId;
         const card = el("article", "minimax-h3-director-subject-card");
         const targets = el("div", "minimax-h3-director-subject-targets");
-        for (const purpose of ["subject_identity", "voice", "performance"]) targets.appendChild(composeDropTarget(controller, purpose, entry.subjectId, selectedAsset, connect));
+        const performanceConnected = (selected.referenceUses ?? []).some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
+        targets.append(
+            composeDropTarget(controller, "subject_identity", entry.subjectId, selectedAsset, connect, Boolean(subject?.identityAssetIds?.length)),
+            composeDropTarget(controller, "voice", entry.subjectId, selectedAsset, connect, Boolean(subject?.defaultVoiceAssetId)),
+            composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, performanceConnected),
+        );
         card.append(el("span", "minimax-h3-director-avatar", name.slice(0, 1).toUpperCase()), el("strong", "", name), targets);
         cast.appendChild(card);
     }
@@ -239,8 +264,8 @@ function renderBoard(container, controller, plan, project, rerender) {
         lane.appendChild(el("strong", "", laneName));
         const values = roles.get(laneName) ?? [];
         lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ") || "Drop or connect a reference in Library"));
-        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect));
-        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect));
+        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, values.length > 0));
+        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, values.length > 0));
         else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
         lanes.appendChild(lane);
     }
@@ -248,6 +273,26 @@ function renderBoard(container, controller, plan, project, rerender) {
 
     const inspector = el("aside", "minimax-h3-director-inspector");
     inspector.append(el("span", "minimax-h3-director-kicker", `SCENE ${plan.shots.indexOf(selected) + 1}`), el("h3", "", selected.id));
+    const setup = el("section", "minimax-h3-director-scene-setup");
+    const setupHeading = el("div", "minimax-h3-director-inspector-heading");
+    setupHeading.append(el("strong", "", "Cast & set"), button("Manage Library", () => { controller.directorUiState.libraryMode = "subjects"; controller.navigateStudio?.("library"); }, "minimax-h3-director-text-button"));
+    setup.appendChild(setupHeading);
+    const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this scene");
+    for (const subject of project?.subjects ?? []) {
+        const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
+        const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
+        chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
+    }
+    if (!(project?.subjects ?? []).length) castPicker.appendChild(el("span", "minimax-h3-director-placeholder", "Create subjects in Library"));
+    setup.appendChild(castPicker);
+    const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
+    const environmentSelect = el("select");
+    for (const [value, label] of [["", "No environment"], ...(project?.environments ?? []).map((environment) => [environment.id, environment.name || environment.id])]) {
+        const option = el("option", "", label); option.value = value; environmentSelect.appendChild(option);
+    }
+    environmentSelect.value = selected.environment?.environmentId ?? "";
+    environmentSelect.addEventListener("change", () => { setSceneEnvironment(selected, environmentSelect.value); commitPlan(controller, plan); rerender(); });
+    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); inspector.appendChild(setup);
     const actionField = el("label", "minimax-h3-studio-field");
     actionField.appendChild(el("span", "", "Visible action"));
     const textarea = el("textarea"); textarea.value = selected.action ?? ""; textarea.placeholder = "What changes on screen?";
