@@ -215,7 +215,7 @@ export function productionContext(controller) {
     const duration = exact
         ? shots.reduce((total, item) => total + Math.max(0, Number(item?.durationSeconds) || 0), 0)
         : null;
-    const projectValue = project.kind === "v2" ? project.value : null;
+    const projectValue = project.kind === "v2" ? project.value : controller.projectUiState?.project ?? null;
     const generatedTiming = controller.generationTiming?.() ?? null;
     const seconds = exact ? duration : Number(generatedTiming?.seconds);
     const frames = exact ? Math.round(duration * 24) : Number(generatedTiming?.frames);
@@ -248,7 +248,7 @@ function createHeader(controller, onReview, onClose) {
     const header = createPanelElement("header", "minimax-h3-studio-header");
     const main = createPanelElement("div", "minimax-h3-header-main");
     const identity = createPanelElement("div", "minimax-h3-header-identity");
-    const title = createPanelElement("h2", "", "Prompt Studio");
+    const title = createPanelElement("h2", "", controller.isVisualReferenceDirector ? "Visual Reference Director" : "Prompt Studio");
     const context = createPanelElement("p", "minimax-h3-header-context");
     identity.append(title, context);
     const state = createPanelElement("div", "minimax-h3-header-state");
@@ -308,9 +308,12 @@ function createHeader(controller, onReview, onClose) {
 
     const refresh = () => {
         const project = safeDocument(() => controller.projectDocument());
-        const mode = project.kind === "v2" ? project.value?.mode ?? "auto" : "project v2";
-        const generations = project.kind === "v2" ? project.value?.generations?.length ?? 0 : 0;
-        context.textContent = project.kind === "v2" ? `${mode} · ${generations || 1} generation${generations === 1 ? "" : "s"}` : "Project v2 workspace";
+        const projectValue = project.kind === "v2" ? project.value : controller.projectUiState?.project ?? null;
+        const mode = projectValue?.mode ?? "auto";
+        const generations = projectValue?.generations?.length ?? 1;
+        context.textContent = controller.isVisualReferenceDirector
+            ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · physical + semantic references`
+            : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"}` : "Project v2 workspace";
         const counts = reportCounts(controller);
         review.dataset.state = counts.stale ? "stale" : counts.errors ? "error" : counts.warnings ? "warning" : "ready";
         review.querySelector(".minimax-h3-review-label").textContent = counts.stale
@@ -414,7 +417,7 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
     const drawer = createPanelElement("section", "minimax-h3-studio");
     drawer.setAttribute("role", "dialog");
     drawer.setAttribute("aria-modal", "false");
-    drawer.setAttribute("aria-label", "MiniMax H3 Prompt Studio");
+    drawer.setAttribute("aria-label", controller.isVisualReferenceDirector ? "MiniMax H3 Visual Reference Director" : "MiniMax H3 Prompt Studio");
     drawer.dataset.railCollapsed = String(prefs.railCollapsed);
     drawer.dataset.detailMode = prefs.detailMode;
     drawer.style.width = `${clampDrawerWidth(prefs.width, globalThis.innerWidth)}px`;

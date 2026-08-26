@@ -135,44 +135,6 @@ function helpText(text, className = "minimax-h3-panel-help") {
     return help;
 }
 
-function renderMediaOnboarding() {
-    const guide = document.createElement("section");
-    guide.className = "minimax-h3-media-onboarding";
-    guide.setAttribute("aria-label", "How media references work");
-
-    const intro = document.createElement("div");
-    intro.className = "minimax-h3-media-onboarding-intro";
-    const title = document.createElement("strong");
-    title.textContent = "Reference setup · 2 steps";
-    const note = document.createElement("span");
-    note.textContent = "Prompt Studio keeps meaning separate from physical ComfyUI input files until Visual Reference Director compiles matching prompt and media outputs.";
-    intro.append(title, note);
-
-    const steps = document.createElement("ol");
-    steps.className = "minimax-h3-media-steps";
-    const content = [
-        ["Import and preview", "Choose pictures, video or audio; files are copied safely into ComfyUI input storage."],
-        ["Connect meaning", "Drop each card onto a subject, background or shot role; H3 slots are derived and Visual Reference Director emits the same ordered media and prompt context."],
-    ];
-    for (const [index, [heading, description]] of content.entries()) {
-        const item = document.createElement("li");
-        const number = document.createElement("span");
-        number.className = "minimax-h3-media-step-number";
-        number.setAttribute("aria-hidden", "true");
-        number.textContent = String(index + 1);
-        const copy = document.createElement("div");
-        const strong = document.createElement("strong");
-        strong.textContent = heading;
-        const span = document.createElement("span");
-        span.textContent = description;
-        copy.append(strong, span);
-        item.append(number, copy);
-        steps.appendChild(item);
-    }
-    guide.append(intro, steps);
-    return guide;
-}
-
 function renderReferenceDirector(container, project, controller) {
     const shotPlan = controller.shotDocument()?.value ?? { shots: [] };
     const sourceDocument = controller.referenceDirectorDocument?.() ?? { kind: "v1", value: emptyReferenceDirector(), issues: [] };
@@ -1089,7 +1051,7 @@ export function renderReferencesTab(container, controller) {
     const title = document.createElement("div");
     title.innerHTML = "<strong>Media references</strong><span>Map visible references to semantic roles and matching H3 outputs</span>";
     toolbar.append(title, labeledSelect("Project mode", project.mode, PROJECT_MODES, (value) => { project.mode = value; commitProject(controller); }));
-    container.append(toolbar, renderReferenceDirector(container, project, controller), renderMediaOnboarding(), renderMediaWorkflowTools(container, project, controller));
+    container.append(toolbar, renderReferenceDirector(container, project, controller), renderMediaWorkflowTools(container, project, controller));
 
     const assetArea = document.createElement("div");
     assetArea.className = "minimax-h3-master-detail minimax-h3-media-assets";

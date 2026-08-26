@@ -3134,6 +3134,7 @@ function createAdvancedSettingsDetails(node) {
 function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET } = {}) {
     const generationWidget = node.widgets?.find((widget) => widget.name === "generation_id");
     const controller = {
+        isVisualReferenceDirector: (node.comfyClass ?? node.type) === VISUAL_REFERENCE_DIRECTOR_NODE,
         shotUiState: { selectedId: null, plan: null },
         projectUiState: { sourceRaw: null, project: null, selectedGenerationId: String(generationWidget?.value ?? "") },
         mode() {

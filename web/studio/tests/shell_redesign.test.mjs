@@ -320,8 +320,8 @@ test("Media shell keeps cards separated and dense editors inside the panel", () 
         assert.equal(rows, 2, `${width}px keeps the second recipe row separated by the declared row gap`);
     }
     assert.match(mediaSource, /\+ Add reference/);
-    assert.match(mediaSource, /Reference setup · 2 steps/);
-    assert.match(mediaSource, /keeps meaning separate from physical ComfyUI input files/);
+    assert.doesNotMatch(mediaSource, /Reference setup · 2 steps/, "the Director itself is the onboarding surface; do not repeat the same guide below it");
+    assert.match(mediaSource, /Select or drag a reference onto the exact subject, background or shot property it controls/);
     assert.match(mediaSource, /\+ Import files/);
     assert.match(mediaSource, /reference_project/);
     assert.match(mediaSource, /File slot assignments/);
