@@ -9,13 +9,15 @@ The separate **MiniMax H3 Visual Reference Director** uses the same v2 contracts
 - **Wiring** — the resolved picture, video and audio slots, their semantic roles, activation and physical-file readiness.
 - **Look** — an explicit handoff to the connected Prompt Enhancer, which remains the sole owner of creative direction and global cinematography.
 
-This dedicated navigation does not replace or reorder the eight sections in the enhancer nodes' Prompt Studio.
+Compose is also the first destination inside the enhancer's Prompt Studio. When a Visual Reference Director feeds the enhancer's `reference_context`, that Compose view operates on the connected Director's canonical project and physical references while keeping the enhancer's prompt context; it does not copy them into a second project. The Director's own drawer remains a focused Library/Wiring maintenance surface.
 
 It does not add a project manager, a network service, or another ComfyUI output. The canonical project remains in the existing `media_manifest`, `shot_plan_json`, `creative_treatment_json`, and `cinematography_json` widgets saved with the workflow.
 
 ## Open the Studio
 
-The enhancer node presents eight dashboard chips:
+The enhancer node presents a primary **Open Compose** action plus destination chips:
+
+- **Compose** — visually assemble the prompt from shots, subjects, voices, backgrounds, action, dialogue, camera and references.
 
 - **Shots** — number of structured shots.
 - **Staging** — positioned cast members in the selected shot.
@@ -26,7 +28,7 @@ The enhancer node presents eight dashboard chips:
 - **Look** — creative direction and global cinematography defaults.
 - **Review** — current structured diagnostic count and Prompt Coach advice.
 
-Selecting a chip opens one drawer attached to that node. The node's **Open Studio** button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–8.
+Selecting **Open Compose** or a chip opens one drawer attached to that node. The primary button changes to **Close Studio** while the drawer is open. The drawer is mounted to the browser viewport, so it does not scale with the ComfyUI canvas. It defaults to 720 px on ordinary desktops, 820 px on wide displays, and 920 px on 4K/high-resolution displays. The resizable range is 420 px to `min(1100px, 60vw)`; below 700 px the drawer becomes full-width, and below 600 px of content the master/detail editors stack into one column. Close it from that same node button, the header close button, or `Esc`; focus returns to the control that opened it so the normal ComfyUI **Generate / Queue** action is available again. The navigation rail supports arrow keys, Home, End, and numeric shortcuts 1–9.
 
 There is no separate Save action. Every explicit add, edit, assignment, reorder, or deletion is committed immediately to this node's structured v2 widgets and is saved with the ComfyUI workflow. Merely opening, closing, navigating, expanding a disclosure, or hydrating old data does not write anything.
 

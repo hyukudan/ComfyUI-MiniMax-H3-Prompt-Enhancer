@@ -21,6 +21,7 @@ export function createPanelElement(tagName, className, textContent = "") {
 }
 
 export const STUDIO_SECTIONS = Object.freeze([
+    { id: "compose", label: "Compose", icon: "shots", render: renderDirectorCompose },
     { id: "overview", label: "Overview", icon: "overview", render: renderOverview },
     { id: "shots", label: "Shots", icon: "shots", render: renderShotsTab },
     { id: "staging", label: "Staging", icon: "subjects", render: renderStagingTab },
@@ -222,8 +223,11 @@ function reportCounts(controller) {
 }
 
 export function productionContext(controller) {
-    const shot = safeDocument(() => controller.shotDocument());
-    const project = safeDocument(() => controller.projectDocument());
+    const projectController = !controller.isVisualReferenceDirector
+        ? controller.preferredVisualReferenceController?.()?.controller ?? controller
+        : controller;
+    const shot = safeDocument(() => projectController.shotDocument());
+    const project = safeDocument(() => projectController.projectDocument());
     const shots = Array.isArray(shot.value?.shots) ? shot.value.shots : [];
     const exact = shot.value?.timingMode === "exact";
     const duration = exact
@@ -267,7 +271,7 @@ function createHeader(controller, onReview, onClose) {
     identity.append(title, context);
     const state = createPanelElement("div", "minimax-h3-header-state");
     const saved = createPanelElement("span", "minimax-h3-saved-state", "Saved automatically to workflow");
-    saved.title = "Every explicit edit is stored immediately in this node's Project v2 data.";
+    saved.title = "Every explicit edit is stored immediately in the authoritative workflow data.";
     const review = createPanelElement("button", "minimax-h3-review-button");
     review.type = "button";
     review.append(createStudioIcon("review"), createPanelElement("span", "minimax-h3-review-label", "Review"));
@@ -286,7 +290,7 @@ function createHeader(controller, onReview, onClose) {
     shortcuts.appendChild(createPanelElement("h3", "", "Keyboard shortcuts"));
     const list = createPanelElement("dl", "");
     for (const [keys, action] of [
-        ["1–8", "Open a section"],
+        ["1–9", "Open a section"],
         ["↑ / ↓", "Move through section navigation"],
         ["Ctrl + Enter", "Add an item in the active editor"],
         ["Ctrl + D", "Duplicate the selection"],
@@ -325,9 +329,12 @@ function createHeader(controller, onReview, onClose) {
         const projectValue = project.kind === "v2" ? project.value : controller.projectUiState?.project ?? null;
         const mode = projectValue?.mode ?? "auto";
         const generations = projectValue?.generations?.length ?? 1;
+        const preferred = !controller.isVisualReferenceDirector ? controller.preferredVisualReferenceController?.() : null;
         context.textContent = controller.isVisualReferenceDirector
             ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · physical + semantic references`
-            : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"}` : "Project v2 workspace";
+            : preferred
+                ? preferred.linked ? "Visual prompt · references connected" : "Visual prompt · Director on canvas · connect before queue"
+                : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"}` : "Visual prompt workspace";
         const counts = reportCounts(controller);
         review.dataset.state = counts.stale ? "stale" : counts.errors ? "error" : counts.warnings ? "warning" : "ready";
         review.querySelector(".minimax-h3-review-label").textContent = counts.stale
@@ -377,7 +384,7 @@ function createNavigation(node, sections, onNavigate, onCollapse, director = fal
 
 function sourceGate(sectionId, controller, panel) {
     const documents = sourceDocuments(controller);
-    if (["shots", "staging", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
+    if (["compose", "shots", "staging", "camera"].includes(sectionId) && ["malformed", "future"].includes(documents.shot.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Shot plan",
             documentState: documents.shot,
@@ -386,7 +393,7 @@ function sourceGate(sectionId, controller, panel) {
         }));
         return true;
     }
-    if (["subjects", "environments", "media", "staging"].includes(sectionId) && documents.project.kind === "v1") {
+    if (["compose", "subjects", "environments", "media", "staging"].includes(sectionId) && documents.project.kind === "v1") {
         panel.classList.add("minimax-h3-source-gated");
         const unavailable = createPanelElement("section", "minimax-h3-empty-state minimax-h3-source-unavailable");
         unavailable.append(
@@ -406,7 +413,7 @@ function sourceGate(sectionId, controller, panel) {
         panel.append(unavailable, tools);
         return true;
     }
-    if (["subjects", "environments", "media", "staging"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
+    if (["compose", "subjects", "environments", "media", "staging"].includes(sectionId) && ["malformed", "future"].includes(documents.project.kind)) {
         panel.appendChild(createSourceStateCard({
             name: "Media project",
             documentState: documents.project,
@@ -418,6 +425,42 @@ function sourceGate(sectionId, controller, panel) {
     }
     return false;
 }
+
+function promptComposeController(controller) {
+    const preferred = controller.preferredVisualReferenceController?.()
+        ?? (controller.connectedVisualReferenceController?.() ? { controller: controller.connectedVisualReferenceController(), linked: true } : null);
+    const connected = preferred?.controller;
+    if (!connected || connected === controller) {
+        controller.composeUsesConnectedDirector = false;
+        controller.composeUsesCanvasDirector = false;
+        return controller;
+    }
+    if (controller.promptComposeProxy?.composeSourceController === connected) {
+        controller.promptComposeProxy.composeDirectorLinked = Boolean(preferred.linked);
+        return controller.promptComposeProxy;
+    }
+    const proxy = Object.create(connected);
+    proxy.composeSourceController = connected;
+    proxy.composeUsesConnectedDirector = Boolean(preferred.linked);
+    proxy.composeUsesCanvasDirector = true;
+    proxy.composeDirectorLinked = Boolean(preferred.linked);
+    proxy.isVisualReferenceDirector = false;
+    for (const name of ["basicPrompt", "mode", "resolvedMode", "generationTiming"]) {
+        if (typeof controller[name] === "function") proxy[name] = controller[name].bind(controller);
+    }
+    proxy.navigateStudio = (section, ...args) => {
+        let destination = section;
+        if (section === "library") {
+            const mode = proxy.directorUiState?.libraryMode;
+            destination = mode === "subjects" ? "subjects" : mode === "environments" ? "environments" : "media";
+        }
+        return controller.navigateStudio?.(destination, ...args);
+    };
+    controller.promptComposeProxy = proxy;
+    return proxy;
+}
+
+const PROMPT_PROJECT_SECTIONS = new Set(["compose", "shots", "staging", "subjects", "environments", "media", "camera"]);
 
 function isEditingTarget(target) {
     return target instanceof HTMLElement
@@ -507,7 +550,12 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             panel.setAttribute("aria-labelledby", `minimax-h3-tab-${node.id}-${section.id}`);
             if (section.id === "overview") {
                 renderOverview(panel, controller, { navigate: render, openReview: () => render("review") });
-            } else if (!sourceGate(section.id, controller, panel)) section.render(panel, controller);
+            } else {
+                const sectionController = !controller.isVisualReferenceDirector && PROMPT_PROJECT_SECTIONS.has(section.id)
+                    ? promptComposeController(controller)
+                    : controller;
+                if (!sourceGate(section.id, sectionController, panel)) section.render(panel, sectionController);
+            }
         }
         if (sectionId === "review") {
             panel.removeAttribute("aria-labelledby");
@@ -653,8 +701,11 @@ export function refreshStudioDrawer(nodeId) {
 }
 
 export function dashboardSummaries(controller) {
-    const shot = controller.shotDocument();
-    const project = controller.projectDocument();
+    const projectController = !controller.isVisualReferenceDirector
+        ? controller.preferredVisualReferenceController?.()?.controller ?? controller
+        : controller;
+    const shot = projectController.shotDocument();
+    const project = projectController.projectDocument();
     const shots = shot?.value?.shots?.length ?? 0;
     const staged = shot?.value?.shots?.reduce((count, item) => count + (item?.staging?.length ?? 0), 0) ?? 0;
     const subjects = project?.value?.subjects?.length ?? 0;
@@ -671,10 +722,12 @@ export function createStudioDashboard(node, controller) {
     const open = createPanelElement("button", "minimax-h3-dashboard-open");
     open.type = "button";
     const workspaceName = controller.isVisualReferenceDirector ? "Director" : "Studio";
-    open.append(createStudioIcon("overview", 20), createPanelElement("span", "", `Open ${workspaceName}`));
+    const primaryDestination = controller.isVisualReferenceDirector ? null : "compose";
+    const openLabel = controller.isVisualReferenceDirector ? "Open Director" : "Open Compose";
+    open.append(createStudioIcon(controller.isVisualReferenceDirector ? "overview" : "shots", 20), createPanelElement("span", "", openLabel));
     open.addEventListener("click", () => {
         if (studioDrawerIsOpenFor(node.id)) closeStudioDrawer(node.id);
-        else openStudioDrawer(node, controller, null, open);
+        else openStudioDrawer(node, controller, primaryDestination, open);
     });
     root.appendChild(open);
     const strip = createPanelElement("div", "minimax-h3-dashboard-links");
@@ -685,6 +738,7 @@ export function createStudioDashboard(node, controller) {
         ["look", "Look", "look", () => ""],
         ["review", "Review", "review", (summary) => summary.diagnostics],
     ] : [
+        ["compose", "Compose", "shots", (summary) => summary.shots],
         ["shots", "Shots", "shots", (summary) => summary.shots],
         ["staging", "Staging", "subjects", (summary) => summary.staged],
         ["subjects", "Subjects", "subjects", (summary) => summary.subjects],
@@ -697,7 +751,7 @@ export function createStudioDashboard(node, controller) {
     const refresh = () => {
         const summary = dashboardSummaries(controller);
         const isOpen = studioDrawerIsOpenFor(node.id);
-        open.querySelector("span").textContent = isOpen ? `Close ${workspaceName}` : `Open ${workspaceName}`;
+        open.querySelector("span").textContent = isOpen ? `Close ${workspaceName}` : openLabel;
         open.setAttribute("aria-pressed", String(isOpen));
         open.title = isOpen ? `Close ${workspaceName} and return to the workflow` : `Open ${workspaceName}`;
         for (const [id, label, , value] of definitions) {

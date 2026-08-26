@@ -893,7 +893,15 @@ export function renderDirectorCompose(container, controller) {
     if (!controller.shotUiState.selectedId || !plan.shots.some((shot) => shot.id === controller.shotUiState.selectedId)) controller.shotUiState.selectedId = plan.shots[0]?.id ?? null;
     const rerender = () => renderDirectorCompose(container, controller);
     const top = el("header", "minimax-h3-director-workspace-header");
-    const copy = el("div"); copy.append(el("h2", "", "Compose"), el("p", "", "Build the cut as scenes, then direct each scene visually."));
+    const copy = el("div");
+    copy.append(
+        el("h2", "", "Compose"),
+        el("p", "", controller.composeUsesCanvasDirector
+            ? controller.composeDirectorLinked
+                ? "Create the prompt visually with the connected Director's subjects, voices, backgrounds and physical references."
+                : "Create the prompt visually with the only Director on this canvas. Connect its reference_context output to this enhancer before queueing."
+            : "Create the prompt visually as scenes, subjects, dialogue, backgrounds and camera. Add one Visual Reference Director when physical media outputs are needed."),
+    );
     top.append(copy, modeSwitch(state, rerender, [["board", "Board"], ["details", "Details"], ["staging", "Staging"], ["camera", "Camera"]]));
     container.appendChild(top);
     if (state.composeMode !== "board") {

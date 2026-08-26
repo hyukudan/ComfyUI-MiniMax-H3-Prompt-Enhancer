@@ -106,16 +106,25 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
         detailMode: "advanced",
         collapsedBlocks: {},
     });
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
     assert.equal(normalizeStudioSection("camera_look"), "look");
 });
 
-test("Visual Reference Director has a focused workspace without changing Prompt Studio sections", () => {
+test("Prompt Studio exposes Compose while the Director keeps its focused physical-media workspace", () => {
     assert.deepEqual(DIRECTOR_SECTIONS.map(({ id }) => id), ["compose", "library", "wiring", "look"]);
     assert.equal(normalizeDirectorSection("shots"), "compose");
     assert.equal(normalizeDirectorSection("media"), "library");
     assert.equal(normalizeDirectorSection("unknown"), "compose");
-    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
+    assert.deepEqual(STUDIO_SECTIONS.map(({ id }) => id), ["compose", "overview", "shots", "staging", "subjects", "environments", "media", "camera", "look"]);
+    const drawerSource = readFileSync(new URL("../drawer.js", import.meta.url), "utf8");
+    const backendSource = readFileSync(new URL("../../backend_toggle.js", import.meta.url), "utf8");
+    assert.match(drawerSource, /Open Compose/);
+    assert.match(drawerSource, /connectedVisualReferenceController/);
+    assert.match(drawerSource, /preferredVisualReferenceController/);
+    assert.match(drawerSource, /PROMPT_PROJECT_SECTIONS/);
+    assert.match(backendSource, /candidate\?\.name === "reference_context"/);
+    assert.match(backendSource, /candidates\.length === 1/);
+    assert.match(backendSource, /VISUAL_REFERENCE_DIRECTOR_NODE/);
 });
 
 test("Overview derives pipeline, library, continuity and diagnostic health", () => {
