@@ -21,3 +21,9 @@ test("subject mention chips do not accumulate the same alias repeatedly", () => 
     assert.equal(result.existing, true);
     assert.equal(result.selectionStart, 25);
 });
+
+test("subject mention chips clean up an existing adjacent accidental duplicate", () => {
+    const result = insertSubjectMention("Ana enters <Subject 1> <Subject 1> <Subject 1>", 48, 48, "<Subject 1>");
+    assert.equal(result.value, "Ana enters <Subject 1>");
+    assert.equal(result.existing, true);
+});
