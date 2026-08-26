@@ -3155,24 +3155,6 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
         basicPrompt() {
             return String(node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? "").trim();
         },
-        connectedVisualReferenceController() {
-            const input = node.inputs?.find((candidate) => candidate?.name === "reference_context");
-            const linkId = input?.link;
-            const link = typeof linkId === "object" ? linkId : node.graph?.links?.[linkId];
-            const originId = link?.origin_id ?? link?.originId;
-            const origin = originId == null ? null : node.graph?.getNodeById?.(originId);
-            if ((origin?.comfyClass ?? origin?.type) !== VISUAL_REFERENCE_DIRECTOR_NODE) return null;
-            return origin.__minimaxStudioController ?? null;
-        },
-        preferredVisualReferenceController() {
-            const connected = this.connectedVisualReferenceController();
-            if (connected) return { controller: connected, linked: true };
-            const candidates = (node.graph?._nodes ?? []).filter((candidate) =>
-                (candidate?.comfyClass ?? candidate?.type) === VISUAL_REFERENCE_DIRECTOR_NODE
-                && candidate.__minimaxStudioController,
-            );
-            return candidates.length === 1 ? { controller: candidates[0].__minimaxStudioController, linked: false } : null;
-        },
         resolvedDiagnosticFingerprints: new Set(),
         shotDocument() {
             const widget = node.widgets?.find((candidate) => candidate.name === SHOT_PLAN_WIDGET);
@@ -4028,6 +4010,7 @@ function configureAudioNode(node) {
     applyMultilineTitles(node);
     hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === MEDIA_PROJECT_WIDGET));
     hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === REFERENCE_DIRECTOR_WIDGET));
+    hideJsonStorageWidget(node.widgets?.find((widget) => widget.name === "generation_id"));
     applyLabels(node);
     protectApiKeyWidget(node);
     normalizeMigratedRuntimeWidgets(node);

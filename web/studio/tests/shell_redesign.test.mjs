@@ -110,7 +110,7 @@ test("v3 preferences migrate the former combined Camera & Look destination to Lo
     assert.equal(normalizeStudioSection("camera_look"), "look");
 });
 
-test("Prompt Studio exposes Compose while the Director keeps its focused physical-media workspace", () => {
+test("Prompt Studio owns Compose while the Director remains a legacy workspace", () => {
     assert.deepEqual(DIRECTOR_SECTIONS.map(({ id }) => id), ["compose", "library", "wiring", "look"]);
     assert.equal(normalizeDirectorSection("shots"), "compose");
     assert.equal(normalizeDirectorSection("media"), "library");
@@ -119,11 +119,12 @@ test("Prompt Studio exposes Compose while the Director keeps its focused physica
     const drawerSource = readFileSync(new URL("../drawer.js", import.meta.url), "utf8");
     const backendSource = readFileSync(new URL("../../backend_toggle.js", import.meta.url), "utf8");
     assert.match(drawerSource, /Open Compose/);
-    assert.match(drawerSource, /connectedVisualReferenceController/);
-    assert.match(drawerSource, /preferredVisualReferenceController/);
-    assert.match(drawerSource, /PROMPT_PROJECT_SECTIONS/);
-    assert.match(backendSource, /candidate\?\.name === "reference_context"/);
-    assert.match(backendSource, /candidates\.length === 1/);
+    assert.doesNotMatch(drawerSource, /connectedVisualReferenceController/);
+    assert.doesNotMatch(drawerSource, /preferredVisualReferenceController/);
+    assert.doesNotMatch(drawerSource, /promptComposeController/);
+    assert.doesNotMatch(drawerSource, /PROMPT_PROJECT_SECTIONS/);
+    assert.match(backendSource, /candidate\.name === REFERENCE_DIRECTOR_WIDGET/);
+    assert.match(backendSource, /referenceDirectorDocument\(\)/);
     assert.match(backendSource, /VISUAL_REFERENCE_DIRECTOR_NODE/);
 });
 

@@ -8,15 +8,17 @@ from prompt_enhancer_node import MiniMaxH3GGUFPromptEnhancer, MiniMaxH3PromptEnh
 ROOT = Path(__file__).parents[1]
 
 
-def test_compact_node_keeps_the_canonical_eight_output_contract():
-    expected_types = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
-    expected_names = (
+def test_compact_node_preserves_eight_legacy_outputs_before_native_compose_outputs():
+    legacy_types = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
+    legacy_names = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds",
         "aspect_ratio", "treatment_warnings", "width", "height",
     )
+    compose_types = ("H3_REFERENCE_PROJECT", "IMAGE", "IMAGE", "AUDIO", "STRING")
+    compose_names = ("reference_project", "pictures", "videos", "audios", "reference_project_json")
     for node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
-        assert node_class.RETURN_TYPES == expected_types
-        assert node_class.RETURN_NAMES == expected_names
+        assert node_class.RETURN_TYPES == legacy_types + compose_types
+        assert node_class.RETURN_NAMES == legacy_names + compose_names
 
 
 def test_node_frontend_groups_controls_without_new_persistent_widgets():

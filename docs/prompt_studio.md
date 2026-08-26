@@ -2,16 +2,11 @@
 
 Prompt Studio is the structured planning interface embedded in the two enhancer nodes. It keeps the node compact while exposing shots, subjects, appearance states, environments, logical references, camera controls, and diagnostics in a viewport-level drawer.
 
-The separate **MiniMax H3 Visual Reference Director** uses the same v2 contracts but has a production-oriented workspace of its own:
+**Compose** is the production editor for those contracts: a draggable scene strip, visual stage, reference tray, semantic destinations and contextual inspector, with deeper Details, Staging and Camera modes. A cut can be duplicated with nested camera and reference state intact, moved, or deleted with confirmation. The inspector creates and places a canonical Subject or Environment atomically, so Ana can receive an identity image and voice and a set can receive its background without leaving Prompt Studio. The stage exposes the real `<Subject N>` alias, portrait, voice/performance references and environment preview used during compilation. **Dialogue & sound** authors exact lines and separates default voice, shot overrides, recordings and soundtrack. **Start · Move · End** edits the same camera data shown in the specialist Camera view. The read-only **LLM handoff** derives its subject and physical aliases from the same assignments sent to the LLM and media outputs.
 
-- **Compose** — a draggable scene strip, visual stage, draggable reference tray, semantic drop destinations, reference lanes and contextual inspector, with deeper Details, Staging and Camera modes. A cut can be duplicated with nested camera and reference state intact, moved by drag or arrow controls, and deleted only after inline confirmation; every operation writes the ordinary Shot Plan v2 array with stable IDs. The inspector creates and places a canonical named Subject or Environment atomically, so a new set can immediately receive its Background picture without leaving Compose. The stage exposes the subject's real `<Subject N>` LLM alias, portrait, named voice/performance references and selected environment preview from the same canonical assignments used during compilation. **Dialogue & sound** authors exact spoken lines for a visible subject, selects delivery, previews available default voices and cut audio, and distinguishes voice overrides, exact-dialogue audio and soundtrack references; ambience remains derived from visible action and the Prompt Enhancer's Audio policy instead of introducing competing schema. Each scene shows its own native camera direction as visual **Start · Move · End** phases; clicking that card opens the selected cut in the Camera editor. A read-only **LLM handoff** shows the actual subject and physical H3 aliases, warns when a bound file is still missing, and copies a concise audit brief; it is derived from Media Project + Shot Plan and never becomes another prompt authority. Selecting a tray card enables Image, Voice, Performance and scene destinations as buttons for keyboard and touch use. The adjacent `+` on every destination validates the full logical assignment before upload, then atomically creates its asset, H3 binding, semantic relationship and scene use; an operating-system file may also be dropped directly. If the final document write fails, all workflow documents roll back together; the content-addressed ComfyUI input remains safely reusable. Checked green destinations are already resolved, and their `×` action detaches the destination while preserving its reusable Library media and any wiring still needed elsewhere.
-- **Library** — physical media import and preview alongside reusable Subjects and Environments.
-- **Wiring** — the resolved picture, video and audio slots, their semantic roles, activation and physical-file readiness.
-- **Look** — an explicit handoff to the connected Prompt Enhancer, which remains the sole owner of creative direction and global cinematography.
+All of this belongs to the same Prompt Enhancer node. Subjects, Environments, Media, Shots, Camera and Look are specialist views of one Compose project, not separately connected tools. The older Visual Reference Director class remains loadable only for workflow migration and is marked deprecated.
 
-Compose is also the first destination inside the enhancer's Prompt Studio. When a Visual Reference Director feeds the enhancer's `reference_context`, that Compose view operates on the connected Director's canonical project and physical references while keeping the enhancer's prompt context; it does not copy them into a second project. The Director's own drawer remains a focused Library/Wiring maintenance surface.
-
-It does not add a project manager, a network service, or another ComfyUI output. The canonical project remains in the existing `media_manifest`, `shot_plan_json`, `creative_treatment_json`, and `cinematography_json` widgets saved with the workflow.
+It does not add a project manager or network service. The canonical project remains in `media_manifest`, `shot_plan_json`, `creative_treatment_json`, `cinematography_json`, and hidden physical-source storage saved with the workflow.
 
 ## Open the Studio
 
@@ -40,23 +35,17 @@ Empty authoring fields use instructional placeholders. The example disappears on
 
 Prompt Studio is the planning layer for the prompt enhancer. It stores shots, reusable identities and places, logical reference metadata, generation bindings, camera choices, and diagnostics in the enhancer's existing structured widgets. Those facts compile into `enhanced_prompt` and validation metadata.
 
-Prompt Studio does **not** load, upload, transport, or output an image, video, audio file, latent, or tensor. The enhancer has no media output ports. A Load Image, Load Video, or audio-source node must still connect the physical media to the H3 generation node through the inputs expected by that node.
+Prompt Studio imports pictures, video and audio into ComfyUI input storage. The enhancer emits ordered `pictures`, `videos` and `audios` lists plus a typed `reference_project`; these outputs are compiled from the same assignments used in `enhanced_prompt`.
 
 The prompt, metadata, and physical media paths are separate until the generation node:
 
 ```text
-Idea
-  └─> Prompt Enhancer / Prompt Studio ─> enhanced_prompt ───────────────┐
-
-Physical file
-  └─> Load Image / Load Video / audio source ─> H3 media input ────────┼─> H3 generation node
-
-Reference meaning
-  └─> Add reference ─> logical reference ─> generation binding ────────┘
-                                      └─> physical slot: Picture/Video/Audio N
+Prompt Studio ─> enhanced_prompt ──────────────────────────────────────┐
+              ├> pictures / videos / audios ──────────────────────────┼─> H3 generation node
+              └> reference_project ─> Inspector / compatible adapter ┘
 ```
 
-The logical reference says what a file means and how it may be used. The physical connection supplies the actual file. The generation binding makes their correspondence explicit; none of the three substitutes for another.
+The logical meaning, physical file and generation binding remain distinct records, but Prompt Studio owns and validates all three as one project.
 
 ## Which area to use
 
@@ -92,11 +81,11 @@ When all structured widgets are blank, Overview also offers three small editable
 
 ### Ref2VA — reusable picture, video, or audio references
 
-1. Add **MiniMax H3 Visual Reference Director** and choose **Open director**. Its raw storage widgets remain hidden.
-2. In **Media**, choose **Import files** and select pictures, video or audio. The Director copies them into ComfyUI input storage and creates stable logical assets with visual previews.
+1. On **MiniMax H3 Prompt Enhancer**, choose **Open Compose**.
+2. In **Compose** or **Media**, import pictures, video or audio. Prompt Studio copies them into ComfyUI input storage and creates stable logical assets with visual previews.
 3. Drop each visual card onto the subject identity/voice, environment/background, or shot performance/camera property it controls.
 4. In the target generation, verify the derived **physical slot** (`Picture N`, `Video N`, or `Audio N`).
-5. Connect `reference_context` to Prompt Enhancer. Connect the ordered `pictures`, `videos` and `audios` list outputs to a list-aware H3 adapter (or split them into its numbered native slots). They come from the same assignments, so the prompt and tensors stay aligned.
+5. Connect the enhancer's ordered `pictures`, `videos` and `audios` list outputs to a list-aware H3 adapter (or split them into numbered native slots). The enhancer injects the matching reference context into its own LLM request automatically.
 6. Optionally connect `reference_project` to **MiniMax H3 Reference Project Inspector** for the exact wiring report.
 
 ### Chained Multishot — several generation passes

@@ -97,10 +97,13 @@ def test_main_enhancer_exposes_backend_toggle_and_duration_output(monkeypatch):
     assert inputs["local_model"][0] == ["model.gguf"]
     assert inputs["llama_server_path"][0] == ["llama-server"]
     assert inputs["keep_server_loaded"][1]["default"] is False
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-5:] == (
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[3:8] == (
         "duration_seconds", "aspect_ratio", "treatment_warnings", "width", "height",
     )
-    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[-5:] == ("FLOAT", "STRING", "STRING", "INT", "INT")
+    assert MiniMaxH3PromptEnhancer.RETURN_TYPES[3:8] == ("FLOAT", "STRING", "STRING", "INT", "INT")
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES[-5:] == (
+        "reference_project", "pictures", "videos", "audios", "reference_project_json",
+    )
 
 
 def test_specialized_gguf_node_accepts_current_comfyui_keyword_inputs(monkeypatch):
@@ -226,7 +229,7 @@ def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
         expected_tail = ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
         if node is MiniMaxH3PromptEnhancer:
             expected_tail += ["title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement"]
-        expected_tail += ["reference_director_json"]
+        expected_tail += ["reference_director_json", "generation_id"]
         assert list(optional)[-len(expected_tail):] == expected_tail
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
@@ -270,6 +273,45 @@ def test_visual_reference_director_and_inspector_preserve_h3_order(monkeypatch):
     assert json.loads(pictures) == ["minimax_h3_reference_director/ana.webp [input]"]
     assert json.loads(videos) == []
     assert json.loads(audios) == []
+
+
+def test_prompt_enhancer_natively_compiles_and_emits_its_compose_references(monkeypatch):
+    media = {
+        "schemaVersion": 2, "mode": "ref2va",
+        "assets": [{"id": "ana", "type": "picture", "name": "Ana"}],
+        "subjects": [{"id": "subject.1", "h3Index": 1, "name": "Ana", "identityAssetIds": ["ana"]}],
+        "environments": [],
+        "generations": [{"id": "g1", "order": 1, "bindings": [
+            {"assetId": "ana", "slotIndex": 1}
+        ], "subjectStates": [], "environmentStates": []}],
+    }
+    director = {
+        "format": "minimax-h3-reference-director", "formatVersion": 1,
+        "sources": {"ana": {
+            "storage": "comfy_input", "file": "minimax_h3_reference_director/ana.webp [input]",
+            "sha256": "a" * 64, "mediaType": "picture", "originalName": "ana.webp",
+            "sizeBytes": 42, "mimeType": "image/webp",
+        }},
+    }
+    captured = {}
+    monkeypatch.setattr(prompt_enhancer_node, "load_generation_media", lambda *_args, **_kwargs: {
+        "generationId": "g1", "pictures": ["ana-tensor"], "videos": [], "audios": [],
+    })
+    monkeypatch.setattr(prompt_enhancer_node, "enhance_prompt", lambda *args, **_kwargs: (
+        captured.setdefault("context", args[3]) and "prompt",
+        {"valid": True, "errors": [], "mode": "ref2va"},
+        {"provider": "test"},
+    ))
+    result = MiniMaxH3PromptEnhancer().enhance(
+        "Ana enters the room", "auto", 5.0, "manual production note",
+        "http://127.0.0.1:1234/v1", "model", "", 0.2, 4096, 300, 0, True, False,
+        media_manifest=json.dumps(media), reference_director_json=json.dumps(director), generation_id="g1",
+    )
+    assert "AUTHORITATIVE REFERENCE RELATIONSHIPS" in captured["context"]
+    assert "manual production note" in captured["context"]
+    assert result[8]["inputsByGeneration"]["g1"][0]["assetId"] == "ana"
+    assert result[9:12] == (["ana-tensor"], [], [])
+    assert json.loads(result[12])["digest"] == result[8]["digest"]
 
 
 def test_api_key_widget_documents_the_environment_variable_fallback():

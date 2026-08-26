@@ -288,6 +288,40 @@ def _merge_visual_style_preset(creative_treatment_json: str, visual_style_preset
     return creative_treatment_json
 
 
+def _native_reference_bundle(reference_context="", reference_director_json="", media_manifest="",
+                             shot_plan_json="", generation_id=""):
+    """Compile Prompt Studio's semantic and physical references as one atomic bundle."""
+    media_value = None
+    if isinstance(media_manifest, dict):
+        media_value = media_manifest
+    elif str(media_manifest or "").strip():
+        try:
+            candidate = json.loads(media_manifest)
+            if isinstance(candidate, dict):
+                media_value = candidate
+        except (TypeError, json.JSONDecodeError):
+            pass
+    native_project = isinstance(media_value, dict) and media_value.get("schemaVersion") == 2
+    has_physical_sources = bool(str(reference_director_json or "").strip())
+    if not native_project and not has_physical_sources:
+        project = build_reference_project("", None, None)
+        return str(reference_context or "").strip(), project, {
+            "generationId": "", "pictures": [], "videos": [], "audios": [],
+        }
+    project = build_reference_project(
+        reference_director_json,
+        media_value if native_project else None,
+        shot_plan_json if native_project and str(shot_plan_json or "").strip() else None,
+    )
+    if project.get("issues"):
+        raise ValueError("Prompt Studio references are not ready: " + " ".join(project["issues"]))
+    loaded = load_generation_media(project, generation_id)
+    native_context = reference_context_for_project(project, loaded["generationId"])
+    manual_context = str(reference_context or "").strip()
+    combined = "\n\n".join(part for part in (native_context.strip(), manual_context) if part)
+    return combined, project, loaded
+
+
 class MiniMaxH3PromptGuideBuilder:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "build"
@@ -332,6 +366,7 @@ class MiniMaxH3PromptGuideBuilder:
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
             "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
+            "generation_id": ("STRING", {"default": "", "tooltip": "Prompt Studio generation to compile. Blank selects the first generation."}),
         }}
 
     def build(self, basic_prompt, mode, duration_seconds, reference_context, enhance_description=True,
@@ -343,12 +378,14 @@ class MiniMaxH3PromptGuideBuilder:
               cinematography_json="", instrumental_style="none", acoustic_space="none",
               dialogue_coverage="off", dialogue_language="auto", visual_style_preset="none",
               target_megapixels=0.0, editing_intent="none", invent_scene=False, creative_latitude=None,
-              lora_trigger_words="", reference_director_json=""):
+              lora_trigger_words="", reference_director_json="", generation_id=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         if not str(basic_prompt).strip():
             raise ValueError("basic_prompt cannot be empty")
+        reference_context, _reference_project, _loaded = _native_reference_bundle(
+            reference_context, reference_director_json, media_manifest, shot_plan_json, generation_id)
         resolved = resolve_mode(mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
         merged_treatment = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
@@ -379,11 +416,15 @@ class MiniMaxH3PromptGuideBuilder:
 class MiniMaxH3PromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance_with_ui"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
+                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
         "treatment_warnings", "width", "height",
+        "reference_project", "pictures", "videos", "audios", "reference_project_json",
     )
+    OUTPUT_IS_LIST = (False, False, False, False, False, False, False, False,
+                      False, True, True, True, False)
     DESCRIPTION = (
         "Rewrite a basic request into MiniMax H3's documented structure through an OpenAI-compatible endpoint "
         "or a local GGUF launched with an isolated llama-server process."
@@ -449,6 +490,7 @@ class MiniMaxH3PromptEnhancer:
             "credit_lines": ("STRING", {"multiline": True, "default": "", "placeholder": "One card per line: Role | Name", "dynamicPrompts": False}),
             "title_placement": (["after credits", "before credits"], {"default": "after credits"}),
             "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
+            "generation_id": ("STRING", {"default": "", "tooltip": "Prompt Studio generation to emit. Blank selects the first generation."}),
         }}
 
     @classmethod
@@ -483,13 +525,15 @@ class MiniMaxH3PromptEnhancer:
                 invent_scene=False, creative_latitude=None,
                 lora_trigger_words="", title_sequence_recipe=TITLE_RECIPE_DISABLED,
                 title_sequence_energy="balanced", title_text="", credit_lines="",
-                title_placement="after credits", reference_director_json=""):
+                title_placement="after credits", reference_director_json="", generation_id=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
+        reference_context, reference_project, loaded_references = _native_reference_bundle(
+            reference_context, reference_director_json, media_manifest, shot_plan_json, generation_id)
         cards = []
         if title_sequence_recipe != TITLE_RECIPE_DISABLED:
             resolved_title_mode = resolve_mode(
@@ -571,6 +615,11 @@ class MiniMaxH3PromptEnhancer:
             "\n".join(manifest.get("treatmentWarnings", ())),
             width,
             height,
+            reference_project,
+            loaded_references["pictures"],
+            loaded_references["videos"],
+            loaded_references["audios"],
+            json.dumps(reference_project, ensure_ascii=False, indent=2),
         )
 
     def enhance_with_ui(self, *args, **kwargs):
@@ -584,11 +633,15 @@ class MiniMaxH3PromptEnhancer:
 class MiniMaxH3GGUFPromptEnhancer:
     CATEGORY = "MiniMax H3/Prompting"
     FUNCTION = "enhance_with_ui"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "FLOAT", "STRING", "STRING", "INT", "INT",
+                    REFERENCE_PROJECT_TYPE, "IMAGE", "IMAGE", "AUDIO", "STRING")
     RETURN_NAMES = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
         "treatment_warnings", "width", "height",
+        "reference_project", "pictures", "videos", "audios", "reference_project_json",
     )
+    OUTPUT_IS_LIST = (False, False, False, False, False, False, False, False,
+                      False, True, True, True, False)
     DESCRIPTION = (
         "Run an existing GGUF through a managed llama-server bound to loopback. No binary or model is "
         "downloaded, and the server is terminated after every queued invocation."
@@ -645,6 +698,7 @@ class MiniMaxH3GGUFPromptEnhancer:
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
             "reference_director_json": ("STRING", {"multiline": True, "default": "", "dynamicPrompts": False, "tooltip": "Prompt Studio physical-reference storage. Appended last for saved-workflow compatibility."}),
+            "generation_id": ("STRING", {"default": "", "tooltip": "Prompt Studio generation to emit. Blank selects the first generation."}),
         }}
 
     @classmethod
@@ -667,7 +721,7 @@ class MiniMaxH3GGUFPromptEnhancer:
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
-              lora_trigger_words="", reference_director_json=""):
+              lora_trigger_words="", reference_director_json="", generation_id=""):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
@@ -675,6 +729,8 @@ class MiniMaxH3GGUFPromptEnhancer:
         context_size, startup_timeout = _local_runtime_limits(context_size, startup_timeout)
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
+        reference_context, reference_project, loaded_references = _native_reference_bundle(
+            reference_context, reference_director_json, media_manifest, shot_plan_json, generation_id)
         prompt, validation, manifest = enhance_prompt_with_gguf_server(
             basic_prompt, mode, duration_seconds, reference_context, llama_server_path, gguf_model_path,
             registered_model_dirs, gpu_layers, context_size, threads, temperature, max_tokens,
@@ -705,6 +761,11 @@ class MiniMaxH3GGUFPromptEnhancer:
             "\n".join(manifest.get("treatmentWarnings", ())),
             width,
             height,
+            reference_project,
+            loaded_references["pictures"],
+            loaded_references["videos"],
+            loaded_references["audios"],
+            json.dumps(reference_project, ensure_ascii=False, indent=2),
         )
 
     def enhance_with_ui(self, *args, **kwargs):
@@ -740,15 +801,13 @@ class MiniMaxH3UnloadGGUFServer:
 class MiniMaxH3VisualReferenceDirector:
     """Compile, explain and decode one visual reference project."""
 
+    DEPRECATED = True
     CATEGORY = "MiniMax H3/References"
     FUNCTION = "build"
     RETURN_TYPES = (REFERENCE_PROJECT_TYPE, "STRING", "IMAGE", "IMAGE", "AUDIO", "STRING", "STRING")
     RETURN_NAMES = ("reference_project", "reference_context", "pictures", "videos", "audios", "wiring_report", "reference_project_json")
     OUTPUT_IS_LIST = (False, False, True, True, True, False, False)
-    DESCRIPTION = (
-        "Visual source of truth for H3 references: semantic prompt context, typed bundle and decoded "
-        "picture/video/audio outputs in the exact compiled order."
-    )
+    DESCRIPTION = "Legacy workflow compatibility. New projects use Compose inside MiniMax H3 Prompt Enhancer."
 
     @classmethod
     def INPUT_TYPES(cls):

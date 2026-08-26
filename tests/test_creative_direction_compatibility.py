@@ -43,7 +43,7 @@ DELIVERY_FIELDS = ["delivery_target"]
 TITLE_FIELDS = [
     "title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement",
 ]
-REFERENCE_DIRECTOR_FIELDS = ["reference_director_json"]
+REFERENCE_DIRECTOR_FIELDS = ["reference_director_json", "generation_id"]
 DELIVERY_TARGET_CALLABLES = {
     prompt_enhancer.enhance_prompt_with_completion,
     prompt_enhancer.enhance_prompt,
@@ -130,6 +130,7 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
         assert optional["reference_director_json"][1]["default"] == ""
         assert optional["reference_director_json"][1]["multiline"] is True
         assert optional["reference_director_json"][1]["dynamicPrompts"] is False
+        assert optional["generation_id"][1]["default"] == ""
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -158,12 +159,13 @@ def test_existing_outputs_keep_their_positions_and_new_outputs_are_appended():
     assert MiniMaxH3PromptGuideBuilder.RETURN_NAMES == (
         "system_prompt", "user_prompt", "resolved_mode", "treatment_warnings", "width", "height",
     )
-    expected_enhancer_outputs = (
+    legacy_enhancer_outputs = (
         "enhanced_prompt", "validation_report", "enhancement_manifest", "duration_seconds", "aspect_ratio",
         "treatment_warnings", "width", "height",
     )
-    assert MiniMaxH3PromptEnhancer.RETURN_NAMES == expected_enhancer_outputs
-    assert MiniMaxH3GGUFPromptEnhancer.RETURN_NAMES == expected_enhancer_outputs
+    native_reference_outputs = ("reference_project", "pictures", "videos", "audios", "reference_project_json")
+    assert MiniMaxH3PromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs
+    assert MiniMaxH3GGUFPromptEnhancer.RETURN_NAMES == legacy_enhancer_outputs + native_reference_outputs
     assert MiniMaxH3ShotSelector.RETURN_NAMES == (
         "shot_prompt", "timeline_body", "shot_description", "shot_id", "shot_count", "autonomous",
     )
@@ -190,6 +192,9 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
         # creative_latitude replaced the enhance_description/invent_scene pair. It defaults to
         # None so an API caller that still passes the old flags keeps its exact behaviour, which
         # is what this test exists to guarantee.
+        if parameters[-1].name == "generation_id":
+            assert parameters[-1].default == ""
+            parameters = parameters[:-1]
         if parameters[-1].name == "reference_director_json":
             assert parameters[-1].default == ""
             parameters = parameters[:-1]
@@ -259,7 +264,8 @@ def test_legacy_main_node_positional_call_still_reaches_remote_backend(monkeypat
     )
     assert result[0] == "prompt"
     assert captured["args"][-5:] == (True, "auto", "follow_prompt", "audible", "")
-    assert result[-3:] == ("", 1280, 720)
+    assert result[5:8] == ("", 1280, 720)
+    assert result[9:12] == ([], [], [])
 
 
 def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monkeypatch):
@@ -281,7 +287,8 @@ def test_legacy_specialized_gguf_node_positional_call_still_reaches_backend(monk
     assert captured["args"][-7:] == ("", "none", "none", "off", "local", "auto", "none")
     assert captured["kwargs"]["invent_scene"] is False
     assert captured["kwargs"]["lora_trigger_words"] == ""
-    assert result[-3:] == ("", 1280, 720)
+    assert result[5:8] == ("", 1280, 720)
+    assert result[9:12] == ([], [], [])
 
 
 def test_main_and_specialized_nodes_forward_appended_fields_without_positional_shift(monkeypatch):

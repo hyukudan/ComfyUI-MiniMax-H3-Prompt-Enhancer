@@ -223,11 +223,8 @@ function reportCounts(controller) {
 }
 
 export function productionContext(controller) {
-    const projectController = !controller.isVisualReferenceDirector
-        ? controller.preferredVisualReferenceController?.()?.controller ?? controller
-        : controller;
-    const shot = safeDocument(() => projectController.shotDocument());
-    const project = safeDocument(() => projectController.projectDocument());
+    const shot = safeDocument(() => controller.shotDocument());
+    const project = safeDocument(() => controller.projectDocument());
     const shots = Array.isArray(shot.value?.shots) ? shot.value.shots : [];
     const exact = shot.value?.timingMode === "exact";
     const duration = exact
@@ -329,12 +326,9 @@ function createHeader(controller, onReview, onClose) {
         const projectValue = project.kind === "v2" ? project.value : controller.projectUiState?.project ?? null;
         const mode = projectValue?.mode ?? "auto";
         const generations = projectValue?.generations?.length ?? 1;
-        const preferred = !controller.isVisualReferenceDirector ? controller.preferredVisualReferenceController?.() : null;
         context.textContent = controller.isVisualReferenceDirector
             ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · physical + semantic references`
-            : preferred
-                ? preferred.linked ? "Visual prompt · references connected" : "Visual prompt · Director on canvas · connect before queue"
-                : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"}` : "Visual prompt workspace";
+            : projectValue ? `${mode} · ${generations} generation${generations === 1 ? "" : "s"} · native Compose project` : "Visual prompt workspace";
         const counts = reportCounts(controller);
         review.dataset.state = counts.stale ? "stale" : counts.errors ? "error" : counts.warnings ? "warning" : "ready";
         review.querySelector(".minimax-h3-review-label").textContent = counts.stale
@@ -426,42 +420,6 @@ function sourceGate(sectionId, controller, panel) {
     return false;
 }
 
-function promptComposeController(controller) {
-    const preferred = controller.preferredVisualReferenceController?.()
-        ?? (controller.connectedVisualReferenceController?.() ? { controller: controller.connectedVisualReferenceController(), linked: true } : null);
-    const connected = preferred?.controller;
-    if (!connected || connected === controller) {
-        controller.composeUsesConnectedDirector = false;
-        controller.composeUsesCanvasDirector = false;
-        return controller;
-    }
-    if (controller.promptComposeProxy?.composeSourceController === connected) {
-        controller.promptComposeProxy.composeDirectorLinked = Boolean(preferred.linked);
-        return controller.promptComposeProxy;
-    }
-    const proxy = Object.create(connected);
-    proxy.composeSourceController = connected;
-    proxy.composeUsesConnectedDirector = Boolean(preferred.linked);
-    proxy.composeUsesCanvasDirector = true;
-    proxy.composeDirectorLinked = Boolean(preferred.linked);
-    proxy.isVisualReferenceDirector = false;
-    for (const name of ["basicPrompt", "mode", "resolvedMode", "generationTiming"]) {
-        if (typeof controller[name] === "function") proxy[name] = controller[name].bind(controller);
-    }
-    proxy.navigateStudio = (section, ...args) => {
-        let destination = section;
-        if (section === "library") {
-            const mode = proxy.directorUiState?.libraryMode;
-            destination = mode === "subjects" ? "subjects" : mode === "environments" ? "environments" : "media";
-        }
-        return controller.navigateStudio?.(destination, ...args);
-    };
-    controller.promptComposeProxy = proxy;
-    return proxy;
-}
-
-const PROMPT_PROJECT_SECTIONS = new Set(["compose", "shots", "staging", "subjects", "environments", "media", "camera"]);
-
 function isEditingTarget(target) {
     return target instanceof HTMLElement
         && (target.matches("input, textarea, select") || target.isContentEditable);
@@ -551,10 +509,7 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             if (section.id === "overview") {
                 renderOverview(panel, controller, { navigate: render, openReview: () => render("review") });
             } else {
-                const sectionController = !controller.isVisualReferenceDirector && PROMPT_PROJECT_SECTIONS.has(section.id)
-                    ? promptComposeController(controller)
-                    : controller;
-                if (!sourceGate(section.id, sectionController, panel)) section.render(panel, sectionController);
+                if (!sourceGate(section.id, controller, panel)) section.render(panel, controller);
             }
         }
         if (sectionId === "review") {
@@ -701,11 +656,8 @@ export function refreshStudioDrawer(nodeId) {
 }
 
 export function dashboardSummaries(controller) {
-    const projectController = !controller.isVisualReferenceDirector
-        ? controller.preferredVisualReferenceController?.()?.controller ?? controller
-        : controller;
-    const shot = projectController.shotDocument();
-    const project = projectController.projectDocument();
+    const shot = controller.shotDocument();
+    const project = controller.projectDocument();
     const shots = shot?.value?.shots?.length ?? 0;
     const staged = shot?.value?.shots?.reduce((count, item) => count + (item?.staging?.length ?? 0), 0) ?? 0;
     const subjects = project?.value?.subjects?.length ?? 0;

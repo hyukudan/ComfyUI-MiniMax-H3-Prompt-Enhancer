@@ -541,7 +541,7 @@ function composeDropTarget(controller, purposeId, relationId, selectedAsset, con
     if (connected) {
         const disconnectButton = button("×", () => disconnect(purposeId, relationId), "minimax-h3-director-drop-disconnect");
         disconnectButton.setAttribute("aria-label", `Disconnect ${definition.label.toLowerCase()} reference`);
-        disconnectButton.title = `Disconnect from ${definition.label}; keep the file in Library`;
+        disconnectButton.title = `Disconnect from ${definition.label}; keep the file in ${controller.isVisualReferenceDirector ? "Library" : "Media"}`;
         wrapper.appendChild(disconnectButton);
     }
     wrapper.appendChild(fileInput);
@@ -555,7 +555,9 @@ function renderComposeAssetTray(container, controller, project, shotPlan, shot, 
     const selectedId = controller.projectUiState.selectedAssetId;
     const tray = el("section", "minimax-h3-director-asset-tray");
     const header = el("div", "minimax-h3-director-tray-header");
-    header.append(el("div", "", "References"), el("span", "", assets.length ? "Select or drag onto a highlighted destination" : "Import files in Library first"));
+    header.append(el("div", "", "References"), el("span", "", assets.length
+        ? "Select or drag onto a highlighted destination"
+        : `Import files in ${controller.isVisualReferenceDirector ? "Library" : "Media"} first`));
     tray.appendChild(header);
     const rail = el("div", "minimax-h3-director-asset-rail");
     for (const asset of assets) {
@@ -571,7 +573,11 @@ function renderComposeAssetTray(container, controller, project, shotPlan, shot, 
         copy.append(el("strong", "", asset.name || asset.id), el("small", "", `${asset.type} · ${sources[asset.id] ? "ready" : "needs file"}`));
         card.append(composeMediaVisual(asset, sources[asset.id]), copy); rail.appendChild(card);
     }
-    if (!assets.length) rail.appendChild(button("Open Library", () => controller.navigateStudio?.("library"), "minimax-h3-director-tray-empty"));
+    if (!assets.length) rail.appendChild(button(
+        controller.isVisualReferenceDirector ? "Open Library" : "Open Media",
+        () => controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "media"),
+        "minimax-h3-director-tray-empty",
+    ));
     tray.appendChild(rail); container.appendChild(tray);
 }
 
@@ -693,7 +699,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         if (!committed?.ok) {
             feedback.dataset.valid = "false"; feedback.textContent = committed?.message || "Could not disconnect the reference atomically."; return;
         }
-        controller.directorUiState.composeFeedback = `${result.summary}. The file remains in Library.`;
+        controller.directorUiState.composeFeedback = `${result.summary}. The file remains in ${controller.isVisualReferenceDirector ? "Library" : "Media"}.`;
         rerender();
     };
     const layout = el("div", "minimax-h3-director-compose-grid");
@@ -768,7 +774,8 @@ function renderBoard(container, controller, plan, project, rerender) {
         const lane = el("div", "minimax-h3-director-lane");
         lane.appendChild(el("strong", "", laneName));
         const values = roles.get(laneName) ?? [];
-        lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ") || "Drop or connect a reference in Library"));
+        lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ")
+            || `Drop or connect a reference in ${controller.isVisualReferenceDirector ? "Library" : "Media"}`));
         if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, importFile, disconnect, values.length > 0));
         else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, importFile, disconnect, values.length > 0));
         else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
@@ -801,7 +808,10 @@ function renderBoard(container, controller, plan, project, rerender) {
     setupActions.append(
         button("+ Subject", () => { controller.directorUiState.creatingSubject = true; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
         button("+ Environment", () => { controller.directorUiState.creatingEnvironment = true; controller.directorUiState.creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"),
-        button("Manage Library", () => { controller.directorUiState.libraryMode = "subjects"; controller.navigateStudio?.("library"); }, "minimax-h3-director-text-button"),
+        button(controller.isVisualReferenceDirector ? "Manage Library" : "Manage Subjects", () => {
+            controller.directorUiState.libraryMode = "subjects";
+            controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "subjects");
+        }, "minimax-h3-director-text-button"),
     );
     setupHeading.append(el("strong", "", "Cast & set"), setupActions);
     setup.appendChild(setupHeading);
@@ -851,7 +861,10 @@ function renderBoard(container, controller, plan, project, rerender) {
         const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
         chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
     }
-    if (!(project?.subjects ?? []).length) castPicker.appendChild(el("span", "minimax-h3-director-placeholder", "Create subjects in Library"));
+    if (!(project?.subjects ?? []).length) castPicker.appendChild(el(
+        "span", "minimax-h3-director-placeholder",
+        `Create subjects in ${controller.isVisualReferenceDirector ? "Library" : "Subjects"}`,
+    ));
     setup.appendChild(castPicker);
     const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
     const environmentSelect = el("select");
@@ -896,11 +909,9 @@ export function renderDirectorCompose(container, controller) {
     const copy = el("div");
     copy.append(
         el("h2", "", "Compose"),
-        el("p", "", controller.composeUsesCanvasDirector
-            ? controller.composeDirectorLinked
-                ? "Create the prompt visually with the connected Director's subjects, voices, backgrounds and physical references."
-                : "Create the prompt visually with the only Director on this canvas. Connect its reference_context output to this enhancer before queueing."
-            : "Create the prompt visually as scenes, subjects, dialogue, backgrounds and camera. Add one Visual Reference Director when physical media outputs are needed."),
+        el("p", "", controller.isVisualReferenceDirector
+            ? "Maintain a legacy reference project or migrate it into Prompt Studio."
+            : "Create the complete prompt visually here: subjects, identity images, voices, backgrounds, action, dialogue, camera and physical H3 outputs share one native project."),
     );
     top.append(copy, modeSwitch(state, rerender, [["board", "Board"], ["details", "Details"], ["staging", "Staging"], ["camera", "Camera"]]));
     container.appendChild(top);
