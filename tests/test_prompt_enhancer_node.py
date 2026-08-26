@@ -221,7 +221,10 @@ def test_always_re_enhance_restores_the_uncacheable_nan_marker():
 def test_always_re_enhance_is_appended_last_to_keep_saved_widget_order():
     for node in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer):
         optional = node.INPUT_TYPES()["optional"]
-        assert list(optional)[-7:] == ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
+        expected_tail = ["always_re_enhance", "delivery_target", "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent", "lora_trigger_words"]
+        if node is MiniMaxH3PromptEnhancer:
+            expected_tail += ["title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement"]
+        assert list(optional)[-len(expected_tail):] == expected_tail
         assert optional["always_re_enhance"][0] == "BOOLEAN"
         assert optional["always_re_enhance"][1]["default"] is False
         assert optional["editing_intent"][0] == list(prompt_enhancer_node.EDITING_INTENT_CHOICES)

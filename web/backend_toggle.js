@@ -130,6 +130,11 @@ const DISPLAY_LABELS = {
     always_re_enhance: "Re-enhance on every run",
     editing_intent: "Editing intent (Ref2VA)",
     lora_trigger_words: "LoRA trigger words",
+    title_sequence_recipe: "Titles & Credits recipe",
+    title_sequence_energy: "Title energy",
+    title_text: "Exact main title",
+    credit_lines: "Credit cards",
+    title_placement: "Main title position",
 };
 const DISPLAY_PLACEHOLDERS = {
     basic_prompt: "Describe the video you want: subject, action, setting, camera, dialogue and sound…",
@@ -139,6 +144,8 @@ const DISPLAY_PLACEHOLDERS = {
     multishot_identity_lock: "Identity, wardrobe and appearance that every chained prompt must preserve…",
     multishot_voice_lock: "Voice, language and delivery that every chained prompt must preserve…",
     multishot_setting_lock: "Location, lighting and continuity that every chained prompt must preserve…",
+    title_text: "Exact main title; line breaks create one stacked composition.",
+    credit_lines: "One card per line: Role | Name",
 };
 const MULTILINE_TITLES = {
     basic_prompt: "Video description",
@@ -150,6 +157,8 @@ const MULTILINE_TITLES = {
     multishot_identity_lock: "Identity continuity (optional)",
     multishot_voice_lock: "Voice continuity (optional)",
     multishot_setting_lock: "Setting continuity (optional)",
+    title_text: "Exact main title",
+    credit_lines: "Credit cards — one per line",
 };
 const DEFAULT_MULTILINE_HEIGHTS = {
     basic_prompt: 190,
@@ -161,6 +170,8 @@ const DEFAULT_MULTILINE_HEIGHTS = {
     multishot_identity_lock: 110,
     multishot_voice_lock: 110,
     multishot_setting_lock: 110,
+    title_text: 90,
+    credit_lines: 110,
 };
 const FIELD_STYLE_ID = "minimax-h3-field-styles";
 const CREATIVE_SCHEMA_VERSION = STRUCTURED_SCHEMA_VERSIONS.creativeTreatment;
@@ -3758,6 +3769,12 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "none", "character_swap", "wardrobe_transfer", "voice_dialogue_swap",
         "environment_background", "motion_transfer", "custom_editing",
     ], "none");
+    sanitizeEnumWidget(node, "title_sequence_recipe", [
+        "none", "Auto director", "Prestige imprint", "Precision apparatus", "Analog print lab",
+        "Unearthed archive", "Optical luxury", "Living material",
+    ], "none");
+    sanitizeEnumWidget(node, "title_sequence_energy", ["restrained", "balanced", "spectacular"], "balanced");
+    sanitizeEnumWidget(node, "title_placement", ["after credits", "before credits"], "after credits");
     sanitizeBooleanWidget(node, "use_remote_model", true);
     sanitizeBooleanWidget(node, "disable_thinking", true);
     sanitizeBooleanWidget(node, "allow_remote_endpoint", false);
@@ -3773,6 +3790,7 @@ function normalizeMigratedRuntimeWidgets(node, repairDisplacedDescription = fals
         "basic_prompt", "prompt", "source_prompt", "reference_context", "endpoint", "model", "api_key",
         "instrumental_description", "media_manifest", "multishot_identity_lock", "multishot_voice_lock",
         "multishot_setting_lock", "llama_server_path", "gguf_model_path", "registered_model_dirs",
+        "title_text", "credit_lines",
     ]) sanitizeStringWidget(node, name);
     const gpuLayers = node.widgets?.find((widget) => widget.name === "gpu_layers");
     const gpuValue = String(gpuLayers?.value ?? "").trim().toLowerCase();
@@ -3826,6 +3844,11 @@ function enforceConditionalVisibility(node) {
         setWidgetVisible(editingIntent, !managed.has("editing_intent") && modeWidget.value === "ref2va");
     }
     for (const name of managed) setWidgetVisible(node.widgets?.find((widget) => widget.name === name), false);
+    const titleRecipe = String(node.widgets?.find((widget) => widget.name === "title_sequence_recipe")?.value ?? "none");
+    const titleActive = titleRecipe !== "none";
+    for (const name of ["title_sequence_energy", "title_text", "credit_lines", "title_placement"]) {
+        setWidgetVisible(node.widgets?.find((widget) => widget.name === name), titleActive);
+    }
 }
 
 // enforceConditionalVisibility is idempotent, but it walks every widget on every
@@ -3840,6 +3863,7 @@ function conditionalVisibilitySignature(node) {
         String(value("mode")),
         String(value("background_score_policy")),
         String(value("show_advanced_controls")),
+        String(value("title_sequence_recipe")),
         String(value("reference_context") ?? "").trim() ? 1 : 0,
         Number(value("frame_count") ?? 0) > 0 ? 1 : 0,
     ].join("|");
@@ -3950,6 +3974,10 @@ function configureAudioNode(node) {
         fitNodeToVisibleWidgets(target);
     });
     wrapRefreshCallback(node, "show_advanced_controls", (target) => {
+        enforceConditionalVisibility(target);
+        fitNodeToVisibleWidgets(target);
+    });
+    wrapRefreshCallback(node, "title_sequence_recipe", (target) => {
         enforceConditionalVisibility(target);
         fitNodeToVisibleWidgets(target);
     });

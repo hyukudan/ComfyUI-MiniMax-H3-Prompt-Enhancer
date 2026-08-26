@@ -136,8 +136,9 @@ try:
     )
     from .creative_treatments import CREATIVE_TREATMENT_SCHEMA_VERSION, VISUAL_LANGUAGE_PROFILES
     from .prompt_enhancer import enhance_prompt
-    from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest, parse_media_project
+    from .media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, generation_profile, manifest_context, parse_media_manifest, parse_media_project
     from .prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from .title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
 except ImportError:  # pragma: no cover - direct test/import compatibility
     from gguf_server import (
         available_gguf_models,
@@ -147,8 +148,9 @@ except ImportError:  # pragma: no cover - direct test/import compatibility
     )
     from creative_treatments import CREATIVE_TREATMENT_SCHEMA_VERSION, VISUAL_LANGUAGE_PROFILES
     from prompt_enhancer import enhance_prompt
-    from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, manifest_context, parse_media_manifest, parse_media_project
+    from media_manifest import ASPECT_RATIOS, MAX_GENERATION_SECONDS, generation_profile, manifest_context, parse_media_manifest, parse_media_project
     from prompt_guides import ACOUSTIC_SPACE_CHOICES, ENHANCEMENT_PROFILES, DIALOGUE_COVERAGE_CHOICES, DIALOGUE_LANGUAGE_CHOICES, EDITING_INTENT_CHOICES, INSTRUMENTAL_STYLE_CHOICES, build_user_request, normalize_multishot_output, resolve_mode, system_prompt_for_mode, treatment_warning_report, validate_prompt
+    from title_credits import TITLE_ENERGIES, TITLE_RECIPES, TITLE_RECIPE_DISABLED, append_title_lock, title_briefing
 
 
 MODE_CHOICES = ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]
@@ -436,6 +438,11 @@ class MiniMaxH3PromptEnhancer:
             "target_megapixels": ("FLOAT", {"default": 0.0, "step": 0.01, "tooltip": "Target resolution in Megapixels (MP), e.g. 0.2, 0.3, 0.5, 0.92 (720p), 2.0 (1080p). Leave 0.0 for standard defaults; Custom accepts any positive finite value."}),
             "editing_intent": (list(EDITING_INTENT_CHOICES), {"default": "none", "tooltip": "Quick video editing intent preset for Ref2VA (Character Swap, Wardrobe Transfer, Voice/Dialogue Swap, Background Change, Motion Transfer, Custom Editing). Automatically enforces video editing summary and retention policies."}),
             "lora_trigger_words": ("STRING", {"default": "", "placeholder": LORA_TRIGGER_PLACEHOLDER, "dynamicPrompts": False, "tooltip": "Trigger tokens for the LoRAs loaded elsewhere in the graph. Appended verbatim to the end of the description after enhancement and validation, so they never pass through the LLM and survive character for character."}),
+            "title_sequence_recipe": ([TITLE_RECIPE_DISABLED, *TITLE_RECIPES], {"default": TITLE_RECIPE_DISABLED, "tooltip": "Turn the enhancer into a cinematic titles and credits director. Existing workflows remain disabled."}),
+            "title_sequence_energy": (list(TITLE_ENERGIES), {"default": "balanced", "tooltip": "Overall motion, lighting, and sound intensity. Readable holds always remain still."}),
+            "title_text": ("STRING", {"multiline": True, "default": "", "placeholder": "Exact main title; line breaks create one stacked composition.", "dynamicPrompts": False}),
+            "credit_lines": ("STRING", {"multiline": True, "default": "", "placeholder": "One card per line: Role | Name", "dynamicPrompts": False}),
+            "title_placement": (["after credits", "before credits"], {"default": "after credits"}),
         }}
 
     @classmethod
@@ -468,13 +475,30 @@ class MiniMaxH3PromptEnhancer:
                 always_re_enhance=False, delivery_target="local", dialogue_language="auto",
                 visual_style_preset="none", target_megapixels=0.0, editing_intent="none",
                 invent_scene=False, creative_latitude=None,
-              lora_trigger_words=""):
+                lora_trigger_words="", title_sequence_recipe=TITLE_RECIPE_DISABLED,
+                title_sequence_energy="balanced", title_text="", credit_lines="",
+                title_placement="after credits"):
         latitude_name = _resolved_latitude_name(creative_latitude, enhance_description, invent_scene)
         enhance_description, invent_scene = _resolve_latitude(
             creative_latitude, enhance_description, invent_scene)
         # always_re_enhance only drives IS_CHANGED caching; enhancement itself ignores it.
         creative_treatment_json = _merge_visual_style_preset(creative_treatment_json, visual_style_preset)
         width, height = h3_dimensions_for_aspect_ratio(aspect_ratio, target_megapixels)
+        cards = []
+        if title_sequence_recipe != TITLE_RECIPE_DISABLED:
+            resolved_title_mode = resolve_mode(
+                mode, reference_context, basic_prompt, media_manifest, editing_intent=editing_intent)
+            if resolved_title_mode == "chained_multishot":
+                raise ValueError(
+                    "Cinematic titles and credits require auto, t2va, or ref2va mode; "
+                    "chained_multishot returns JSON and cannot carry a title text lock."
+                )
+            title_duration = generation_profile(
+                duration_seconds, aspect_ratio, frame_count)["effectiveDurationSeconds"]
+            basic_prompt, cards = title_briefing(
+                basic_prompt, title_sequence_recipe, title_sequence_energy, title_text, credit_lines,
+                title_placement, title_duration, aspect_ratio,
+            )
         if bool(use_remote_model):
             remote_args = (
                 basic_prompt, mode, duration_seconds, reference_context, endpoint, model, api_key,
@@ -524,6 +548,14 @@ class MiniMaxH3PromptEnhancer:
             prompt, validation, manifest = enhance_prompt_with_gguf_server(
                 *local_args, invent_scene=invent_scene, lora_trigger_words=lora_trigger_words,
                 creative_latitude=latitude_name)
+        if cards:
+            prompt = append_title_lock(prompt, cards)
+            manifest = dict(manifest)
+            manifest["titleSequence"] = {
+                "recipe": title_sequence_recipe,
+                "energy": title_sequence_energy,
+                "cardCount": len(cards),
+            }
         return (
             prompt,
             json.dumps(validation, ensure_ascii=False, indent=2),

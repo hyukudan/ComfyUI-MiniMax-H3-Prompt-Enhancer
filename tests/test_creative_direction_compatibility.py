@@ -40,6 +40,9 @@ NEW_FIELD_DEFAULTS = ["", "", "", "none", "none", "off"]
 # Appended after NEW_FIELDS on the two LLM-backed nodes only; the guide builder never calls an LLM.
 CACHING_FIELDS = ["always_re_enhance"]
 DELIVERY_FIELDS = ["delivery_target"]
+TITLE_FIELDS = [
+    "title_sequence_recipe", "title_sequence_energy", "title_text", "credit_lines", "title_placement",
+]
 DELIVERY_TARGET_CALLABLES = {
     prompt_enhancer.enhance_prompt_with_completion,
     prompt_enhancer.enhance_prompt,
@@ -59,11 +62,14 @@ def _input_names(node_class):
 def _appended_fields(node_class):
     caching = CACHING_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
     delivery = DELIVERY_FIELDS if node_class in (MiniMaxH3PromptEnhancer, MiniMaxH3GGUFPromptEnhancer) else []
-    return [
+    fields = [
         *NEW_FIELDS, *caching, *delivery,
         "dialogue_language", "visual_style_preset", "target_megapixels", "editing_intent",
         "lora_trigger_words",
     ]
+    if node_class is MiniMaxH3PromptEnhancer:
+        fields.extend(TITLE_FIELDS)
+    return fields
 
 
 # One deliberate rename, recorded so every other drift still fails this file. Two booleans spanned
@@ -113,6 +119,12 @@ def test_new_serialized_inputs_have_neutral_migration_defaults():
             assert optional["visual_style_preset"][1]["default"] == "none"
         if "target_megapixels" in appended:
             assert optional["target_megapixels"][1]["default"] == 0.0
+        if "title_sequence_recipe" in appended:
+            assert optional["title_sequence_recipe"][1]["default"] == "none"
+            assert optional["title_sequence_energy"][1]["default"] == "balanced"
+            assert optional["title_text"][1]["default"] == ""
+            assert optional["credit_lines"][1]["default"] == ""
+            assert optional["title_placement"][1]["default"] == "after credits"
         for name in JSON_FIELDS:
             options = optional[name][1]
             assert options["default"] == ""
@@ -173,6 +185,12 @@ def test_low_level_and_node_signatures_append_only_optional_neutral_fields():
         # creative_latitude replaced the enhance_description/invent_scene pair. It defaults to
         # None so an API caller that still passes the old flags keeps its exact behaviour, which
         # is what this test exists to guarantee.
+        if callable_ is MiniMaxH3PromptEnhancer.enhance:
+            assert [parameter.name for parameter in parameters[-len(TITLE_FIELDS):]] == TITLE_FIELDS
+            assert [parameter.default for parameter in parameters[-len(TITLE_FIELDS):]] == [
+                "none", "balanced", "", "", "after credits",
+            ]
+            parameters = parameters[:-len(TITLE_FIELDS)]
         if parameters[-1].name == "lora_trigger_words":
             assert parameters[-1].default == ""
             parameters = parameters[:-1]
