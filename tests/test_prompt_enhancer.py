@@ -121,6 +121,63 @@ def test_remote_endpoint_requires_explicit_opt_in():
         )
 
 
+def test_structured_shot_dialogue_becomes_an_exact_source_contract_with_speaker_id():
+    source = prompt_enhancer._dialogue_source_with_shot_plan(
+        "Malak enters the restaurant.",
+        {
+            "shots": [{
+                "actionBeats": [{
+                    "dialogue": {
+                        "speakerId": "malak",
+                        "text": "Vaya mierda de sitio",
+                        "delivery": "says",
+                    },
+                }],
+            }],
+        },
+        {"subjects": [{"id": "malak", "name": "Malak", "h3Index": 1}]},
+    )
+
+    assert '[Shot 1] Malak (S1) says "Vaya mierda de sitio".' in source
+    assert prompt_enhancer._source_dialogue_contracts(source, override_language="Spanish") == [
+        ("Spanish", "Vaya mierda de sitio", False),
+    ]
+    request = prompt_enhancer._append_studio_dialogue_contract("REQUEST", "Malak enters the restaurant.", source)
+    assert request.count("AUTHORITATIVE STUDIO DIALOGUE CONTRACT") == 1
+    assert 'Malak (S1) says "Vaya mierda de sitio"' in request
+    assert "stable (Sx) ID" in request
+
+
+def test_structured_shot_dialogue_does_not_duplicate_an_existing_basic_prompt_line():
+    basic = 'Malak says "Vaya mierda de sitio".'
+    source = prompt_enhancer._dialogue_source_with_shot_plan(
+        basic,
+        {"shots": [{"actionBeats": [{"dialogue": {"speakerId": "malak", "text": "Vaya mierda de sitio"}}]}]},
+        {"subjects": [{"id": "malak", "name": "Malak", "h3Index": 1}]},
+    )
+
+    assert source == basic
+
+
+def test_named_creative_latitude_reaches_system_prompt_and_validation_unchanged():
+    requests = []
+
+    def complete(messages):
+        requests.append(messages)
+        return VALID_PROMPT
+
+    _result, validation, manifest = prompt_enhancer.enhance_prompt_with_completion(
+        "A knight crosses a wet alley. No music.",
+        "t2va", 5.0, "", complete, 0, {"provider": "test"},
+        creative_latitude="conservative_grounded",
+    )
+
+    assert validation["enhancementProfile"] == "conservative_grounded"
+    assert manifest["enhancementProfile"] == "conservative_grounded"
+    assert "ENHANCEMENT PROFILE" in requests[0][0]["content"]
+    assert "CONSERVATIVE_GROUNDED" in requests[0][0]["content"]
+
+
 def test_frontend_model_discovery_filters_models_and_enforces_endpoint_policy(monkeypatch):
     monkeypatch.setattr(
         prompt_enhancer,

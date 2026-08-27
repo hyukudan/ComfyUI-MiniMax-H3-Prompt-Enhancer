@@ -1466,7 +1466,7 @@ def system_prompt_for_mode(mode: str, enhance_description: bool | None = None,
             "requested duration and shot count, and the requested ending. Invent nothing that would need a cut, "
             "a new location, or a time jump the source did not ask for."
         )
-    if enhance_description:
+    if enhance_description is True or enhance_description == "enhanced_production":
         return prompt + (
             "\n\nENHANCEMENT PROFILE — ENHANCED_PRODUCTION: Decide how the supplied elements look, move and sound; "
             "never add another one. Composition, blocking, screen direction, camera, focus, source-consistent "

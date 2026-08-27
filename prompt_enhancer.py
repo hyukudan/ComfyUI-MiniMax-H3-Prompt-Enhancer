@@ -9,6 +9,7 @@ import math
 import os
 import re
 import threading
+from collections import Counter
 from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -74,6 +75,71 @@ def _inherit_basic_prompt_for_single_blank_shot(
     inherited_shot["action"] = str(basic_prompt).strip()
     inherited["shots"] = [inherited_shot]
     return inherited, True
+
+
+def _dialogue_source_with_shot_plan(
+    basic_prompt: str,
+    shot_plan: dict,
+    media_project: dict,
+) -> str:
+    """Merge exact Studio dialogue into the source contract used by normalization.
+
+    Studio v3 stores authored speech in ``actionBeats`` rather than duplicating it
+    in the Basic prompt. Dialogue normalization and validation must therefore see
+    those exact lines as source-authored facts. The synthetic prose is internal:
+    it is never emitted, and it includes the stable H3 speaker ID so a repair pass
+    has an unambiguous vocal-action template.
+    """
+    existing = Counter(
+        _dialogue_lexical_key(text)
+        for _language, text, _internal in _source_dialogue_contracts(basic_prompt)
+    )
+    observed: Counter[str] = Counter()
+    subjects = {
+        str(subject.get("id", "")): subject
+        for subject in media_project.get("subjects", ())
+        if isinstance(subject, dict) and subject.get("id")
+    }
+    lines = []
+    for shot_number, shot in enumerate(shot_plan.get("shots", ()), start=1):
+        if not isinstance(shot, dict):
+            continue
+        for beat in shot.get("actionBeats", ()):
+            dialogue = beat.get("dialogue") if isinstance(beat, dict) else None
+            if not isinstance(dialogue, dict):
+                continue
+            text = str(dialogue.get("text", "")).strip()
+            if not text:
+                continue
+            key = _dialogue_lexical_key(text)
+            observed[key] += 1
+            if observed[key] <= existing[key]:
+                continue
+            subject = subjects.get(str(dialogue.get("speakerId", "")), {})
+            name = str(subject.get("name") or dialogue.get("speakerId") or "The on-screen speaker")
+            h3_index = subject.get("h3Index")
+            speaker_id = f" (S{h3_index})" if isinstance(h3_index, int) and h3_index > 0 else ""
+            lines.append(f'[Shot {shot_number}] {name}{speaker_id} says "{text}".')
+    return "\n".join((basic_prompt, *lines)) if lines else basic_prompt
+
+
+def _append_studio_dialogue_contract(
+    user_request: str,
+    basic_prompt: str,
+    dialogue_source_prompt: str,
+) -> str:
+    """Expose Studio-authored speaker ownership to the writer model once."""
+    if dialogue_source_prompt == basic_prompt:
+        return user_request
+    prefix = basic_prompt + "\n"
+    contract = dialogue_source_prompt[len(prefix):] if dialogue_source_prompt.startswith(prefix) else dialogue_source_prompt
+    return (
+        user_request.rstrip()
+        + "\n\nAUTHORITATIVE STUDIO DIALOGUE CONTRACT:\n"
+        + contract.strip()
+        + "\nCopy every quoted line exactly once inside its <d>[Language] ...</d> block. In that same sentence, "
+        "keep the named speaker, stable (Sx) ID, and an explicit vocal verb. Do not invent additional words."
+    )
 
 
 def _request_json(url: str, payload: dict | None, api_key: str, timeout: int) -> dict:
@@ -383,6 +449,13 @@ def enhance_prompt_with_completion(
     basic_prompt = str(basic_prompt).strip()
     if not basic_prompt:
         raise ValueError("basic_prompt cannot be empty")
+    profile_selector = (
+        creative_latitude
+        if creative_latitude in {
+            "verbatim_source", "conservative_grounded", "enhanced_production", "invented_production",
+        }
+        else bool(enhance_description)
+    )
     parsed_manifest_preflight = parse_media_manifest(media_manifest)
     compiled_media_project = parse_media_project(media_manifest)
     preflight_errors = compiled_media_project.get("errors", parsed_manifest_preflight.get("errors", ()))
@@ -400,6 +473,9 @@ def enhance_prompt_with_completion(
     )
     explicit_shot_plan = parse_shot_plan(
         effective_shot_plan_json, effective_duration, 0, resolved_mode,
+    )
+    dialogue_source_prompt = _dialogue_source_with_shot_plan(
+        basic_prompt, explicit_shot_plan, compiled_media_project,
     )
     compiled_planning = compile_planning_context(
         compiled_media_project, explicit_shot_plan, effective_duration, mode=resolved_mode,
@@ -446,10 +522,10 @@ def enhance_prompt_with_completion(
             + "."
         )
     dialogue_authoring, resolved_dialogue_language = _dialogue_authoring_request(
-        basic_prompt, override_language=dialogue_language
+        dialogue_source_prompt, override_language=dialogue_language
     )
     user_request = _build_user_request_compiled(
-        basic_prompt, mode, duration_seconds, reference_context, enhance_description,
+        basic_prompt, mode, duration_seconds, reference_context, profile_selector,
         ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock,
@@ -459,11 +535,14 @@ def enhance_prompt_with_completion(
         invent_scene=invent_scene,
         compiled_planning_context=compiled_planning,
     )
+    user_request = _append_studio_dialogue_contract(
+        user_request, basic_prompt, dialogue_source_prompt,
+    )
     dialogue_ledger: tuple[tuple[str, str], ...] = ()
     dialogue_planning_repairs = 0
     if dialogue_authoring and voice_performance == "audible":
         dialogue_ledger, dialogue_planning_repairs = _plan_dialogue_ledger(
-            basic_prompt,
+            dialogue_source_prompt,
             resolved_dialogue_language,
             effective_duration,
             (
@@ -475,7 +554,7 @@ def enhance_prompt_with_completion(
             repair_attempts,
         )
         user_request = _build_user_request_compiled(
-            basic_prompt, mode, duration_seconds, reference_context, enhance_description,
+            basic_prompt, mode, duration_seconds, reference_context, profile_selector,
             ambience_foley_policy, background_score_policy, voice_performance, instrumental_description,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
@@ -484,6 +563,9 @@ def enhance_prompt_with_completion(
             editing_intent=editing_intent,
             invent_scene=invent_scene,
             compiled_planning_context=compiled_planning,
+        )
+        user_request = _append_studio_dialogue_contract(
+            user_request, basic_prompt, dialogue_source_prompt,
         )
     effective_reference_context = "\n".join(
         part for part in (
@@ -500,7 +582,7 @@ def enhance_prompt_with_completion(
     base_messages = [
         {"role": "system", "content": system_prompt_for_mode(
             resolved_mode,
-            "verbatim_source" if creative_latitude == "verbatim_source" else bool(enhance_description),
+            profile_selector,
             invent_scene)},
         {"role": "user", "content": user_request},
     ]
@@ -543,7 +625,7 @@ def enhance_prompt_with_completion(
         value = normalize_shot_timeline(value, resolved_mode, effective_duration, explicit_shot_plan)
         value = normalize_reference_definitions(value, basic_prompt, effective_reference_context)
         value = normalize_unassigned_subjects(value, basic_prompt, effective_reference_context)
-        value = normalize_source_dialogue(value, basic_prompt, resolved_mode, voice_performance)
+        value = normalize_source_dialogue(value, dialogue_source_prompt, resolved_mode, voice_performance)
         value = normalize_audio_policy(
             value, ambience_foley_policy, background_score_policy, voice_performance,
             basic_prompt + "\n" + effective_reference_context,
@@ -561,12 +643,12 @@ def enhance_prompt_with_completion(
 
     enhanced = normalize_candidate(completion(messages))
     validation = _validate_prompt_compiled(
-        enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
+        enhanced, mode, duration_seconds, dialogue_source_prompt, effective_reference_context,
         ambience_foley_policy, background_score_policy, voice_performance,
         aspect_ratio, media_manifest, multishot_shot_count, frame_count,
         multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
         creative_treatment_json, shot_plan_json, cinematography_json,
-        enhance_description=bool(enhance_description), delivery_target=delivery_target,
+        enhance_description=profile_selector, delivery_target=delivery_target,
         instrumental_description=instrumental_description, instrumental_style=instrumental_style,
         acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
         dialogue_language=dialogue_language,
@@ -649,6 +731,12 @@ def enhance_prompt_with_completion(
                 "description of speech. If speech occurs in multiple timeline beats, write a distinct concise line "
                 "at each relevant beat. This requirement overrides the default rule against unrequested dialogue."
             )
+        if any("stable (Sx) ID" in str(error) for error in validation.get("errors", ())):
+            dialogue_authoring_repair += (
+                "\nMANDATORY SPEAKER-ID REPAIR: In the same sentence immediately before every <d> block, name "
+                "the speaking character, include their stable (Sx) ID from the supplied Subject mapping, and use "
+                "an explicit vocal verb such as says, replies, or whispers. Do not change the dialogue words."
+            )
         issues = repair_issues(validation)
         messages = [*base_messages,
             {"role": "assistant", "content": enhanced},
@@ -662,12 +750,12 @@ def enhance_prompt_with_completion(
         ]
         enhanced = normalize_candidate(completion(messages))
         validation = _validate_prompt_compiled(
-            enhanced, mode, duration_seconds, basic_prompt, effective_reference_context,
+            enhanced, mode, duration_seconds, dialogue_source_prompt, effective_reference_context,
             ambience_foley_policy, background_score_policy, voice_performance,
             aspect_ratio, media_manifest, multishot_shot_count, frame_count,
             multishot_identity_lock, multishot_voice_lock, multishot_setting_lock, dialogue_ledger,
             creative_treatment_json, shot_plan_json, cinematography_json,
-            enhance_description=bool(enhance_description), delivery_target=delivery_target,
+            enhance_description=profile_selector, delivery_target=delivery_target,
             instrumental_description=instrumental_description, instrumental_style=instrumental_style,
             acoustic_space=acoustic_space, dialogue_coverage=dialogue_coverage,
             editing_intent=editing_intent,
@@ -793,7 +881,7 @@ def enhance_prompt_with_completion(
                 _LANGUAGE_ALIASES.get(dialogue_language.casefold(), dialogue_language.capitalize())
                 if dialogue_language and dialogue_language != "auto"
                 else (
-                    source_contracts[0][0] if (source_contracts := _source_dialogue_contracts(basic_prompt))
+                    source_contracts[0][0] if (source_contracts := _source_dialogue_contracts(dialogue_source_prompt))
                     else _detect_language(basic_prompt)
                 )
             )
