@@ -2357,9 +2357,131 @@ def _reference_summary_tail(model: Mapping[str, Any], task_types: list[str]) -> 
     return " ".join(clauses) or "The target applies the defined references only in their stated roles."
 
 
+def _structured_subject_contracts(reference_context: str) -> list[dict[str, Any]]:
+    contracts = []
+    prefix = "- SUBJECT CONTRACT JSON: "
+    for raw_line in str(reference_context or "").splitlines():
+        line = raw_line.strip()
+        if not line.startswith(prefix):
+            continue
+        try:
+            item = json.loads(line[len(prefix):])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(item, dict) or not re.fullmatch(r"<Subject\s+\d+>", str(item.get("label", "")), re.IGNORECASE):
+            continue
+        identity_sources = [
+            str(source) for source in item.get("identitySources", [])
+            if re.fullmatch(r"<Picture\s+\d+>", str(source), re.IGNORECASE)
+        ]
+        voice_source = str(item.get("voiceSource") or "")
+        if voice_source and not re.fullmatch(r"<Audio\s+\d+>", voice_source, re.IGNORECASE):
+            voice_source = ""
+        contracts.append({
+            "label": str(item["label"]),
+            "name": str(item.get("name") or item["label"]).strip(),
+            "description": str(item.get("description") or "Unspecified stable identity.").strip(),
+            "identitySources": identity_sources,
+            "voiceSource": voice_source,
+        })
+    return contracts
+
+
+def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str, Any]],
+                                            reference_context: str) -> str:
+    """Make Studio Subjects deterministic instead of asking the LLM to rediscover them."""
+    value = str(text)
+    owned_labels = {
+        contract["label"].casefold() for contract in contracts
+    } | {
+        source.casefold() for contract in contracts for source in contract["identitySources"]
+    } | {
+        contract["voiceSource"].casefold() for contract in contracts if contract["voiceSource"]
+    }
+    definitions = []
+    retention = []
+    audio_owners: dict[str, str] = {}
+    for contract in contracts:
+        identities = ", ".join(contract["identitySources"])
+        identity_clause = f"; visual identity comes from {identities}" if identities else ""
+        definitions.append(
+            f"{contract['label']} is {contract['name']}; stable identity: {contract['description']}"
+            f"{identity_clause}."
+        )
+        retention.append(
+            f"{contract['label']}: fully_preserved - preserve {contract['name']}'s stable identity"
+            f"{f' from {identities}' if identities else ''}, including: {contract['description']}."
+        )
+        if contract["voiceSource"]:
+            audio_owners[contract["voiceSource"]] = contract["label"]
+    for audio, subject in audio_owners.items():
+        definitions.append(
+            f"{audio} is the supplied voice-timbre and delivery reference exclusively for {subject}; "
+            "it supplies no dialogue words or unrelated sounds."
+        )
+        retention.append(
+            f"{audio}: reference - preserve voice timbre, cadence, accent, and delivery for {subject} only; "
+            "authored dialogue supplies the exact words."
+        )
+
+    def keep_unowned(section: str) -> list[str]:
+        kept = []
+        for raw_line in _section_body(value, section).splitlines():
+            match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", raw_line, re.IGNORECASE)
+            if not match or match.group(1).casefold() not in owned_labels:
+                if raw_line.strip():
+                    kept.append(raw_line.strip())
+        return kept
+
+    value = _replace_section_body(value, "subject_definitions", "\n".join(definitions + keep_unowned("subject_definitions")))
+    value = _replace_section_body(value, "retention_analysis", "\n".join(retention + keep_unowned("retention_analysis")))
+
+    existing_summary = _section_body(value, "summary")
+    existing_types_match = re.match(r"\s*\[([^\]\r\n]+)\]", existing_summary)
+    existing_types = re.split(r"\s*(?:\+|/)\s*", existing_types_match.group(1)) if existing_types_match else []
+    has_video = bool(re.search(r"<Video\s+\d+>", reference_context, re.IGNORECASE))
+    task_types = [
+        task.casefold() for task in existing_types
+        if task.casefold() in REF2VA_TASK_TYPES
+        and (has_video or task.casefold() not in {"video editing", "video continuation"})
+    ]
+    if any(contract["identitySources"] for contract in contracts):
+        task_types.append("reference generation")
+    if audio_owners:
+        task_types.append("audio reference")
+    task_types = list(dict.fromkeys(task_types or ["reference generation"]))
+    labels = ", ".join(contract["label"] for contract in contracts)
+    value = _replace_section_body(
+        value, "summary",
+        f"[{' + '.join(task_types)}] Generate the configured scene with {labels}, using only their declared identity and voice references.",
+    )
+
+    detail = _section_body(value, "detailed_description")
+    for contract in sorted(contracts, key=lambda item: len(item["name"]), reverse=True):
+        name = contract["name"]
+        if not name or name.casefold() == contract["label"].casefold():
+            continue
+        pattern = rf"(?<![\w>]){re.escape(name)}(?![\w<])"
+        first_use = f"{contract['label']} ({name}; stable identity: {contract['description']})"
+        placeholder = f"\x00H3_SUBJECT_{contract['label']}\x00"
+        detail, replaced = re.subn(pattern, placeholder, detail, count=1, flags=re.IGNORECASE)
+        if replaced:
+            detail = re.sub(pattern, contract["label"], detail, flags=re.IGNORECASE)
+            detail = detail.replace(placeholder, first_use)
+    value = _replace_section_body(value, "detailed_description", detail)
+    return value
+
+
 def normalize_reference_definitions(text: str, source_prompt: str, reference_context: str = "") -> str:
     """Complete inferred Ref2VA mappings without discarding valid generated analysis."""
     text = normalize_ref_task_prefix(text)
+    structured_subjects = _structured_subject_contracts(reference_context)
+    if structured_subjects:
+        # Studio already supplied the complete subject graph. Running the old
+        # prose-inference pass afterwards would discard Subjects whose names or
+        # Pictures were not repeated in the basic prompt—the exact duplication
+        # Studio v3 was designed to remove.
+        return _normalize_structured_subject_contracts(text, structured_subjects, reference_context)
     model = _official_reference_model(source_prompt, reference_context)
     if model["explicit"] or not model["definitions"]:
         return str(text)

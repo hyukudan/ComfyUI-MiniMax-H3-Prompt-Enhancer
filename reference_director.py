@@ -251,6 +251,46 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         "AUTHORITATIVE REFERENCE RELATIONSHIPS:",
         "Explicit prompt instructions override reference assignments; references override creative invention.",
     ]
+    input_by_asset = {
+        str(item.get("assetId")): item
+        for item in generations.get(selected, []) if item.get("assetId")
+    }
+    selected_shots = [
+        shot for shot in shots if shot.get("generationId", "g1") == selected
+    ]
+    cast_subject_ids = {
+        str(cast.get("subjectId"))
+        for shot in selected_shots
+        for cast in (shot.get("cast") or shot.get("subjects") or [])
+        if cast.get("subjectId") and cast.get("presence", "present") != "absent"
+    }
+    subject_contracts = []
+    for index, subject in enumerate(media.get("subjects", []), start=1):
+        identity_sources = [
+            input_by_asset[asset_id].get("label")
+            for asset_id in subject.get("identityAssetIds", [])
+            if asset_id in input_by_asset and input_by_asset[asset_id].get("label")
+        ]
+        voice_asset_id = subject.get("defaultVoiceAssetId")
+        voice_source = input_by_asset.get(voice_asset_id, {}).get("label") if voice_asset_id else None
+        if subject.get("id") not in cast_subject_ids and not identity_sources and not voice_source:
+            continue
+        subject_contracts.append({
+            "label": f"<Subject {int(subject.get('h3Index') or index)}>",
+            "name": str(subject.get("name") or subject.get("id") or f"Subject {index}"),
+            "description": str(subject.get("description") or "Unspecified stable identity."),
+            "identitySources": identity_sources,
+            "voiceSource": voice_source,
+        })
+    if subject_contracts:
+        lines.append(
+            "REQUIRED SUBJECT CONTRACTS (machine-derived; every row must appear in subject_definitions and every "
+            "Subject label must be reused in detailed_description):"
+        )
+        lines.extend(
+            "- SUBJECT CONTRACT JSON: " + json.dumps(contract, ensure_ascii=False, sort_keys=True)
+            for contract in subject_contracts
+        )
     for item in generations.get(selected, []):
         label = item.get("label") or "<Reference>"
         asset_id = item.get("assetId")

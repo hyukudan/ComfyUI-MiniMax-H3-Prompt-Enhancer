@@ -197,6 +197,42 @@ def test_visual_subject_identity_and_voice_compile_to_the_same_named_llm_subject
     assert "supplies no dialogue words" in context
 
 
+def test_reference_context_emits_machine_derived_subject_contracts_with_user_descriptions():
+    project = {
+        "mediaProject": {
+            "assets": [
+                {"id": "malak.image", "type": "picture"},
+                {"id": "rastas.image", "type": "picture"},
+                {"id": "malak.voice", "type": "audio"},
+            ],
+            "subjects": [
+                {"id": "malak", "h3Index": 1, "name": "Malak", "description": "short dark hair",
+                 "identityAssetIds": ["malak.image"], "defaultVoiceAssetId": "malak.voice"},
+                {"id": "rastas", "h3Index": 3, "name": "Rastas", "description": "very long dreadlocks",
+                 "identityAssetIds": ["rastas.image"]},
+            ],
+            "environments": [],
+        },
+        "shotPlan": {"shots": [{
+            "id": "s1", "generationId": "g1",
+            "cast": [{"subjectId": "malak", "presence": "present"}, {"subjectId": "rastas", "presence": "present"}],
+        }]},
+        "inputsByGeneration": {"g1": [
+            {"label": "<Picture 1>", "assetId": "malak.image", "mediaType": "picture"},
+            {"label": "<Picture 3>", "assetId": "rastas.image", "mediaType": "picture"},
+            {"label": "<Audio 1>", "assetId": "malak.voice", "mediaType": "audio"},
+        ]},
+    }
+
+    context = reference_context_for_project(project, "g1")
+
+    contracts = [json.loads(line.split(": ", 1)[1]) for line in context.splitlines() if "SUBJECT CONTRACT JSON" in line]
+    assert contracts == [
+        {"description": "short dark hair", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"},
+        {"description": "very long dreadlocks", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": None},
+    ]
+
+
 def test_frame_mode_infers_the_same_effective_role_as_the_visual_editor():
     director = empty_reference_director()
     director["sources"]["frame"] = source(filename="frame.webp")
