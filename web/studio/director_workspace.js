@@ -269,6 +269,30 @@ export function setSceneSubjectPresence(shot, subjectId, present) {
     return shot;
 }
 
+export function removeSceneSubjectFromShot(shot, subjectId) {
+    const hadDialogue = (shot.actionBeats ?? []).some((beat) => beat.dialogue?.speakerId === subjectId);
+    setSceneSubjectPresence(shot, subjectId, false);
+    for (const key of ["staging", "appearanceTransitions"]) {
+        if (!Array.isArray(shot[key])) continue;
+        shot[key] = shot[key].filter((item) => item.subjectId !== subjectId);
+        if (!shot[key].length) delete shot[key];
+    }
+    if (Array.isArray(shot.scaleRelationships)) {
+        shot.scaleRelationships = shot.scaleRelationships.filter((item) =>
+            item.subjectId !== subjectId && item.relativeToId !== subjectId);
+        if (!shot.scaleRelationships.length) delete shot.scaleRelationships;
+    }
+    if (Array.isArray(shot.referenceUses)) {
+        shot.referenceUses = shot.referenceUses.flatMap((use) => {
+            if (!(use.targetIds ?? []).includes(subjectId)) return [use];
+            const targetIds = use.targetIds.filter((id) => id !== subjectId);
+            return targetIds.length ? [{ ...use, targetIds }] : [];
+        });
+        if (!shot.referenceUses.length) delete shot.referenceUses;
+    }
+    return { shot, hadDialogue };
+}
+
 export function setScenePropPresence(shot, propId, present) {
     shot.props ??= [];
     const index = shot.props.findIndex((entry) => entry.propId === propId);
@@ -1056,6 +1080,24 @@ function renderBoard(container, controller, plan, project, rerender) {
             status,
         );
         const expanded = el("div", "minimax-h3-director-subject-expanded");
+        const cardActions = el("div", "minimax-h3-director-subject-card-actions");
+        const removeFromShot = button("Remove from Shot", () => {
+            const result = removeSceneSubjectFromShot(selected, entry.subjectId);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            if (!committed?.ok) {
+                controller.directorUiState.composeFeedback = committed?.message || `Could not remove ${name} from this Shot.`;
+                rerender();
+                return;
+            }
+            controller.directorUiState.expandedSubjectIds = (controller.directorUiState.expandedSubjectIds ?? [])
+                .filter((id) => id !== entry.subjectId);
+            controller.directorUiState.composeFeedback = `${name} removed from this Shot; the Subject remains in Library.`
+                + (result.hadDialogue ? " Its authored dialogue remains in the Shot—choose another Speaker or place the Subject again." : "");
+            rerender();
+        }, "minimax-h3-director-text-button minimax-h3-director-remove-button");
+        removeFromShot.setAttribute("aria-label", `Remove ${name} from this Shot without deleting it from Library`);
+        cardActions.append(el("small", "", "This Shot only"), removeFromShot);
+        expanded.appendChild(cardActions);
         const lookSelect = el("select", "minimax-h3-director-look-select");
         lookSelect.setAttribute("aria-label", `Appearance for ${name} in this Shot`);
         for (const appearance of subject?.appearanceStates ?? []) {

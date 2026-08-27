@@ -375,6 +375,8 @@ test("Visual Compose has semantic Subject drag, compact cards and stable dialogu
     assert.match(directorSource, /focusDialogueOnOpen/);
     assert.match(directorSource, /focus\(\{ preventScroll: true \}\)/);
     assert.match(directorSource, /el\("details", "minimax-h3-director-subject-card"\)/);
+    assert.match(directorSource, /Remove from Shot/);
+    assert.match(directorSource, /the Subject remains in Library/);
     assert.match(stylesSource, /\.minimax-h3-director-subject-summary\s*\{[^}]*min-height:\s*62px/s);
     assert.match(stylesSource, /\.minimax-h3-director-cast\[data-subject-drag-over="true"\]/);
 });

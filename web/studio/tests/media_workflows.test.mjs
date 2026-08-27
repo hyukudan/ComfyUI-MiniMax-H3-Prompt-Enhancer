@@ -5,7 +5,7 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, composeVisualMentionLinks, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createScenePropBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setScenePropPresence, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, composeVisualMentionLinks, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createScenePropBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, removeSceneSubjectFromShot, reorderScene, setSceneEnvironment, setScenePropPresence, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
 import { ensureSubjectBindings } from "../subject_model.js";
 
 function fixtures() {
@@ -95,6 +95,31 @@ test("Compose preserves complete presence declarations by marking removed cast a
     const shot = { subjectPresenceComplete: true, subjects: [{ subjectId: "subject.1", presence: "present" }] };
     setSceneSubjectPresence(shot, "subject.1", false);
     assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }]);
+});
+
+test("removing a Subject from a Shot keeps the Library entity and clears Shot-only assignments", () => {
+    const shot = {
+        subjectPresenceComplete: true,
+        subjects: [{ subjectId: "subject.1", presence: "present" }, { subjectId: "subject.2", presence: "present" }],
+        staging: [{ subjectId: "subject.1" }, { subjectId: "subject.2" }],
+        appearanceTransitions: [{ subjectId: "subject.1" }],
+        scaleRelationships: [{ subjectId: "subject.1", relativeToId: "subject.2" }],
+        referenceUses: [
+            { assetId: "voice", role: "voice", targetIds: ["subject.1"] },
+            { assetId: "group", role: "performance", targetIds: ["subject.1", "subject.2"] },
+        ],
+        actionBeats: [{ dialogue: { speakerId: "subject.1", text: "Stay." } }],
+    };
+
+    const result = removeSceneSubjectFromShot(shot, "subject.1");
+
+    assert.equal(result.hadDialogue, true);
+    assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }, { subjectId: "subject.2", presence: "present" }]);
+    assert.deepEqual(shot.staging, [{ subjectId: "subject.2" }]);
+    assert.equal(shot.appearanceTransitions, undefined);
+    assert.equal(shot.scaleRelationships, undefined);
+    assert.deepEqual(shot.referenceUses, [{ assetId: "group", role: "performance", targetIds: ["subject.2"] }]);
+    assert.equal(shot.actionBeats[0].dialogue.text, "Stay.", "authored dialogue is never silently deleted");
 });
 
 test("placing a library Subject in the Shot makes it available to Dialogue Speaker", () => {

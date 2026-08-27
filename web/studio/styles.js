@@ -1968,6 +1968,10 @@ export function ensureStudioStyles() {
         .minimax-h3-director-subject-status { display: flex; grid-column: 2 / 4; gap: 5px; margin-top: -3px; color: var(--h3-text-muted); }
         .minimax-h3-director-subject-status small { padding: 1px 5px; border-radius: 999px; background: var(--h3-surface-2); font-size: 9px; }
         .minimax-h3-director-subject-expanded { display: grid; gap: 9px; padding: 0 10px 10px; border-top: 1px solid var(--h3-border); }
+        .minimax-h3-director-subject-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 9px; }
+        .minimax-h3-director-subject-card-actions > small { color: var(--h3-text-muted); }
+        .minimax-h3-director-remove-button { color: var(--h3-danger, #ff8585) !important; border-color: color-mix(in srgb, var(--h3-danger, #ff8585) 46%, var(--h3-border)) !important; }
+        .minimax-h3-director-remove-button:hover:not(:disabled) { background: color-mix(in srgb, var(--h3-danger, #ff8585) 14%, var(--h3-surface-raised)) !important; }
         .minimax-h3-director-look-field {
             display: grid;
             grid-template-columns: minmax(130px, auto) minmax(180px, 1fr);
