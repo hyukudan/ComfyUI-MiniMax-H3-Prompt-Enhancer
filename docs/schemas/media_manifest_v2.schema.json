@@ -39,12 +39,16 @@
       "properties": {
         "id": {"$ref": "#/$defs/id"}, "type": {"enum": ["picture", "video", "audio"]}, "name": {"$ref": "#/$defs/shortText"},
         "available": {"type": "boolean", "default": true}, "durationSeconds": {"type": "number", "minimum": 0, "maximum": 15},
+        "audioClip": {"type": "object", "additionalProperties": false, "required": ["startSeconds", "endSeconds"], "properties": {"startSeconds": {"type": "number", "minimum": 0}, "endSeconds": {"type": "number", "exclusiveMinimum": 0}}},
         "audioMode": {"enum": ["off", "paired", "alone"]}, "description": {"$ref": "#/$defs/text"},
         "analysis": {"oneOf": [{"$ref": "#/$defs/text"}, {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]}}]},
         "transcript": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/transcriptEntry"}},
         "cameraTransfer": {"$ref": "#/$defs/cameraTransfer"}
       },
-      "allOf": [{"if": {"properties": {"type": {"const": "video"}}, "required": ["type"]}, "then": {}, "else": {"properties": {"audioMode": false, "cameraTransfer": false}}}]
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "video"}}, "required": ["type"]}, "then": {}, "else": {"properties": {"audioMode": false, "cameraTransfer": false}}},
+        {"if": {"required": ["audioClip"]}, "then": {"properties": {"type": {"const": "audio"}}}}
+      ]
     },
     "appearanceSource": {
       "oneOf": [

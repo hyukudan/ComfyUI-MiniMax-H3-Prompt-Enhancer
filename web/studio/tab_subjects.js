@@ -5,6 +5,8 @@ import {
 import { usageIndex } from "./derive.js";
 import { importEntityAsset, visualAssetPicker } from "./entity_media.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
+import { applyAudioClipToAsset, renderAudioTrimEditor } from "./audio_trim_editor.js";
+import { referenceSourceForAsset, sourcePreviewUrl } from "./reference_sources.js";
 
 const APPEARANCE_CONTROLS = [
     ["wardrobe", "Wardrobe", "wardrobe"], ["hair", "Hair", "hair"], ["makeup", "Makeup", "makeup"],
@@ -226,6 +228,7 @@ export function renderSubjectsTab(container, controller) {
         ...voiceAssets.map((asset) => [asset.id, asset.name || asset.id]),
     ]);
     bindCommit(voice, (value) => setOptional(subject, "defaultVoiceAssetId", value), commit);
+    voice.addEventListener("change", () => rerender());
     const voiceInput = document.createElement("input");
     voiceInput.type = "file"; voiceInput.accept = "audio/*"; voiceInput.hidden = true;
     const importVoice = actionButton("+ Import voice", () => voiceInput.click());
@@ -244,6 +247,19 @@ export function renderSubjectsTab(container, controller) {
     const voiceField = field("Default voice", voice, "Inherited whenever this subject is active; a Shot can override it.");
     voiceField.append(importVoice, voiceInput);
     identity.body.appendChild(voiceField);
+    const selectedVoiceAsset = voiceAssets.find((asset) => asset.id === subject.defaultVoiceAssetId);
+    if (selectedVoiceAsset) {
+        const source = referenceSourceForAsset(controller.referenceDirectorDocument?.()?.value, selectedVoiceAsset.id);
+        identity.body.appendChild(renderAudioTrimEditor({
+            asset: selectedVoiceAsset,
+            url: sourcePreviewUrl(source),
+            label: `${subject.name || subject.id} · Default voice fragment`,
+            onChange: (clip, sourceDuration) => {
+                applyAudioClipToAsset(selectedVoiceAsset, clip, sourceDuration);
+                commit();
+            },
+        }));
+    }
     inspector.appendChild(identity.details);
 
     const promptUse = inspectorSection("Use in prompts", "generation casting", true);

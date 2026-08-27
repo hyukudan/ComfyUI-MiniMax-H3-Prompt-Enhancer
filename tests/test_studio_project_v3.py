@@ -175,3 +175,25 @@ def test_v3_file_root_is_projected_as_a_v2_asset_root():
     assert compiled["mediaProject"]["generations"][0]["activation"] == {
         "mode": "explicit", "roots": [{"kind": "asset", "id": "cliff.view"}],
     }
+
+
+def test_v3_preserves_exact_audio_clip_through_the_physical_output_plan():
+    project = _project()
+    project["files"][1]["audioClip"] = {"startSeconds": 1.25, "endSeconds": 3.75}
+    compiled = compile_studio_project(project)
+    voice_asset = next(asset for asset in compiled["mediaProject"]["assets"] if asset["id"] == "ana.voice")
+    voice_input = next(item for item in compiled["referenceProject"]["inputsByGeneration"]["g1"] if item["assetId"] == "ana.voice")
+    assert voice_asset["audioClip"] == {"startSeconds": 1.25, "endSeconds": 3.75}
+    assert voice_input["audioClip"] == {"startSeconds": 1.25, "endSeconds": 3.75}
+
+
+@pytest.mark.parametrize("clip", [
+    {"startSeconds": -1, "endSeconds": 2},
+    {"startSeconds": 3, "endSeconds": 2},
+    {"startSeconds": 0, "endSeconds": 15.01},
+])
+def test_v3_rejects_invalid_audio_clip_ranges(clip):
+    project = _project()
+    project["files"][1]["audioClip"] = clip
+    with pytest.raises(ValueError, match="audioClip"):
+        compile_studio_project(project)

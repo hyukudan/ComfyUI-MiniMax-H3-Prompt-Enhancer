@@ -2,7 +2,8 @@ import { cameraInstructionPreview, cameraSceneModel, VISUAL_CAMERA_MOTIONS } fro
 import { renderCameraTab } from "./tab_camera.js";
 import { renderCameraLookTab } from "./tab_camera_look.js";
 import { createEnvironmentDraft, renderEnvironmentsTab } from "./tab_environments.js";
-import { projectForController, uniqueId } from "./project_editor.js";
+import { commitProject, projectForController, uniqueId } from "./project_editor.js";
+import { applyAudioClipToAsset, renderAudioTrimEditor } from "./audio_trim_editor.js";
 import { referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
 import { disconnectPurposeReference, replacePurposeReference } from "./media_workflows.js";
 import { mediaTypeForFile, referenceSourceForAsset, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
@@ -332,10 +333,12 @@ export function composeVisualAssignments(project, shot) {
         const performanceAssetIds = uses
             .filter((use) => use.role === "performance" && (use.targetIds ?? []).includes(subject.id))
             .map((use) => use.assetId);
+        const voiceOverrideAssetId = uses.find((use) => use.role === "voice" && (use.targetIds ?? []).includes(subject.id))?.assetId;
         subjects.push({
             subject,
             identityAssets: (subject.identityAssetIds ?? []).map((id) => assets.get(id)).filter(Boolean),
             voiceAsset: assets.get(subject.defaultVoiceAssetId) ?? null,
+            voiceOverrideAsset: assets.get(voiceOverrideAssetId) ?? null,
             performanceAssets: performanceAssetIds.map((id) => assets.get(id)).filter(Boolean),
         });
     }
@@ -482,6 +485,17 @@ function composeAudioPlayer(asset, source) {
     const audio = el("audio", "minimax-h3-director-audio-player");
     audio.controls = true; audio.preload = "metadata"; audio.src = url;
     audio.setAttribute("aria-label", `Preview ${asset.name || asset.id}`);
+    const start = Number(asset.audioClip?.startSeconds ?? 0);
+    const end = Number(asset.audioClip?.endSeconds ?? 0);
+    if (end > start) {
+        audio.addEventListener("play", () => {
+            if (audio.currentTime < start || audio.currentTime >= end) audio.currentTime = start;
+        });
+        audio.addEventListener("timeupdate", () => {
+            if (audio.currentTime >= end) { audio.pause(); audio.currentTime = start; }
+        });
+        audio.addEventListener("loadedmetadata", () => { audio.currentTime = start; }, { once: true });
+    }
     return audio;
 }
 
@@ -918,7 +932,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
         const name = subject?.name || entry.subjectId;
-        const assigned = subjectAssignments.get(entry.subjectId) ?? { identityAssets: [], voiceAsset: null, performanceAssets: [] };
+        const assigned = subjectAssignments.get(entry.subjectId) ?? { identityAssets: [], voiceAsset: null, voiceOverrideAsset: null, performanceAssets: [] };
         const card = el("details", "minimax-h3-director-subject-card");
         const expandedIds = controller.directorUiState.expandedSubjectIds ??= [];
         card.open = expandedIds.includes(entry.subjectId);
@@ -938,7 +952,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         const status = el("span", "minimax-h3-director-subject-status");
         status.append(
             el("small", "", `Image ${assigned.identityAssets.length ? "✓" : "—"}`),
-            el("small", "", `Voice ${assigned.voiceAsset ? "✓" : "—"}`),
+            el("small", "", `Voice ${assigned.voiceOverrideAsset || assigned.voiceAsset ? "✓" : "—"}`),
             el("small", "", "Edit references"),
         );
         summary.append(
@@ -962,8 +976,24 @@ function renderBoard(container, controller, plan, project, rerender) {
         const boundMedia = el("div", "minimax-h3-director-bound-strip");
         for (const asset of assigned.identityAssets.slice(0, 2)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Image"));
         if (assigned.voiceAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceAsset, sources[assigned.voiceAsset.id], "Voice"));
+        if (assigned.voiceOverrideAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceOverrideAsset, sources[assigned.voiceOverrideAsset.id], "Shot voice"));
         for (const asset of assigned.performanceAssets.slice(0, 1)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Performance"));
+        const activeVoice = assigned.voiceOverrideAsset || assigned.voiceAsset;
         expanded.append(boundMedia, targets);
+        if (activeVoice) {
+            expanded.appendChild(renderAudioTrimEditor({
+                asset: activeVoice,
+                url: sourcePreviewUrl(sources[activeVoice.id]),
+                label: assigned.voiceOverrideAsset ? `${name} · Shot voice fragment` : `${name} · Default voice fragment`,
+                onChange: (clip, sourceDuration) => {
+                    applyAudioClipToAsset(activeVoice, clip, sourceDuration);
+                    commitProject(controller);
+                    controller.directorUiState.composeFeedback = clip
+                        ? `${name}'s voice output will use only the selected fragment.`
+                        : `${name}'s voice output uses the complete sample.`;
+                },
+            }));
+        }
         card.append(summary, expanded);
         cast.appendChild(card);
     }

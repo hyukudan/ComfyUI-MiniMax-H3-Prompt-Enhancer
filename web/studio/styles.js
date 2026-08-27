@@ -1976,6 +1976,22 @@ export function ensureStudioStyles() {
         .minimax-h3-director-dialogue-row b, .minimax-h3-director-dialogue-row q { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-dialogue-row small { color: var(--h3-text-muted); font-size: 9px; }
         .minimax-h3-director-audio-player { width: 100%; max-width: 230px; height: 28px; }
+        .minimax-h3-audio-trim { display: grid; gap: 8px; min-width: 0; padding: 9px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-surface-raised) 82%, transparent); }
+        .minimax-h3-audio-trim-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+        .minimax-h3-audio-trim-heading strong { font-size: 10px; }
+        .minimax-h3-audio-trim-heading small, .minimax-h3-audio-trim-status { color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-audio-trim-timeline { position: relative; height: 54px; overflow: hidden; border-radius: 5px; background: var(--h3-surface); }
+        .minimax-h3-audio-waveform { width: 100%; height: 54px; opacity: .82; }
+        .minimax-h3-audio-trim-selection { position: absolute; inset-block: 0; border-inline: 2px solid var(--h3-accent); background: color-mix(in srgb, var(--h3-accent) 20%, transparent); pointer-events: none; }
+        .minimax-h3-audio-trim-ranges { position: relative; height: 18px; }
+        .minimax-h3-audio-trim-ranges input { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; pointer-events: none; }
+        .minimax-h3-audio-trim-ranges input::-webkit-slider-thumb { pointer-events: auto; }
+        .minimax-h3-audio-trim-times { display: grid; grid-template-columns: 74px 74px minmax(0, 1fr); align-items: center; gap: 6px; }
+        .minimax-h3-audio-trim-times input { min-width: 0; }
+        .minimax-h3-audio-trim-duration { justify-self: end; color: var(--h3-text-muted); font-size: 9px; }
+        .minimax-h3-audio-trim-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .minimax-h3-audio-trim > audio { display: none; }
+        .minimax-h3-audio-trim-status[data-valid="false"] { color: var(--error-text, #ff8b8b); }
         .minimax-h3-director-ambience-note { margin: 0; padding: 7px; border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-accent) 6%, transparent); color: var(--h3-text-muted); font-size: 9px; line-height: 1.4; }
         .minimax-h3-director-setup-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 7px; }
         .minimax-h3-director-text-button { min-height: 24px; border: 0 !important; padding: 2px 4px !important; background: transparent !important; color: var(--h3-accent) !important; font-size: 11px !important; }

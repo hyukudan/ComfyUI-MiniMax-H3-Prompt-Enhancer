@@ -351,10 +351,15 @@ test("Media shell keeps cards separated and dense editors inside the panel", () 
 test("Visual Compose keeps environment, dialogue and audio controls usable on narrow panels", () => {
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
+    const trimSource = readFileSync(new URL("../audio_trim_editor.js", import.meta.url), "utf8");
     assert.match(directorSource, /\+ Environment/);
     assert.match(directorSource, /Dialogue & sound/);
     assert.match(directorSource, /Exact spoken words/);
     assert.match(directorSource, /audio\.controls = true/);
+    assert.match(directorSource, /renderAudioTrimEditor/);
+    assert.match(trimSource, /Preview selection/);
+    assert.match(trimSource, /Only the selected range is sent to H3/);
+    assert.match(stylesSource, /\.minimax-h3-audio-trim-timeline\s*\{[^}]*position:\s*relative;[^}]*height:\s*54px/s);
     assert.match(stylesSource, /@container h3-studio-panel \(max-width: 460px\)[\s\S]*?\.minimax-h3-director-dialogue-form\s*\{[^}]*grid-template-columns:\s*1fr/s);
     assert.match(stylesSource, /\.minimax-h3-director-audio-player\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*230px/s);
 });

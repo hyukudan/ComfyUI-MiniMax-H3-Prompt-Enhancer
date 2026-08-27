@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import re
 from typing import Any
 
@@ -245,7 +246,7 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
     if not project["generations"]:
         issues.append(_project_issue("schema.media_manifest.limit", "media_manifest.generations requires at least one item", "media_manifest.generations"))
 
-    asset_fields = {"id", "type", "name", "available", "durationSeconds", "audioMode", "description", "analysis", "transcript", "cameraTransfer"}
+    asset_fields = {"id", "type", "name", "available", "durationSeconds", "audioMode", "description", "analysis", "transcript", "cameraTransfer", "audioClip"}
     for index, asset in enumerate(project["assets"]):
         field = f"media_manifest.assets.{index}"
         if not _require_object(asset, field, issues):
@@ -263,6 +264,20 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
             issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.durationSeconds must be between 0 and 15", f"{field}.durationSeconds"))
         if asset.get("type") != "video" and ("audioMode" in asset or "cameraTransfer" in asset):
             issues.append(_project_issue("schema.media_manifest.invalid_value", "Only video assets may declare audioMode or cameraTransfer", field))
+        clip = asset.get("audioClip")
+        if clip is not None:
+            if asset.get("type") != "audio":
+                issues.append(_project_issue("schema.media_manifest.invalid_value", "Only audio assets may declare audioClip", f"{field}.audioClip"))
+            elif _require_object(clip, f"{field}.audioClip", issues):
+                _unknown_keys(clip, {"startSeconds", "endSeconds"}, f"{field}.audioClip", issues)
+                _required_fields(clip, {"startSeconds", "endSeconds"}, f"{field}.audioClip", issues)
+                start, end = clip.get("startSeconds"), clip.get("endSeconds")
+                valid_numbers = all(
+                    isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                    for value in (start, end)
+                )
+                if not valid_numbers or start < 0 or end <= start or end - start > 15:
+                    issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.audioClip requires finite 0 <= startSeconds < endSeconds and at most 15 seconds", f"{field}.audioClip"))
         if asset.get("type") == "video" and asset.get("audioMode", "off") not in {"off", "paired", "alone"}:
             issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid audioMode for {asset.get('id')!r}", f"{field}.audioMode"))
         transfer = asset.get("cameraTransfer")

@@ -126,6 +126,24 @@ def test_subject_default_voice_is_optional_typed_and_activated_with_subject():
     assert any(item["field"].endswith("defaultVoiceAssetId") for item in invalid["diagnostics"])
 
 
+def test_audio_clip_is_typed_and_limited_to_fifteen_seconds():
+    project = _project()
+    project["assets"].append({
+        "id": "ana.voice", "type": "audio", "name": "Ana voice",
+        "audioClip": {"startSeconds": 2.5, "endSeconds": 8.0},
+    })
+    project["subjects"][0]["defaultVoiceAssetId"] = "ana.voice"
+    project["generations"][0]["bindings"].append({"assetId": "ana.voice", "slotIndex": 1})
+    parsed = parse_media_project(project)
+    assert parsed["valid"], parsed["errors"]
+    assert json.loads(parsed["canonicalJson"])["assets"][-1]["audioClip"] == {"startSeconds": 2.5, "endSeconds": 8.0}
+
+    project["assets"][-1]["audioClip"]["endSeconds"] = 18.0
+    invalid = parse_media_project(project)
+    assert not invalid["valid"]
+    assert any(item["field"].endswith("audioClip") for item in invalid["diagnostics"])
+
+
 def test_manifest_v2_allows_physical_slot_reuse_between_generations():
     project = {
         "schemaVersion": 2, "mode": "chained_multishot",

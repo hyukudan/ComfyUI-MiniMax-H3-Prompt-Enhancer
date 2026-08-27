@@ -60,14 +60,28 @@ def load_video_frames(annotated: str, label: str) -> tuple[Any, Any]:
     return frames, parts.audio
 
 
-def load_audio(annotated: str, label: str) -> Any:
+def load_audio(annotated: str, label: str, audio_clip: dict[str, Any] | None = None) -> Any:
     path = _require_file(annotated, label)
     try:
         from comfy_extras.nodes_audio import load as comfy_load
         waveform, sample_rate = comfy_load(path)
     except Exception as exc:
         raise ValueError(f"{label} could not be decoded with ComfyUI's audio loader: {exc}") from exc
-    return {"waveform": waveform.unsqueeze(0), "sample_rate": int(sample_rate)}
+    sample_rate = int(sample_rate)
+    if audio_clip:
+        start = audio_clip.get("startSeconds")
+        end = audio_clip.get("endSeconds")
+        if not isinstance(start, (int, float)) or isinstance(start, bool) or not isinstance(end, (int, float)) or isinstance(end, bool):
+            raise ValueError(f"{label} has an invalid audio trim range.")
+        start_sample = round(float(start) * sample_rate)
+        end_sample = round(float(end) * sample_rate)
+        total_samples = int(waveform.shape[-1])
+        if start_sample < 0 or end_sample <= start_sample:
+            raise ValueError(f"{label} has an invalid audio trim range.")
+        if end_sample > total_samples:
+            raise ValueError(f"{label} trim ends after the decoded audio ({end_sample} > {total_samples} samples).")
+        waveform = waveform[..., start_sample:end_sample].contiguous()
+    return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
 
 
 def load_generation_media(reference_project: dict, generation_id: str = "") -> dict[str, list[Any]]:
@@ -104,7 +118,7 @@ def load_generation_media(reference_project: dict, generation_id: str = "") -> d
                 raise ValueError(f"{label} requests a video soundtrack, but the clip has no audio.")
             audios.append(soundtrack)
         elif media_type == "audio":
-            decoded = load_audio(annotated, label)
+            decoded = load_audio(annotated, label, item.get("audioClip"))
             audios.append(decoded)
             standalone_audios.append(decoded)
     return {

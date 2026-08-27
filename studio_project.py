@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from copy import deepcopy
 from typing import Any, Mapping
@@ -130,6 +131,20 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
         source = file.get("source")
         if source is not None and not isinstance(source, dict):
             issues.append(f"files[{index}].source must be an object.")
+        clip = file.get("audioClip")
+        if clip is not None:
+            if file.get("type") != "audio":
+                issues.append(f"files[{index}].audioClip is only valid for audio Files.")
+            elif not isinstance(clip, dict):
+                issues.append(f"files[{index}].audioClip must be an object.")
+            else:
+                start, end = clip.get("startSeconds"), clip.get("endSeconds")
+                valid_numbers = all(
+                    isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                    for value in (start, end)
+                )
+                if not valid_numbers or start < 0 or end <= start or end - start > 15:
+                    issues.append(f"files[{index}].audioClip requires finite 0 <= startSeconds < endSeconds and at most 15 seconds.")
     for index, subject in enumerate(subjects):
         if not str(subject.get("name", "")).strip():
             issues.append(f"subjects[{index}].name is required.")
@@ -192,6 +207,7 @@ def _legacy_file(file: Mapping[str, Any]) -> dict[str, Any]:
         ("audioMode", "audioMode"), ("description", "description"),
         ("analysis", "analysis"), ("transcript", "transcript"),
         ("cameraTransfer", "cameraTransfer"),
+        ("audioClip", "audioClip"),
     ):
         if file.get(source) not in (None, "", [], {}):
             result[target] = deepcopy(file[source])

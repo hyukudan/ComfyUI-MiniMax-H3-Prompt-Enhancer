@@ -184,6 +184,7 @@ def build_reference_project(reference_director: str | dict | None, media_project
                 "slotIndex": slot,
                 "role": inferred_picture_roles.get(id(binding), binding.get("role", "reference")),
                 "source": source,
+                **({"audioClip": asset["audioClip"]} if media_type == "audio" and asset.get("audioClip") else {}),
             })
             soundtrack_slot = binding.get("soundtrackSlotIndex")
             if media_type == "video" and isinstance(soundtrack_slot, int):
