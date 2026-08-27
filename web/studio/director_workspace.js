@@ -18,6 +18,8 @@ import {
     voiceColorChoices,
 } from "./dialogue_catalog.js";
 
+const SUBJECT_DRAG_TYPE = "application/x-minimax-h3-subject";
+
 function el(tag, className = "", text = "") {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -494,10 +496,16 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
     const heading = el("div", "minimax-h3-director-inspector-heading");
     heading.append(
         el("strong", "", "Dialogue & sound"),
-        button("+ Dialogue", () => { controller.directorUiState.creatingDialogue = true; rerender(); }, "minimax-h3-director-text-button"),
+        button("+ Dialogue", () => {
+            controller.directorUiState.creatingDialogue = true;
+            controller.directorUiState.focusDialogueOnOpen = true;
+            controller.directorUiState.dialogueDraft ??= {};
+            rerender();
+        }, "minimax-h3-director-text-button"),
     );
     section.appendChild(heading);
     if (controller.directorUiState.creatingDialogue) {
+        const draft = controller.directorUiState.dialogueDraft ??= {};
         const form = el("form", "minimax-h3-director-dialogue-form");
         const speaker = el("select"); speaker.setAttribute("aria-label", "Dialogue speaker");
         for (const voice of model.voices) { const option = el("option", "", `${voice.name} · ${voice.alias}`); option.value = voice.subjectId; speaker.appendChild(option); }
@@ -506,11 +514,25 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         const channel = el("select"); channel.setAttribute("aria-label", "Dialogue channel");
         for (const [value, label] of DIALOGUE_CHANNEL_CHOICES) { const option = el("option", "", label); option.value = value; channel.appendChild(option); }
         const voiceColor = el("select"); voiceColor.setAttribute("aria-label", "Dialogue voice color");
-        for (const [value, label] of voiceColorChoices()) { const option = el("option", "", label); option.value = value; voiceColor.appendChild(option); }
+        for (const [value, label] of voiceColorChoices(draft.mood)) { const option = el("option", "", label); option.value = value; voiceColor.appendChild(option); }
         const words = el("textarea"); words.placeholder = "Exact spoken words"; words.maxLength = 4000; words.setAttribute("aria-label", "Exact spoken words");
+        speaker.value = model.voices.some((voice) => voice.subjectId === draft.speakerId) ? draft.speakerId : model.voices[0]?.subjectId ?? "";
+        delivery.value = draft.delivery || "says";
+        channel.value = draft.channel || "on_screen";
+        voiceColor.value = draft.mood || "";
+        words.value = draft.text || "";
+        for (const [control, key] of [[speaker, "speakerId"], [delivery, "delivery"], [channel, "channel"], [voiceColor, "mood"]]) {
+            control.addEventListener("change", () => { draft[key] = control.value; });
+        }
+        words.addEventListener("input", () => { draft.text = words.value; });
         const status = el("small", "minimax-h3-director-inline-status"); status.setAttribute("role", "status");
         const create = button("Add line", () => {}, "minimax-h3-button minimax-h3-button-primary"); create.type = "submit";
-        const cancel = button("Cancel", () => { controller.directorUiState.creatingDialogue = false; rerender(); }, "minimax-h3-button minimax-h3-button-secondary");
+        const cancel = button("Cancel", () => {
+            controller.directorUiState.creatingDialogue = false;
+            delete controller.directorUiState.dialogueDraft;
+            delete controller.directorUiState.focusDialogueOnOpen;
+            rerender();
+        }, "minimax-h3-button minimax-h3-button-secondary");
         form.addEventListener("submit", (event) => {
             event.preventDefault();
             if (!model.voices.length) { status.textContent = "Place a subject in this Shot first."; return; }
@@ -521,6 +543,8 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             if (commitPlan(controller, nextPlan) === false) { status.textContent = "Could not save the dialogue line."; return; }
             controller.shotUiState.plan = nextPlan;
             controller.directorUiState.creatingDialogue = false;
+            delete controller.directorUiState.dialogueDraft;
+            delete controller.directorUiState.focusDialogueOnOpen;
             controller.directorUiState.composeFeedback = `Dialogue added to ${model.voices.find((item) => item.subjectId === speaker.value)?.name || "this Shot"}.`;
             rerender();
         });
@@ -533,7 +557,10 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             create, cancel, status,
         );
         section.appendChild(form);
-        queueMicrotask(() => words.focus());
+        if (controller.directorUiState.focusDialogueOnOpen) {
+            delete controller.directorUiState.focusDialogueOnOpen;
+            queueMicrotask(() => words.focus({ preventScroll: true }));
+        }
     }
     const voiceGroup = el("div", "minimax-h3-director-sound-group"); voiceGroup.appendChild(el("small", "minimax-h3-director-kicker", "SUBJECT VOICES"));
     for (const voice of model.voices) {
@@ -807,6 +834,54 @@ function renderBoard(container, controller, plan, project, rerender) {
         });
         return control;
     };
+    const placeSubjectInShot = (subjectId) => {
+        const subject = (project?.subjects ?? []).find((item) => item.id === subjectId);
+        if (!subject) return false;
+        const alreadyPresent = (selected.subjects ?? []).some((entry) =>
+            entry.subjectId === subjectId && entry.presence !== "absent");
+        if (!alreadyPresent) {
+            setSceneSubjectPresence(selected, subjectId, true);
+            if (commitPlan(controller, plan) === false) return false;
+        }
+        delete controller.directorUiState.draggedSubjectId;
+        controller.directorUiState.composeFeedback = alreadyPresent
+            ? `${subject.name || subject.id} is already in this Shot.`
+            : `${subject.name || subject.id} placed in this Shot and is now available in Speaker.`;
+        rerender();
+        return true;
+    };
+    const makeSubjectDragSource = (control, subject) => {
+        control.draggable = true;
+        control.dataset.subjectDrag = subject.id;
+        control.addEventListener("dragstart", (event) => {
+            controller.directorUiState.draggedSubjectId = subject.id;
+            event.dataTransfer?.setData(SUBJECT_DRAG_TYPE, subject.id);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+        });
+        control.addEventListener("dragend", () => { delete controller.directorUiState.draggedSubjectId; });
+        return control;
+    };
+    const makeShotSubjectDropReceiver = (control) => {
+        for (const eventName of ["dragenter", "dragover"]) control.addEventListener(eventName, (event) => {
+            const subjectId = controller.directorUiState.draggedSubjectId
+                || event.dataTransfer?.getData(SUBJECT_DRAG_TYPE);
+            if (!subjectId) return;
+            event.preventDefault();
+            control.dataset.subjectDragOver = "true";
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        });
+        control.addEventListener("dragleave", (event) => {
+            if (!control.contains(event.relatedTarget)) delete control.dataset.subjectDragOver;
+        });
+        control.addEventListener("drop", (event) => {
+            const subjectId = controller.directorUiState.draggedSubjectId
+                || event.dataTransfer?.getData(SUBJECT_DRAG_TYPE);
+            if (!subjectId) return;
+            event.preventDefault(); event.stopPropagation(); delete control.dataset.subjectDragOver;
+            placeSubjectInShot(subjectId);
+        });
+        return control;
+    };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
     stage.setAttribute("aria-label", "Selected Shot workspace");
@@ -822,7 +897,8 @@ function renderBoard(container, controller, plan, project, rerender) {
     if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, backgroundConnected));
     else if ((project?.environments ?? []).length) backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Choose this Shot's set in Cast & set"));
     else backdrop.appendChild(button("+ Environment", () => { directorState(controller).creatingEnvironment = true; directorState(controller).creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"));
-    const cast = el("div", "minimax-h3-director-cast");
+    const cast = makeShotSubjectDropReceiver(el("div", "minimax-h3-director-cast"));
+    cast.setAttribute("aria-label", "Drop a Subject here to place it in this Shot");
     const names = subjectNames(selected, project);
     if (!names.length) {
         const onlySubject = (project?.subjects ?? []).length === 1 ? project.subjects[0] : null;
@@ -840,7 +916,32 @@ function renderBoard(container, controller, plan, project, rerender) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
         const name = subject?.name || entry.subjectId;
         const assigned = subjectAssignments.get(entry.subjectId) ?? { identityAssets: [], voiceAsset: null, performanceAssets: [] };
-        const card = el("article", "minimax-h3-director-subject-card");
+        const card = el("details", "minimax-h3-director-subject-card");
+        const expandedIds = controller.directorUiState.expandedSubjectIds ??= [];
+        card.open = expandedIds.includes(entry.subjectId);
+        card.addEventListener("toggle", () => {
+            const next = new Set(controller.directorUiState.expandedSubjectIds ?? []);
+            if (card.open) next.add(entry.subjectId); else next.delete(entry.subjectId);
+            controller.directorUiState.expandedSubjectIds = [...next];
+        });
+        const summary = el("summary", "minimax-h3-director-subject-summary");
+        const summaryCopy = el("span", "minimax-h3-director-subject-summary-copy");
+        summaryCopy.append(
+            el("strong", "", name),
+            el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`),
+        );
+        const status = el("span", "minimax-h3-director-subject-status");
+        status.append(
+            el("small", "", `Image ${assigned.identityAssets.length ? "✓" : "—"}`),
+            el("small", "", `Voice ${assigned.voiceAsset ? "✓" : "—"}`),
+            el("small", "", "Edit references"),
+        );
+        summary.append(
+            composeSubjectAvatar(name, assigned.identityAssets[0], sources[assigned.identityAssets[0]?.id]),
+            summaryCopy,
+            status,
+        );
+        const expanded = el("div", "minimax-h3-director-subject-expanded");
         const targets = el("div", "minimax-h3-director-subject-targets");
         const shotUses = selected.referenceUses ?? [];
         const performanceConnected = shotUses.some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
@@ -857,13 +958,8 @@ function renderBoard(container, controller, plan, project, rerender) {
         for (const asset of assigned.identityAssets.slice(0, 2)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Image"));
         if (assigned.voiceAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceAsset, sources[assigned.voiceAsset.id], "Voice"));
         for (const asset of assigned.performanceAssets.slice(0, 1)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Performance"));
-        card.append(
-            composeSubjectAvatar(name, assigned.identityAssets[0], sources[assigned.identityAssets[0]?.id]),
-            el("strong", "", name),
-            el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`),
-            boundMedia,
-            targets,
-        );
+        expanded.append(boundMedia, targets);
+        card.append(summary, expanded);
         cast.appendChild(card);
     }
     const action = el("label", "minimax-h3-director-action");
@@ -873,15 +969,23 @@ function renderBoard(container, controller, plan, project, rerender) {
     actionInput.addEventListener("blur", () => { selected.action = actionInput.value.trim(); commitPlan(controller, plan); rerender(); });
     action.appendChild(actionInput);
     const mentionRow = el("div", "minimax-h3-shot-mention-row");
-    mentionRow.appendChild(el("span", "", "Insert subject"));
+    mentionRow.appendChild(el("span", "", "Add to Shot & mention"));
     for (const subject of project?.subjects ?? []) {
         const mention = `<Subject ${subject.h3Index}>`;
         const identityAsset = (subject.identityAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
         const mentionButton = button("", () => {
             const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
             actionInput.value = result.value;
-            actionInput.setSelectionRange(result.selectionStart, result.selectionEnd); actionInput.focus();
-            selected.action = result.value.trim(); commitPlan(controller, plan);
+            actionInput.setSelectionRange(result.selectionStart, result.selectionEnd);
+            selected.action = result.value.trim();
+            const present = (selected.subjects ?? []).some((entry) =>
+                entry.subjectId === subject.id && entry.presence !== "absent");
+            if (!present) setSceneSubjectPresence(selected, subject.id, true);
+            commitPlan(controller, plan);
+            controller.directorUiState.composeFeedback = present
+                ? `${subject.name || mention} mentioned in this Shot.`
+                : `${subject.name || mention} added to this Shot, Speaker, and visible action.`;
+            rerender();
         }, "minimax-h3-director-text-button minimax-h3-shot-subject-chip");
         const avatar = el("span", "minimax-h3-shot-subject-avatar");
         const previewUrl = sourcePreviewUrl(sources[identityAsset?.id]);
@@ -892,6 +996,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         mentionButton.append(avatar, chipCopy, el("span", "minimax-h3-shot-subject-status", identityAsset ? "✓" : "+"));
         mentionButton.title = [subject.description, identityAsset ? `Identity: ${identityAsset.name || identityAsset.id}` : "No identity image", subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
         mentionButton.setAttribute("aria-label", `Insert ${subject.name || mention}, ${mention}`);
+        makeSubjectDragSource(mentionButton, subject);
         mentionRow.appendChild(mentionButton);
     }
     if ((project?.subjects ?? []).length) action.appendChild(mentionRow);
@@ -1000,6 +1105,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
         chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
         chip.setAttribute("aria-label", `${present ? "Remove" : "Place"} ${subject.name || subject.id}; drop a reference to connect it`);
+        makeSubjectDragSource(chip, subject);
         makeSubjectDropReceiver(chip, subject.id);
     }
     if (!(project?.subjects ?? []).length) castPicker.appendChild(el(

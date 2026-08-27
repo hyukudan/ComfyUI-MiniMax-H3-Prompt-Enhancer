@@ -4904,6 +4904,12 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
             "physical sounds remain, with no narration, whispers, or additional words."
         )
         value = _replace_section_body(value, "overall_soundscape", (soundscape + " " + boundary).strip())
+    value = re.sub(
+        r"(\(S\d+\))\s{2,}(?=(?:says?|asks?|replies|shouts?|whispers?|sings?|calls?\s+out)\b)",
+        r"\1 ",
+        value,
+        flags=re.IGNORECASE,
+    )
     return value
 
 
@@ -5111,7 +5117,7 @@ def normalize_source_dialogue(text: str, source_prompt: str, mode: str,
                 f"monologue: {block}, while the character's lips remain completely closed."
             )
         else:
-            additions.append(f"The on-screen speaker (S1) delivers the requested line: {block}.")
+            additions.append(f"The on-screen speaker (S1) says: {block}.")
     if not additions:
         return _finalize_audible_dialogue(_deduplicate_source_dialogue(value, source_prompt), source_prompt)
     section = "detailed_description" if mode == "ref2va" else "integrated_multimodal_description"
@@ -5314,7 +5320,7 @@ def append_lora_trigger_words(text: str, trigger_words: str, mode: str = "t2va")
     # Every other axis in this node spells "absent" as none, so a user typing it here means the
     # same. Taken literally it was appended as a trigger token and surfaced as a stray "none" line
     # at the end of the description, which H3 then had to interpret as content.
-    if triggers.casefold() in ("", "none", "n/a", "na", "null", "-"):
+    if triggers.casefold() in ("", "none", "n/a", "na", "null", "false", "true", "-"):
         return text
     section = "detailed_description" if str(mode) == "ref2va" else "integrated_multimodal_description"
     body = _section_body(text, section)

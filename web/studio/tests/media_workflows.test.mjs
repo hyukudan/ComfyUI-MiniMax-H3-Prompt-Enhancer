@@ -96,6 +96,24 @@ test("Compose preserves complete presence declarations by marking removed cast a
     assert.deepEqual(shot.subjects, [{ subjectId: "subject.1", presence: "absent" }]);
 });
 
+test("placing a library Subject in the Shot makes it available to Dialogue Speaker", () => {
+    const project = {
+        assets: [],
+        subjects: [
+            { id: "subject.1", h3Index: 1, name: "Ana" },
+            { id: "subject.2", h3Index: 2, name: "Sergio" },
+        ],
+    };
+    const shot = { subjects: [{ subjectId: "subject.1", presence: "present" }] };
+
+    setSceneSubjectPresence(shot, "subject.2", true);
+
+    assert.deepEqual(
+        composeSceneAudio(project, shot).voices.map((voice) => [voice.subjectId, voice.name]),
+        [["subject.1", "Ana"], ["subject.2", "Sergio"]],
+    );
+});
+
 test("Compose duplicates, moves, drags and removes complete cuts without reusing IDs", () => {
     const plan = { schemaVersion: 2, timingMode: "exact", shots: [
         { id: "s1", generationId: "g1", durationSeconds: 2, action: "First", cameraPath: { motionType: "push_in" }, referenceUses: [{ assetId: "portrait", role: "continuity" }] },

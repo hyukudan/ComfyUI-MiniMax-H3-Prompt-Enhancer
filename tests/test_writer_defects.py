@@ -15,8 +15,23 @@ def test_none_typed_into_lora_triggers_is_not_appended_as_a_token():
     Taken literally it landed as a stray line at the end of the description, which H3 then had to
     interpret as content.
     """
-    for spelling in ("none", "None", "NONE", "n/a", "-", "  "):
+    for spelling in ("none", "None", "NONE", "n/a", "-", "  ", "false", "False", "TRUE"):
         assert guides.append_lora_trigger_words(BODY, spelling) == BODY, spelling
+
+
+def test_restored_visual_dialogue_uses_an_explicit_says_cue():
+    source = 'Steven Seagal says “Vaya mierda de sitio”.'
+    omitted = (
+        "integrated_multimodal_description:\n"
+        "[Shot 1] Steven Seagal enters a restaurant.\n\n"
+        "overall_soundscape:\nRoom tone.\n\n"
+        "non_diegetic_music:\nN/A"
+    )
+
+    repaired = guides.normalize_source_dialogue(omitted, source, "t2va")
+
+    assert "The on-screen speaker (S1) says: <d>[Spanish] Vaya mierda de sitio</d>." in repaired
+    assert "delivers the requested line" not in repaired
 
 
 def test_real_triggers_still_survive_verbatim():

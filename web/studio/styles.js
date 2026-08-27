@@ -1879,10 +1879,21 @@ export function ensureStudioStyles() {
         .minimax-h3-director-backdrop > div { display: grid; gap: 3px; }
         .minimax-h3-director-backdrop-media { display: flex !important; min-width: 0; margin-left: auto; }
         .minimax-h3-director-kicker { color: var(--h3-text-muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; }
-        .minimax-h3-director-cast { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--h3-space-3); padding: var(--h3-space-5); }
+        .minimax-h3-director-cast { display: flex; align-items: flex-start; justify-content: center; flex-wrap: wrap; gap: var(--h3-space-3); min-height: 84px; padding: var(--h3-space-4); border: 1px solid transparent; border-radius: var(--h3-radius-lg); transition: border-color .15s ease, background .15s ease; }
+        .minimax-h3-director-cast[data-subject-drag-over="true"] { border-color: var(--h3-accent); background: color-mix(in srgb, var(--h3-accent) 12%, transparent); }
         .minimax-h3-director-empty-subject-target { min-height: 82px; max-width: 280px; border: 1px dashed color-mix(in srgb, var(--h3-accent) 58%, var(--h3-border)) !important; border-radius: var(--h3-radius-lg) !important; padding: 14px 18px !important; background: color-mix(in srgb, var(--h3-accent) 6%, transparent) !important; color: var(--h3-text-muted) !important; }
         .minimax-h3-director-empty-subject-target[data-drag="ready"] { border-style: solid !important; background: color-mix(in srgb, var(--h3-accent) 22%, var(--h3-surface)) !important; color: var(--h3-text) !important; }
-        .minimax-h3-director-subject-card { display: grid; place-items: center; gap: 8px; min-width: 172px; max-width: 260px; padding: 14px; border: 1px solid color-mix(in srgb, var(--h3-accent) 40%, var(--h3-border)); border-radius: var(--h3-radius-lg); background: color-mix(in srgb, var(--h3-surface-raised) 88%, transparent); }
+        .minimax-h3-director-subject-card { min-width: 220px; max-width: 320px; border: 1px solid color-mix(in srgb, var(--h3-accent) 40%, var(--h3-border)); border-radius: var(--h3-radius-lg); background: color-mix(in srgb, var(--h3-surface-raised) 88%, transparent); overflow: clip; }
+        .minimax-h3-director-subject-summary { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 62px; padding: 8px 10px; cursor: pointer; list-style: none; }
+        .minimax-h3-director-subject-summary::-webkit-details-marker { display: none; }
+        .minimax-h3-director-subject-summary::after { content: "⌄"; grid-column: 3; grid-row: 1; align-self: start; color: var(--h3-text-muted); transition: transform .15s ease; }
+        .minimax-h3-director-subject-card[open] > .minimax-h3-director-subject-summary::after { transform: rotate(180deg); }
+        .minimax-h3-director-subject-summary .minimax-h3-director-avatar { width: 42px; height: 42px; border-width: 1px; font-size: 16px; }
+        .minimax-h3-director-subject-summary-copy { display: grid; min-width: 0; gap: 2px; }
+        .minimax-h3-director-subject-summary-copy > strong, .minimax-h3-director-subject-summary-copy > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-director-subject-status { display: flex; grid-column: 2 / 4; gap: 5px; margin-top: -3px; color: var(--h3-text-muted); }
+        .minimax-h3-director-subject-status small { padding: 1px 5px; border-radius: 999px; background: var(--h3-surface-2); font-size: 9px; }
+        .minimax-h3-director-subject-expanded { display: grid; gap: 9px; padding: 0 10px 10px; border-top: 1px solid var(--h3-border); }
         .minimax-h3-director-llm-subject { margin-top: -5px; color: var(--h3-text-muted); font-size: 10px; }
         .minimax-h3-director-avatar { display: grid; width: 64px; height: 64px; place-items: center; overflow: hidden; border: 2px solid color-mix(in srgb, var(--h3-accent) 44%, var(--h3-border)); border-radius: 50%; background: color-mix(in srgb, var(--h3-accent) 24%, var(--h3-surface)); color: var(--h3-accent); font-size: 22px; font-weight: 800; }
         .minimax-h3-director-avatar img { width: 100%; height: 100%; object-fit: cover; }

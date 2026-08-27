@@ -359,6 +359,21 @@ test("Visual Compose keeps environment, dialogue and audio controls usable on na
     assert.match(stylesSource, /\.minimax-h3-director-audio-player\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*230px/s);
 });
 
+test("Visual Compose has semantic Subject drag, compact cards and stable dialogue focus", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
+    assert.match(directorSource, /application\/x-minimax-h3-subject/);
+    assert.match(directorSource, /placeSubjectInShot/);
+    assert.match(directorSource, /available in Speaker/);
+    assert.match(directorSource, /Add to Shot & mention/);
+    assert.match(directorSource, /dialogueDraft/);
+    assert.match(directorSource, /focusDialogueOnOpen/);
+    assert.match(directorSource, /focus\(\{ preventScroll: true \}\)/);
+    assert.match(directorSource, /el\("details", "minimax-h3-director-subject-card"\)/);
+    assert.match(stylesSource, /\.minimax-h3-director-subject-summary\s*\{[^}]*min-height:\s*62px/s);
+    assert.match(stylesSource, /\.minimax-h3-director-cast\[data-subject-drag-over="true"\]/);
+});
+
 test("direct Compose import validates its logical transaction before physical upload", () => {
     const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
     const importStart = directorSource.indexOf("const importFile = async");
