@@ -372,6 +372,150 @@ def test_manual_basic_prompt_remains_authoritative_over_compose_summary():
     assert resolved["basic_prompt"] == "Manual direction."
 
 
+def test_compose_dialogue_joins_manual_prompt_as_an_exact_source_contract():
+    studio = {
+        "schemaVersion": 3,
+        "project": {"name": "Manual with dialogue", "mode": "t2va", "timingMode": "auto", "look": {}},
+        "files": [],
+        "subjects": [{"id": "ana", "name": "Ana", "identityFileIds": []}],
+        "environments": [], "generations": [{"id": "g1", "order": 1}],
+        "shots": [{
+            "id": "s1", "generationId": "g1", "action": "Ana watches the empty road.",
+            "cast": [{"subjectId": "ana", "presence": "present"}],
+            "actionBeats": [{"id": "b1", "at": .5, "dialogue": {
+                "speakerId": "ana", "text": "No mires atrás.", "delivery": "whispers",
+                "channel": "voice_over", "mood": "calm, steady",
+            }}],
+        }],
+        "links": [],
+    }
+
+    resolved = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json=json.dumps(studio), basic_prompt="A solitary night scene.",
+    )
+
+    assert resolved["basic_prompt"].startswith("A solitary night scene.")
+    assert "Authored dialogue from Prompt Studio (preserve exact words):" in resolved["basic_prompt"]
+    assert 'Ana whispers in voice-over with calm, steady tone “No mires atrás.”' in resolved["basic_prompt"]
+
+
+def test_compose_dialogue_is_not_duplicated_when_manual_prompt_already_contains_it():
+    studio = {
+        "schemaVersion": 3,
+        "project": {"name": "No duplicate", "mode": "t2va", "timingMode": "auto", "look": {}},
+        "files": [], "subjects": [], "environments": [],
+        "generations": [{"id": "g1", "order": 1}],
+        "shots": [{
+            "id": "s1", "generationId": "g1", "action": "A voice is heard.",
+            "actionBeats": [{"id": "b1", "at": .5, "dialogue": {"text": "Stay here.", "delivery": "says"}}],
+        }],
+        "links": [],
+    }
+    manual = 'A woman says "Stay here."'
+
+    resolved = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json=json.dumps(studio), basic_prompt=manual,
+    )
+
+    assert resolved["basic_prompt"] == manual
+
+
+def test_every_prompt_studio_shot_family_reaches_the_llm_user_request():
+    studio = {
+        "schemaVersion": 3,
+        "project": {
+            "name": "Full handoff", "mode": "t2va", "timingMode": "auto",
+            "look": {
+                "creativeTreatment": {
+                    "schemaVersion": 2, "genre": "action", "visualLanguage": "anime_shonen",
+                    "worldAesthetic": "cyberpunk", "tone": "epic",
+                },
+                "cinematography": {
+                    "schemaVersion": 2, "colorPalette": "restrained", "exposureContrast": "low_key",
+                    "optics": "compressed_telephoto", "depthOfField": "shallow",
+                },
+            },
+        },
+        "files": [],
+        "subjects": [
+            {
+                "id": "ana", "name": "Ana", "description": "Red coat and dark hair.",
+                "identityFileIds": [], "baseAppearanceStateId": "base",
+                "appearanceStates": [
+                    {"id": "base", "name": "Dry", "controls": []},
+                    {"id": "wet", "name": "Rain-soaked", "extends": "base", "controls": []},
+                ],
+            },
+            {"id": "bob", "name": "Bob", "identityFileIds": []},
+        ],
+        "environments": [{
+            "id": "bridge", "name": "Bridge", "permanent": {"geography": "Steel river crossing"},
+            "views": [], "defaultStateId": "day",
+            "states": [{"id": "day", "name": "Day"}, {"id": "storm", "name": "Storm"}],
+        }],
+        "generations": [{"id": "g1", "order": 1}],
+        "shots": [{
+            "id": "s1", "generationId": "g1", "openingState": "Ana waits at the north rail.",
+            "action": "Ana crosses the bridge and stops beside Bob.", "transitionIn": "cut",
+            "cutContext": {"timeRelation": "continuous", "purpose": "state"},
+            "subjectPresenceComplete": True,
+            "cast": [
+                {"subjectId": "ana", "presence": "present", "blocking": "North railing"},
+                {"subjectId": "bob", "presence": "present", "blocking": "Center span"},
+            ],
+            "environment": {"environmentId": "bridge"},
+            "actionBeats": [{
+                "id": "b1", "at": .55, "action": "Ana turns without moving her feet.",
+                "dialogue": {
+                    "speakerId": "ana", "text": "No mires atrás.", "delivery": "whispers",
+                    "channel": "voice_over", "mood": "calm, steady",
+                },
+            }],
+            "scaleRelationships": [{"subjectId": "ana", "relativeToId": "bob", "relation": "slightly_shorter"}],
+            "staging": [{
+                "subjectId": "ana", "start": {"x": -.5, "y": 0, "z": .2, "facing": "frame_right"},
+                "end": {"x": .25, "y": 0, "z": .1, "facing": "camera"},
+            }],
+            "cameraStart": {"framing": "wide", "angle": "eye_level"},
+            "cameraPath": {"motionType": "push_in", "amplitude": "small", "speed": "slow", "timing": "during_dialogue"},
+            "cameraEnd": {"framing": "medium_close_up"},
+            "appearanceTransitions": [{
+                "subjectId": "ana", "fromStateId": "base", "toStateId": "wet",
+                "timing": "during_shot", "trigger": "Rain reaches her coat.",
+            }],
+            "environmentTransitions": [{
+                "environmentId": "bridge", "fromStateId": "day", "toStateId": "storm",
+                "timing": "during_shot", "trigger": "Clouds close overhead.",
+            }],
+        }, {
+            "id": "s2", "generationId": "g1", "action": "Bob watches Ana leave.",
+            "transitionIn": "cross_dissolve",
+        }],
+        "links": [],
+    }
+    runtime = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json=json.dumps(studio), basic_prompt="A tense meeting on a bridge.",
+    )
+    request = prompt_enhancer_node.build_user_request(
+        runtime["basic_prompt"], runtime["mode"], runtime["duration_seconds"], "",
+        media_manifest=runtime["media_manifest"],
+        creative_treatment_json=runtime["creative_treatment_json"],
+        shot_plan_json=runtime["shot_plan_json"],
+        cinematography_json=runtime["cinematography_json"],
+    )
+
+    for expected in (
+        "No mires atrás.", "whispers in voice-over", "calm, steady voice",
+        "Ana waits at the north rail", "Ana crosses the bridge", "Ana turns without moving her feet",
+        "North railing", "Center span", "bridge", "slightly shorter", "cross-dissolve",
+        "continuous", "state", "pushes in", "during the dialogue", "medium close up",
+        "Rain reaches her coat", "Clouds close overhead", "anime", "high-tech/low-life", "low-key",
+        "compressed telephoto", "shallow",
+    ):
+        assert expected.casefold() in request.casefold(), expected
+    assert "MEDIA MANIFEST ERRORS" not in request
+
+
 def test_api_key_widget_documents_the_environment_variable_fallback():
     tooltip = MiniMaxH3PromptEnhancer.INPUT_TYPES()["required"]["api_key"][1]["tooltip"]
     assert "MINIMAX_H3_PROMPT_ENHANCER_API_KEY" in tooltip
