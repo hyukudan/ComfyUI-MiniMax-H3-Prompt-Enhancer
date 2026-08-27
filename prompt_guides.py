@@ -2464,13 +2464,14 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
             for key, value in (appearance.get("attributes") or {}).items()
             if value not in (None, "", [], {})
         )
-        appearance_text = "; ".join(appearance_facts)
+        appearance_text = "; ".join(appearance_facts).rstrip(" .;")
         appearance_name = str(appearance.get("name") or appearance.get("stateId") or "").strip()
         appearance_clause = (
             f"; active appearance {appearance_name}: {appearance_text}"
             if appearance_text else ""
         )
-        description = contract["description"]
+        description = str(contract["description"] or "").strip().rstrip(" .;")
+        contract["description"] = description
         if is_design:
             category = f" ({contract['category']})" if contract.get("category") else ""
             design_clause = f"; stable physical design: {description}" if description else ""
@@ -2518,8 +2519,8 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
             "the Scenario reference defines the location, not the target Subjects or camera."
         )
         retention.append(
-            f"{source_labels}: environment_reference - preserve Scenario "
-            f"{environment['name']} as the location."
+            f"{source_labels}: fully_preserved - preserve Scenario "
+            f"{environment['name']} as the location; it supplies no target identity, action, or camera motion."
         )
 
     def keep_unowned(section: str) -> list[str]:
@@ -2578,8 +2579,11 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
         name = contract["name"]
         if not name or name.casefold() == contract["label"].casefold():
             continue
+        # Collapse our own previously expanded first-use form before rebuilding it.
+        # The enhancement loop normalizes every repair candidate, so this must be
+        # idempotent or each repair nests another ``<Subject N> (...)`` wrapper.
         detail = re.sub(
-            rf"{re.escape(contract['label'])}\s*\(\s*{re.escape(name)}\s*\)",
+            rf"{re.escape(contract['label'])}\s*\(\s*{re.escape(name)}(?:\s*;[^()]*)?\s*\)",
             name, detail, flags=re.IGNORECASE,
         )
         pattern = rf"(?<![\w>]){re.escape(name)}(?![\w<])"
@@ -2619,7 +2623,8 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
         for shot_number in environment["shotNumbers"]:
             shot_pattern = rf"(\[Shot\s+{shot_number}\]\s*)"
             detail = re.sub(
-                shot_pattern, lambda match: match.group(1) + opening,
+                shot_pattern + rf"(?:{re.escape(opening)})*",
+                lambda match: match.group(1) + opening,
                 detail, count=1, flags=re.IGNORECASE,
             )
     value = _replace_section_body(value, "detailed_description", detail)
@@ -5169,6 +5174,16 @@ def _finalize_audible_dialogue(text: str, source_prompt: str) -> str:
         r"\s*The (?:(?:single|one|two|three|four|five|\d+)\s+)?tagged lines? (?:is|are) the only intelligible "
         r"(?:voice|speech); after (?:it|they|the final line) ends?, only non-verbal ambience and physical sounds remain, "
         r"with no narration, whispers, or additional words\.",
+        "",
+        soundscape,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Models often paraphrase the same dialogue boundary before the canonical
+    # sentence is appended. Remove that whole sentence so repeated repair passes
+    # cannot leave two equivalent "only intelligible speech" declarations.
+    soundscape = re.sub(
+        r"\s*The (?:(?:single|one|two|three|four|five|\d+)\s+)?tagged lines? "
+        r"(?:is|are) the only intelligible speech;[^.!?]*[.!?]",
         "",
         soundscape,
         flags=re.IGNORECASE,

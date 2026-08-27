@@ -1871,7 +1871,7 @@ N/A"""
 def test_studio_subject_contracts_restore_all_subjects_descriptions_and_voice_ownership():
     context = """AUTHORITATIVE REFERENCE RELATIONSHIPS:
 REQUIRED SUBJECT CONTRACTS:
-- SUBJECT CONTRACT JSON: {"description": "short dark hair", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"}
+- SUBJECT CONTRACT JSON: {"description": "short dark hair.", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"}
 - SUBJECT CONTRACT JSON: {"description": "wears a white shirt", "identitySources": ["<Picture 2>"], "label": "<Subject 2>", "name": "Primo", "voiceSource": null}
 - SUBJECT CONTRACT JSON: {"appearanceState": {"attributes": {"wardrobe": "red polo and cap"}, "description": "Burger King uniform", "name": "Work uniform", "stateId": "uniform"}, "description": "very long dreadlocks", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": null}
 - <Picture 1> supplies only the stable visual identity of Malak.
@@ -1907,6 +1907,7 @@ N/A"""
     assert "[audio reference + reference generation]" in fixed
     assert "video continuation" not in fixed
     assert "<Subject 1> (Malak; stable identity: short dark hair) enters" in fixed
+    assert "short dark hair.;" not in fixed
     assert "<Subject 2> (Primo; stable identity: wears a white shirt) and <Subject 3> (Rastas; stable identity: very long dreadlocks; active appearance Work uniform: Burger King uniform; wardrobe: red polo and cap) observe" in fixed
     assert "preserve active appearance Work uniform" in fixed
     assert "active appearance Work uniform" in fixed
@@ -1956,6 +1957,26 @@ N/A"""
     assert "<Subject 1> (S1)" not in fixed
     assert '[Shot 1] The scene takes place at Scenario Can Misses as shown in <Picture 4>.' in fixed
     assert 'Scenario Can Misses from <Picture 4>' in fixed
+    assert '<Picture 4>: fully_preserved - preserve Scenario Can Misses as the location' in fixed
+
+    fixed_twice = normalize_reference_definitions(fixed, "Malak enters.", context)
+    assert fixed_twice == fixed
+    assert "<Subject 1> (<Subject 1>" not in fixed_twice
+
+
+def test_dialogue_soundscape_boundary_normalization_removes_semantic_duplicate():
+    generated = """integrated_multimodal_description:
+A man (S1) says <d>[Spanish] Hola.</d>.
+
+overall_soundscape:
+Room tone. The tagged line is the only intelligible speech; after the final line ends, only the ambient room remains. The tagged line is the only intelligible speech; after the final line ends, only non-verbal ambience and physical sounds remain, with no narration, whispers, or additional words.
+
+non_diegetic_music:
+N/A"""
+
+    fixed = normalize_source_dialogue(generated, 'A man says "Hola."', "t2va")
+
+    assert fixed.count("The tagged line is the only intelligible speech") == 1
 
 
 def test_explicit_child_attributes_and_forced_exit_are_critical_source_facts():
