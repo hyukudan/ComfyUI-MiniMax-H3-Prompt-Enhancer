@@ -392,7 +392,9 @@ test("Visual Compose follows setup, narrative, references and direction order", 
     assert.ok(board.indexOf("const narrative") < board.indexOf("const lanes"));
     assert.ok(board.indexOf("const lanes") < board.indexOf("const direction"));
     assert.match(directorSource, /el\("details", "minimax-h3-director-llm-handoff"\)/);
-    assert.match(stylesSource, /\.minimax-h3-director-compose-grid\s*\{[^}]*minmax\(280px/s);
+    assert.match(stylesSource, /\.minimax-h3-director-compose-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+    assert.match(stylesSource, /\.minimax-h3-director-inspector\s*\{[^}]*grid-template-columns:\s*minmax\(150px,[^}]*minmax\(210px/s);
+    assert.match(board, /layout\.prepend\(inspector\)/);
     assert.match(stylesSource, /\.minimax-h3-director-direction-cards/);
 });
 

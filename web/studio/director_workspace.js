@@ -1101,9 +1101,14 @@ function renderBoard(container, controller, plan, project, rerender) {
     layout.append(stage, lanes, direction);
 
     const inspector = el("aside", "minimax-h3-director-inspector");
-    const inspectorHeading = el("div", "minimax-h3-director-scene-heading");
-    const inspectorIdentity = el("div"); inspectorIdentity.append(el("span", "minimax-h3-director-kicker", "SHOT INSPECTOR"), el("h3", "", "This Shot"));
-    inspectorHeading.append(inspectorIdentity, el("span", "minimax-h3-scope-chip", "This Shot")); inspector.appendChild(inspectorHeading);
+    inspector.setAttribute("aria-label", "Selected Shot context");
+    const inspectorIdentity = el("div", "minimax-h3-director-inspector-identity");
+    inspectorIdentity.append(
+        el("span", "minimax-h3-director-kicker", "SHOT CONTEXT"),
+        el("strong", "", shotEditorialTitle(selected, plan.shots.indexOf(selected))),
+        el("span", "minimax-h3-scope-chip", "This Shot"),
+    );
+    inspector.appendChild(inspectorIdentity);
     const setup = el("section", "minimax-h3-director-scene-setup");
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
     const setupActions = el("div", "minimax-h3-director-setup-actions");
@@ -1180,12 +1185,16 @@ function renderBoard(container, controller, plan, project, rerender) {
     environmentSelect.value = selected.environment?.environmentId ?? "";
     environmentSelect.addEventListener("change", () => { setSceneEnvironment(selected, environmentSelect.value); commitPlan(controller, plan); rerender(); });
     environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); stage.prepend(setup);
-    const summary = el("dl", "minimax-h3-director-scene-summary");
-    for (const [term, value] of [["Generation", generationDisplay(project, selected.generationId)], ["Cast", names.length || "—"], ["References", selected.referenceUses?.length || "—"], ["Duration", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto"]]) {
-        summary.append(el("dt", "", term), el("dd", "", String(value)));
-    }
+    const summary = el("div", "minimax-h3-director-scene-summary");
+    summary.setAttribute("aria-label", "Shot generation, cast, references and duration");
+    for (const value of [
+        generationDisplay(project, selected.generationId),
+        `${names.length} cast`,
+        `${selected.referenceUses?.length ?? 0} refs`,
+        plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto",
+    ]) summary.appendChild(el("span", "", String(value)));
     inspector.append(summary, composeLlmHandoffPanel(llmHandoff, sources));
-    layout.appendChild(inspector);
+    layout.prepend(inspector);
     container.appendChild(layout);
     const reviewFooter = el("footer", "minimax-h3-director-review-footer");
     const reviewCopy = el("span");
