@@ -2383,6 +2383,7 @@ def _structured_subject_contracts(reference_context: str) -> list[dict[str, Any]
             "description": str(item.get("description") or "Unspecified stable identity.").strip(),
             "identitySources": identity_sources,
             "voiceSource": voice_source,
+            "appearanceState": item.get("appearanceState") if isinstance(item.get("appearanceState"), dict) else {},
         })
     return contracts
 
@@ -2404,14 +2405,32 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
     for contract in contracts:
         identities = ", ".join(contract["identitySources"])
         identity_clause = f"; visual identity comes from {identities}" if identities else ""
+        appearance = contract.get("appearanceState") or {}
+        appearance_facts = []
+        if str(appearance.get("description") or "").strip():
+            appearance_facts.append(str(appearance["description"]).strip())
+        appearance_facts.extend(
+            f"{str(key).replace('_', ' ')}: {value}"
+            for key, value in (appearance.get("attributes") or {}).items()
+            if value not in (None, "", [], {})
+        )
+        appearance_text = "; ".join(appearance_facts)
+        appearance_name = str(appearance.get("name") or appearance.get("stateId") or "").strip()
+        appearance_clause = (
+            f"; active appearance {appearance_name}: {appearance_text}"
+            if appearance_text else ""
+        )
         definitions.append(
             f"{contract['label']} is {contract['name']}; stable identity: {contract['description']}"
-            f"{identity_clause}."
+            f"{identity_clause}{appearance_clause}."
         )
         retention.append(
             f"{contract['label']}: fully_preserved - preserve {contract['name']}'s stable identity"
-            f"{f' from {identities}' if identities else ''}, including: {contract['description']}."
+            f"{f' from {identities}' if identities else ''}, including: {contract['description']}"
+            f"{f'; active appearance {appearance_name}: {appearance_text}' if appearance_text else ''}."
         )
+        contract["resolvedAppearanceText"] = appearance_text
+        contract["resolvedAppearanceName"] = appearance_name
         if contract["voiceSource"]:
             audio_owners[contract["voiceSource"]] = contract["label"]
     for audio, subject in audio_owners.items():
@@ -2462,7 +2481,11 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
         if not name or name.casefold() == contract["label"].casefold():
             continue
         pattern = rf"(?<![\w>]){re.escape(name)}(?![\w<])"
-        first_use = f"{contract['label']} ({name}; stable identity: {contract['description']})"
+        appearance_first_use = (
+            f"; active appearance {contract['resolvedAppearanceName']}: {contract['resolvedAppearanceText']}"
+            if contract.get("resolvedAppearanceText") else ""
+        )
+        first_use = f"{contract['label']} ({name}; stable identity: {contract['description']}{appearance_first_use})"
         placeholder = f"\x00H3_SUBJECT_{contract['label']}\x00"
         detail, replaced = re.subn(pattern, placeholder, detail, count=1, flags=re.IGNORECASE)
         if replaced:

@@ -9,6 +9,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+try:
+    from .continuity_state import compile_generation_states, resolve_state
+except ImportError:  # pragma: no cover - direct test/import compatibility
+    from continuity_state import compile_generation_states, resolve_state
+
 
 REFERENCE_DIRECTOR_FORMAT = "minimax-h3-reference-director"
 REFERENCE_DIRECTOR_FORMAT_VERSION = 1
@@ -265,6 +270,13 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         if cast.get("subjectId") and cast.get("presence", "present") != "absent"
     }
     subject_contracts = []
+    state_ready = (
+        media.get("schemaVersion") == 2
+        and all(subject.get("baseAppearanceStateId") and subject.get("appearanceStates") for subject in media.get("subjects", []))
+        and all(environment.get("defaultStateId") and environment.get("states") for environment in media.get("environments", []))
+    )
+    generation_states, _ = compile_generation_states(media) if state_ready else ({}, [])
+    selected_subject_states = generation_states.get(selected, {}).get("subjects", {})
     for index, subject in enumerate(media.get("subjects", []), start=1):
         identity_sources = [
             input_by_asset[asset_id].get("label")
@@ -275,12 +287,17 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         voice_source = input_by_asset.get(voice_asset_id, {}).get("label") if voice_asset_id else None
         if subject.get("id") not in cast_subject_ids and not identity_sources and not voice_source:
             continue
+        state_id = selected_subject_states.get(subject.get("id"), subject.get("baseAppearanceStateId"))
+        appearance = resolve_state(subject.get("appearanceStates") or [], state_id, "attributes") if state_id else {
+            "stateId": "", "name": "", "description": "", "attributes": {}, "controls": [], "sources": [],
+        }
         subject_contracts.append({
             "label": f"<Subject {int(subject.get('h3Index') or index)}>",
             "name": str(subject.get("name") or subject.get("id") or f"Subject {index}"),
             "description": str(subject.get("description") or "Unspecified stable identity."),
             "identitySources": identity_sources,
             "voiceSource": voice_source,
+            "appearanceState": appearance,
         })
     if subject_contracts:
         lines.append(

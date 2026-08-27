@@ -1873,7 +1873,7 @@ def test_studio_subject_contracts_restore_all_subjects_descriptions_and_voice_ow
 REQUIRED SUBJECT CONTRACTS:
 - SUBJECT CONTRACT JSON: {"description": "short dark hair", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"}
 - SUBJECT CONTRACT JSON: {"description": "wears a white shirt", "identitySources": ["<Picture 2>"], "label": "<Subject 2>", "name": "Primo", "voiceSource": null}
-- SUBJECT CONTRACT JSON: {"description": "very long dreadlocks", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": null}
+- SUBJECT CONTRACT JSON: {"appearanceState": {"attributes": {"wardrobe": "red polo and cap"}, "description": "Burger King uniform", "name": "Work uniform", "stateId": "uniform"}, "description": "very long dreadlocks", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": null}
 - <Picture 1> supplies only the stable visual identity of Malak.
 - <Picture 2> supplies only the stable visual identity of Primo.
 - <Picture 3> supplies only the stable visual identity of Rastas.
@@ -1901,14 +1901,15 @@ N/A"""
     definitions = fixed.split("summary:", 1)[0]
     assert "<Subject 1> is Malak; stable identity: short dark hair; visual identity comes from <Picture 1>." in definitions
     assert "<Subject 2> is Primo; stable identity: wears a white shirt; visual identity comes from <Picture 2>." in definitions
-    assert "<Subject 3> is Rastas; stable identity: very long dreadlocks; visual identity comes from <Picture 3>." in definitions
+    assert "<Subject 3> is Rastas; stable identity: very long dreadlocks; visual identity comes from <Picture 3>; active appearance Work uniform: Burger King uniform; wardrobe: red polo and cap." in definitions
     assert "exclusively for <Subject 1>" in definitions
     assert "speaker who has no reference asset" not in fixed
     assert "[audio reference + reference generation]" in fixed
     assert "video continuation" not in fixed
     assert "<Subject 1> (Malak; stable identity: short dark hair) enters" in fixed
-    assert "<Subject 2> (Primo; stable identity: wears a white shirt) and <Subject 3> (Rastas; stable identity: very long dreadlocks) observe" in fixed
+    assert "<Subject 2> (Primo; stable identity: wears a white shirt) and <Subject 3> (Rastas; stable identity: very long dreadlocks; active appearance Work uniform: Burger King uniform; wardrobe: red polo and cap) observe" in fixed
     assert "including: very long dreadlocks" in fixed
+    assert "active appearance Work uniform" in fixed
 
 
 def test_explicit_child_attributes_and_forced_exit_are_critical_source_facts():

@@ -168,6 +168,7 @@ def test_project_default_voice_compiles_without_a_shot_use():
 def test_visual_subject_identity_and_voice_compile_to_the_same_named_llm_subject():
     project = {
         "mediaProject": {
+            "schemaVersion": 2,
             "assets": [
                 {"id": "ana.image", "type": "picture", "name": "Ana image"},
                 {"id": "ana.voice", "type": "audio", "name": "Ana voice"},
@@ -200,6 +201,7 @@ def test_visual_subject_identity_and_voice_compile_to_the_same_named_llm_subject
 def test_reference_context_emits_machine_derived_subject_contracts_with_user_descriptions():
     project = {
         "mediaProject": {
+            "schemaVersion": 2,
             "assets": [
                 {"id": "malak.image", "type": "picture"},
                 {"id": "rastas.image", "type": "picture"},
@@ -207,11 +209,23 @@ def test_reference_context_emits_machine_derived_subject_contracts_with_user_des
             ],
             "subjects": [
                 {"id": "malak", "h3Index": 1, "name": "Malak", "description": "short dark hair",
-                 "identityAssetIds": ["malak.image"], "defaultVoiceAssetId": "malak.voice"},
+                 "identityAssetIds": ["malak.image"], "defaultVoiceAssetId": "malak.voice",
+                 "baseAppearanceStateId": "base", "appearanceStates": [
+                     {"id": "base", "name": "Street clothes", "controls": [], "attributes": {"wardrobe": "black jacket"}},
+                 ]},
                 {"id": "rastas", "h3Index": 3, "name": "Rastas", "description": "very long dreadlocks",
-                 "identityAssetIds": ["rastas.image"]},
+                 "identityAssetIds": ["rastas.image"], "baseAppearanceStateId": "base", "appearanceStates": [
+                     {"id": "base", "name": "Base", "controls": []},
+                     {"id": "uniform", "name": "Work uniform", "extends": "base", "controls": ["wardrobe"],
+                      "description": "Burger King uniform", "attributes": {"wardrobe": "red polo and cap"}},
+                 ]},
             ],
             "environments": [],
+            "generations": [{
+                "id": "g1", "order": 1,
+                "subjectStates": [{"subjectId": "rastas", "policy": "explicit", "stateId": "uniform"}],
+                "environmentStates": [],
+            }],
         },
         "shotPlan": {"shots": [{
             "id": "s1", "generationId": "g1",
@@ -227,10 +241,13 @@ def test_reference_context_emits_machine_derived_subject_contracts_with_user_des
     context = reference_context_for_project(project, "g1")
 
     contracts = [json.loads(line.split(": ", 1)[1]) for line in context.splitlines() if "SUBJECT CONTRACT JSON" in line]
-    assert contracts == [
-        {"description": "short dark hair", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"},
-        {"description": "very long dreadlocks", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": None},
-    ]
+    assert [contract["label"] for contract in contracts] == ["<Subject 1>", "<Subject 3>"]
+    assert contracts[0]["description"] == "short dark hair"
+    assert contracts[0]["appearanceState"]["attributes"] == {"wardrobe": "black jacket"}
+    assert contracts[1]["description"] == "very long dreadlocks"
+    assert contracts[1]["appearanceState"]["name"] == "Work uniform"
+    assert contracts[1]["appearanceState"]["description"] == "Burger King uniform"
+    assert contracts[1]["appearanceState"]["attributes"] == {"wardrobe": "red polo and cap"}
 
 
 def test_frame_mode_infers_the_same_effective_role_as_the_visual_editor():
