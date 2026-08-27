@@ -167,6 +167,7 @@
             "speakerId": {"$ref": "#/$defs/id"},
             "text": {"type": "string", "minLength": 1, "maxLength": 1000},
             "delivery": {"enum": ["says", "whispers", "shouts", "asks", "sings", "calls_out", "voice_over"]},
+            "channel": {"enum": ["on_screen", "voice_over"]},
             "mood": {"type": "string", "minLength": 1, "maxLength": 120}
           }
         }

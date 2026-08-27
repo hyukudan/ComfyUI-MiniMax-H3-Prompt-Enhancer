@@ -7,6 +7,12 @@ import { projectForController } from "./project_editor.js";
 import { editableShotPlan, normalizeShotPlanV2, parseStructuredJson, serializeStructuredJson } from "./schema.js";
 import { cameraInstructionPreview } from "./camera_planner.js";
 import { effectivePictureBindingRole } from "./media_model.js";
+import {
+    DIALOGUE_CHANNEL_CHOICES,
+    DIALOGUE_DELIVERY_CHOICES,
+    normalizedDialogueControls,
+    voiceColorChoices,
+} from "./dialogue_catalog.js";
 
 export const SHOT_ROW_HEIGHT = 60;
 export const SHOT_OVERSCAN = 5;
@@ -195,8 +201,6 @@ function renderStory(container, shot, commit, rerender, basicPrompt = "") {
     container.appendChild(section.details);
 }
 
-const DELIVERY_CHOICES = [["says", "Says"], ["whispers", "Whispers"], ["shouts", "Shouts"], ["asks", "Asks"], ["sings", "Sings"], ["calls_out", "Calls out"], ["voice_over", "Voice-over"]];
-
 function nextBeatId(beats) {
     const used = new Set(beats.map((beat) => beat.id)); let index = beats.length + 1;
     while (used.has(`beat${index}`)) index += 1;
@@ -253,17 +257,22 @@ function renderActionBeats(container, shot, project, commit, rerender) {
         });
         card.appendChild(field("Dialogue at this beat", dialogueToggle));
         if (beat.dialogue) {
+            const controls = normalizedDialogueControls(beat.dialogue);
             const dialogueGrid = element("div", "minimax-h3-action-beat-dialogue");
             const speaker = selectInput(beat.dialogue.speakerId ?? "", [["", "Unspecified speaker"], ...(project.subjects ?? []).map((subject) => [subject.id, subject.name || subject.id])], { ariaLabel: `Beat ${index + 1} speaker` });
             bindCommit(speaker, (value) => setOptional(beat.dialogue, "speakerId", value), commit);
-            const delivery = selectInput(beat.dialogue.delivery ?? "says", DELIVERY_CHOICES, { ariaLabel: `Beat ${index + 1} delivery` });
+            const channel = selectInput(controls.channel, DIALOGUE_CHANNEL_CHOICES, { ariaLabel: `Beat ${index + 1} channel` });
+            bindCommit(channel, (value) => setOptional(beat.dialogue, "channel", value === "voice_over" ? value : ""), commit);
+            const delivery = selectInput(controls.delivery, DIALOGUE_DELIVERY_CHOICES, { ariaLabel: `Beat ${index + 1} delivery` });
             bindCommit(delivery, (value) => { beat.dialogue.delivery = value; }, commit);
-            dialogueGrid.append(field("Speaker", speaker), field("Delivery", delivery));
+            const voiceColor = selectInput(controls.mood, voiceColorChoices(controls.mood), { ariaLabel: `Beat ${index + 1} voice color` });
+            bindCommit(voiceColor, (value) => setOptional(beat.dialogue, "mood", value), commit);
+            dialogueGrid.append(field("Speaker", speaker), field("Channel", channel), field("Delivery", delivery), field("Voice color", voiceColor));
             const text = textInput(beat.dialogue.text, { placeholder: "Exact spoken words" });
             bindCommit(text, (value) => { beat.dialogue.text = value.trim(); }, commit);
-            const mood = textInput(beat.dialogue.mood, { placeholder: "e.g. relieved, restrained" });
-            bindCommit(mood, (value) => setOptional(beat.dialogue, "mood", value.trim()), commit);
-            dialogueGrid.append(field("Spoken words", text), field("Mood", mood)); card.appendChild(dialogueGrid);
+            const customTone = textInput(controls.mood, { placeholder: "Optional custom tone" });
+            bindCommit(customTone, (value) => setOptional(beat.dialogue, "mood", value.trim()), commit, "blur");
+            dialogueGrid.append(field("Spoken words", text), field("Custom tone", customTone, "Use this only when the Voice color catalog does not cover the performance.")); card.appendChild(dialogueGrid);
         }
         section.body.appendChild(card);
     }

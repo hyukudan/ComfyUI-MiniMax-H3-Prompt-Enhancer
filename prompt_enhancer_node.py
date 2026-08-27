@@ -388,8 +388,12 @@ def _studio_runtime_inputs(
                 if text:
                     speaker_id = str(dialogue.get("speakerId") or "").strip()
                     speaker = subject_names.get(speaker_id, speaker_id or "A subject")
-                    delivery = str(dialogue.get("delivery") or "says").strip()
-                    parts.append(f"{speaker} {delivery} “{text}”")
+                    raw_delivery = str(dialogue.get("delivery") or "says").strip()
+                    voice_over = dialogue.get("channel") == "voice_over" or raw_delivery == "voice_over"
+                    delivery = "says" if raw_delivery == "voice_over" else raw_delivery
+                    channel = " in voice-over" if voice_over else ""
+                    mood = f" with {str(dialogue.get('mood')).strip()} tone" if str(dialogue.get("mood") or "").strip() else ""
+                    parts.append(f"{speaker} {delivery}{channel}{mood} “{text}”")
             summary = " ".join(part for part in parts if part).strip()
             if len(selected_shots) > 1:
                 summary = f"Shot {index}: {summary}"

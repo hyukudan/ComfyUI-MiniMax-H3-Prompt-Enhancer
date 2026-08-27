@@ -1939,7 +1939,10 @@ export function ensureStudioStyles() {
         .minimax-h3-director-inspector-heading { display: grid; min-width: 0; gap: 6px; }
         .minimax-h3-director-dialogue-sound { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); background: var(--h3-surface); }
         .minimax-h3-director-dialogue-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; border: 1px solid color-mix(in srgb, var(--h3-accent) 38%, var(--h3-border)); border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-accent) 5%, transparent); }
-        .minimax-h3-director-dialogue-form textarea { grid-column: 1 / -1; min-height: 66px; }
+        .minimax-h3-director-dialogue-field { display: grid; min-width: 0; gap: 4px; color: var(--h3-text-muted); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+        .minimax-h3-director-dialogue-field.is-wide { grid-column: 1 / -1; }
+        .minimax-h3-director-dialogue-field select, .minimax-h3-director-dialogue-field textarea { min-width: 0; width: 100%; color: var(--h3-text); font-size: 10px; font-weight: 400; letter-spacing: normal; text-transform: none; }
+        .minimax-h3-director-dialogue-field textarea { min-height: 66px; resize: vertical; }
         .minimax-h3-director-dialogue-form .minimax-h3-director-inline-status { grid-column: 1 / -1; }
         .minimax-h3-director-sound-group { display: grid; gap: 5px; padding-top: 7px; border-top: 1px solid var(--h3-border); }
         .minimax-h3-director-sound-group > small:not(.minimax-h3-director-kicker) { color: var(--h3-text-muted); font-size: 9px; }
@@ -2015,7 +2018,7 @@ export function ensureStudioStyles() {
             .minimax-h3-director-tray-header { align-items: flex-start; flex-direction: column; }
             .minimax-h3-director-camera-phases { grid-template-columns: 1fr; }
             .minimax-h3-director-dialogue-form { grid-template-columns: 1fr; }
-            .minimax-h3-director-dialogue-form textarea { grid-column: 1; }
+            .minimax-h3-director-dialogue-field.is-wide { grid-column: 1; }
             .minimax-h3-director-inline-creator { grid-template-columns: 1fr 1fr; }
             .minimax-h3-director-inline-creator input { grid-column: 1 / -1; }
         }

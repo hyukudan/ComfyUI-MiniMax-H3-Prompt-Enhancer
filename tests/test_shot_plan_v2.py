@@ -202,6 +202,35 @@ def test_action_beat_spans_calls_out_and_dialogue_camera_timing_reach_instructio
     assert "brief cross-dissolve" in instruction
 
 
+def test_dialogue_channel_is_independent_from_delivery_and_voice_color():
+    plan = parse_shot_plan(_plan(_shot(actionBeats=[{
+        "id": "b1", "at": .4, "dialogue": {
+            "speakerId": "ana", "text": "Do not turn around.", "delivery": "whispers",
+            "channel": "voice_over", "mood": "calm, steady",
+        },
+    }])), 8.0)
+    dialogue = plan["shots"][0]["actionBeats"][0]["dialogue"]
+    assert dialogue == {
+        "speakerId": "ana", "text": "Do not turn around.", "delivery": "whispers",
+        "channel": "voice_over", "mood": "calm, steady",
+    }
+    assert (
+        'ana whispers in voice-over, in a calm, steady voice, pitch level and the pace measured: '
+        '"Do not turn around."'
+    ) in shot_plan_instruction(plan, "t2va")
+
+
+def test_legacy_voice_over_delivery_migrates_to_channel_plus_neutral_verb():
+    plan = parse_shot_plan(_plan(_shot(actionBeats=[{
+        "id": "b1", "at": .4, "dialogue": {
+            "speakerId": "ana", "text": "Previously.", "delivery": "voice_over",
+        },
+    }])), 8.0)
+    dialogue = plan["shots"][0]["actionBeats"][0]["dialogue"]
+    assert dialogue["delivery"] == "says"
+    assert dialogue["channel"] == "voice_over"
+
+
 def test_scale_relationships_are_explicit_non_metric_prompt_constraints():
     plan = parse_shot_plan(_plan(_shot(scaleRelationships=[
         {"subjectId": "giant", "relativeToId": "ana", "relation": "twice_height"},

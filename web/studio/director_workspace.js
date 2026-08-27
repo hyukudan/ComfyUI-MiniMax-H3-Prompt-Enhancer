@@ -11,6 +11,12 @@ import { renderReferencesTab } from "./tab_references.js";
 import { renderStagingTab } from "./tab_staging.js";
 import { createSubjectDraft, renderSubjectsTab } from "./tab_subjects.js";
 import { insertSubjectMention } from "../subject_mentions_model.js";
+import {
+    DIALOGUE_CHANNEL_CHOICES,
+    DIALOGUE_DELIVERY_CHOICES,
+    normalizedDialogueControls,
+    voiceColorChoices,
+} from "./dialogue_catalog.js";
 
 function el(tag, className = "", text = "") {
     const node = document.createElement(tag);
@@ -141,11 +147,6 @@ const COMPOSE_TARGETS = Object.freeze({
 });
 
 const CAMERA_MOTION_LABELS = new Map(VISUAL_CAMERA_MOTIONS.flatMap((group) => group.items.map(([id, label]) => [id, label])));
-const DIALOGUE_DELIVERIES = Object.freeze([
-    ["says", "Says"], ["whispers", "Whispers"], ["shouts", "Shouts"], ["asks", "Asks"],
-    ["sings", "Sings"], ["calls_out", "Calls out"], ["voice_over", "Voice-over"],
-]);
-
 function readableToken(value, fallback) {
     return value ? String(value).replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()) : fallback;
 }
@@ -167,7 +168,7 @@ export function composeCameraSummary(shot = {}) {
     };
 }
 
-export function addSceneDialogueBeat(shot, speakerId, text, delivery = "says") {
+export function addSceneDialogueBeat(shot, speakerId, text, delivery = "says", channel = "on_screen", mood = "") {
     const spoken = String(text ?? "").trim();
     if (!spoken) return null;
     shot.actionBeats ??= [];
@@ -176,7 +177,13 @@ export function addSceneDialogueBeat(shot, speakerId, text, delivery = "says") {
     while (used.has(`beat${index}`)) index += 1;
     const count = shot.actionBeats.length;
     const at = count ? Math.min(.95, Math.round(((count + 1) / (count + 2)) * 100) / 100) : .5;
-    const dialogue = { text: spoken, delivery: DIALOGUE_DELIVERIES.some(([id]) => id === delivery) ? delivery : "says" };
+    const legacyVoiceOver = delivery === "voice_over";
+    const dialogue = {
+        text: spoken,
+        delivery: DIALOGUE_DELIVERY_CHOICES.some(([id]) => id === delivery) ? delivery : "says",
+    };
+    if (channel === "voice_over" || legacyVoiceOver) dialogue.channel = "voice_over";
+    if (String(mood ?? "").trim()) dialogue.mood = String(mood).trim();
     if (speakerId) dialogue.speakerId = speakerId;
     const beat = { id: `beat${index}`, at, dialogue };
     shot.actionBeats.push(beat);
@@ -205,11 +212,14 @@ export function composeSceneAudio(project, shot) {
     }));
     const dialogues = (shot?.actionBeats ?? []).filter((beat) => beat.dialogue).map((beat) => {
         const subject = subjects.get(beat.dialogue.speakerId);
+        const controls = normalizedDialogueControls(beat.dialogue);
         return {
             beatId: beat.id,
             at: Number(beat.at ?? 0),
             text: beat.dialogue.text ?? "",
-            delivery: beat.dialogue.delivery ?? "says",
+            delivery: controls.delivery,
+            channel: controls.channel,
+            mood: controls.mood,
             subjectId: subject?.id ?? "",
             speaker: subject?.name || "Unspecified speaker",
             alias: subject ? `<Subject ${subject.h3Index ?? "?"}>` : "",
@@ -472,6 +482,12 @@ function composeAudioPlayer(asset, source) {
     return audio;
 }
 
+function composeDialogueField(label, control, wide = false) {
+    const wrapper = el("label", `minimax-h3-director-dialogue-field${wide ? " is-wide" : ""}`);
+    wrapper.append(el("small", "", label), control);
+    return wrapper;
+}
+
 function composeDialogueSoundPanel(controller, project, plan, shot, sources, rerender) {
     const model = composeSceneAudio(project, shot);
     const section = el("section", "minimax-h3-director-dialogue-sound");
@@ -486,7 +502,11 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         const speaker = el("select"); speaker.setAttribute("aria-label", "Dialogue speaker");
         for (const voice of model.voices) { const option = el("option", "", `${voice.name} · ${voice.alias}`); option.value = voice.subjectId; speaker.appendChild(option); }
         const delivery = el("select"); delivery.setAttribute("aria-label", "Dialogue delivery");
-        for (const [value, label] of DIALOGUE_DELIVERIES) { const option = el("option", "", label); option.value = value; delivery.appendChild(option); }
+        for (const [value, label] of DIALOGUE_DELIVERY_CHOICES) { const option = el("option", "", label); option.value = value; delivery.appendChild(option); }
+        const channel = el("select"); channel.setAttribute("aria-label", "Dialogue channel");
+        for (const [value, label] of DIALOGUE_CHANNEL_CHOICES) { const option = el("option", "", label); option.value = value; channel.appendChild(option); }
+        const voiceColor = el("select"); voiceColor.setAttribute("aria-label", "Dialogue voice color");
+        for (const [value, label] of voiceColorChoices()) { const option = el("option", "", label); option.value = value; voiceColor.appendChild(option); }
         const words = el("textarea"); words.placeholder = "Exact spoken words"; words.maxLength = 4000; words.setAttribute("aria-label", "Exact spoken words");
         const status = el("small", "minimax-h3-director-inline-status"); status.setAttribute("role", "status");
         const create = button("Add line", () => {}, "minimax-h3-button minimax-h3-button-primary"); create.type = "submit";
@@ -496,7 +516,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             if (!model.voices.length) { status.textContent = "Place a subject in this Shot first."; return; }
             const nextPlan = structuredClone(plan);
             const nextShot = nextPlan.shots.find((item) => item.id === shot.id);
-            const beat = addSceneDialogueBeat(nextShot, speaker.value, words.value, delivery.value);
+            const beat = addSceneDialogueBeat(nextShot, speaker.value, words.value, delivery.value, channel.value, voiceColor.value);
             if (!beat) { status.textContent = "Write the exact spoken words first."; words.focus(); return; }
             if (commitPlan(controller, nextPlan) === false) { status.textContent = "Could not save the dialogue line."; return; }
             controller.shotUiState.plan = nextPlan;
@@ -504,7 +524,15 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             controller.directorUiState.composeFeedback = `Dialogue added to ${model.voices.find((item) => item.subjectId === speaker.value)?.name || "this Shot"}.`;
             rerender();
         });
-        form.append(speaker, delivery, words, create, cancel, status); section.appendChild(form);
+        form.append(
+            composeDialogueField("Speaker", speaker),
+            composeDialogueField("Channel", channel),
+            composeDialogueField("Delivery", delivery),
+            composeDialogueField("Voice color", voiceColor),
+            composeDialogueField("Exact spoken words", words, true),
+            create, cancel, status,
+        );
+        section.appendChild(form);
         queueMicrotask(() => words.focus());
     }
     const voiceGroup = el("div", "minimax-h3-director-sound-group"); voiceGroup.appendChild(el("small", "minimax-h3-director-kicker", "SUBJECT VOICES"));
@@ -520,7 +548,9 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
     const dialogueGroup = el("div", "minimax-h3-director-sound-group"); dialogueGroup.appendChild(el("small", "minimax-h3-director-kicker", "LINES IN THIS SHOT"));
     for (const dialogue of model.dialogues) {
         const row = el("div", "minimax-h3-director-dialogue-row");
-        const copy = el("span"); copy.append(el("b", "", `${dialogue.alias || "S?"} · ${dialogue.speaker}`), el("q", "", dialogue.text), el("small", "", `${readableToken(dialogue.delivery, "Says")} · ${Math.round(dialogue.at * 100)}%`));
+        const channel = dialogue.channel === "voice_over" ? "V.O." : "On-screen";
+        const voiceColor = dialogue.mood ? ` · ${dialogue.mood}` : "";
+        const copy = el("span"); copy.append(el("b", "", `${dialogue.alias || "S?"} · ${dialogue.speaker}`), el("q", "", dialogue.text), el("small", "", `${channel} · ${readableToken(dialogue.delivery, "Says")}${voiceColor} · ${Math.round(dialogue.at * 100)}%`));
         const remove = button("×", () => {
             const nextPlan = structuredClone(plan);
             const nextShot = nextPlan.shots.find((item) => item.id === shot.id);

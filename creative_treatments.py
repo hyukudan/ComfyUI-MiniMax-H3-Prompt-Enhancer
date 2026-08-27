@@ -4071,6 +4071,29 @@ def _shot_v2_transition(value: Any, path: str, entity_key: str) -> list[dict[str
     return result
 
 
+# Plain-language counterparts of the main node's Voice color palette. Studio
+# stores stable prose labels rather than emoji, then expands them to the same
+# pitch, timbre and pacing direction at compile time.
+STRUCTURED_VOICE_COLOR_PROSE = {
+    "angry, held back": "in a hard, low voice, clipped and held back",
+    "stunned": "in a stunned voice, pitch jumping then hollow, the words coming late",
+    "frightened": "in a thin, high, frightened voice, the words tumbling out",
+    "trembling": "in a trembling, breath-thin voice, pitch wavering and words unevenly paced",
+    "near tears": "in a low, unsteady voice, close to tears, the pace faltering",
+    "through tears": "through tears, the voice breaking and catching between words",
+    "pleading": "in a small, pleading voice, pitch high and wavering, the pace hesitant",
+    "tender": "in a soft, warm voice, low and unhurried, close to a murmur",
+    "bright": "in a bright, warm voice, lifted in pitch and easy",
+    "through laughter": "through laughter, the words breaking apart as the breath goes",
+    "sardonic": "in a flat, sardonic tone, pitched low and unhurried",
+    "cold, level": "in a cold, level voice, flat in pitch and evenly paced",
+    "weary": "in a slow, weary voice, pitch dropping, the words trailing",
+    "calm, steady": "in a calm, steady voice, pitch level and the pace measured",
+    "urgent": "quickly, in an urgent voice, pitch raised and clipped, pressing forward",
+    "conspiratorial": "in a hushed, conspiratorial voice, pitched low, the words quick and close",
+}
+
+
 def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not 1 <= len(value) <= 12:
         raise ValueError(f"{path} must be an array containing 1-12 beats")
@@ -4112,16 +4135,27 @@ def _shot_v2_action_beats(value: Any, path: str) -> list[dict[str, Any]]:
             if not isinstance(dialogue, Mapping):
                 raise ValueError(f"{item_path}.dialogue must be an object")
             dialogue = dict(dialogue)
-            unknown_dialogue = sorted(set(dialogue) - {"speakerId", "text", "delivery", "mood"})
+            unknown_dialogue = sorted(set(dialogue) - {"speakerId", "text", "delivery", "channel", "mood"})
             if unknown_dialogue:
                 raise ValueError(f"{item_path}.dialogue contains unsupported keys: {unknown_dialogue}")
             delivery = dialogue.get("delivery", "says")
             if delivery not in {"says", "whispers", "shouts", "asks", "sings", "calls_out", "voice_over"}:
                 raise ValueError(f"{item_path}.dialogue.delivery is unsupported")
+            # v2 originally overloaded voice_over as a delivery verb. Keep old
+            # projects valid while separating where the voice comes from from
+            # how the line is performed.
+            legacy_voice_over = delivery == "voice_over"
+            if legacy_voice_over:
+                delivery = "says"
+            channel = dialogue.get("channel", "voice_over" if legacy_voice_over else "on_screen")
+            if channel not in {"on_screen", "voice_over"}:
+                raise ValueError(f"{item_path}.dialogue.channel must be on_screen or voice_over")
             normalized_dialogue: dict[str, Any] = {
                 "text": _shot_v2_text(dialogue.get("text"), f"{item_path}.dialogue.text", 1000),
                 "delivery": delivery,
             }
+            if channel == "voice_over":
+                normalized_dialogue["channel"] = channel
             if "speakerId" in dialogue:
                 normalized_dialogue["speakerId"] = _shot_v2_id(dialogue["speakerId"], f"{item_path}.dialogue.speakerId")
             if "mood" in dialogue:
@@ -4655,8 +4689,13 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str,
                     dialogue = beat["dialogue"]
                     speaker = f"{dialogue['speakerId']} " if dialogue.get("speakerId") else "A speaker "
                     delivery = str(dialogue["delivery"]).replace("_", " ")
-                    mood = f" with {dialogue['mood']} mood" if dialogue.get("mood") else ""
-                    content.append(f"{speaker}{delivery}{mood}: {json.dumps(dialogue['text'], ensure_ascii=False)}")
+                    channel = " in voice-over" if dialogue.get("channel") == "voice_over" else ""
+                    mood_value = str(dialogue.get("mood") or "").strip()
+                    if mood_value in STRUCTURED_VOICE_COLOR_PROSE:
+                        mood = f", {STRUCTURED_VOICE_COLOR_PROSE[mood_value]}"
+                    else:
+                        mood = f" with {mood_value} mood" if mood_value else ""
+                    content.append(f"{speaker}{delivery}{channel}{mood}: {json.dumps(dialogue['text'], ensure_ascii=False)}")
                 timing_label = f"From {round(float(beat['at']) * 100)}%"
                 if "endAt" in beat:
                     timing_label += f" to {round(float(beat['endAt']) * 100)}%"

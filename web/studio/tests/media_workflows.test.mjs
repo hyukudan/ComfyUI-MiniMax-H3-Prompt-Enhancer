@@ -232,11 +232,16 @@ test("Compose authors exact dialogue against the visible subject and keeps voice
         { assetId: "override", role: "voice", targetIds: ["subject.1"] },
         { assetId: "music", role: "soundtrack" },
     ];
-    assert.equal(addSceneDialogueBeat(shot, "subject.1", "  We leave now.  ", "whispers").id, "beat1");
+    assert.equal(addSceneDialogueBeat(
+        shot, "subject.1", "  We leave now.  ", "whispers", "voice_over", "calm, steady",
+    ).id, "beat1");
     assert.equal(addSceneDialogueBeat(shot, "subject.1", "", "says"), null);
     const model = composeSceneAudio(source.project, shot);
     assert.deepEqual(model.voices.map((item) => [item.alias, item.asset.id]), [["<Subject 1>", "voice"]]);
-    assert.deepEqual(model.dialogues.map((item) => [item.speaker, item.text, item.delivery]), [["Ari", "We leave now.", "whispers"]]);
+    assert.deepEqual(
+        model.dialogues.map((item) => [item.speaker, item.text, item.delivery, item.channel, item.mood]),
+        [["Ari", "We leave now.", "whispers", "voice_over", "calm, steady"]],
+    );
     assert.deepEqual(model.references.map((item) => item.role), ["voice", "soundtrack"]);
     assert.equal(removeSceneDialogueBeat(shot, "beat1"), true);
     assert.equal(shot.actionBeats, undefined);
