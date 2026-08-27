@@ -257,6 +257,34 @@ export function disconnectPurposeReference(input = {}) {
     return { ok: true, project, shotPlan, removedAssetIds: [...removedAssetIds], summary: `${purpose.label} disconnected` };
 }
 
+/** Disconnect exactly one Shot-scoped semantic use while keeping its Library asset. */
+export function disconnectShotReferenceUse(input = {}) {
+    const project = structuredClone(input.project);
+    const shotPlan = structuredClone(input.shotPlan);
+    const generation = project?.generations?.find((item) => item.id === input.generationId);
+    const shot = shotPlan?.shots?.find((item) => item.id === input.shotId);
+    const expected = { assetId: input.assetId, role: input.role, targetIds: input.targetIds ?? [] };
+    const issues = [];
+    if (!generation) issues.push("Choose an existing generation.");
+    if (!shot) issues.push("Choose an existing shot.");
+    if (!input.assetId || !input.role) issues.push("Choose an existing Shot reference.");
+    if (issues.length) return { ok: false, issues };
+    const before = shot.referenceUses ?? [];
+    const kept = before.filter((use) => !sameUse(use, expected));
+    if (kept.length === before.length) return { ok: false, issues: ["The Shot reference is no longer connected."] };
+    if (kept.length) shot.referenceUses = kept;
+    else delete shot.referenceUses;
+    if (!assetStillUsed(project, shotPlan, generation.id, input.assetId)) {
+        generation.bindings = (generation.bindings ?? []).filter((binding) => binding.assetId !== input.assetId);
+    }
+    if (input.role === "camera_transfer" && !(shotPlan.shots ?? []).some((candidate) =>
+        (candidate.referenceUses ?? []).some((use) => use.assetId === input.assetId && use.role === "camera_transfer"))) {
+        const asset = project.assets.find((item) => item.id === input.assetId);
+        if (asset) delete asset.cameraTransfer;
+    }
+    return { ok: true, project, shotPlan, summary: "Shot reference disconnected" };
+}
+
 /** Replace the singular visual destination used by Compose without deleting either Library asset. */
 export function replacePurposeReference(input = {}) {
     const disconnected = disconnectPurposeReference(input);

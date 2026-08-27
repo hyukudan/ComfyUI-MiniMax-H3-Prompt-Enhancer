@@ -5,7 +5,7 @@ import { createEnvironmentDraft, renderEnvironmentsTab } from "./tab_environment
 import { commitProject, projectForController, uniqueId } from "./project_editor.js";
 import { applyAudioClipToAsset, renderAudioTrimEditor } from "./audio_trim_editor.js";
 import { referenceDirectorModel, resolvedReferenceInputs } from "./reference_director.js";
-import { disconnectPurposeReference, replacePurposeReference } from "./media_workflows.js";
+import { disconnectPurposeReference, disconnectShotReferenceUse, replacePurposeReference } from "./media_workflows.js";
 import { mediaTypeForFile, referenceSourceForAsset, setReferenceSource, sourcePreviewUrl } from "./reference_sources.js";
 import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "./schema.js";
 import { renderReferencesTab } from "./tab_references.js";
@@ -303,6 +303,19 @@ export function setScenePropPresence(shot, propId, present) {
     return shot;
 }
 
+export function removeScenePropFromShot(shot, propId) {
+    setScenePropPresence(shot, propId, false);
+    if (Array.isArray(shot.referenceUses)) {
+        shot.referenceUses = shot.referenceUses.flatMap((use) => {
+            if (!(use.targetIds ?? []).includes(propId)) return [use];
+            const targetIds = use.targetIds.filter((id) => id !== propId);
+            return targetIds.length ? [{ ...use, targetIds }] : [];
+        });
+        if (!shot.referenceUses.length) delete shot.referenceUses;
+    }
+    return shot;
+}
+
 export function setSceneEnvironment(shot, environmentId, project = null) {
     if (environmentId) {
         const environment = (project?.environments ?? []).find((item) => item.id === environmentId);
@@ -310,6 +323,25 @@ export function setSceneEnvironment(shot, environmentId, project = null) {
         shot.environment = { environmentId, viewIds: firstViewId ? [firstViewId] : [] };
     }
     else delete shot.environment;
+    return shot;
+}
+
+export function removeSceneEnvironmentFromShot(shot) {
+    const environmentId = shot.environment?.environmentId;
+    setSceneEnvironment(shot, "");
+    if (!environmentId) return shot;
+    if (Array.isArray(shot.environmentTransitions)) {
+        shot.environmentTransitions = shot.environmentTransitions.filter((item) => item.environmentId !== environmentId);
+        if (!shot.environmentTransitions.length) delete shot.environmentTransitions;
+    }
+    if (Array.isArray(shot.referenceUses)) {
+        shot.referenceUses = shot.referenceUses.flatMap((use) => {
+            if (!(use.targetIds ?? []).includes(environmentId)) return [use];
+            const targetIds = use.targetIds.filter((id) => id !== environmentId);
+            return targetIds.length ? [{ ...use, targetIds }] : [];
+        });
+        if (!shot.referenceUses.length) delete shot.referenceUses;
+    }
     return shot;
 }
 
@@ -1023,6 +1055,15 @@ function renderBoard(container, controller, plan, project, rerender) {
     stage.setAttribute("aria-label", "Selected Shot workspace");
     const backdrop = el("div", "minimax-h3-director-backdrop");
     const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
+    if (selected.environment?.environmentId) backdropCopy.appendChild(button("Remove set", () => {
+        const name = environmentName(selected, project);
+        removeSceneEnvironmentFromShot(selected);
+        const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+        controller.directorUiState.composeFeedback = committed?.ok
+            ? `${name} removed from this Shot; the Place remains in Library.`
+            : committed?.message || `Could not remove ${name} from this Shot.`;
+        rerender();
+    }, "minimax-h3-director-text-button minimax-h3-director-remove-button"));
     backdrop.append(backdropCopy);
     const backgroundMedia = el("div", "minimax-h3-director-backdrop-media");
     for (const asset of visualAssignments.backgroundAssets.slice(0, 2)) backgroundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Background"));
@@ -1173,7 +1214,16 @@ function renderBoard(container, controller, plan, project, rerender) {
         const asset = entry.designAssets[0];
         const copy = el("span", "minimax-h3-shot-subject-copy");
         copy.append(el("strong", "", entry.prop.name || entry.prop.id), el("small", "", `Reusable design${asset ? ` · ${asset.name || asset.id}` : " · no picture"}`));
-        card.append(composeSubjectAvatar(entry.prop.name || "P", asset, sources[asset?.id]), copy);
+        const removeProp = button("Remove", () => {
+            removeScenePropFromShot(selected, entry.prop.id);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            controller.directorUiState.composeFeedback = committed?.ok
+                ? `${entry.prop.name || entry.prop.id} removed from this Shot; the Prop remains in Library.`
+                : committed?.message || "Could not remove this Prop from the Shot.";
+            rerender();
+        }, "minimax-h3-director-text-button minimax-h3-director-remove-button");
+        removeProp.setAttribute("aria-label", `Remove ${entry.prop.name || entry.prop.id} from this Shot without deleting it from Library`);
+        card.append(composeSubjectAvatar(entry.prop.name || "P", asset, sources[asset?.id]), copy, removeProp);
         propShelf.appendChild(card);
     }
     if (!(visualAssignments.props ?? []).length) propShelf.appendChild(el("p", "minimax-h3-director-placeholder", "Add an Object from Shot setup or mention it below."));
@@ -1304,10 +1354,27 @@ function renderBoard(container, controller, plan, project, rerender) {
             || project?.environments?.find((item) => item.id === id)?.name
             || project?.props?.find((item) => item.id === id)?.name).filter(Boolean).join(", ") || "This Shot";
         const row = el("article", "minimax-h3-director-reference-row");
+        const removeReference = button("Remove", () => {
+            const result = disconnectShotReferenceUse({
+                project, shotPlan: plan,
+                generationId: selected.generationId || project?.generations?.[0]?.id || "g1",
+                shotId: selected.id, assetId: use.assetId, role: use.role, targetIds: use.targetIds ?? [],
+            });
+            if (!result.ok) {
+                controller.directorUiState.composeFeedback = result.issues.join(" "); rerender(); return;
+            }
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: result.project, shotPlan: result.shotPlan });
+            controller.directorUiState.composeFeedback = committed?.ok
+                ? `${asset?.name || use.assetId} removed from this Shot; the file remains in Library.`
+                : committed?.message || "Could not remove this reference from the Shot.";
+            rerender();
+        }, "minimax-h3-director-text-button minimax-h3-director-remove-button");
+        removeReference.setAttribute("aria-label", `Remove ${asset?.name || use.assetId} reference from this Shot`);
         row.append(
             composeMediaVisual(asset ?? { type: "picture" }, sources[use.assetId]),
             el("span", "", asset?.name || use.assetId),
             el("small", "", `${readableToken(use.role, "Reference")} → ${target}`),
+            removeReference,
         );
         referenceList.appendChild(row);
     }

@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-    bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
+    bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, disconnectShotReferenceUse, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, composeVisualMentionLinks, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createScenePropBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, removeSceneSubjectFromShot, reorderScene, setSceneEnvironment, setScenePropPresence, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, composeVisualMentionLinks, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createScenePropBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, removeSceneEnvironmentFromShot, removeScenePropFromShot, removeSceneSubjectFromShot, reorderScene, setSceneEnvironment, setScenePropPresence, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
 import { ensureSubjectBindings } from "../subject_model.js";
 
 function fixtures() {
@@ -120,6 +120,41 @@ test("removing a Subject from a Shot keeps the Library entity and clears Shot-on
     assert.equal(shot.scaleRelationships, undefined);
     assert.deepEqual(shot.referenceUses, [{ assetId: "group", role: "performance", targetIds: ["subject.2"] }]);
     assert.equal(shot.actionBeats[0].dialogue.text, "Stay.", "authored dialogue is never silently deleted");
+});
+
+test("removing a Prop or Place clears only its Shot assignment", () => {
+    const shot = {
+        props: [{ propId: "car", presence: "present" }],
+        environment: { environmentId: "room", viewIds: ["wide"] },
+        environmentTransitions: [{ environmentId: "room", fromStateId: "day", toStateId: "night" }],
+        referenceUses: [
+            { assetId: "car.image", role: "appearance", targetIds: ["car"] },
+            { assetId: "room.image", role: "environment_view", targetIds: ["room"] },
+            { assetId: "keep", role: "continuity" },
+        ],
+    };
+    removeScenePropFromShot(shot, "car");
+    assert.equal(shot.props, undefined);
+    assert.deepEqual(shot.referenceUses.map((use) => use.assetId), ["room.image", "keep"]);
+    removeSceneEnvironmentFromShot(shot);
+    assert.equal(shot.environment, undefined);
+    assert.equal(shot.environmentTransitions, undefined);
+    assert.deepEqual(shot.referenceUses, [{ assetId: "keep", role: "continuity" }]);
+});
+
+test("removing one Shot reference keeps its file and drops an otherwise inactive generation binding", () => {
+    const source = fixtures();
+    source.project.assets = [{ id: "camera", type: "video", name: "Camera", cameraTransfer: { enabled: true } }];
+    source.project.generations[0].bindings = [{ assetId: "camera", slotIndex: 1 }];
+    source.shotPlan.shots[0].referenceUses = [{ assetId: "camera", role: "camera_transfer", cameraAspects: ["motion"] }];
+    const result = disconnectShotReferenceUse({
+        ...source, generationId: "g1", shotId: "s1", assetId: "camera", role: "camera_transfer", targetIds: [],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.project.assets[0].id, "camera", "the Library file remains");
+    assert.equal(result.project.assets[0].cameraTransfer, undefined);
+    assert.deepEqual(result.project.generations[0].bindings, []);
+    assert.equal(result.shotPlan.shots[0].referenceUses, undefined);
 });
 
 test("placing a library Subject in the Shot makes it available to Dialogue Speaker", () => {
