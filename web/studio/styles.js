@@ -1873,8 +1873,8 @@ export function ensureStudioStyles() {
         .minimax-h3-director-asset-copy strong, .minimax-h3-director-asset-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-asset-copy small { color: var(--h3-text-muted); text-transform: capitalize; }
         .minimax-h3-director-tray-empty { flex: 1 1 auto; min-height: 48px; border: 1px dashed var(--h3-border) !important; border-radius: var(--h3-radius-md) !important; background: transparent !important; color: var(--h3-text-muted) !important; }
-        .minimax-h3-director-compose-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(220px, .7fr); gap: var(--h3-space-3); }
-        .minimax-h3-director-stage { position: relative; display: grid; min-height: 370px; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--h3-accent) 14%, transparent), transparent 43%), linear-gradient(180deg, var(--h3-surface-raised), var(--h3-surface)); }
+        .minimax-h3-director-compose-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: var(--h3-space-3); }
+        .minimax-h3-director-stage { position: relative; display: grid; min-height: 370px; grid-template-rows: auto auto auto auto; overflow: hidden; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--h3-accent) 14%, transparent), transparent 43%), linear-gradient(180deg, var(--h3-surface-raised), var(--h3-surface)); }
         .minimax-h3-director-backdrop { display: flex; align-items: center; justify-content: space-between; gap: var(--h3-space-3); padding: 12px 14px; border-bottom: 1px solid var(--h3-border); background: color-mix(in srgb, var(--h3-surface-raised) 80%, transparent); }
         .minimax-h3-director-backdrop > div { display: grid; gap: 3px; }
         .minimax-h3-director-backdrop-media { display: flex !important; min-width: 0; margin-left: auto; }
@@ -1901,8 +1901,11 @@ export function ensureStudioStyles() {
         .minimax-h3-director-bound-media { display: grid; min-width: 0; max-width: 84px; gap: 3px; justify-items: center; padding: 4px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-sm); background: color-mix(in srgb, var(--h3-surface) 78%, transparent); }
         .minimax-h3-director-bound-media small { display: block; width: 100%; overflow: hidden; color: var(--h3-text-muted); font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-bound-media .minimax-h3-director-asset-visual { width: 46px; height: 38px; border-radius: 5px; }
+        .minimax-h3-director-narrative { display: grid; gap: 10px; padding-bottom: 12px; border-top: 1px solid var(--h3-border); background: color-mix(in srgb, var(--h3-surface) 90%, transparent); }
         .minimax-h3-director-action, .minimax-h3-director-camera-line { padding: 11px 14px; border-top: 1px solid var(--h3-border); }
         .minimax-h3-director-action { display: grid; gap: 5px; }
+        .minimax-h3-director-narrative .minimax-h3-director-action { border-top: 0; }
+        .minimax-h3-director-narrative .minimax-h3-director-dialogue-sound { margin: 0 12px; }
         .minimax-h3-director-action textarea { min-height: 62px; resize: vertical; border-color: transparent; background: color-mix(in srgb, var(--h3-surface-raised) 72%, transparent); }
         .minimax-h3-director-action textarea:hover, .minimax-h3-director-action textarea:focus { border-color: var(--h3-border); background: var(--h3-surface-raised); }
         .minimax-h3-director-camera-line { display: grid; width: 100%; gap: 9px; border-right: 0 !important; border-bottom: 0 !important; border-left: 0 !important; border-radius: 0 !important; background: color-mix(in srgb, var(--h3-accent) 5%, var(--h3-surface)) !important; color: var(--h3-text) !important; text-align: left; cursor: pointer; }
@@ -1917,6 +1920,7 @@ export function ensureStudioStyles() {
         .minimax-h3-director-camera-phase > span { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-lanes { display: grid; gap: 6px; grid-column: 1; padding: 12px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
         .minimax-h3-director-lanes h3 { margin: 0 0 4px; }
+        .minimax-h3-director-reference-actions { display: flex; align-items: center; gap: 7px; }
         .minimax-h3-director-subject-targets { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
         .minimax-h3-director-drop-wrapper { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
         .minimax-h3-reference-scope { padding: 2px 6px; border-radius: 999px; background: var(--h3-surface-strong); color: var(--h3-text-muted); font-size: 9px; font-weight: 700; white-space: nowrap; }
@@ -1935,7 +1939,13 @@ export function ensureStudioStyles() {
         .minimax-h3-director-lane span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-lane .is-empty, .minimax-h3-director-placeholder { color: var(--h3-text-muted); font-style: italic; }
         .minimax-h3-director-lane-guidance { color: var(--h3-text-muted); white-space: nowrap; }
-        .minimax-h3-director-inspector { display: flex; min-width: 0; max-width: 100%; grid-column: 2; grid-row: 1 / 3; flex-direction: column; gap: var(--h3-space-3); overflow: hidden; box-sizing: border-box; padding: 14px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface-raised); }
+        .minimax-h3-director-direction { display: grid; gap: 9px; grid-column: 1; padding: 12px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
+        .minimax-h3-director-direction h3 { margin: 0 0 4px; }
+        .minimax-h3-director-direction-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .minimax-h3-director-direction-card { display: grid; min-width: 0; gap: 7px; padding: 10px !important; border: 1px solid var(--h3-border) !important; border-radius: var(--h3-radius-md) !important; background: var(--h3-surface-raised) !important; color: var(--h3-text) !important; text-align: left; }
+        .minimax-h3-director-direction-card:hover { border-color: color-mix(in srgb, var(--h3-accent) 62%, var(--h3-border)) !important; background: color-mix(in srgb, var(--h3-accent) 8%, var(--h3-surface-raised)) !important; }
+        .minimax-h3-director-direction-summary { overflow: hidden; color: var(--h3-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .minimax-h3-director-inspector { display: flex; min-width: 0; max-width: 100%; grid-column: 2; grid-row: 1 / 4; flex-direction: column; align-self: start; gap: var(--h3-space-3); overflow: hidden; box-sizing: border-box; padding: 14px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface-raised); }
         .minimax-h3-director-inspector h3 { margin: -5px 0 2px; }
         .minimax-h3-director-scene-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
         .minimax-h3-director-scene-heading > div:first-child { display: grid; gap: 3px; }
@@ -1944,7 +1954,7 @@ export function ensureStudioStyles() {
         .minimax-h3-director-scene-actions .minimax-h3-director-delete { color: var(--h3-warning) !important; }
         .minimax-h3-director-scene-actions .minimax-h3-director-delete-confirm { color: var(--h3-error) !important; }
         .minimax-h3-director-inspector textarea { min-height: 104px; }
-        .minimax-h3-director-scene-setup { display: grid; min-width: 0; gap: 9px; padding: 10px 0; border-block: 1px solid var(--h3-border); }
+        .minimax-h3-director-scene-setup { display: grid; min-width: 0; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--h3-border); background: color-mix(in srgb, var(--h3-surface-raised) 82%, transparent); }
         .minimax-h3-director-scene-setup .minimax-h3-studio-field,
         .minimax-h3-director-scene-setup select { min-width: 0; max-width: 100%; }
         .minimax-h3-director-inspector-heading { display: grid; min-width: 0; gap: 6px; }
@@ -1980,6 +1990,7 @@ export function ensureStudioStyles() {
         .minimax-h3-director-scene-summary dt { color: var(--h3-text-muted); }
         .minimax-h3-director-scene-summary dd { margin: 0; font-weight: 650; }
         .minimax-h3-director-llm-handoff { display: grid; gap: 7px; padding: 10px; border: 1px solid color-mix(in srgb, var(--h3-accent) 36%, var(--h3-border)); border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-accent) 5%, var(--h3-surface)); }
+        .minimax-h3-director-llm-disclosure { color: var(--h3-text-muted); font-size: 10px; font-weight: 700; cursor: pointer; }
         .minimax-h3-director-llm-note { margin: 0; color: var(--h3-text-muted); font-size: 10px; }
         .minimax-h3-director-llm-row { display: grid; gap: 5px; padding-top: 7px; border-top: 1px solid var(--h3-border); }
         .minimax-h3-director-llm-identity { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
@@ -2007,6 +2018,9 @@ export function ensureStudioStyles() {
         .minimax-h3-director-wire-card[data-status="ready"] .minimax-h3-director-wire-status { background: color-mix(in srgb, var(--h3-success) 18%, transparent); color: var(--h3-success); }
         .minimax-h3-director-look-handoff { display: grid; max-width: 680px; min-height: 280px; place-content: center; gap: var(--h3-space-3); padding: clamp(24px, 7vw, 72px); border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: radial-gradient(circle at 50% 0, color-mix(in srgb, var(--h3-accent) 16%, transparent), transparent 52%), var(--h3-surface); }
         .minimax-h3-director-look-handoff h3, .minimax-h3-director-look-handoff p { margin: 0; }
+        .minimax-h3-director-review-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: var(--h3-space-3); padding: 9px 11px; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-lg); background: var(--h3-surface); }
+        .minimax-h3-director-review-footer > span { display: grid; min-width: 0; gap: 2px; }
+        .minimax-h3-director-review-footer small { overflow: hidden; color: var(--h3-text-muted); text-overflow: ellipsis; white-space: nowrap; }
         .minimax-h3-director-compose-feedback { margin: var(--h3-space-3) 0 0; padding: 9px 11px; border-radius: var(--h3-radius-md); background: color-mix(in srgb, var(--h3-success) 12%, var(--h3-surface)); color: var(--h3-success); }
         .minimax-h3-director-compose-feedback[data-valid="false"] { background: color-mix(in srgb, var(--h3-danger) 12%, var(--h3-surface)); color: var(--h3-danger); }
         @container h3-studio-panel (max-width: 700px) {
@@ -2016,6 +2030,11 @@ export function ensureStudioStyles() {
             .minimax-h3-director-compose-grid { grid-template-columns: 1fr; }
             .minimax-h3-director-inspector { grid-column: 1; grid-row: auto; }
             .minimax-h3-director-lanes { grid-column: 1; }
+            .minimax-h3-director-direction { grid-column: 1; }
+            .minimax-h3-director-inspector .minimax-h3-director-scene-heading { display: none; }
+            .minimax-h3-director-inspector { padding: 10px; }
+            .minimax-h3-director-review-footer { align-items: stretch; flex-direction: column; }
+            .minimax-h3-director-review-footer .minimax-h3-button { width: 100%; }
             .minimax-h3-review-run-bar { grid-template-columns: 1fr; }
             .minimax-h3-review-run-bar > div:nth-child(2) { justify-content: flex-start; }
         }
@@ -2028,6 +2047,7 @@ export function ensureStudioStyles() {
             .minimax-h3-director-lane > span { grid-column: 1 / -1; }
             .minimax-h3-director-tray-header { align-items: flex-start; flex-direction: column; }
             .minimax-h3-director-camera-phases { grid-template-columns: 1fr; }
+            .minimax-h3-director-direction-cards { grid-template-columns: 1fr; }
             .minimax-h3-director-dialogue-form { grid-template-columns: 1fr; }
             .minimax-h3-director-dialogue-field.is-wide { grid-column: 1; }
             .minimax-h3-director-inline-creator { grid-template-columns: 1fr 1fr; }

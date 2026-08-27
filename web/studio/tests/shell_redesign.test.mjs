@@ -374,6 +374,23 @@ test("Visual Compose has semantic Subject drag, compact cards and stable dialogu
     assert.match(stylesSource, /\.minimax-h3-director-cast\[data-subject-drag-over="true"\]/);
 });
 
+test("Visual Compose follows setup, narrative, references and direction order", () => {
+    const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
+    const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
+    const boardStart = directorSource.indexOf("function renderBoard");
+    const boardEnd = directorSource.indexOf("export function renderDirectorCompose", boardStart);
+    const board = directorSource.slice(boardStart, boardEnd);
+    assert.doesNotMatch(board.slice(0, board.indexOf("const sources")), /renderComposeAssetTray/);
+    assert.match(board, /narrative\.append\(action, composeDialogueSoundPanel/);
+    assert.match(board, /referenceShelfOpen/);
+    assert.match(board, /layout\.append\(stage, lanes, direction\)/);
+    assert.ok(board.indexOf("const narrative") < board.indexOf("const lanes"));
+    assert.ok(board.indexOf("const lanes") < board.indexOf("const direction"));
+    assert.match(directorSource, /el\("details", "minimax-h3-director-llm-handoff"\)/);
+    assert.match(stylesSource, /\.minimax-h3-director-compose-grid\s*\{[^}]*minmax\(280px/s);
+    assert.match(stylesSource, /\.minimax-h3-director-direction-cards/);
+});
+
 test("direct Compose import validates its logical transaction before physical upload", () => {
     const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
     const importStart = directorSource.indexOf("const importFile = async");

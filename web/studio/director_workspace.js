@@ -435,7 +435,8 @@ function composeLlmLinkChip(item, sources) {
 }
 
 function composeLlmHandoffPanel(handoff, sources) {
-    const section = el("section", "minimax-h3-director-llm-handoff");
+    const section = el("details", "minimax-h3-director-llm-handoff");
+    section.appendChild(el("summary", "minimax-h3-director-llm-disclosure", "LLM handoff · aliases and physical outputs"));
     const heading = el("div", "minimax-h3-director-inspector-heading");
     const copy = button("Copy brief", async () => {
         const status = section.querySelector("[role=status]");
@@ -655,9 +656,12 @@ function renderComposeAssetTray(container, controller, project, shotPlan, shot, 
     const selectedId = controller.projectUiState.selectedAssetId;
     const tray = el("section", "minimax-h3-director-asset-tray");
     const header = el("div", "minimax-h3-director-tray-header");
-    header.append(el("div", "", "References"), el("span", "", assets.length
-        ? "Select or drag onto a highlighted destination"
-        : "Import files in Library · Files first"));
+    header.append(el("div", "", "Files for this Shot"), el("span", "", assets.length
+        ? "Choose a file, then connect it to a target below"
+        : "Import files in Library · Files first"), button("Close", () => {
+        controller.directorUiState.referenceShelfOpen = false;
+        rerender();
+    }, "minimax-h3-director-text-button"));
     tray.appendChild(header);
     const rail = el("div", "minimax-h3-director-asset-rail");
     for (const asset of assets) {
@@ -707,7 +711,6 @@ function renderBoard(container, controller, plan, project, rerender) {
         return;
     }
 
-    renderComposeAssetTray(container, controller, project, plan, selected, rerender);
     const sources = controller.referenceDirectorDocument?.()?.value?.sources ?? {};
     const visualAssignments = composeVisualAssignments(project, selected);
     const llmHandoff = composeLlmHandoff(project, plan, selected);
@@ -896,7 +899,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         use.role === "environment_view" && (use.targetIds ?? []).includes(environmentTargetId));
     if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, backgroundConnected));
     else if ((project?.environments ?? []).length) backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Choose this Shot's set in Cast & set"));
-    else backdrop.appendChild(button("+ Environment", () => { directorState(controller).creatingEnvironment = true; directorState(controller).creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"));
+    else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Add an Environment from Scene setup above"));
     const cast = makeShotSubjectDropReceiver(el("div", "minimax-h3-director-cast"));
     cast.setAttribute("aria-label", "Drop a Subject here to place it in this Shot");
     const names = subjectNames(selected, project);
@@ -910,7 +913,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             );
             emptyTarget.setAttribute("aria-label", `Place ${onlySubject.name || onlySubject.id} in this Shot and connect the selected reference`);
             makeSubjectDropReceiver(emptyTarget, onlySubject.id); cast.appendChild(emptyTarget);
-        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Choose a Subject below, then drop its reference onto that Subject"));
+        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Add a Subject from Scene setup above"));
     }
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
@@ -920,9 +923,11 @@ function renderBoard(container, controller, plan, project, rerender) {
         const expandedIds = controller.directorUiState.expandedSubjectIds ??= [];
         card.open = expandedIds.includes(entry.subjectId);
         card.addEventListener("toggle", () => {
-            const next = new Set(controller.directorUiState.expandedSubjectIds ?? []);
-            if (card.open) next.add(entry.subjectId); else next.delete(entry.subjectId);
-            controller.directorUiState.expandedSubjectIds = [...next];
+            const current = controller.directorUiState.expandedSubjectIds ?? [];
+            const next = card.open ? [entry.subjectId] : current.filter((id) => id !== entry.subjectId);
+            if (next.length === current.length && next.every((id, index) => id === current[index])) return;
+            controller.directorUiState.expandedSubjectIds = next;
+            rerender();
         });
         const summary = el("summary", "minimax-h3-director-subject-summary");
         const summaryCopy = el("span", "minimax-h3-director-subject-summary-copy");
@@ -970,7 +975,12 @@ function renderBoard(container, controller, plan, project, rerender) {
     action.appendChild(actionInput);
     const mentionRow = el("div", "minimax-h3-shot-mention-row");
     mentionRow.appendChild(el("span", "", "Add to Shot & mention"));
-    for (const subject of project?.subjects ?? []) {
+    const mentionSubjects = [...(project?.subjects ?? [])].sort((left, right) => {
+        const leftPresent = (selected.subjects ?? []).some((entry) => entry.subjectId === left.id && entry.presence !== "absent");
+        const rightPresent = (selected.subjects ?? []).some((entry) => entry.subjectId === right.id && entry.presence !== "absent");
+        return Number(rightPresent) - Number(leftPresent);
+    });
+    for (const subject of mentionSubjects) {
         const mention = `<Subject ${subject.h3Index}>`;
         const identityAsset = (subject.identityAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
         const mentionButton = button("", () => {
@@ -1001,24 +1011,30 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
     if ((project?.subjects ?? []).length) action.appendChild(mentionRow);
     const cameraSummary = composeCameraSummary(selected);
-    const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-camera-line");
+    const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-direction-card");
     camera.setAttribute("aria-label", `Direct camera for ${shotEditorialTitle(selected, plan.shots.indexOf(selected))}. ${cameraInstructionPreview(selected, project ?? {})}`);
     const cameraHeading = el("span", "minimax-h3-director-camera-heading");
-    cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA · THIS SHOT"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
-    const phases = el("span", "minimax-h3-director-camera-phases");
-    for (const [index, label, value] of [["1", "Start", cameraSummary.start], [cameraSummary.icon, "Move", cameraSummary.movement], ["3", "End", cameraSummary.end]]) {
-        const phase = el("span", "minimax-h3-director-camera-phase");
-        phase.append(el("b", "", index), el("small", "", label), el("span", "", value)); phases.appendChild(phase);
-    }
-    camera.append(cameraHeading, phases);
-    stage.append(backdrop, cast, action, camera);
+    cameraHeading.append(el("span", "minimax-h3-director-kicker", "CAMERA"), el("strong", "", cameraSummary.configured ? "Directed" : "Inherited"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
+    camera.append(cameraHeading, el("span", "minimax-h3-director-direction-summary", `${cameraSummary.movement} · ${cameraSummary.start} → ${cameraSummary.end}`));
+    const narrative = el("section", "minimax-h3-director-narrative");
+    narrative.append(action, composeDialogueSoundPanel(controller, project, plan, selected, sources, rerender));
+    stage.append(backdrop, cast, narrative);
 
     const lanes = el("section", "minimax-h3-director-lanes");
     const lanesHeading = el("div", "minimax-h3-director-scene-heading");
     const lanesIdentity = el("div");
     lanesIdentity.append(el("h3", "", "References"), el("small", "", "Connect here or manage reusable files in Library · Files."));
-    lanesHeading.append(lanesIdentity, el("span", "minimax-h3-scope-chip", "This Shot"));
+    const laneActions = el("div", "minimax-h3-director-reference-actions");
+    laneActions.append(
+        el("span", "minimax-h3-scope-chip", "This Shot"),
+        button(controller.directorUiState.referenceShelfOpen ? "Hide files" : "Choose file", () => {
+            controller.directorUiState.referenceShelfOpen = !controller.directorUiState.referenceShelfOpen;
+            rerender();
+        }, "minimax-h3-director-text-button"),
+    );
+    lanesHeading.append(lanesIdentity, laneActions);
     lanes.appendChild(lanesHeading);
+    if (controller.directorUiState.referenceShelfOpen) renderComposeAssetTray(lanes, controller, project, plan, selected, rerender);
     const roles = new Map();
     for (const use of selected.referenceUses ?? []) {
         const lane = ["voice", "exact_dialogue", "soundtrack"].includes(use.role) ? "Audio"
@@ -1039,7 +1055,20 @@ function renderBoard(container, controller, plan, project, rerender) {
         else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
         lanes.appendChild(lane);
     }
-    layout.append(stage, lanes);
+    const direction = el("section", "minimax-h3-director-direction");
+    const directionHeading = el("div", "minimax-h3-director-scene-heading");
+    const directionIdentity = el("div");
+    directionIdentity.append(el("h3", "", "Direction"), el("small", "", "Finish the Shot with blocking and camera movement."));
+    directionHeading.append(directionIdentity, el("span", "minimax-h3-scope-chip", "This Shot"));
+    const directionCards = el("div", "minimax-h3-director-direction-cards");
+    const presentCount = (selected.subjects ?? []).filter((item) => item.presence !== "absent").length;
+    const stagedCount = (selected.staging ?? []).length;
+    const stageDirection = button("", () => { directorState(controller).composeMode = "staging"; rerender(); }, "minimax-h3-director-direction-card");
+    const stageHeading = el("span", "minimax-h3-director-camera-heading");
+    stageHeading.append(el("span", "minimax-h3-director-kicker", "STAGE"), el("strong", "", stagedCount ? "Blocked" : "Not directed"), el("span", "minimax-h3-director-camera-edit", "Edit →"));
+    stageDirection.append(stageHeading, el("span", "minimax-h3-director-direction-summary", `${stagedCount}/${presentCount || 0} subjects placed`));
+    directionCards.append(stageDirection, camera); direction.append(directionHeading, directionCards);
+    layout.append(stage, lanes, direction);
 
     const inspector = el("aside", "minimax-h3-director-inspector");
     const inspectorHeading = el("div", "minimax-h3-director-scene-heading");
@@ -1057,7 +1086,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "subjects");
         }, "minimax-h3-director-text-button"),
     );
-    setupHeading.append(el("strong", "", "Cast & background"), setupActions);
+    setupHeading.append(el("strong", "", "Scene setup"), setupActions);
     setup.appendChild(setupHeading);
     if (controller.directorUiState.creatingSubject) {
         const creator = el("form", "minimax-h3-director-inline-creator");
@@ -1110,7 +1139,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
     if (!(project?.subjects ?? []).length) castPicker.appendChild(el(
         "span", "minimax-h3-director-placeholder",
-        `Create a Subject here or open ${controller.isVisualReferenceDirector ? "Library" : "Cast & Places"}`,
+        "Create a Subject above or open Library · Subjects",
     ));
     setup.appendChild(castPicker);
     const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
@@ -1120,20 +1149,25 @@ function renderBoard(container, controller, plan, project, rerender) {
     }
     environmentSelect.value = selected.environment?.environmentId ?? "";
     environmentSelect.addEventListener("change", () => { setSceneEnvironment(selected, environmentSelect.value); commitPlan(controller, plan); rerender(); });
-    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); inspector.appendChild(setup);
-    inspector.appendChild(composeDialogueSoundPanel(controller, project, plan, selected, sources, rerender));
+    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); stage.prepend(setup);
     const summary = el("dl", "minimax-h3-director-scene-summary");
     for (const [term, value] of [["Generation", generationDisplay(project, selected.generationId)], ["Cast", names.length || "—"], ["References", selected.referenceUses?.length || "—"], ["Duration", plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto"]]) {
         summary.append(el("dt", "", term), el("dd", "", String(value)));
     }
-    inspector.append(
-        summary,
-        composeLlmHandoffPanel(llmHandoff, sources),
-        button("Stage subjects", () => { directorState(controller).composeMode = "staging"; rerender(); }),
-        button("Direct camera", () => { directorState(controller).composeMode = "camera"; rerender(); }),
-    );
+    inspector.append(summary, composeLlmHandoffPanel(llmHandoff, sources));
     layout.appendChild(inspector);
     container.appendChild(layout);
+    const reviewFooter = el("footer", "minimax-h3-director-review-footer");
+    const reviewCopy = el("span");
+    reviewCopy.append(
+        el("strong", "", "Ready to review this Shot"),
+        el("small", "", `${names.length} cast · ${selected.environment?.environmentId ? "environment set" : "no environment"} · ${selected.referenceUses?.length ?? 0} Shot references`),
+    );
+    reviewFooter.append(
+        reviewCopy,
+        button("Review & Generate", () => controller.navigateStudio?.("review"), "minimax-h3-button minimax-h3-button-primary"),
+    );
+    container.appendChild(reviewFooter);
     feedback.textContent = controller.directorUiState.composeFeedback || "";
     feedback.dataset.valid = "true"; feedback.hidden = !feedback.textContent; container.appendChild(feedback);
 }
