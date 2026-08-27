@@ -42,9 +42,21 @@ export function renderStagingTab(container, controller, { embedded = false } = {
     selector.addEventListener("change", () => { state.selectedId = selector.value; rerender(); });
     if (!embedded) container.append(header, field("Shot", selector, "Selection is shared with Compose and Camera."));
     else container.appendChild(element("p", "minimax-h3-studio-status", `Stage workspace · ${shotLabel(shot, plan.shots.indexOf(shot))} · This Shot`));
+    const present = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
+    if (!present.size) {
+        const chooser = element("section", "minimax-h3-staging-add-cast");
+        chooser.append(element("h3", "", "Add cast to this Shot"), element("p", "", "Choose a reusable Subject here. Stage will add and position that Subject without leaving the Shot."));
+        const choices = element("div", "minimax-h3-staging-add-cast-choices");
+        for (const subject of project.subjects ?? []) choices.appendChild(actionButton(`+ ${subject.name || subject.id}`, () => {
+            (shot.subjects ??= []).push({ subjectId: subject.id, presence: "present" });
+            shot.staging = [defaultSubjectPlacement(subject.id, 0, 1)];
+            state.stagingSubjectId = subject.id; commit(); rerender();
+        }));
+        chooser.appendChild(choices); container.appendChild(chooser);
+        return;
+    }
     if (!shot.staging?.length) {
-        const present = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
-        const candidates = project.subjects.filter((subject) => !present.size || present.has(subject.id));
+        const candidates = project.subjects.filter((subject) => present.has(subject.id));
         container.appendChild(emptyState(
             "Direct where the cast stands",
             "No positions are saved yet. Creating staging places the visible cast across the frame; you can drag and refine every subject afterward.",
@@ -55,5 +67,5 @@ export function renderStagingTab(container, controller, { embedded = false } = {
         ));
         return;
     }
-    renderStagingEditor(container, shot, project, commit, rerender, state);
+    renderStagingEditor(container, shot, project, commit, rerender, state, controller.referenceDirectorDocument?.()?.value?.sources ?? {});
 }

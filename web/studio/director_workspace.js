@@ -11,7 +11,11 @@ import { editableShotPlan, normalizeShotPlanV2, serializeStructuredJson } from "
 import { renderReferencesTab } from "./tab_references.js";
 import { renderStagingTab } from "./tab_staging.js";
 import { createSubjectDraft, renderSubjectsTab } from "./tab_subjects.js";
+import { createPropDraft, renderPropsTab } from "./tab_props.js";
 import { insertSubjectMention } from "../subject_mentions_model.js";
+import { ensurePropDesignBindings } from "./prop_model.js";
+import { ensureSubjectBindings } from "./subject_model.js";
+import { ensureEnvironmentViewBindings } from "./environment_model.js";
 import {
     DIALOGUE_CHANNEL_CHOICES,
     DIALOGUE_DELIVERY_CHOICES,
@@ -207,12 +211,17 @@ export function composeSceneAudio(project, shot) {
     const assets = new Map((project?.assets ?? []).map((asset) => [asset.id, asset]));
     const subjects = new Map((project?.subjects ?? []).map((subject) => [subject.id, subject]));
     const presentIds = new Set((shot?.subjects ?? []).filter((entry) => entry.presence !== "absent").map((entry) => entry.subjectId));
-    const voices = [...presentIds].map((id) => subjects.get(id)).filter(Boolean).map((subject) => ({
-        subjectId: subject.id,
-        name: subject.name || subject.id,
-        alias: `<Subject ${subject.h3Index ?? "?"}>`,
-        asset: assets.get(subject.defaultVoiceAssetId) ?? null,
-    }));
+    const voices = [...presentIds].map((id) => subjects.get(id)).filter(Boolean).map((subject) => {
+        const overrideId = (shot?.referenceUses ?? []).find((use) =>
+            use.role === "voice" && (use.targetIds ?? []).includes(subject.id))?.assetId;
+        return {
+            subjectId: subject.id,
+            name: subject.name || subject.id,
+            alias: `<Subject ${subject.h3Index ?? "?"}>`,
+            asset: assets.get(overrideId || subject.defaultVoiceAssetId) ?? null,
+            override: Boolean(overrideId),
+        };
+    });
     const dialogues = (shot?.actionBeats ?? []).filter((beat) => beat.dialogue).map((beat) => {
         const subject = subjects.get(beat.dialogue.speakerId);
         const controls = normalizedDialogueControls(beat.dialogue);
@@ -228,7 +237,7 @@ export function composeSceneAudio(project, shot) {
             alias: subject ? `<Subject ${subject.h3Index ?? "?"}>` : "",
         };
     });
-    const references = (shot?.referenceUses ?? []).filter((use) => ["voice", "exact_dialogue", "soundtrack"].includes(use.role)).map((use) => ({
+    const references = (shot?.referenceUses ?? []).filter((use) => ["exact_dialogue", "soundtrack"].includes(use.role)).map((use) => ({
         asset: assets.get(use.assetId) ?? null,
         assetId: use.assetId,
         role: use.role,
@@ -260,8 +269,22 @@ export function setSceneSubjectPresence(shot, subjectId, present) {
     return shot;
 }
 
-export function setSceneEnvironment(shot, environmentId) {
-    if (environmentId) shot.environment = { environmentId, viewIds: [] };
+export function setScenePropPresence(shot, propId, present) {
+    shot.props ??= [];
+    const index = shot.props.findIndex((entry) => entry.propId === propId);
+    if (present && index >= 0) shot.props[index].presence = "present";
+    else if (present) shot.props.push({ propId, presence: "present" });
+    else if (index >= 0) shot.props.splice(index, 1);
+    if (!shot.props.length) delete shot.props;
+    return shot;
+}
+
+export function setSceneEnvironment(shot, environmentId, project = null) {
+    if (environmentId) {
+        const environment = (project?.environments ?? []).find((item) => item.id === environmentId);
+        const firstViewId = environment?.views?.[0]?.id;
+        shot.environment = { environmentId, viewIds: firstViewId ? [firstViewId] : [] };
+    }
     else delete shot.environment;
     return shot;
 }
@@ -282,8 +305,18 @@ export function createSceneEnvironmentBundle(project, shotPlan, shotId, name) {
     const environment = createEnvironmentDraft(nextProject, name);
     nextProject.environments.push(environment);
     const shot = nextPlan.shots.find((candidate) => candidate.id === shotId);
-    if (shot) setSceneEnvironment(shot, environment.id);
+    if (shot) setSceneEnvironment(shot, environment.id, nextProject);
     return { project: nextProject, shotPlan: nextPlan, environment };
+}
+
+export function createScenePropBundle(project, shotPlan, shotId, name) {
+    const nextProject = structuredClone(project);
+    const nextPlan = structuredClone(shotPlan);
+    const prop = createPropDraft(nextProject, name);
+    (nextProject.props ??= []).push(prop);
+    const shot = nextPlan.shots.find((candidate) => candidate.id === shotId);
+    if (shot) setScenePropPresence(shot, prop.id, true);
+    return { project: nextProject, shotPlan: nextPlan, prop };
 }
 
 export function connectSubjectAssetToScene(project, shotPlan, shotId, assetId, subjectId) {
@@ -334,18 +367,42 @@ export function composeVisualAssignments(project, shot) {
             .filter((use) => use.role === "performance" && (use.targetIds ?? []).includes(subject.id))
             .map((use) => use.assetId);
         const voiceOverrideAssetId = uses.find((use) => use.role === "voice" && (use.targetIds ?? []).includes(subject.id))?.assetId;
+        const appearanceStateId = presence.appearanceStateId || subject.baseAppearanceStateId;
+        const stateById = new Map((subject.appearanceStates ?? []).map((state) => [state.id, state]));
+        const appearanceAssets = [];
+        const seenStates = new Set();
+        let appearanceState = stateById.get(appearanceStateId) ?? null;
+        let currentState = appearanceState;
+        while (currentState && !seenStates.has(currentState.id)) {
+            seenStates.add(currentState.id);
+            if (currentState.source?.mode === "asset") {
+                const asset = assets.get(currentState.source.assetId);
+                if (asset) appearanceAssets.push(asset);
+            }
+            currentState = currentState.extends ? stateById.get(currentState.extends) : null;
+        }
         subjects.push({
             subject,
+            presence,
+            appearanceState,
+            appearanceAssets,
             identityAssets: (subject.identityAssetIds ?? []).map((id) => assets.get(id)).filter(Boolean),
             voiceAsset: assets.get(subject.defaultVoiceAssetId) ?? null,
             voiceOverrideAsset: assets.get(voiceOverrideAssetId) ?? null,
             performanceAssets: performanceAssetIds.map((id) => assets.get(id)).filter(Boolean),
         });
     }
+    const props = [];
+    for (const presence of shot?.props ?? []) {
+        if (presence.presence === "absent") continue;
+        const prop = (project?.props ?? []).find((item) => item.id === presence.propId);
+        if (!prop) continue;
+        props.push({ prop, designAssets: (prop.designAssetIds ?? []).map((id) => assets.get(id)).filter(Boolean) });
+    }
     return {
         environment,
         backgroundAssets: environmentViews.map((view) => assets.get(view.assetId)).filter(Boolean),
-        subjects,
+        subjects, props,
     };
 }
 
@@ -367,9 +424,17 @@ export function composeLlmHandoff(project, shotPlan, shot) {
         alias: `<Subject ${entry.subject.h3Index ?? "?"}>`,
         links: [
             ...entry.identityAssets.map((asset) => link(asset, "Image")),
+            ...entry.appearanceAssets.filter((asset) => !entry.identityAssets.includes(asset)).map((asset) => link(asset, "Look")),
             link(entry.voiceAsset, "Voice"),
             ...entry.performanceAssets.map((asset) => link(asset, "Performance")),
         ].filter(Boolean),
+    }));
+    const props = visual.props.map((entry) => ({
+        id: entry.prop.id,
+        name: entry.prop.name || entry.prop.id,
+        alias: `<Subject ${entry.prop.h3Index ?? "?"}>`,
+        family: "design",
+        links: entry.designAssets.map((asset) => link(asset, "Design")),
     }));
     const environment = visual.environment ? {
         id: visual.environment.id,
@@ -391,13 +456,32 @@ export function composeLlmHandoff(project, shotPlan, shot) {
         lines.push("Cast:");
         for (const subject of subjects) lines.push(`- ${subject.alias} ${subject.name}${subject.links.length ? ` | ${subject.links.map((item) => `${item.role} ${item.physicalLabel}`).join(" | ")}` : ""}`);
     }
+    if (props.length) {
+        lines.push("Props:");
+        for (const prop of props) lines.push(`- ${prop.alias} ${prop.name} | reusable design${prop.links.length ? ` | ${prop.links.map((item) => item.physicalLabel).join(", ")}` : ""}`);
+    }
     if (environment) lines.push(`Set: ${environment.name}${environment.links.length ? ` | ${environment.links.map((item) => item.physicalLabel).join(", ")}` : ""}`);
     if (referenceUses.length) {
         lines.push("Shot references:");
         for (const item of referenceUses) lines.push(`- ${item.role} ${item.physicalLabel} → ${item.target}`);
     }
     lines.push(`Camera: ${camera.start} → ${camera.movement} → ${camera.end}`);
-    return { generationId, subjects, environment, referenceUses, camera, text: lines.join("\n") };
+    return { generationId, subjects, props, environment, referenceUses, camera, text: lines.join("\n") };
+}
+
+export function composeVisualMentionLinks(handoff) {
+    const candidates = [
+        ...(handoff?.environment?.links ?? []),
+        ...(handoff?.referenceUses ?? []),
+    ];
+    const seen = new Set();
+    return candidates.filter((item) => {
+        const label = String(item?.physicalLabel ?? "");
+        const key = label.toLowerCase();
+        if (!/^<(?:Picture|Video)\s+\d+>$/i.test(label) || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function composeMediaVisual(asset, source) {
@@ -430,7 +514,7 @@ function composeSubjectAvatar(name, identityAsset, source) {
 }
 
 function composeLlmLinkChip(item, sources) {
-    const chip = el("span", "minimax-h3-director-llm-link", `${item.role} · ${item.physicalLabel}`);
+    const chip = el("span", "minimax-h3-director-llm-link", `${item.role} · ${item.name}`);
     const state = item.physicalLabel === "Unassigned" ? "unassigned" : sources[item.assetId] ? "ready" : "missing";
     chip.dataset.state = state;
     chip.title = `${item.name} · ${state === "ready" ? "physical file ready" : state === "missing" ? "physical file missing" : "H3 slot unassigned"}`;
@@ -439,7 +523,7 @@ function composeLlmLinkChip(item, sources) {
 
 function composeLlmHandoffPanel(handoff, sources) {
     const section = el("details", "minimax-h3-director-llm-handoff");
-    section.appendChild(el("summary", "minimax-h3-director-llm-disclosure", "LLM handoff · aliases and physical outputs"));
+    section.appendChild(el("summary", "minimax-h3-director-llm-disclosure", "LLM handoff · linked references and outputs"));
     const heading = el("div", "minimax-h3-director-inspector-heading");
     const copy = button("Copy brief", async () => {
         const status = section.querySelector("[role=status]");
@@ -450,13 +534,22 @@ function composeLlmHandoffPanel(handoff, sources) {
         } catch (error) { status.textContent = error?.message || "Clipboard unavailable"; }
     }, "minimax-h3-director-text-button");
     heading.append(el("strong", "", "LLM handoff"), copy); section.appendChild(heading);
-    section.appendChild(el("p", "minimax-h3-director-llm-note", "Derived from this Shot · aliases and H3 outputs are not editable here."));
+    section.appendChild(el("p", "minimax-h3-director-llm-note", "Derived from this Shot. Technical H3 aliases remain hidden here and are available only in Review."));
     for (const subject of handoff.subjects) {
         const row = el("div", "minimax-h3-director-llm-row");
-        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", subject.alias), el("span", "", subject.name));
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", subject.name), el("span", "", "Subject"));
         const links = el("span", "minimax-h3-director-llm-links");
         for (const item of subject.links) links.appendChild(composeLlmLinkChip(item, sources));
         if (!subject.links.length) links.appendChild(el("small", "", "No media assigned"));
+        row.append(identity, links); section.appendChild(row);
+    }
+    for (const prop of handoff.props ?? []) {
+        const row = el("div", "minimax-h3-director-llm-row");
+        const identity = el("span", "minimax-h3-director-llm-identity");
+        identity.append(el("b", "", prop.name), el("span", "", "Object design"));
+        const links = el("span", "minimax-h3-director-llm-links");
+        for (const item of prop.links) links.appendChild(composeLlmLinkChip(item, sources));
+        if (!prop.links.length) links.appendChild(el("small", "", "No design picture assigned"));
         row.append(identity, links); section.appendChild(row);
     }
     if (handoff.environment) {
@@ -470,7 +563,7 @@ function composeLlmHandoffPanel(handoff, sources) {
     const shotOnly = handoff.referenceUses.filter((item) => !["Identity reinforcement", "Voice", "Environment view"].includes(item.role));
     if (shotOnly.length) {
         const row = el("div", "minimax-h3-director-llm-row");
-        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "CUT"), el("span", "", generationDisplay(project, handoff.generationId)));
+        const identity = el("span", "minimax-h3-director-llm-identity"); identity.append(el("b", "", "Shot references"), el("span", "", `Generation ${handoff.generationId || "1"}`));
         const links = el("span", "minimax-h3-director-llm-links");
         for (const item of shotOnly) links.appendChild(composeLlmLinkChip(item, sources));
         row.append(identity, links); section.appendChild(row);
@@ -523,7 +616,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         const draft = controller.directorUiState.dialogueDraft ??= {};
         const form = el("form", "minimax-h3-director-dialogue-form");
         const speaker = el("select"); speaker.setAttribute("aria-label", "Dialogue speaker");
-        for (const voice of model.voices) { const option = el("option", "", `${voice.name} · ${voice.alias}`); option.value = voice.subjectId; speaker.appendChild(option); }
+        for (const voice of model.voices) { const option = el("option", "", voice.name); option.value = voice.subjectId; speaker.appendChild(option); }
         const delivery = el("select"); delivery.setAttribute("aria-label", "Dialogue delivery");
         for (const [value, label] of DIALOGUE_DELIVERY_CHOICES) { const option = el("option", "", label); option.value = value; delivery.appendChild(option); }
         const channel = el("select"); channel.setAttribute("aria-label", "Dialogue channel");
@@ -567,7 +660,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
             composeDialogueField("Speaker", speaker),
             composeDialogueField("Channel", channel),
             composeDialogueField("Delivery", delivery),
-            composeDialogueField("Voice color", voiceColor),
+            composeDialogueField("Tone / delivery", voiceColor),
             composeDialogueField("Exact spoken words", words, true),
             create, cancel, status,
         );
@@ -580,7 +673,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
     const voiceGroup = el("div", "minimax-h3-director-sound-group"); voiceGroup.appendChild(el("small", "minimax-h3-director-kicker", "SUBJECT VOICES"));
     for (const voice of model.voices) {
         const row = el("div", "minimax-h3-director-voice-row");
-        const copy = el("span"); copy.append(el("b", "", `${voice.name} · ${voice.alias}`), el("small", "", voice.asset ? `Default voice · ${voice.asset.name || voice.asset.id}` : "No default voice assigned"));
+        const copy = el("span"); copy.append(el("b", "", voice.name), el("small", "", voice.asset ? `${voice.override ? "Shot voice override" : "Default voice"} · ${voice.asset.name || voice.asset.id}` : "No voice assigned"));
         row.appendChild(copy);
         const player = composeAudioPlayer(voice.asset, sources[voice.asset?.id]); if (player) row.appendChild(player);
         voiceGroup.appendChild(row);
@@ -592,7 +685,7 @@ function composeDialogueSoundPanel(controller, project, plan, shot, sources, rer
         const row = el("div", "minimax-h3-director-dialogue-row");
         const channel = dialogue.channel === "voice_over" ? "V.O." : "On-screen";
         const voiceColor = dialogue.mood ? ` · ${dialogue.mood}` : "";
-        const copy = el("span"); copy.append(el("b", "", `${dialogue.alias || "S?"} · ${dialogue.speaker}`), el("q", "", dialogue.text), el("small", "", `${channel} · ${readableToken(dialogue.delivery, "Says")}${voiceColor} · ${Math.round(dialogue.at * 100)}%`));
+        const copy = el("span"); copy.append(el("b", "", dialogue.speaker), el("q", "", dialogue.text), el("small", "", `${channel} · ${readableToken(dialogue.delivery, "Says")}${voiceColor} · ${Math.round(dialogue.at * 100)}%`));
         const remove = button("×", () => {
             const nextPlan = structuredClone(plan);
             const nextShot = nextPlan.shots.find((item) => item.id === shot.id);
@@ -736,7 +829,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         if (purposeId === "environment_view" && relationId && !selected.environment?.environmentId) {
             workingPlan = structuredClone(plan);
             const workingShot = workingPlan.shots.find((shot) => shot.id === selected.id);
-            if (workingShot) workingShot.environment = { environmentId: relationId, viewIds: [] };
+            if (workingShot) setSceneEnvironment(workingShot, relationId, project);
         }
         return workingPlan;
     };
@@ -858,7 +951,9 @@ function renderBoard(container, controller, plan, project, rerender) {
             entry.subjectId === subjectId && entry.presence !== "absent");
         if (!alreadyPresent) {
             setSceneSubjectPresence(selected, subjectId, true);
-            if (commitPlan(controller, plan) === false) return false;
+            ensureSubjectBindings(project, plan, subjectId);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            if (!committed?.ok) return false;
         }
         delete controller.directorUiState.draggedSubjectId;
         controller.directorUiState.composeFeedback = alreadyPresent
@@ -913,7 +1008,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         use.role === "environment_view" && (use.targetIds ?? []).includes(environmentTargetId));
     if (environmentTargetId) backdrop.appendChild(composeDropTarget(controller, "environment_view", environmentTargetId, selectedAsset, connect, importFile, disconnect, backgroundConnected));
     else if ((project?.environments ?? []).length) backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Choose this Shot's set in Cast & set"));
-    else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Add an Environment from Scene setup above"));
+    else backdrop.appendChild(el("small", "minimax-h3-director-lane-guidance", "Add a Place from Shot setup above"));
     const cast = makeShotSubjectDropReceiver(el("div", "minimax-h3-director-cast"));
     cast.setAttribute("aria-label", "Drop a Subject here to place it in this Shot");
     const names = subjectNames(selected, project);
@@ -927,7 +1022,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             );
             emptyTarget.setAttribute("aria-label", `Place ${onlySubject.name || onlySubject.id} in this Shot and connect the selected reference`);
             makeSubjectDropReceiver(emptyTarget, onlySubject.id); cast.appendChild(emptyTarget);
-        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Add a Subject from Scene setup above"));
+        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Add a Subject from Shot setup above"));
     }
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
@@ -947,13 +1042,13 @@ function renderBoard(container, controller, plan, project, rerender) {
         const summaryCopy = el("span", "minimax-h3-director-subject-summary-copy");
         summaryCopy.append(
             el("strong", "", name),
-            el("small", "minimax-h3-director-llm-subject", `LLM · <Subject ${subject?.h3Index ?? "?"}>`),
+            el("small", "minimax-h3-director-llm-subject", `${assigned.appearanceState?.name || "Base"} look · ${assigned.identityAssets.length ? "identity linked" : "no identity picture"}`),
         );
         const status = el("span", "minimax-h3-director-subject-status");
         status.append(
             el("small", "", `Image ${assigned.identityAssets.length ? "✓" : "—"}`),
             el("small", "", `Voice ${assigned.voiceOverrideAsset || assigned.voiceAsset ? "✓" : "—"}`),
-            el("small", "", "Edit references"),
+            el("small", "", `Look: ${assigned.appearanceState?.name || "Base"}`),
         );
         summary.append(
             composeSubjectAvatar(name, assigned.identityAssets[0], sources[assigned.identityAssets[0]?.id]),
@@ -961,6 +1056,30 @@ function renderBoard(container, controller, plan, project, rerender) {
             status,
         );
         const expanded = el("div", "minimax-h3-director-subject-expanded");
+        const lookSelect = el("select", "minimax-h3-director-look-select");
+        lookSelect.setAttribute("aria-label", `Appearance for ${name} in this Shot`);
+        for (const appearance of subject?.appearanceStates ?? []) {
+            const option = el("option", "", appearance.name || appearance.id);
+            option.value = appearance.id;
+            lookSelect.appendChild(option);
+        }
+        lookSelect.value = entry.appearanceStateId || subject?.baseAppearanceStateId || "";
+        lookSelect.addEventListener("change", () => {
+            entry.appearanceStateId = lookSelect.value;
+            const bindingResult = ensureSubjectBindings(project, plan, subject.id);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            if (!committed?.ok) {
+                controller.directorUiState.composeFeedback = committed?.message || "Could not save this Shot look.";
+            } else {
+                const look = (subject.appearanceStates ?? []).find((item) => item.id === lookSelect.value);
+                controller.directorUiState.composeFeedback = `${name} uses ${look?.name || lookSelect.value} in this Shot.`;
+                if (bindingResult.issues.length) controller.directorUiState.composeFeedback += ` ${bindingResult.issues.join(" ")}`;
+            }
+            rerender();
+        });
+        const lookField = el("label", "minimax-h3-director-look-field");
+        lookField.append(el("span", "", "Appearance in this Shot"), lookSelect);
+        expanded.appendChild(lookField);
         const targets = el("div", "minimax-h3-director-subject-targets");
         const shotUses = selected.referenceUses ?? [];
         const performanceConnected = shotUses.some((use) => use.role === "performance" && (use.targetIds ?? []).includes(entry.subjectId));
@@ -974,8 +1093,14 @@ function renderBoard(container, controller, plan, project, rerender) {
             composeDropTarget(controller, "performance", entry.subjectId, selectedAsset, connect, importFile, disconnect, performanceConnected),
         );
         const boundMedia = el("div", "minimax-h3-director-bound-strip");
-        for (const asset of assigned.identityAssets.slice(0, 2)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Image"));
+        // Identity is already visible in the card header/avatar. Do not repeat
+        // the same Picture again in the expanded controls below it.
         if (assigned.voiceAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceAsset, sources[assigned.voiceAsset.id], "Voice"));
+        for (const asset of assigned.appearanceAssets ?? []) {
+            if (!assigned.identityAssets.some((identity) => identity.id === asset.id)) {
+                boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], `Look · ${assigned.appearanceState?.name || "Appearance"}`));
+            }
+        }
         if (assigned.voiceOverrideAsset) boundMedia.appendChild(composeBoundMedia(assigned.voiceOverrideAsset, sources[assigned.voiceOverrideAsset.id], "Shot voice"));
         for (const asset of assigned.performanceAssets.slice(0, 1)) boundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Performance"));
         const activeVoice = assigned.voiceOverrideAsset || assigned.voiceAsset;
@@ -997,6 +1122,19 @@ function renderBoard(container, controller, plan, project, rerender) {
         card.append(summary, expanded);
         cast.appendChild(card);
     }
+    const propShelf = el("section", "minimax-h3-director-props");
+    const propHeading = el("div", "minimax-h3-director-scene-heading");
+    propHeading.append(el("strong", "", "Objects & props"), el("small", "", "Reusable designs present in this Shot"));
+    propShelf.appendChild(propHeading);
+    for (const entry of visualAssignments.props ?? []) {
+        const card = el("article", "minimax-h3-director-prop-card");
+        const asset = entry.designAssets[0];
+        const copy = el("span", "minimax-h3-shot-subject-copy");
+        copy.append(el("strong", "", entry.prop.name || entry.prop.id), el("small", "", `Reusable design${asset ? ` · ${asset.name || asset.id}` : " · no picture"}`));
+        card.append(composeSubjectAvatar(entry.prop.name || "P", asset, sources[asset?.id]), copy);
+        propShelf.appendChild(card);
+    }
+    if (!(visualAssignments.props ?? []).length) propShelf.appendChild(el("p", "minimax-h3-director-placeholder", "Add an Object from Shot setup or mention it below."));
     const action = el("label", "minimax-h3-director-action");
     action.appendChild(el("span", "minimax-h3-director-kicker", "VISIBLE ACTION · THIS SHOT"));
     const actionInput = el("textarea"); actionInput.value = selected.action ?? ""; actionInput.placeholder = "Describe what visibly changes during this Shot.";
@@ -1011,7 +1149,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         return Number(rightPresent) - Number(leftPresent);
     });
     for (const subject of mentionSubjects) {
-        const mention = `<Subject ${subject.h3Index}>`;
+        const mention = String(subject.name || `Subject ${subject.h3Index}`).trim();
         const identityAsset = (subject.identityAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
         const mentionButton = button("", () => {
             const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
@@ -1021,7 +1159,8 @@ function renderBoard(container, controller, plan, project, rerender) {
             const present = (selected.subjects ?? []).some((entry) =>
                 entry.subjectId === subject.id && entry.presence !== "absent");
             if (!present) setSceneSubjectPresence(selected, subject.id, true);
-            commitPlan(controller, plan);
+            if (!present) ensureSubjectBindings(project, plan, subject.id);
+            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
             controller.directorUiState.composeFeedback = present
                 ? `${subject.name || mention} mentioned in this Shot.`
                 : `${subject.name || mention} added to this Shot, Speaker, and visible action.`;
@@ -1035,11 +1174,61 @@ function renderBoard(container, controller, plan, project, rerender) {
         chipCopy.append(el("strong", "", subject.name || mention), el("small", "", identityAsset ? `Identity · ${identityAsset.name || identityAsset.id}` : "No identity image"));
         mentionButton.append(avatar, chipCopy, el("span", "minimax-h3-shot-subject-status", identityAsset ? "✓" : "+"));
         mentionButton.title = [subject.description, identityAsset ? `Identity: ${identityAsset.name || identityAsset.id}` : "No identity image", subject.defaultVoiceAssetId ? "Default voice assigned" : "No default voice"].filter(Boolean).join(" · ");
-        mentionButton.setAttribute("aria-label", `Insert ${subject.name || mention}, ${mention}`);
+        mentionButton.setAttribute("aria-label", `Insert ${subject.name || mention} into visible action`);
         makeSubjectDragSource(mentionButton, subject);
         mentionRow.appendChild(mentionButton);
     }
-    if ((project?.subjects ?? []).length) action.appendChild(mentionRow);
+    const mentionProps = [...(project?.props ?? [])].sort((left, right) => {
+        const leftPresent = (selected.props ?? []).some((entry) => entry.propId === left.id && entry.presence !== "absent");
+        const rightPresent = (selected.props ?? []).some((entry) => entry.propId === right.id && entry.presence !== "absent");
+        return Number(rightPresent) - Number(leftPresent);
+    });
+    for (const prop of mentionProps) {
+        const mention = String(prop.name || `Prop ${prop.h3Index}`).trim();
+        const designAsset = (prop.designAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
+        const mentionButton = button("", () => {
+            const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
+            actionInput.value = result.value; actionInput.setSelectionRange(result.selectionStart, result.selectionEnd);
+            selected.action = result.value.trim();
+            const present = (selected.props ?? []).some((entry) => entry.propId === prop.id && entry.presence !== "absent");
+            if (!present) setScenePropPresence(selected, prop.id, true);
+            const bindingResult = ensurePropDesignBindings(project, plan, prop.id);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            if (!committed?.ok) { controller.directorUiState.composeFeedback = committed?.message || "Could not add the prop atomically."; rerender(); return; }
+            controller.directorUiState.composeFeedback = present ? `${prop.name || mention} mentioned in this Shot.` : `${prop.name || mention} added as a prop and mentioned in visible action.`;
+            if (bindingResult.issues.length) controller.directorUiState.composeFeedback += ` ${bindingResult.issues.join(" ")}`;
+            rerender();
+        }, "minimax-h3-director-text-button minimax-h3-shot-subject-chip minimax-h3-shot-prop-chip");
+        const avatar = el("span", "minimax-h3-shot-subject-avatar");
+        const previewUrl = sourcePreviewUrl(sources[designAsset?.id]);
+        if (previewUrl) { const image = el("img"); image.src = previewUrl; image.alt = ""; avatar.appendChild(image); }
+        else avatar.textContent = "◇";
+        const chipCopy = el("span", "minimax-h3-shot-subject-copy");
+        chipCopy.append(el("strong", "", prop.name || mention), el("small", "", designAsset ? `Prop design · ${designAsset.name || designAsset.id}` : "Prop · no design picture"));
+        mentionButton.append(avatar, chipCopy, el("span", "minimax-h3-shot-subject-status", designAsset ? "✓" : "+"));
+        mentionButton.title = [prop.description, designAsset ? `Design: ${designAsset.name || designAsset.id}` : "No design picture"].filter(Boolean).join(" · ");
+        mentionRow.appendChild(mentionButton);
+    }
+    const mentionReferences = composeVisualMentionLinks(llmHandoff);
+    for (const reference of mentionReferences) {
+        const mention = String(reference.name || "Visual reference").trim();
+        const mentionButton = button("", () => {
+            const result = insertSubjectMention(actionInput.value, actionInput.selectionStart, actionInput.selectionEnd, mention);
+            actionInput.value = result.value; actionInput.setSelectionRange(result.selectionStart, result.selectionEnd);
+            selected.action = result.value.trim();
+            commitPlan(controller, plan);
+            controller.directorUiState.composeFeedback = `${reference.name || mention} mentioned in visible action; its H3 reference stays linked automatically.`;
+            rerender();
+        }, "minimax-h3-director-text-button minimax-h3-shot-subject-chip minimax-h3-shot-reference-chip");
+        const avatar = el("span", "minimax-h3-shot-subject-avatar"); avatar.textContent = String(reference.physicalLabel).startsWith("<Video") ? "▶" : "▧";
+        const chipCopy = el("span", "minimax-h3-shot-subject-copy");
+        chipCopy.append(el("strong", "", reference.name || mention), el("small", "", reference.role || "Visual reference"));
+        mentionButton.append(avatar, chipCopy, el("span", "minimax-h3-shot-subject-status", "+"));
+        mentionButton.title = `Insert ${mention} into this Shot's visible action. Its H3 reference remains linked automatically.`;
+        mentionButton.setAttribute("aria-label", `Insert visual reference ${reference.name || mention} into visible action`);
+        mentionRow.appendChild(mentionButton);
+    }
+    if ((project?.subjects ?? []).length || (project?.props ?? []).length || mentionReferences.length) action.appendChild(mentionRow);
     const cameraSummary = composeCameraSummary(selected);
     const camera = button("", () => { directorState(controller).composeMode = "camera"; rerender(); }, "minimax-h3-director-direction-card");
     camera.setAttribute("aria-label", `Direct camera for ${shotEditorialTitle(selected, plan.shots.indexOf(selected))}. ${cameraInstructionPreview(selected, project ?? {})}`);
@@ -1048,7 +1237,7 @@ function renderBoard(container, controller, plan, project, rerender) {
     camera.append(cameraHeading, el("span", "minimax-h3-director-direction-summary", `${cameraSummary.movement} · ${cameraSummary.start} → ${cameraSummary.end}`));
     const narrative = el("section", "minimax-h3-director-narrative");
     narrative.append(action, composeDialogueSoundPanel(controller, project, plan, selected, sources, rerender));
-    stage.append(backdrop, cast, narrative);
+    stage.append(backdrop, cast, propShelf, narrative);
 
     const lanes = el("section", "minimax-h3-director-lanes");
     const lanesHeading = el("div", "minimax-h3-director-scene-heading");
@@ -1065,26 +1254,32 @@ function renderBoard(container, controller, plan, project, rerender) {
     lanesHeading.append(lanesIdentity, laneActions);
     lanes.appendChild(lanesHeading);
     if (controller.directorUiState.referenceShelfOpen) renderComposeAssetTray(lanes, controller, project, plan, selected, rerender);
-    const roles = new Map();
+    const referenceList = el("div", "minimax-h3-director-reference-list");
     for (const use of selected.referenceUses ?? []) {
-        const lane = ["voice", "exact_dialogue", "soundtrack"].includes(use.role) ? "Audio"
-            : use.role === "camera_transfer" ? "Camera" : ["performance"].includes(use.role) ? "Performance" : "Continuity & look";
         const asset = (project?.assets ?? []).find((item) => item.id === use.assetId);
-        const values = roles.get(lane) ?? []; values.push(asset?.name || use.assetId); roles.set(lane, values);
+        const target = (use.targetIds ?? []).map((id) =>
+            project?.subjects?.find((item) => item.id === id)?.name
+            || project?.environments?.find((item) => item.id === id)?.name
+            || project?.props?.find((item) => item.id === id)?.name).filter(Boolean).join(", ") || "This Shot";
+        const row = el("article", "minimax-h3-director-reference-row");
+        row.append(
+            composeMediaVisual(asset ?? { type: "picture" }, sources[use.assetId]),
+            el("span", "", asset?.name || use.assetId),
+            el("small", "", `${readableToken(use.role, "Reference")} → ${target}`),
+        );
+        referenceList.appendChild(row);
     }
-    const lanePurpose = { Camera: "camera", Audio: "soundtrack", "Continuity & look": "continuity" };
+    if (!referenceList.childElementCount) referenceList.appendChild(el("p", "minimax-h3-director-placeholder", "No Shot-specific references. Identity, voice and Place defaults remain linked through their cards."));
+    lanes.appendChild(referenceList);
+    const quickAdd = el("div", "minimax-h3-director-reference-quick-add");
     const presentSubjects = (selected.subjects ?? []).filter((item) => item.presence !== "absent");
-    for (const laneName of ["Performance", "Camera", "Audio", "Continuity & look"]) {
-        const lane = el("div", "minimax-h3-director-lane");
-        lane.appendChild(el("strong", "", laneName));
-        const values = roles.get(laneName) ?? [];
-        lane.appendChild(el("span", values.length ? "" : "is-empty", values.join(" · ")
-            || "Drop or connect a reference in Library · Files"));
-        if (laneName === "Performance" && presentSubjects.length === 1) lane.appendChild(composeDropTarget(controller, "performance", presentSubjects[0].subjectId, selectedAsset, connect, importFile, disconnect, values.length > 0));
-        else if (lanePurpose[laneName]) lane.appendChild(composeDropTarget(controller, lanePurpose[laneName], "", selectedAsset, connect, importFile, disconnect, values.length > 0));
-        else lane.appendChild(el("small", "minimax-h3-director-lane-guidance", "Use a subject card"));
-        lanes.appendChild(lane);
-    }
+    if (presentSubjects.length === 1) quickAdd.appendChild(button("+ Performance", () => connect("performance", presentSubjects[0].subjectId), "minimax-h3-director-text-button"));
+    quickAdd.append(
+        button("+ Camera reference", () => connect("camera"), "minimax-h3-director-text-button"),
+        button("+ Audio reference", () => connect("soundtrack"), "minimax-h3-director-text-button"),
+        button("+ Continuity reference", () => connect("continuity"), "minimax-h3-director-text-button"),
+    );
+    lanes.appendChild(quickAdd);
     const direction = el("section", "minimax-h3-director-direction");
     const directionHeading = el("div", "minimax-h3-director-scene-heading");
     const directionIdentity = el("div");
@@ -1100,28 +1295,20 @@ function renderBoard(container, controller, plan, project, rerender) {
     directionCards.append(stageDirection, camera); direction.append(directionHeading, directionCards);
     layout.append(stage, lanes, direction);
 
-    const inspector = el("aside", "minimax-h3-director-inspector");
-    inspector.setAttribute("aria-label", "Selected Shot context");
-    const inspectorIdentity = el("div", "minimax-h3-director-inspector-identity");
-    inspectorIdentity.append(
-        el("span", "minimax-h3-director-kicker", "SHOT CONTEXT"),
-        el("strong", "", shotEditorialTitle(selected, plan.shots.indexOf(selected))),
-        el("span", "minimax-h3-scope-chip", "This Shot"),
-    );
-    inspector.appendChild(inspectorIdentity);
     const setup = el("section", "minimax-h3-director-scene-setup");
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
     const setupActions = el("div", "minimax-h3-director-setup-actions");
     setupActions.append(
         button("+ Subject", () => { controller.directorUiState.creatingSubject = true; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
         button("+ Environment", () => { controller.directorUiState.creatingEnvironment = true; controller.directorUiState.creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"),
-        button(controller.isVisualReferenceDirector ? "Manage Library" : "Manage Subjects", () => {
+        button("+ Prop", () => { controller.directorUiState.creatingProp = true; controller.directorUiState.creatingSubject = false; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
+        button("Manage Library", () => {
             controller.directorUiState.libraryMode = "subjects";
             controller.directorUiState.castPlacesMode = "subjects";
-            controller.navigateStudio?.(controller.isVisualReferenceDirector ? "library" : "subjects");
+            controller.navigateStudio?.("library");
         }, "minimax-h3-director-text-button"),
     );
-    setupHeading.append(el("strong", "", "Scene setup"), setupActions);
+    setupHeading.append(el("strong", "", "Shot setup"), setupActions);
     setup.appendChild(setupHeading);
     if (controller.directorUiState.creatingSubject) {
         const creator = el("form", "minimax-h3-director-inline-creator");
@@ -1138,7 +1325,7 @@ function renderBoard(container, controller, plan, project, rerender) {
             if (!committed?.ok) { status.textContent = committed?.message || "Could not create the subject and place it atomically."; return; }
             controller.projectUiState.subjectSelectedId = bundle.subject.id;
             controller.directorUiState.creatingSubject = false;
-            controller.directorUiState.composeFeedback = `${bundle.subject.name} created as <Subject ${bundle.subject.h3Index}> and placed in this Shot.`;
+            controller.directorUiState.composeFeedback = `${bundle.subject.name} created and placed in this Shot.`;
             rerender();
         });
         creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
@@ -1163,10 +1350,33 @@ function renderBoard(container, controller, plan, project, rerender) {
         });
         creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
     }
+    if (controller.directorUiState.creatingProp) {
+        const creator = el("form", "minimax-h3-director-inline-creator");
+        const nameInput = el("input"); nameInput.type = "text"; nameInput.maxLength = 200; nameInput.placeholder = "Prop name, e.g. Car Y"; nameInput.setAttribute("aria-label", "New prop name");
+        const status = el("span", "minimax-h3-director-inline-status"); status.setAttribute("role", "status");
+        const create = button("Create & add", () => {}, "minimax-h3-button minimax-h3-button-primary"); create.type = "submit";
+        const cancel = button("Cancel", () => { controller.directorUiState.creatingProp = false; rerender(); }, "minimax-h3-button minimax-h3-button-secondary");
+        creator.addEventListener("submit", (event) => {
+            event.preventDefault(); const name = nameInput.value.trim();
+            if (!name) { nameInput.setAttribute("aria-invalid", "true"); status.textContent = "Name the prop first."; nameInput.focus(); return; }
+            const bundle = createScenePropBundle(project, plan, selected.id, name);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: bundle.project, shotPlan: bundle.shotPlan });
+            if (!committed?.ok) { status.textContent = committed?.message || "Could not create and add the prop atomically."; return; }
+            controller.projectUiState.propSelectedId = bundle.prop.id; controller.directorUiState.creatingProp = false;
+            controller.directorUiState.composeFeedback = `${bundle.prop.name} created as a reusable design and added to this Shot.`;
+            rerender();
+        });
+        creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
+    }
     const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this Shot");
     for (const subject of project?.subjects ?? []) {
         const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
-        const chip = button(subject.name || subject.id, () => { setSceneSubjectPresence(selected, subject.id, !present); commitPlan(controller, plan); rerender(); }, "minimax-h3-director-cast-chip");
+        const chip = button(subject.name || subject.id, () => {
+            setSceneSubjectPresence(selected, subject.id, !present);
+            if (!present) ensureSubjectBindings(project, plan, subject.id);
+            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            rerender();
+        }, "minimax-h3-director-cast-chip");
         chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
         chip.setAttribute("aria-label", `${present ? "Remove" : "Place"} ${subject.name || subject.id}; drop a reference to connect it`);
         makeSubjectDragSource(chip, subject);
@@ -1177,30 +1387,69 @@ function renderBoard(container, controller, plan, project, rerender) {
         "Create a Subject above or open Library · Subjects",
     ));
     setup.appendChild(castPicker);
+    const propPicker = el("div", "minimax-h3-director-cast-picker minimax-h3-director-prop-picker");
+    propPicker.setAttribute("aria-label", "Props in this Shot");
+    for (const prop of project?.props ?? []) {
+        const present = (selected.props ?? []).some((entry) => entry.propId === prop.id && entry.presence !== "absent");
+        const chip = button(prop.name || prop.id, () => {
+            setScenePropPresence(selected, prop.id, !present);
+            if (!present) ensurePropDesignBindings(project, plan, prop.id);
+            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            rerender();
+        }, "minimax-h3-director-cast-chip minimax-h3-shot-prop-chip");
+        chip.setAttribute("aria-pressed", String(present)); chip.setAttribute("aria-label", `${present ? "Remove" : "Add"} prop ${prop.name || prop.id}`); propPicker.appendChild(chip);
+    }
+    if (!(project?.props ?? []).length) propPicker.appendChild(el("span", "minimax-h3-director-placeholder", "Create a Prop above or open Library · Props"));
+    setup.appendChild(propPicker);
     const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
     const environmentSelect = el("select");
     for (const [value, label] of [["", "No environment"], ...(project?.environments ?? []).map((environment) => [environment.id, environment.name || environment.id])]) {
         const option = el("option", "", label); option.value = value; environmentSelect.appendChild(option);
     }
     environmentSelect.value = selected.environment?.environmentId ?? "";
-    environmentSelect.addEventListener("change", () => { setSceneEnvironment(selected, environmentSelect.value); commitPlan(controller, plan); rerender(); });
-    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField); stage.prepend(setup);
-    const summary = el("div", "minimax-h3-director-scene-summary");
-    summary.setAttribute("aria-label", "Shot generation, cast, references and duration");
-    for (const value of [
-        generationDisplay(project, selected.generationId),
-        `${names.length} cast`,
-        `${selected.referenceUses?.length ?? 0} refs`,
-        plan.timingMode === "exact" ? `${selected.durationSeconds ?? 1}s` : "Auto",
-    ]) summary.appendChild(el("span", "", String(value)));
-    inspector.append(summary, composeLlmHandoffPanel(llmHandoff, sources));
-    layout.prepend(inspector);
+    environmentSelect.addEventListener("change", () => {
+        setSceneEnvironment(selected, environmentSelect.value, project);
+        if (environmentSelect.value) ensureEnvironmentViewBindings(project, plan, environmentSelect.value);
+        controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+        rerender();
+    });
+    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField);
+    const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === selected.environment?.environmentId);
+    if (activeEnvironment?.views?.length) {
+        const viewField = el("label", "minimax-h3-studio-field"); viewField.appendChild(el("span", "", "Active Place view"));
+        const viewSelect = el("select");
+        for (const view of activeEnvironment.views) {
+            const option = el("option", "", view.name || view.id); option.value = view.id; viewSelect.appendChild(option);
+        }
+        viewSelect.value = selected.environment?.viewIds?.[0] || activeEnvironment.views[0].id;
+        viewSelect.addEventListener("change", () => {
+            selected.environment.viewIds = [viewSelect.value];
+            ensureEnvironmentViewBindings(project, plan, activeEnvironment.id);
+            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            rerender();
+        });
+        viewField.appendChild(viewSelect); setup.appendChild(viewField);
+    }
+    stage.prepend(setup);
+    stage.appendChild(composeLlmHandoffPanel(llmHandoff, sources));
     container.appendChild(layout);
     const reviewFooter = el("footer", "minimax-h3-director-review-footer");
     const reviewCopy = el("span");
+    const blockers = [];
+    const suggestions = [];
+    if (!String(selected.action ?? "").trim()) blockers.push("visible action");
+    if (selected.environment?.environmentId && !(selected.environment.viewIds ?? []).length) blockers.push("active Place view");
+    for (const entry of visualAssignments.subjects) {
+        if (!String(entry.subject.description ?? "").trim()) blockers.push(`${entry.subject.name || "Subject"} identity`);
+        if (!entry.identityAssets.length) suggestions.push(`${entry.subject.name || "Subject"} picture`);
+    }
+    if (!names.length) suggestions.push("cast");
+    if (!selected.environment?.environmentId) suggestions.push("Place");
+    const readiness = blockers.length ? `Needs attention · ${blockers.length} blocker${blockers.length === 1 ? "" : "s"}`
+        : suggestions.length ? "Ready with suggestions" : "Ready";
     reviewCopy.append(
-        el("strong", "", "Ready to review this Shot"),
-        el("small", "", `${names.length} cast · ${selected.environment?.environmentId ? "environment set" : "no environment"} · ${selected.referenceUses?.length ?? 0} Shot references`),
+        el("strong", "", readiness),
+        el("small", "", blockers.length ? `Complete: ${blockers.join(", ")}` : `${names.length} cast · ${selected.environment?.environmentId ? "Place set" : "no Place"} · ${selected.referenceUses?.length ?? 0} Shot references`),
     );
     reviewFooter.append(
         reviewCopy,
@@ -1309,18 +1558,18 @@ export function renderDirectorCompose(container, controller) {
 export function renderCastPlaces(container, controller) {
     container.replaceChildren();
     const state = directorState(controller);
-    if (!["subjects", "environments"].includes(state.castPlacesMode)) state.castPlacesMode = "subjects";
+    if (!["subjects", "environments", "props"].includes(state.castPlacesMode)) state.castPlacesMode = "subjects";
     const top = el("header", "minimax-h3-director-workspace-header");
     const copy = el("div");
-    copy.append(el("h2", "", "Cast & Places"), el("p", "", "Create reusable Subjects and Environments here. Compose decides which ones each Shot uses."));
+    copy.append(el("h2", "", "Cast, Places & Props"), el("p", "", "Create reusable Subjects, Places and Props here. Compose decides which ones each Shot uses."));
     const switcher = el("div", "minimax-h3-director-mode-switch");
-    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Environments"]]) {
+    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Places"], ["props", "Props"]]) {
         const control = button(label, () => { state.castPlacesMode = id; renderCastPlaces(container, controller); }, "minimax-h3-director-mode");
         control.setAttribute("aria-selected", String(state.castPlacesMode === id)); switcher.appendChild(control);
     }
     top.append(copy, switcher); container.appendChild(top);
     const host = el("div", "minimax-h3-director-library-host"); container.appendChild(host);
-    (state.castPlacesMode === "environments" ? renderEnvironmentsTab : renderSubjectsTab)(host, controller);
+    ({ environments: renderEnvironmentsTab, props: renderPropsTab, subjects: renderSubjectsTab }[state.castPlacesMode] ?? renderSubjectsTab)(host, controller);
 }
 
 function renderFilesLibrary(container, controller) {
@@ -1390,16 +1639,16 @@ export function renderDirectorLibrary(container, controller) {
     container.replaceChildren();
     const state = directorState(controller);
     const top = el("header", "minimax-h3-director-workspace-header");
-    if (!["subjects", "environments", "media"].includes(state.libraryMode)) state.libraryMode = "subjects";
-    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Create reusable Subjects and Environments, attach identity, voice and place references, and keep raw files in one visual library."));
+    if (!["subjects", "environments", "props", "media"].includes(state.libraryMode)) state.libraryMode = "subjects";
+    const copy = el("div"); copy.append(el("h2", "", "Library"), el("p", "", "Create reusable Subjects, Places and Props, attach their references here, and keep raw files in one visual library."));
     const switcher = el("div", "minimax-h3-director-mode-switch");
-    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Environments"], ["media", "Files"]]) {
+    for (const [id, label] of [["subjects", "Subjects"], ["environments", "Places"], ["props", "Props"], ["media", "Files"]]) {
         const control = button(label, () => { state.libraryMode = id; renderDirectorLibrary(container, controller); }, "minimax-h3-director-mode");
         control.setAttribute("aria-selected", String(state.libraryMode === id)); switcher.appendChild(control);
     }
     top.append(copy, switcher); container.appendChild(top);
     const host = el("div", "minimax-h3-director-library-host"); container.appendChild(host);
-    ({ media: renderFilesLibrary, subjects: renderSubjectsTab, environments: renderEnvironmentsTab }[state.libraryMode] ?? renderSubjectsTab)(host, controller);
+    ({ media: renderFilesLibrary, subjects: renderSubjectsTab, environments: renderEnvironmentsTab, props: renderPropsTab }[state.libraryMode] ?? renderSubjectsTab)(host, controller);
 }
 
 export function renderDirectorWiring(container, controller) {

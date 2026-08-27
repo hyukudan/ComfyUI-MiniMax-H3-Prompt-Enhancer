@@ -246,8 +246,8 @@ export function renderCoachTab(container, controller) {
         return control;
     };
     runActions.append(
-        runAction("Run Prompt Studio", "runStudioNode", "Queueing Prompt Studio…", "minimax-h3-button minimax-h3-button-primary"),
-        runAction("Queue full workflow", "runFullWorkflow", "Queueing full workflow…", "minimax-h3-button minimax-h3-button-secondary"),
+        runAction("Validate", "runStudioNode", "Validating Prompt Studio…", "minimax-h3-button minimax-h3-button-secondary"),
+        runAction("Generate & Queue", "runFullWorkflow", "Generating prompt and queueing workflow…", "minimax-h3-button minimax-h3-button-primary"),
     );
     runBar.append(runCopy, runActions, runFeedback); container.appendChild(runBar);
     if (report?.stale) {

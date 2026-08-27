@@ -29,6 +29,7 @@ function addReason(reasons, kind, id, reason) {
 export function generationMediaModel(project, generation, shotPlan = null) {
     const assets = new Map((project?.assets ?? []).map((item) => [item.id, item]));
     const subjects = new Map((project?.subjects ?? []).map((item) => [item.id, item]));
+    const props = new Map((project?.props ?? []).map((item) => [item.id, item]));
     const environments = new Map((project?.environments ?? []).map((item) => [item.id, item]));
     const subjectStates = new Map((generation?.subjectStates ?? []).map((item) => [item.subjectId, item]));
     const environmentStates = new Map((generation?.environmentStates ?? []).map((item) => [item.environmentId, item]));
@@ -47,7 +48,21 @@ export function generationMediaModel(project, generation, shotPlan = null) {
     for (const shot of shotPlan?.shots ?? []) {
         if ((shot.generationId ?? "g1") !== generation?.id) continue;
         for (const presence of shot.subjects ?? []) {
-            if (presence.presence !== "absent") enqueue("subject", presence.subjectId, `presence in shot ${shot.id}`);
+            if (presence.presence !== "absent") {
+                enqueue("subject", presence.subjectId, `presence in shot ${shot.id}`);
+                const subject = subjects.get(presence.subjectId);
+                const states = new Map((subject?.appearanceStates ?? []).map((state) => [state.id, state]));
+                const seen = new Set();
+                let state = states.get(presence.appearanceStateId);
+                while (state && !seen.has(state.id)) {
+                    seen.add(state.id);
+                    if (state.source?.mode === "asset") enqueue("asset", state.source.assetId, `look “${state.name}” in shot ${shot.id}`);
+                    state = state.extends ? states.get(state.extends) : null;
+                }
+            }
+        }
+        for (const presence of shot.props ?? []) {
+            if (presence.presence !== "absent") enqueue("prop", presence.propId, `presence in shot ${shot.id}`);
         }
         if (shot.environment?.environmentId) enqueue("environment", shot.environment.environmentId, `location of shot ${shot.id}`);
         for (const reference of shot.referenceUses ?? []) enqueue("asset", reference.assetId, `reference in shot ${shot.id}`);
@@ -70,6 +85,10 @@ export function generationMediaModel(project, generation, shotPlan = null) {
                 if (current.source?.mode === "asset") enqueue("asset", current.source.assetId, `appearance “${current.name}” of ${subject.name}`);
                 current = current.extends ? states.get(current.extends) : null;
             }
+        } else if (resource.kind === "prop") {
+            const prop = props.get(resource.id);
+            if (!prop) continue;
+            for (const assetId of prop.designAssetIds ?? []) enqueue("asset", assetId, `design of ${prop.name}`);
         } else if (resource.kind === "environment") {
             const environment = environments.get(resource.id);
             const selection = environmentStates.get(resource.id);
@@ -86,7 +105,8 @@ export function generationMediaModel(project, generation, shotPlan = null) {
         ...entry,
         excluded: excluded.has(resourceKey(entry.kind, entry.id)),
         missing: entry.kind === "asset" ? !assets.has(entry.id)
-            : entry.kind === "subject" ? !subjects.has(entry.id) : !environments.has(entry.id),
+            : entry.kind === "subject" ? !subjects.has(entry.id)
+                : entry.kind === "prop" ? !props.has(entry.id) : !environments.has(entry.id),
     }));
     const activeAssetIds = new Set(resources.filter((entry) => entry.kind === "asset" && !entry.excluded && !entry.missing).map((entry) => entry.id));
     const counts = { picture: 0, video: 0, audio: 0 };
@@ -151,6 +171,9 @@ export function assetUsage(project, assetId) {
     }
     for (const environment of project?.environments ?? []) {
         for (const view of environment.views ?? []) if (view.assetId === assetId) usage.push(`view “${view.name}” of ${environment.name}`);
+    }
+    for (const prop of project?.props ?? []) {
+        if ((prop.designAssetIds ?? []).includes(assetId)) usage.push(`design of ${prop.name}`);
     }
     for (const generation of project?.generations ?? []) {
         if ((generation.bindings ?? []).some((binding) => binding.assetId === assetId)) usage.push(`binding in ${generation.id}`);

@@ -5,7 +5,8 @@ import {
     bindingPlanDiagnostics, connectExistingReference, createPlanningContext, createPurposeBinding, disconnectPurposeReference, MEDIA_RECIPES, replacePurposeReference,
 } from "../media_workflows.js";
 import { referenceDirectorModel } from "../reference_director.js";
-import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
+import { addSceneDialogueBeat, composeCameraSummary, composeConnectionInput, composeLlmHandoff, composeSceneAudio, composeVisualAssignments, composeVisualMentionLinks, connectSubjectAssetToScene, createImportedAssetDraft, createSceneEnvironmentBundle, createScenePropBundle, createSceneSubjectBundle, duplicateScene, moveScene, removeScene, removeSceneDialogueBeat, reorderScene, setSceneEnvironment, setScenePropPresence, setSceneSubjectPresence, shotEditorialTitle } from "../director_workspace.js";
+import { ensureSubjectBindings } from "../subject_model.js";
 
 function fixtures() {
     return {
@@ -158,6 +159,36 @@ test("Compose creates one canonical environment and assigns it to the scene atom
     assert.equal(source.shotPlan.shots[0].environment, undefined);
 });
 
+test("Compose creates a reusable Prop in the shared H3 Subject namespace and adds it to one Shot", () => {
+    const source = fixtures();
+    source.project.subjects[0].h3Index = 1;
+    const bundle = createScenePropBundle(source.project, source.shotPlan, "s1", "Car Y");
+    assert.deepEqual(bundle.prop, {
+        id: "prop.1", h3Index: 2, name: "Car Y", category: "object", description: "", designAssetIds: [],
+    });
+    assert.deepEqual(bundle.shotPlan.shots[0].props, [{ propId: "prop.1", presence: "present" }]);
+    assert.equal(source.project.props, undefined);
+    assert.equal(source.shotPlan.shots[0].props, undefined);
+});
+
+test("Compose resolves Prop design pictures and exposes them to the LLM as design-family Subject aliases", () => {
+    const source = fixtures();
+    source.project.assets = [{ id: "car", type: "picture", name: "Car Y front" }];
+    source.project.props = [{ id: "prop.1", h3Index: 2, name: "Car Y", category: "vehicle", description: "red coupe", designAssetIds: ["car"] }];
+    source.project.generations[0].bindings = [{ assetId: "car", slotIndex: 1 }];
+    const shot = source.shotPlan.shots[0];
+    setScenePropPresence(shot, "prop.1", true);
+    const visual = composeVisualAssignments(source.project, shot);
+    assert.deepEqual(visual.props[0].designAssets.map((asset) => asset.id), ["car"]);
+    const handoff = composeLlmHandoff(source.project, source.shotPlan, shot);
+    assert.deepEqual(handoff.props[0], {
+        id: "prop.1", name: "Car Y", alias: "<Subject 2>", family: "design",
+        links: [{ assetId: "car", name: "Car Y front", role: "Design", physicalLabel: "<Picture 1>" }],
+    });
+    assert.match(handoff.text, /<Subject 2> Car Y \| reusable design \| <Picture 1>/);
+    assert.doesNotMatch(handoff.text, /<Object/);
+});
+
 test("direct target import prepares a typed immutable library asset before upload commit", () => {
     const source = fixtures();
     source.project.assets = [{ id: "asset.1", type: "picture", name: "Existing" }];
@@ -189,6 +220,29 @@ test("Compose resolves the visible portrait, voice, performance and selected bac
     assert.deepEqual(result.subjects[0].identityAssets.map((asset) => asset.id), ["portrait"]);
     assert.equal(result.subjects[0].voiceAsset.id, "voice");
     assert.deepEqual(result.subjects[0].performanceAssets.map((asset) => asset.id), ["performance"]);
+});
+
+test("Compose resolves a per-Shot look picture and binds it to the same generation", () => {
+    const source = fixtures();
+    source.project.assets = [
+        { id: "portrait", type: "picture", name: "Ari portrait" },
+        { id: "raincoat", type: "picture", name: "Ari raincoat" },
+    ];
+    source.project.subjects[0].identityAssetIds = ["portrait"];
+    source.project.subjects[0].appearanceStates.push({
+        id: "rain", name: "Rain look", extends: "base", controls: ["wardrobe"],
+        attributes: { wardrobe: "yellow raincoat" }, source: { mode: "asset", assetId: "raincoat" },
+    });
+    source.shotPlan.shots[0].subjects = [{ subjectId: "subject.1", presence: "present", appearanceStateId: "rain" }];
+
+    const visual = composeVisualAssignments(source.project, source.shotPlan.shots[0]);
+    assert.equal(visual.subjects[0].appearanceState.name, "Rain look");
+    assert.deepEqual(visual.subjects[0].appearanceAssets.map((asset) => asset.id), ["raincoat"]);
+    const result = ensureSubjectBindings(source.project, source.shotPlan, "subject.1");
+    assert.equal(result.ok, true);
+    assert.deepEqual(source.project.generations[0].bindings.map((binding) => binding.assetId), ["portrait", "raincoat"]);
+    const handoff = composeLlmHandoff(source.project, source.shotPlan, source.shotPlan.shots[0]);
+    assert.ok(handoff.subjects[0].links.some((link) => link.role === "Look" && link.assetId === "raincoat"));
 });
 
 test("Compose turns each cut's native camera fields into three visual phases", () => {
@@ -236,6 +290,21 @@ test("Compose LLM handoff derives subject and physical aliases from the same gen
     assert.match(result.text, /Set: Room \| <Picture 2>/);
 });
 
+test("Compose makes assigned visual references clickable without exposing audio aliases", () => {
+    const links = composeVisualMentionLinks({
+        environment: { links: [{ name: "Can Misses", role: "Background", physicalLabel: "<Picture 4>" }] },
+        referenceUses: [
+            { name: "Camera move", role: "Performance", physicalLabel: "<Video 1>" },
+            { name: "Malak voice", role: "Voice", physicalLabel: "<Audio 1>" },
+            { name: "Duplicate set", role: "Background", physicalLabel: "<Picture 4>" },
+            { name: "Not bound", role: "Reference", physicalLabel: "Unassigned" },
+        ],
+    });
+    assert.deepEqual(links.map((item) => [item.name, item.physicalLabel]), [
+        ["Can Misses", "<Picture 4>"], ["Camera move", "<Video 1>"],
+    ]);
+});
+
 test("Compose authors exact dialogue against the visible subject and keeps voice, override and soundtrack roles distinct", () => {
     const source = fixtures();
     source.project.assets = [
@@ -255,12 +324,13 @@ test("Compose authors exact dialogue against the visible subject and keeps voice
     ).id, "beat1");
     assert.equal(addSceneDialogueBeat(shot, "subject.1", "", "says"), null);
     const model = composeSceneAudio(source.project, shot);
-    assert.deepEqual(model.voices.map((item) => [item.alias, item.asset.id]), [["<Subject 1>", "voice"]]);
+    assert.deepEqual(model.voices.map((item) => [item.alias, item.asset.id]), [["<Subject 1>", "override"]]);
+    assert.equal(model.voices[0].override, true);
     assert.deepEqual(
         model.dialogues.map((item) => [item.speaker, item.text, item.delivery, item.channel, item.mood]),
         [["Ari", "We leave now.", "whispers", "voice_over", "calm, steady"]],
     );
-    assert.deepEqual(model.references.map((item) => item.role), ["voice", "soundtrack"]);
+    assert.deepEqual(model.references.map((item) => item.role), ["soundtrack"]);
     assert.equal(removeSceneDialogueBeat(shot, "beat1"), true);
     assert.equal(shot.actionBeats, undefined);
 });

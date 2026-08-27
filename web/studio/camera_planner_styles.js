@@ -236,6 +236,8 @@ export function ensureCameraPlannerStyles() {
         .minimax-h3-stage-subject circle { fill: color-mix(in srgb, var(--h3-accent) 18%, var(--h3-surface-raised)); stroke: var(--h3-accent); stroke-width: 2; }
         .minimax-h3-stage-subject text { fill: var(--h3-text); font: 700 10px/1 var(--h3-font); pointer-events: none; }
         .minimax-h3-stage-subject.is-selected circle, .minimax-h3-stage-subject:focus-visible circle { fill: color-mix(in srgb, var(--h3-tip) 22%, var(--h3-surface)); stroke: var(--h3-tip); stroke-width: 4; }
+        .minimax-h3-stage-portrait { clip-path: circle(50%); pointer-events: none; }
+        .minimax-h3-stage-subject-name { paint-order: stroke; stroke: var(--h3-surface); stroke-width: 4px; stroke-linejoin: round; }
         .minimax-h3-staging-inspector { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--h3-space-3); align-items: end; border: 1px solid var(--h3-border); border-radius: var(--h3-radius-md); padding: var(--h3-space-3); background: var(--h3-surface); }
         .minimax-h3-staging-inspector h3 { grid-column: 1 / -1; margin: 0; }
         .minimax-h3-staging-inspector .minimax-h3-button-danger { justify-self: start; }

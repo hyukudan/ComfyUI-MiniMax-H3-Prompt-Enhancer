@@ -71,6 +71,7 @@ export function overviewModel(controller) {
         mode: controller.mode?.() ?? projectValue?.mode ?? "auto",
         shots: shots.length,
         subjects: projectValue?.subjects?.length ?? 0,
+        props: projectValue?.props?.length ?? 0,
         environments: projectValue?.environments?.length ?? 0,
         assets: projectValue?.assets?.length ?? 0,
         generations,
@@ -421,7 +422,8 @@ function librarySection(model, navigate) {
     grid.className = "minimax-h3-library-grid";
     for (const [id, count, label] of [
         ["subjects", model.subjects, "Subjects"],
-        ["environments", model.environments, "Environments"],
+        ["props", model.props, "Props"],
+        ["environments", model.environments, "Places"],
         ["media", model.assets, "Media assets"],
     ]) {
         const button = document.createElement("button");

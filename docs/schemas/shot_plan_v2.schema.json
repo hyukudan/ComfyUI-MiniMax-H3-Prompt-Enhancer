@@ -151,7 +151,16 @@
       "properties": {
         "subjectId": {"$ref": "#/$defs/id"},
         "presence": {"enum": ["present", "enters", "exits", "absent"]},
+        "appearanceStateId": {"$ref": "#/$defs/id"},
         "blocking": {"$ref": "#/$defs/shortText"}
+      }
+    },
+    "propUse": {
+      "type": "object", "additionalProperties": false, "required": ["propId"],
+      "properties": {
+        "propId": {"$ref": "#/$defs/id"},
+        "presence": {"enum": ["present", "enters", "exits", "absent"]},
+        "note": {"$ref": "#/$defs/shortText"}
       }
     },
     "actionBeat": {
@@ -244,6 +253,7 @@
         "cutContext": {"$ref": "#/$defs/cutContext"},
         "subjectPresenceComplete": {"type": "boolean"},
         "subjects": {"type": "array", "items": {"$ref": "#/$defs/subjectPresence"}},
+        "props": {"type": "array", "items": {"$ref": "#/$defs/propUse"}},
         "environment": {"$ref": "#/$defs/environmentSelection"},
         "referenceUses": {"type": "array", "items": {"$ref": "#/$defs/referenceUse"}},
         "actionBeats": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/actionBeat"}},

@@ -1309,13 +1309,16 @@ and the literal N/A for an absent section.
 Ref2VA output has exactly these six sections in order:
 subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.
 Use stable <Subject N>, <Picture N>, <Video N>, and <Audio N> meanings. Subject labels describe reusable visible
-content; Picture labels are concrete frame/composition anchors; Video labels describe whole-video edit, continuation,
+content, including character-family identities and design-family Props; Picture labels are concrete frame/composition anchors; Video labels describe whole-video edit, continuation,
 or temporal structure; Audio labels describe copied or referenced signals.
 subject_definitions must account for every character who appears or speaks, so that nothing in the later blocks
 refers to someone never introduced. Give each one line naming the assets assigned to it, since that binding is what
-H3 has to act on: "<Subject 1> is <Picture 1>'s man, ... ; <Audio 1> supplies his voice." A <Subject N> label is
-only available to a character a supplied Picture or Video actually depicts — inventing one for a character the
-source describes in prose makes H3 look for a reference that does not exist. Define that character in this block
+H3 has to act on: "<Subject 1> is <Picture 1>'s man, ... ; <Audio 1> supplies his voice." A character-family
+<Subject N> label is only available to a character a supplied Picture or Video actually depicts. A Subject label
+may also represent a reusable design-family Prop backed by an assigned Picture or Video. A design-family Subject
+is never a speaker and its source owns only the named
+object's physical design, not source people, background, pose, lighting, camera, or text. Inventing a Subject for
+prose-only content makes H3 look for a reference that does not exist. Define an unreferenced character in this block
 too, but by a stable description carrying its own (Sx) instead of a Subject label, and reuse that exact description
 at every later mention: "The very old man, bald with a long white beard and a tortoise shell on his back, (S1);
 <Audio 1> supplies his voice." Never leave a speaking character undefined because it has no asset. The summary starts with bracketed task
@@ -1579,7 +1582,10 @@ def _official_reference_model(source_prompt: str, reference_context: str = "") -
         lambda match: _asset_label(*match.groups()), reference_context or "",
     )
     combined_context = source + "\n" + canonical_reference_context
-    explicit_definitions = _definition_labels(canonical_reference_context)
+    explicit_definitions = list(dict.fromkeys([
+        *_definition_labels(canonical_reference_context),
+        *(contract["label"] for contract in _structured_subject_contracts(canonical_reference_context)),
+    ]))
     assets = list(dict.fromkeys(
         [_asset_label(kind, number) for kind, number in _ASSET_REFERENCE_RE.findall(source)]
         + _REFERENCE_RE.findall(canonical_reference_context)
@@ -2377,10 +2383,14 @@ def _structured_subject_contracts(reference_context: str) -> list[dict[str, Any]
         voice_source = str(item.get("voiceSource") or "")
         if voice_source and not re.fullmatch(r"<Audio\s+\d+>", voice_source, re.IGNORECASE):
             voice_source = ""
+        if item.get("family") == "design":
+            voice_source = ""
         contracts.append({
             "label": str(item["label"]),
+            "family": "design" if item.get("family") == "design" else "character",
             "name": str(item.get("name") or item["label"]).strip(),
-            "description": str(item.get("description") or "Unspecified stable identity.").strip(),
+            "category": str(item.get("category") or "").strip(),
+            "description": str(item.get("description") or "").strip(),
             "identitySources": identity_sources,
             "voiceSource": voice_source,
             "appearanceState": item.get("appearanceState") if isinstance(item.get("appearanceState"), dict) else {},
@@ -2388,23 +2398,63 @@ def _structured_subject_contracts(reference_context: str) -> list[dict[str, Any]
     return contracts
 
 
+def _structured_environment_contracts(reference_context: str) -> list[dict[str, Any]]:
+    prefix = "- ENVIRONMENT CONTRACT JSON: "
+    contracts = []
+    for line in str(reference_context).splitlines():
+        if not line.startswith(prefix):
+            continue
+        try:
+            item = json.loads(line[len(prefix):])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(item, dict):
+            continue
+        sources = []
+        for source in item.get("viewSources", []):
+            label = str(source.get("label") or "") if isinstance(source, dict) else ""
+            if re.fullmatch(r"<Picture\s+\d+>", label, re.IGNORECASE):
+                sources.append({
+                    "label": label,
+                    "name": str(source.get("name") or "View").strip(),
+                    "role": str(source.get("role") or "reference").strip(),
+                })
+        if not sources:
+            continue
+        contracts.append({
+            "name": str(item.get("name") or "Scenario").strip(),
+            "shotNumbers": [int(value) for value in item.get("shotNumbers", []) if isinstance(value, int) and value > 0],
+            "viewSources": sources,
+        })
+    return contracts
+
+
 def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str, Any]],
-                                            reference_context: str) -> str:
+                                            reference_context: str,
+                                            environment_contracts: list[dict[str, Any]] | None = None) -> str:
     """Make Studio Subjects deterministic instead of asking the LLM to rediscover them."""
     value = str(text)
+    environment_contracts = environment_contracts or []
     owned_labels = {
         contract["label"].casefold() for contract in contracts
     } | {
         source.casefold() for contract in contracts for source in contract["identitySources"]
     } | {
         contract["voiceSource"].casefold() for contract in contracts if contract["voiceSource"]
+    } | {
+        source["label"].casefold()
+        for contract in environment_contracts for source in contract["viewSources"]
     }
     definitions = []
     retention = []
     audio_owners: dict[str, str] = {}
     for contract in contracts:
         identities = ", ".join(contract["identitySources"])
-        identity_clause = f"; visual identity comes from {identities}" if identities else ""
+        is_design = contract.get("family") == "design"
+        identity_clause = (
+            f"; physical design comes from {identities}" if is_design
+            else f"; visual identity comes from {identities}"
+        ) if identities else ""
         appearance = contract.get("appearanceState") or {}
         appearance_facts = []
         if str(appearance.get("description") or "").strip():
@@ -2420,15 +2470,29 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
             f"; active appearance {appearance_name}: {appearance_text}"
             if appearance_text else ""
         )
-        definitions.append(
-            f"{contract['label']} is {contract['name']}; stable identity: {contract['description']}"
-            f"{identity_clause}{appearance_clause}."
-        )
-        retention.append(
-            f"{contract['label']}: fully_preserved - preserve {contract['name']}'s stable identity"
-            f"{f' from {identities}' if identities else ''}, including: {contract['description']}"
-            f"{f'; active appearance {appearance_name}: {appearance_text}' if appearance_text else ''}."
-        )
+        description = contract["description"]
+        if is_design:
+            category = f" ({contract['category']})" if contract.get("category") else ""
+            design_clause = f"; stable physical design: {description}" if description else ""
+            definitions.append(
+                f"{contract['label']} is the reusable design-family Prop {contract['name']}{category}"
+                f"{design_clause}{identity_clause}; do not copy source people, background, pose, lighting, camera, or text."
+            )
+            retention.append(
+                f"{contract['label']}: fully_preserved"
+                f"{f' from {identities}' if identities else ''}."
+            )
+        else:
+            identity_description = f"; stable identity: {description}" if description else ""
+            definitions.append(
+                f"{contract['label']} is {contract['name']}{identity_description}"
+                f"{identity_clause}{appearance_clause}."
+            )
+            retention.append(
+                f"{contract['label']}: fully_preserved"
+                f"{f' from {identities}' if identities else ''}"
+                f"{f'; preserve active appearance {appearance_name}' if appearance_text else ''}."
+            )
         contract["resolvedAppearanceText"] = appearance_text
         contract["resolvedAppearanceName"] = appearance_name
         if contract["voiceSource"]:
@@ -2442,12 +2506,38 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
             f"{audio}: reference - preserve voice timbre, cadence, accent, and delivery for {subject} only; "
             "authored dialogue supplies the exact words."
         )
+    for environment in environment_contracts:
+        source_labels = ", ".join(source["label"] for source in environment["viewSources"])
+        view_names = ", ".join(
+            f"{source['role']} view {json.dumps(source['name'], ensure_ascii=False)}"
+            for source in environment["viewSources"]
+        )
+        definitions.append(
+            f"{source_labels} {'is' if len(environment['viewSources']) == 1 else 'are'} {view_names} of "
+            f"Scenario {environment['name']}; "
+            "the Scenario reference defines the location, not the target Subjects or camera."
+        )
+        retention.append(
+            f"{source_labels}: environment_reference - preserve Scenario "
+            f"{environment['name']} as the location."
+        )
 
     def keep_unowned(section: str) -> list[str]:
         kept = []
         for raw_line in _section_body(value, section).splitlines():
-            match = re.match(r"\s*(<(?:Subject|Picture|Video|Audio)\s+\d+>)", raw_line, re.IGNORECASE)
-            if not match or match.group(1).casefold() not in owned_labels:
+            match = re.match(
+                r"\s*(?P<open><)?(?P<kind>Subject|Picture|Video|Audio)\s+(?P<index>\d+)(?(open)>)",
+                raw_line,
+                re.IGNORECASE,
+            )
+            canonical = (
+                f"<{match.group('kind')} {match.group('index')}>".casefold()
+                if match else ""
+            )
+            if section == "retention_analysis" and not match:
+                continue
+            contains_owned_label = any(label in raw_line.casefold() for label in owned_labels)
+            if (not match or canonical not in owned_labels) and not contains_owned_label:
                 if raw_line.strip():
                     kept.append(raw_line.strip())
         return kept
@@ -2470,9 +2560,17 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
         task_types.append("audio reference")
     task_types = list(dict.fromkeys(task_types or ["reference generation"]))
     labels = ", ".join(contract["label"] for contract in contracts)
+    scenario_summary = ""
+    if environment_contracts:
+        scenario_summary = "; at " + ", ".join(
+            f"Scenario {contract['name']} from "
+            + ", ".join(source["label"] for source in contract["viewSources"])
+            for contract in environment_contracts
+        )
     value = _replace_section_body(
         value, "summary",
-        f"[{' + '.join(task_types)}] Generate the configured scene with {labels}, using only their declared identity and voice references.",
+        f"[{' + '.join(task_types)}] Generate the configured scene with {labels}{scenario_summary}, "
+        "using only the declared identity, appearance, environment, design, and voice references.",
     )
 
     detail = _section_body(value, "detailed_description")
@@ -2480,17 +2578,50 @@ def _normalize_structured_subject_contracts(text: str, contracts: list[dict[str,
         name = contract["name"]
         if not name or name.casefold() == contract["label"].casefold():
             continue
+        detail = re.sub(
+            rf"{re.escape(contract['label'])}\s*\(\s*{re.escape(name)}\s*\)",
+            name, detail, flags=re.IGNORECASE,
+        )
         pattern = rf"(?<![\w>]){re.escape(name)}(?![\w<])"
         appearance_first_use = (
             f"; active appearance {contract['resolvedAppearanceName']}: {contract['resolvedAppearanceText']}"
             if contract.get("resolvedAppearanceText") else ""
         )
-        first_use = f"{contract['label']} ({name}; stable identity: {contract['description']}{appearance_first_use})"
+        descriptor = "stable physical design" if contract.get("family") == "design" else "stable identity"
+        identity_first_use = f"; {descriptor}: {contract['description']}" if contract["description"] else ""
+        first_use = f"{contract['label']} ({name}{identity_first_use}{appearance_first_use})"
         placeholder = f"\x00H3_SUBJECT_{contract['label']}\x00"
         detail, replaced = re.subn(pattern, placeholder, detail, count=1, flags=re.IGNORECASE)
         if replaced:
             detail = re.sub(pattern, contract["label"], detail, flags=re.IGNORECASE)
             detail = detail.replace(placeholder, first_use)
+        for identity_source in contract["identitySources"]:
+            detail = re.sub(
+                rf"\s*\(\s*{re.escape(identity_source)}\s*\)",
+                "", detail, flags=re.IGNORECASE,
+            )
+            detail = re.sub(
+                rf",?\s*(?:visible|shown|defined)\s+(?:in|by|from)\s+{re.escape(identity_source)}",
+                "", detail, flags=re.IGNORECASE,
+            )
+        subject_index = re.search(r"\d+", contract["label"])
+        if subject_index:
+            detail = re.sub(
+                rf"{re.escape(contract['label'])}\s*\(S{subject_index.group()}\)",
+                contract["label"], detail, flags=re.IGNORECASE,
+            )
+    for environment in environment_contracts:
+        sources = ", ".join(source["label"] for source in environment["viewSources"])
+        opening = (
+            f"The scene takes place at Scenario {environment['name']} "
+            f"as shown in {sources}. "
+        )
+        for shot_number in environment["shotNumbers"]:
+            shot_pattern = rf"(\[Shot\s+{shot_number}\]\s*)"
+            detail = re.sub(
+                shot_pattern, lambda match: match.group(1) + opening,
+                detail, count=1, flags=re.IGNORECASE,
+            )
     value = _replace_section_body(value, "detailed_description", detail)
     return value
 
@@ -2504,7 +2635,10 @@ def normalize_reference_definitions(text: str, source_prompt: str, reference_con
         # prose-inference pass afterwards would discard Subjects whose names or
         # Pictures were not repeated in the basic prompt—the exact duplication
         # Studio v3 was designed to remove.
-        return _normalize_structured_subject_contracts(text, structured_subjects, reference_context)
+        return _normalize_structured_subject_contracts(
+            text, structured_subjects, reference_context,
+            _structured_environment_contracts(reference_context),
+        )
     model = _official_reference_model(source_prompt, reference_context)
     if model["explicit"] or not model["definitions"]:
         return str(text)

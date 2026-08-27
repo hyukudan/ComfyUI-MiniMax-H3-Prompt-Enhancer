@@ -4,12 +4,13 @@
   "title": "MiniMax H3 Prompt Studio Project v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "project", "files", "subjects", "environments", "generations", "shots", "links"],
+  "required": ["schemaVersion", "project", "files", "subjects", "props", "environments", "generations", "shots", "links"],
   "properties": {
     "schemaVersion": {"const": 3},
     "project": {"$ref": "#/$defs/project"},
     "files": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/file"}},
     "subjects": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/subject"}},
+    "props": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/prop"}},
     "environments": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/environment"}},
     "generations": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/generation"}},
     "shots": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/shot"}},
@@ -88,6 +89,15 @@
         "appearanceStates": {"type": "array", "items": {"type": "object"}}
       }
     },
+    "prop": {
+      "type": "object", "additionalProperties": true, "required": ["id", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "h3Index": {"type": "integer", "minimum": 1, "maximum": 64},
+        "name": {"$ref": "#/$defs/shortText"}, "category": {"$ref": "#/$defs/shortText"},
+        "description": {"$ref": "#/$defs/text"},
+        "designFileIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
     "environment": {
       "type": "object",
       "additionalProperties": true,
@@ -132,6 +142,14 @@
         "appearanceStateId": {"$ref": "#/$defs/id"}
       }
     },
+    "propUse": {
+      "type": "object", "additionalProperties": true, "required": ["propId"],
+      "properties": {
+        "propId": {"$ref": "#/$defs/id"},
+        "presence": {"enum": ["present", "enters", "exits", "absent"]},
+        "note": {"$ref": "#/$defs/shortText"}
+      }
+    },
     "shot": {
       "type": "object",
       "additionalProperties": true,
@@ -143,6 +161,7 @@
         "action": {"$ref": "#/$defs/text"},
         "durationSeconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 150},
         "cast": {"type": "array", "items": {"$ref": "#/$defs/castUse"}},
+        "props": {"type": "array", "items": {"$ref": "#/$defs/propUse"}},
         "environment": {"type": "object"},
         "background": {"type": "object"},
         "referenceBindings": {"type": "array", "items": {"type": "object"}}
@@ -153,7 +172,7 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": {"enum": ["project", "subject", "environment", "shot"]},
+        "kind": {"enum": ["project", "subject", "prop", "environment", "shot"]},
         "id": {"$ref": "#/$defs/id"}
       }
     },

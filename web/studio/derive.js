@@ -17,6 +17,7 @@ export function usageIndex(project = {}, plan = {}) {
         subjects: new Map(),
         appearanceStates: new Map(),
         environments: new Map(),
+        props: new Map(),
         environmentStates: new Map(),
         environmentViews: new Map(),
         assets: new Map(),
@@ -33,6 +34,9 @@ export function usageIndex(project = {}, plan = {}) {
     }
     for (const environment of project.environments ?? []) {
         for (const view of environment.views ?? []) addUse(indexes.assets, view.assetId, `View · ${environment.name || environment.id} / ${view.name || view.id}`);
+    }
+    for (const prop of project.props ?? []) {
+        for (const assetId of prop.designAssetIds ?? []) addUse(indexes.assets, assetId, `Design · ${prop.name || prop.id}`);
     }
     for (const generation of project.generations ?? []) {
         const generationLabel = `Generation ${generation.order ?? generation.id}`;
@@ -56,6 +60,7 @@ export function usageIndex(project = {}, plan = {}) {
     for (const [shotIndex, shot] of (plan.shots ?? []).entries()) {
         const label = `Shot ${shotIndex + 1} · ${shot.id}`;
         for (const presence of shot.subjects ?? []) addUse(indexes.subjects, presence.subjectId, `${label} presence`);
+        for (const presence of shot.props ?? []) addUse(indexes.props, presence.propId, `${label} presence`);
         for (const relationship of shot.scaleRelationships ?? []) {
             addUse(indexes.subjects, relationship.subjectId, `${label} scale relationship`);
             addUse(indexes.subjects, relationship.relativeToId, `${label} scale landmark`);

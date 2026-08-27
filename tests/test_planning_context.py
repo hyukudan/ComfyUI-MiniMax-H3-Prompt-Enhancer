@@ -131,6 +131,23 @@ def test_compiler_digest_and_context_are_deterministic():
     assert first["generations"]["g2"]["context"] == second["generations"]["g2"]["context"]
 
 
+def test_shot_appearance_selection_activates_its_picture_and_becomes_entry_state():
+    project = _media_project()
+    plan = _shot_plan()
+    plan["shots"] = [plan["shots"][0]]
+    plan["shots"][0]["subjects"][0]["appearanceStateId"] = "wounded"
+    project["generations"] = [project["generations"][0]]
+    project["generations"][0]["bindings"].append({"assetId": "ana.wounded", "slotIndex": 3})
+
+    compiled = compile_planning_context(project, plan, 8, mode="chained_multishot")
+
+    assert compiled["valid"], compiled["diagnosticReport"]
+    assert "ana.wounded" in compiled["generations"]["g1"]["activeAssetIds"]
+    assert compiled["shots"][0]["stateBefore"]["subjects"]["ana"] == "wounded"
+    assert compiled["generations"]["g1"]["finalState"]["subjects"]["ana"] == "wounded"
+    assert "Appearance ana.wounded" in compiled["generations"]["g1"]["context"]
+
+
 def test_complete_presence_requires_every_generation_subject_even_when_absent():
     plan = _shot_plan()
     plan["shots"][1]["subjects"] = []

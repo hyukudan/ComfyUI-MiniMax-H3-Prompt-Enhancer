@@ -24,6 +24,9 @@ function assetConnections(project, shotPlan, asset) {
     for (const environment of project.environments ?? []) {
         if ((environment.views ?? []).some((view) => view.assetId === asset.id)) connections.push(`Background · ${environment.name}`);
     }
+    for (const prop of project.props ?? []) {
+        if ((prop.designAssetIds ?? []).includes(asset.id)) connections.push(`Design · ${prop.name}`);
+    }
     for (const shot of shotPlan?.shots ?? []) {
         for (const use of shot.referenceUses ?? []) {
             if (use.assetId !== asset.id) continue;
@@ -91,6 +94,7 @@ export function referenceDirectorModel(project = {}, shotPlan = {}, generationId
         generation,
         assets,
         subjects: project.subjects ?? [],
+        props: project.props ?? [],
         environments: project.environments ?? [],
         shots,
         assigned: assets.filter((asset) => asset.binding).length,

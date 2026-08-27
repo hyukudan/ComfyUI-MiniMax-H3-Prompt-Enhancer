@@ -80,6 +80,56 @@ def test_v3_compiles_subject_voice_environment_and_shot_audio_from_one_source():
     assert compiled["digest"]
 
 
+def test_v3_empty_scenario_view_selection_activates_its_declared_picture():
+    """Regression: Studio stores an assigned Scenario with viewIds: []."""
+    project = _project()
+    project["shots"][0]["environment"] = {"environmentId": "cliff", "viewIds": []}
+
+    compiled = compile_studio_project(project)
+    planning = compile_planning_context(
+        compiled["mediaProject"], compiled["shotPlan"], 5, mode="ref2va",
+    )
+
+    assert compiled["inputMap"]["cliff.view"] == "<Picture 2>"
+    assert planning["valid"] is True
+    assert not any(
+        item.get("code") == "reference.binding.inactive"
+        for item in planning["diagnosticReport"]["diagnostics"]
+    )
+    assert "Cliff" in compiled["referenceContext"]
+    assert 'ENVIRONMENT CONTRACT JSON: {"name": "Cliff", "shotNumbers": [1]' in compiled["referenceContext"]
+    assert '"label": "<Picture 2>"' in compiled["referenceContext"]
+
+
+def test_v3_shot_look_selection_auto_binds_its_picture_and_reaches_planning():
+    project = _project()
+    project["files"].append({
+        "id": "ana.rain", "type": "picture", "name": "Ana rain look",
+        "source": _source("ana-rain.webp", "picture"),
+    })
+    project["subjects"][0].update({
+        "baseAppearanceStateId": "base",
+        "appearanceStates": [
+            {"id": "base", "name": "Base", "controls": [], "attributes": {}},
+            {
+                "id": "rain", "name": "Rain", "extends": "base", "controls": ["wardrobe"],
+                "attributes": {"wardrobe": "yellow raincoat"},
+                "source": {"mode": "asset", "assetId": "ana.rain"},
+            },
+        ],
+    })
+    project["shots"][0]["cast"][0]["appearanceStateId"] = "rain"
+
+    compiled = compile_studio_project(project)
+    planning = compile_planning_context(compiled["mediaProject"], compiled["shotPlan"], 5, mode="ref2va")
+
+    assert compiled["inputMap"]["ana.rain"] == "<Picture 2>"
+    assert compiled["shotPlan"]["shots"][0]["subjects"][0]["appearanceStateId"] == "rain"
+    assert planning["valid"], planning["diagnosticReport"]
+    assert planning["shots"][0]["stateBefore"]["subjects"]["ana"] == "rain"
+    assert "yellow raincoat" in planning["generations"]["g1"]["context"]
+
+
 def test_v3_compilation_is_deterministic_for_json_and_object_inputs():
     project = _project()
     first = compile_studio_project(project)

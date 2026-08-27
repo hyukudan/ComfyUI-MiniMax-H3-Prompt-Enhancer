@@ -46,7 +46,7 @@ def test_v2_normalizes_camera_end_as_delta_and_renders_temporal_phases():
 def test_v2_accepts_full_structured_allocation_and_transitions():
     plan = parse_shot_plan(_plan(_shot(
         subjectPresenceComplete=True,
-        subjects=[{"subjectId": "ana", "presence": "present", "blocking": "At the railing."}],
+        subjects=[{"subjectId": "ana", "presence": "present", "appearanceStateId": "base", "blocking": "At the railing."}],
         environment={"environmentId": "bridge", "viewIds": ["railing"]},
         referenceUses=[{
             "assetId": "camera.reference", "role": "camera_transfer",
@@ -64,6 +64,7 @@ def test_v2_accepts_full_structured_allocation_and_transitions():
 
     shot = plan["shots"][0]
     assert shot["subjects"][0]["subjectId"] == "ana"
+    assert shot["subjects"][0]["appearanceStateId"] == "base"
     assert shot["environment"]["viewIds"] == ["railing"]
     assert shot["appearanceTransitions"][0]["toStateId"] == "wounded"
 

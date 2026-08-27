@@ -104,6 +104,22 @@ test("an unused library subject warns that it will not reach the LLM", () => {
     assert.ok(result.items.some(({ message }) => message.includes("Juan") && message.includes("will not reach the LLM")));
 });
 
+test("Props preflight distinguishes unused library designs from broken Shot designs", () => {
+    const result = localPreflight({
+        shotDocument: documentState({ shots: [{ id: "s1", generationId: "g1", action: "<Subject 1> enters <Subject 2>.", props: [{ propId: "car-y", presence: "present" }] }] }),
+        projectDocument: documentState({
+            subjects: [],
+            props: [
+                { id: "car-y", h3Index: 2, name: "Car Y", designAssetIds: [] },
+                { id: "phone", h3Index: 3, name: "Phone", description: "Black phone", designAssetIds: [] },
+            ],
+            assets: [], generations: [{ id: "g1", activation: { mode: "auto" }, bindings: [] }],
+        }),
+    });
+    assert.ok(result.items.some(({ severity, section, message }) => severity === "error" && section === "props" && message.includes("Car Y")));
+    assert.ok(result.items.some(({ severity, section, message }) => severity === "warning" && section === "props" && message.includes("Phone")));
+});
+
 test("one cast-only Shot inherits the Basic prompt while multiple blank Shots stay blocked", () => {
     const projectDocument = documentState({
         subjects: [{ id: "juan", name: "Juan", description: "An older man in a rain coat." }],

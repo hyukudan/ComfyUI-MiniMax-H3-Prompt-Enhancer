@@ -85,6 +85,22 @@ def test_manifest_v2_never_compiles_the_old_identity_instruction_as_prompt_conte
     )
 
 
+def test_subject_picture_can_be_the_complete_identity_authority_without_placeholder_text():
+    project = _project()
+    project["subjects"][0]["description"] = ""
+    parsed = parse_media_project(project)
+    assert parsed["valid"] is True
+
+
+def test_subject_without_picture_still_requires_a_stable_description():
+    project = _project()
+    project["subjects"][0]["description"] = ""
+    project["subjects"][0]["identityAssetIds"] = []
+    parsed = parse_media_project(project)
+    assert parsed["valid"] is False
+    assert any("description or at least one identity Picture" in item["message"] for item in parsed["diagnostics"])
+
+
 def test_manifest_v2_detects_state_cycles_and_unknown_bases():
     project = _project()
     states = project["subjects"][0]["appearanceStates"]

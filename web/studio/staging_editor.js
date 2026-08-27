@@ -1,5 +1,6 @@
 import { actionButton, element, field, selectInput } from "./domain_components.js";
 import { projectCameraPoint, unprojectCameraPoint } from "./spatial_camera_editor.js";
+import { sourcePreviewUrl } from "./reference_sources.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const FACING = [
@@ -40,7 +41,7 @@ export function stagingPreview(staging = [], subjects = []) {
     }).join(" ");
 }
 
-function renderStage(stage, staging, subjects, phase, view, selectedId, selectSubject, commit, rerender) {
+function renderStage(stage, staging, subjects, phase, view, selectedId, selectSubject, commit, rerender, sources = {}) {
     const svg = svgNode("svg", { viewBox: "0 0 360 260", role: "img", "aria-label": `${phase} subject staging, ${view} view` });
     svg.append(
         svgNode("rect", { x: 28, y: 22, width: 304, height: 216, rx: 16, class: "minimax-h3-stage-floor" }),
@@ -61,9 +62,21 @@ function renderStage(stage, staging, subjects, phase, view, selectedId, selectSu
         }
         const projected = projectCameraPoint(point, view);
         const group = svgNode("g", { class: `minimax-h3-stage-subject${selectedId === item.subjectId ? " is-selected" : ""}`, tabindex: "0", role: "button", "aria-label": `${subjectMap.get(item.subjectId)?.name || item.subjectId}, ${phase} position` });
+        const subject = subjectMap.get(item.subjectId);
+        const identityAssetId = subject?.identityAssetIds?.[0];
+        const previewUrl = sourcePreviewUrl(sources[identityAssetId]);
         const circle = svgNode("circle", { cx: projected.x, cy: projected.y, r: 22 });
-        const label = svgNode("text", { x: projected.x, y: projected.y + 5, "text-anchor": "middle" }, (subjectMap.get(item.subjectId)?.name || item.subjectId).slice(0, 12));
-        group.append(circle, label);
+        const portrait = previewUrl ? svgNode("image", {
+            href: previewUrl, x: projected.x - 20, y: projected.y - 20, width: 40, height: 40,
+            preserveAspectRatio: "xMidYMid slice", class: "minimax-h3-stage-portrait",
+        }) : null;
+        const label = svgNode("text", {
+            x: projected.x, y: projected.y + (portrait ? 34 : 5), "text-anchor": "middle",
+            class: portrait ? "minimax-h3-stage-subject-name" : "",
+        }, (subject?.name || item.subjectId).slice(0, 12));
+        group.append(circle);
+        if (portrait) group.appendChild(portrait);
+        group.appendChild(label);
         group.addEventListener("click", () => selectSubject(item.subjectId));
         group.addEventListener("keydown", (event) => {
             if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -78,7 +91,9 @@ function renderStage(stage, staging, subjects, phase, view, selectedId, selectSu
             const move = (moveEvent) => {
                 const screen = { x: (moveEvent.clientX - rect.left) * 360 / rect.width, y: (moveEvent.clientY - rect.top) * 260 / rect.height };
                 Object.assign(point, unprojectCameraPoint(screen, point, view));
-                const next = projectCameraPoint(point, view); circle.setAttribute("cx", next.x); circle.setAttribute("cy", next.y); label.setAttribute("x", next.x); label.setAttribute("y", next.y + 5);
+                const next = projectCameraPoint(point, view); circle.setAttribute("cx", next.x); circle.setAttribute("cy", next.y);
+                if (portrait) { portrait.setAttribute("x", next.x - 20); portrait.setAttribute("y", next.y - 20); }
+                label.setAttribute("x", next.x); label.setAttribute("y", next.y + (portrait ? 34 : 5));
             };
             const up = () => { globalThis.removeEventListener?.("pointermove", move); globalThis.removeEventListener?.("pointerup", up); commit(); rerender(); };
             globalThis.addEventListener?.("pointermove", move); globalThis.addEventListener?.("pointerup", up, { once: true });
@@ -88,7 +103,7 @@ function renderStage(stage, staging, subjects, phase, view, selectedId, selectSu
     stage.appendChild(svg);
 }
 
-export function renderStagingEditor(container, shot, project, commit, rerender, state = {}) {
+export function renderStagingEditor(container, shot, project, commit, rerender, state = {}, sources = {}) {
     shot.staging ??= [];
     const staging = shot.staging;
     const declared = new Set((shot.subjects ?? []).filter((item) => item.presence !== "absent").map((item) => item.subjectId));
@@ -112,7 +127,7 @@ export function renderStagingEditor(container, shot, project, commit, rerender, 
     container.appendChild(toolbar);
 
     const stage = element("div", "minimax-h3-staging-stage");
-    renderStage(stage, staging, subjects, state.stagingPhase, state.stagingView, state.stagingSubjectId, (id) => { state.stagingSubjectId = id; rerender(); }, commit, rerender);
+    renderStage(stage, staging, subjects, state.stagingPhase, state.stagingView, state.stagingSubjectId, (id) => { state.stagingSubjectId = id; rerender(); }, commit, rerender, sources);
     container.appendChild(stage);
 
     if (selected) {

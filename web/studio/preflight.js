@@ -96,6 +96,7 @@ export function localPreflight({ shotDocument, projectDocument, basicPrompt = ""
     const generations = new Map((project?.generations ?? []).map((generation) => [generation.id, generation]));
     const assets = new Map((project?.assets ?? []).map((asset) => [asset.id, asset]));
     const subjects = project?.subjects ?? [];
+    const props = project?.props ?? [];
 
     for (const subject of subjects) {
         if (!nonEmpty(subject?.description) || subject.description === "Describe the stable identity.") {
@@ -115,6 +116,22 @@ export function localPreflight({ shotDocument, projectDocument, basicPrompt = ""
         }
     }
 
+    for (const prop of props) {
+        const usedShots = shots.filter((shot) => (shot.props ?? []).some((entry) => entry.propId === prop.id && entry.presence !== "absent"));
+        if (!usedShots.length) {
+            items.push(issue("warning", "props", `${prop.name || prop.id} is saved in Props but is not used by any Shot, so it will not reach the LLM.`, prop.id));
+            continue;
+        }
+        if (!nonEmpty(prop.description) && !(prop.designAssetIds ?? []).length) {
+            items.push(issue("error", "props", `Describe ${prop.name || prop.id}'s stable design or attach a design picture before generating.`, prop.id));
+        }
+        for (const assetId of prop.designAssetIds ?? []) {
+            const asset = assets.get(assetId);
+            if (!asset) items.push(issue("error", "props", `${prop.name || prop.id} uses a design picture that no longer exists.`, prop.id));
+            else if (asset.type !== "picture" && asset.type !== "image") items.push(issue("error", "props", `${prop.name || prop.id}'s design reference must be an image.`, prop.id));
+        }
+    }
+
     for (const shot of shots) {
         const label = shot?.id || "Shot";
         if (!nonEmpty(shot?.action)) {
@@ -126,6 +143,9 @@ export function localPreflight({ shotDocument, projectDocument, basicPrompt = ""
         }
         if (project && !generations.has(shot?.generationId)) {
             items.push(issue("error", "shots", `Choose an existing generation for ${label}.`, label));
+        }
+        for (const propUse of shot?.props ?? []) {
+            if (!props.some((prop) => prop.id === propUse.propId)) items.push(issue("error", "props", `${label} uses a Prop that no longer exists.`, label));
         }
         if (shot?.subjectPresenceComplete && subjects.some((subject) => !(shot.subjects ?? []).some((entry) => entry.subjectId === subject.id))) {
             items.push(issue("warning", "shots", "Full presence is enabled, but at least one subject has no presence state.", label));

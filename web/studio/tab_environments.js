@@ -1,10 +1,13 @@
 import {
     actionButton, bindCommit, captureOpenDisclosures, createMasterDetail, element, emptyState, field, inspectorSection,
-    masterRow, restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
+    restoreOpenDisclosures, selectInput, setOptional, textArea, textInput, tokenList,
 } from "./domain_components.js";
 import { usageIndex } from "./derive.js";
-import { importEntityAsset, visualAssetPicker } from "./entity_media.js";
+import { assetChooserPanel, assignedAssetGallery, importEntityAsset } from "./entity_media.js";
+import { assetUsage } from "./media_model.js";
 import { commitProject, projectForController, readOnlyProjectMessage, uniqueId } from "./project_editor.js";
+import { referenceSourceForAsset, sourcePreviewUrl } from "./reference_sources.js";
+import { ensureEnvironmentViewBindings } from "./environment_model.js";
 
 const VIEW_ROLES = [["overview", "Overview"], ["alternate", "Alternate"], ["detail", "Detail"], ["lighting", "Lighting"], ["custom", "Custom"]];
 const TEMPORARY_FIELDS = [
@@ -22,19 +25,62 @@ export function createEnvironmentDraft(project, name = "New environment") {
 
 function renderView(container, environment, view, project, uses, commit, rerender, controller) {
     const section = inspectorSection(view.name || view.id, view.role || "View", false);
-    section.body.appendChild(element("p", "minimax-h3-field-hint", `Stable ID: ${view.id}`));
+    section.body.appendChild(element("p", "minimax-h3-field-hint", "A reusable visual angle of this Place."));
     const name = textInput(view.name); bindCommit(name, (value) => { view.name = value.trim() || view.id; }, commit);
     name.addEventListener("change", rerender);
     const role = selectInput(view.role, VIEW_ROLES); bindCommit(role, (value) => { view.role = value; }, commit);
     const pictures = (project.assets ?? []).filter((asset) => asset.type === "picture");
-    const asset = visualAssetPicker({
-        assets: pictures, controller, selectedIds: view.assetId ? [view.assetId] : [], multiple: false,
-        ariaLabel: `Picture for ${view.name || view.id}`,
-        onChange: (value) => { view.assetId = value; commit(); rerender(); },
+    const ui = controller.projectUiState;
+    const pictureHeading = element("div", "minimax-h3-entity-media-heading");
+    const pictureActions = element("div", "minimax-h3-entity-media-actions");
+    const pictureInput = document.createElement("input");
+    pictureInput.type = "file"; pictureInput.accept = "image/*"; pictureInput.hidden = true;
+    const importPicture = actionButton("+ Upload picture", () => pictureInput.click(), { disabled: typeof controller.uploadReferenceFile !== "function" });
+    const choosePicture = actionButton("Choose from Files", () => {
+        ui.environmentAssetChooser = { target: "view", environmentId: environment.id, viewId: view.id };
+        rerender();
     });
+    pictureInput.addEventListener("change", async () => {
+        const file = pictureInput.files?.[0];
+        if (!file) return;
+        importPicture.disabled = true; importPicture.textContent = "Importing…";
+        const result = await importEntityAsset(controller, project, file, "picture", (nextProject, assetId) => {
+            const nextEnvironment = nextProject.environments.find((item) => item.id === environment.id);
+            nextEnvironment.views.find((item) => item.id === view.id).assetId = assetId;
+            ensureEnvironmentViewBindings(nextProject, controller.shotDocument?.()?.value ?? {}, environment.id);
+        });
+        ui.environmentImportFeedback = result.message; ui.environmentImportValid = result.ok;
+        delete ui.environmentAssetChooser;
+        rerender();
+    });
+    pictureActions.append(importPicture, choosePicture, pictureInput);
+    pictureHeading.append(element("strong", "", "View picture"), pictureActions);
     const description = textArea(view.description, "What this view establishes");
     bindCommit(description, (value) => setOptional(view, "description", value.trim()), commit, "blur");
-    section.body.append(field("View name", name), field("Role", role), field("Picture", asset), field("Description", description));
+    section.body.append(
+        field("View name", name), field("Role", role), pictureHeading,
+        assignedAssetGallery({
+            assets: pictures, controller, selectedIds: view.assetId ? [view.assetId] : [],
+            ariaLabel: `Picture connected to ${view.name || view.id}`,
+            emptyMessage: "This environment view has no picture yet.",
+            onUnlink: () => { view.assetId = ""; commit(); rerender(); },
+        }),
+    );
+    const chooser = ui.environmentAssetChooser;
+    if (chooser?.target === "view" && chooser.environmentId === environment.id && chooser.viewId === view.id) {
+        section.body.appendChild(assetChooserPanel({
+            assets: pictures, controller, selectedIds: view.assetId ? [view.assetId] : [],
+            ariaLabel: `Choose a picture for ${view.name || view.id}`,
+            usageForAsset: (assetId) => assetUsage(project, assetId),
+            onChoose: (assetId) => {
+                view.assetId = assetId;
+                ensureEnvironmentViewBindings(project, controller.shotDocument?.()?.value ?? {}, environment.id);
+                delete ui.environmentAssetChooser; commit(); rerender();
+            },
+            onClose: () => { delete ui.environmentAssetChooser; rerender(); },
+        }));
+    }
+    section.body.appendChild(field("Description", description));
     const viewUses = uses.environmentViews.get(`${environment.id}:${view.id}`) ?? [];
     section.body.appendChild(actionButton("Delete view", () => {
         environment.views.splice(environment.views.indexOf(view), 1); commit(); rerender();
@@ -46,7 +92,7 @@ function renderView(container, environment, view, project, uses, commit, rerende
 function renderState(container, environment, environmentState, uses, commit, rerender) {
     const isDefault = environmentState.id === environment.defaultStateId;
     const section = inspectorSection(environmentState.name || environmentState.id, isDefault ? "Default" : "Temporary state", isDefault);
-    section.body.appendChild(element("p", "minimax-h3-field-hint", `Stable ID: ${environmentState.id}. Temporary states do not redefine permanent geometry.`));
+    section.body.appendChild(element("p", "minimax-h3-field-hint", "Temporary states do not redefine permanent geography or architecture."));
     const name = textInput(environmentState.name); bindCommit(name, (value) => { environmentState.name = value.trim() || environmentState.id; }, commit);
     name.addEventListener("change", rerender);
     const extendsState = selectInput(environmentState.extends ?? "", [
@@ -112,16 +158,22 @@ export function renderEnvironmentsTab(container, controller) {
     const { grid, master, inspector } = createMasterDetail();
     for (const environment of project.environments) {
         const environmentUses = uses.environments.get(environment.id) ?? [];
-        master.appendChild(masterRow(
-            environment.name || environment.id,
-            `${environment.views?.length ?? 0} views · ${environment.states?.length ?? 0} states · ${environmentUses.length} uses`,
-            environment.id === ui.environmentSelectedId,
-            () => { ui.environmentSelectedId = environment.id; rerender(); },
-        ));
+        const row = element("button", "minimax-h3-master-row minimax-h3-subject-master-row");
+        row.type = "button"; row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(environment.id === ui.environmentSelectedId));
+        row.addEventListener("click", () => { ui.environmentSelectedId = environment.id; rerender(); });
+        const view = (environment.views ?? [])[0];
+        const asset = project.assets?.find((item) => item.id === view?.assetId);
+        const url = sourcePreviewUrl(asset ? referenceSourceForAsset(controller.referenceDirectorDocument?.()?.value, asset.id) : null);
+        const avatar = element("span", "minimax-h3-subject-master-avatar");
+        if (url) { const image = element("img"); image.src = url; image.alt = ""; image.loading = "lazy"; avatar.appendChild(image); }
+        else avatar.textContent = "⌂";
+        const copy = element("span", "minimax-h3-subject-master-copy");
+        copy.append(element("span", "", environment.name || environment.id), element("small", "", `${environment.views?.length ?? 0} views · ${environment.states?.length ?? 0} states · ${environmentUses.length} uses`));
+        row.append(avatar, copy); master.appendChild(row);
     }
     const environment = project.environments.find((item) => item.id === ui.environmentSelectedId);
     const permanent = inspectorSection("Permanent", environment.name || environment.id, true);
-    permanent.body.appendChild(element("p", "minimax-h3-field-hint", `Stable ID: ${environment.id}. These details remain fixed across every temporary state.`));
+    permanent.body.appendChild(element("p", "minimax-h3-field-hint", "These details remain fixed across every temporary state."));
     const name = textInput(environment.name); bindCommit(name, (value) => { environment.name = value.trim() || environment.id; }, commit);
     name.addEventListener("change", rerender);
     permanent.body.appendChild(field("Name", name));
@@ -156,6 +208,7 @@ export function renderEnvironmentsTab(container, controller) {
             const nextEnvironment = nextProject.environments.find((item) => item.id === environment.id);
             const id = uniqueId(nextEnvironment.views ??= [], "view.");
             nextEnvironment.views.push({ id, name: String(file.name).replace(/\.[^.]+$/, "") || "New view", role: "overview", assetId });
+            ensureEnvironmentViewBindings(nextProject, controller.shotDocument?.()?.value ?? {}, environment.id);
         });
         ui.environmentImportFeedback = result.message; ui.environmentImportValid = result.ok;
         if (result.ok) ui.environmentSelectedId = environment.id;

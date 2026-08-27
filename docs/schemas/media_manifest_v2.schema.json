@@ -10,6 +10,7 @@
     "mode": {"enum": ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va", "chained_multishot"]},
     "assets": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/asset"}},
     "subjects": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/subject"}},
+    "props": {"type": "array", "maxItems": 64, "default": [], "items": {"$ref": "#/$defs/prop"}},
     "environments": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/environment"}},
     "generations": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/generation"}}
   },
@@ -19,7 +20,7 @@
     "shortText": {"type": "string", "minLength": 1, "maxLength": 500},
     "resourceRef": {
       "type": "object", "additionalProperties": false, "required": ["kind", "id"],
-      "properties": {"kind": {"enum": ["asset", "subject", "environment"]}, "id": {"$ref": "#/$defs/id"}}
+      "properties": {"kind": {"enum": ["asset", "subject", "prop", "environment"]}, "id": {"$ref": "#/$defs/id"}}
     },
     "cameraTransfer": {
       "type": "object", "additionalProperties": false, "required": ["enabled", "role", "aspects"],
@@ -78,9 +79,23 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "h3Index", "name", "description", "identityAssetIds", "baseAppearanceStateId", "appearanceStates"],
       "properties": {
-        "id": {"$ref": "#/$defs/id"}, "h3Index": {"type": "integer", "minimum": 1, "maximum": 64}, "name": {"$ref": "#/$defs/shortText"}, "description": {"$ref": "#/$defs/text"},
+        "id": {"$ref": "#/$defs/id"}, "h3Index": {"type": "integer", "minimum": 1, "maximum": 64}, "name": {"$ref": "#/$defs/shortText"}, "description": {"type": "string", "maxLength": 8000},
         "identityAssetIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}, "defaultVoiceAssetId": {"$ref": "#/$defs/id"}, "baseAppearanceStateId": {"$ref": "#/$defs/id"},
         "appearanceStates": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/appearanceState"}}
+      },
+      "anyOf": [
+        {"properties": {"description": {"minLength": 1}}},
+        {"properties": {"identityAssetIds": {"minItems": 1}}}
+      ]
+    },
+    "prop": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "h3Index", "name", "designAssetIds"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "h3Index": {"type": "integer", "minimum": 1, "maximum": 64},
+        "name": {"$ref": "#/$defs/shortText"}, "category": {"$ref": "#/$defs/shortText"},
+        "description": {"$ref": "#/$defs/text"},
+        "designAssetIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
       }
     },
     "environmentView": {

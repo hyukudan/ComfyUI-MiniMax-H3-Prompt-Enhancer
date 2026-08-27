@@ -45,11 +45,11 @@ function contrastRatio(first, second) {
 }
 
 test("drawer widths follow 1440p, 4K, desktop and mobile bounds", () => {
-    assert.equal(defaultDrawerWidth(2560, 1440), 820);
-    assert.equal(defaultDrawerWidth(3840, 2160), 920);
-    assert.equal(clampDrawerWidth(null, 1440), 720);
+    assert.equal(defaultDrawerWidth(2560, 1440), 1100);
+    assert.equal(defaultDrawerWidth(3840, 2160), 1400);
+    assert.equal(clampDrawerWidth(null, 1440), 1100);
     assert.equal(clampDrawerWidth(300, 1440), 420);
-    assert.equal(clampDrawerWidth(1200, 1440), 864);
+    assert.equal(clampDrawerWidth(1200, 1440), 1100);
     assert.equal(clampDrawerWidth(1500, 3840), 1100);
     assert.equal(clampDrawerWidth(640, 680), 680);
 });
@@ -92,15 +92,15 @@ test("persisting navigation before the first resize keeps the responsive default
     const storage = memoryStorage();
     writeStudioPrefs({ ...readStudioPrefs(storage), lastSection: "shots" }, storage);
     assert.equal(readStudioPrefs(storage).width, null);
-    assert.equal(clampDrawerWidth(readStudioPrefs(storage).width, 3840), 920);
+    assert.equal(clampDrawerWidth(readStudioPrefs(storage).width, 3840), 1100);
 });
 
-test("v3 preferences migrate the former combined Camera & Look destination to Look", () => {
+test("v3 preferences migrate narrow drawers into the wide visual workspace", () => {
     const storage = memoryStorage({
-        [STUDIO_UI_LEGACY_STORAGE_KEY]: JSON.stringify({ width: 810, lastSection: "camera", detailMode: "advanced" }),
+        [STUDIO_UI_LEGACY_STORAGE_KEY]: JSON.stringify({ width: 720, lastSection: "camera", detailMode: "advanced" }),
     });
     assert.deepEqual(readStudioPrefs(storage), {
-        width: 810,
+        width: null,
         lastSection: "look",
         railCollapsed: false,
         detailMode: "advanced",
@@ -296,11 +296,11 @@ test("Review budget and dismissal controls stay responsive without horizontal ov
     assert.match(stylesSource, /\.minimax-h3-review-card header\s*\{[^}]*minmax\(0, 1fr\)/s);
 });
 
-test("Shots keeps a distinct 16px inter-card rhythm at the 820px drawer default", () => {
+test("Shots keeps a distinct 16px inter-card rhythm at the wide Studio default", () => {
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     const shotsSource = readFileSync(new URL("../tab_shots.js", import.meta.url), "utf8");
     const tokensSource = readFileSync(new URL("../tokens.js", import.meta.url), "utf8");
-    assert.equal(defaultDrawerWidth(2560, 1440), 820);
+    assert.equal(defaultDrawerWidth(2560, 1440), 1100);
     assert.match(shotsSource, /minimax-h3-shot-inspector/);
     assert.match(stylesSource, /\.minimax-h3-section-shots \.minimax-h3-shot-inspector\s*\{[^}]*row-gap:\s*var\(--h3-space-4\)/s);
     assert.match(tokensSource, /--h3-space-4:\s*16px/);
@@ -393,8 +393,9 @@ test("Visual Compose follows setup, narrative, references and direction order", 
     assert.ok(board.indexOf("const lanes") < board.indexOf("const direction"));
     assert.match(directorSource, /el\("details", "minimax-h3-director-llm-handoff"\)/);
     assert.match(stylesSource, /\.minimax-h3-director-compose-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
-    assert.match(stylesSource, /\.minimax-h3-director-inspector\s*\{[^}]*grid-template-columns:\s*minmax\(150px,[^}]*minmax\(210px/s);
-    assert.match(board, /layout\.prepend\(inspector\)/);
+    assert.doesNotMatch(board, /SHOT CONTEXT/);
+    assert.match(board, /Shot setup/);
+    assert.match(board, /stage\.appendChild\(composeLlmHandoffPanel/);
     assert.match(stylesSource, /\.minimax-h3-director-direction-cards/);
 });
 

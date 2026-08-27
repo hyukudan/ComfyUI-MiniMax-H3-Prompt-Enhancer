@@ -95,16 +95,16 @@ export function defaultDrawerWidth(
     viewportWidth = globalThis.innerWidth ?? 2560,
     viewportHeight = globalThis.innerHeight ?? Math.round(viewportWidth * 9 / 16),
 ) {
-    if (viewportWidth >= 3200 || viewportHeight >= 1800) return 920;
-    if (viewportWidth >= 2200) return 820;
-    return 720;
+    if (viewportWidth < 700) return viewportWidth;
+    if (viewportWidth >= 3200 || viewportHeight >= 1800) return Math.min(1400, viewportWidth * .82);
+    return Math.min(1100, Math.round(viewportWidth * .86));
 }
 
 export function drawerWidthBounds(viewportWidth = globalThis.innerWidth ?? 1440) {
     if (viewportWidth < 700) return { minimum: viewportWidth, maximum: viewportWidth };
     return {
         minimum: STUDIO_MIN_WIDTH,
-        maximum: Math.max(STUDIO_MIN_WIDTH, Math.min(STUDIO_MAX_WIDTH, viewportWidth * 0.6)),
+        maximum: Math.max(STUDIO_MIN_WIDTH, Math.min(STUDIO_MAX_WIDTH, viewportWidth * 0.92)),
     };
 }
 
@@ -157,6 +157,7 @@ export function readStudioPrefs(storage = undefined) {
         if (current !== null) return normalizeStudioPrefs(JSON.parse(current));
         const legacy = JSON.parse(target.getItem(STUDIO_UI_LEGACY_STORAGE_KEY) ?? "{}");
         if (legacy?.lastSection === "camera") legacy.lastSection = "look";
+        if (Number(legacy?.width) <= 720) legacy.width = null;
         return normalizeStudioPrefs(legacy);
     } catch {
         return { ...DEFAULT_PREFS };
@@ -498,8 +499,8 @@ export function openStudioDrawer(node, controller, initialTab = null, returnFocu
             }
             heading.append(copy, generation); output.appendChild(heading);
             const actions = createPanelElement("div", "minimax-h3-studio-toolbar");
-            const compile = createPanelElement("button", "minimax-h3-button minimax-h3-button-secondary", "Compile outputs");
-            const queue = createPanelElement("button", "minimax-h3-button minimax-h3-button-primary", "Generate this node");
+            const compile = createPanelElement("button", "minimax-h3-button minimax-h3-button-secondary", "Show H3 mapping");
+            const queue = createPanelElement("button", "minimax-h3-button minimax-h3-button-secondary", "Generate prompt only");
             const status = createPanelElement("p", "minimax-h3-studio-status", "Not compiled yet");
             const mapping = createPanelElement("div", "minimax-h3-reference-output-list");
             const showCompilation = async () => {

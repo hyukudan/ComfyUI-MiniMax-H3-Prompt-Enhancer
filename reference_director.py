@@ -244,6 +244,7 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         raise ValueError(f"Unknown reference generation {generation_id!r}.")
     selected = generation_id if generation_id in generations else next(iter(generations), "")
     subjects = {item.get("id"): item for item in media.get("subjects", [])}
+    props = {item.get("id"): item for item in media.get("props", [])}
     environments = {item.get("id"): item for item in media.get("environments", [])}
     assets = {item.get("id"): item for item in media.get("assets", [])}
     uses: dict[str, list[dict[str, Any]]] = {}
@@ -269,6 +270,12 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         for cast in (shot.get("cast") or shot.get("subjects") or [])
         if cast.get("subjectId") and cast.get("presence", "present") != "absent"
     }
+    used_prop_ids = {
+        str(prop_use.get("propId"))
+        for shot in selected_shots
+        for prop_use in shot.get("props", [])
+        if prop_use.get("propId") and prop_use.get("presence", "present") != "absent"
+    }
     subject_contracts = []
     state_ready = (
         media.get("schemaVersion") == 2
@@ -293,12 +300,32 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         }
         subject_contracts.append({
             "label": f"<Subject {int(subject.get('h3Index') or index)}>",
+            "family": "character",
             "name": str(subject.get("name") or subject.get("id") or f"Subject {index}"),
-            "description": str(subject.get("description") or "Unspecified stable identity."),
+            "description": str(subject.get("description") or "").strip(),
             "identitySources": identity_sources,
             "voiceSource": voice_source,
             "appearanceState": appearance,
         })
+    for index, prop in enumerate(media.get("props", []), start=len(media.get("subjects", [])) + 1):
+        if prop.get("id") not in used_prop_ids:
+            continue
+        design_sources = [
+            input_by_asset[asset_id].get("label")
+            for asset_id in prop.get("designAssetIds", [])
+            if asset_id in input_by_asset and input_by_asset[asset_id].get("label")
+        ]
+        subject_contracts.append({
+            "label": f"<Subject {int(prop.get('h3Index') or index)}>",
+            "family": "design",
+            "name": str(prop.get("name") or prop.get("id") or f"Prop {index}"),
+            "category": str(prop.get("category") or "prop"),
+            "description": str(prop.get("description") or "Reusable physical design."),
+            "identitySources": design_sources,
+            "voiceSource": None,
+            "appearanceState": {},
+        })
+    subject_contracts.sort(key=lambda item: int(re.search(r"\d+", item["label"]).group()))
     if subject_contracts:
         lines.append(
             "REQUIRED SUBJECT CONTRACTS (machine-derived; every row must appear in subject_definitions and every "
@@ -307,6 +334,37 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
         lines.extend(
             "- SUBJECT CONTRACT JSON: " + json.dumps(contract, ensure_ascii=False, sort_keys=True)
             for contract in subject_contracts
+        )
+    environment_contracts = []
+    for environment in media.get("environments", []):
+        shot_numbers = [
+            index
+            for index, shot in enumerate(selected_shots, start=1)
+            if (shot.get("environment") or {}).get("environmentId") == environment.get("id")
+        ]
+        view_sources = [
+            {
+                "label": input_by_asset[view["assetId"]]["label"],
+                "name": str(view.get("name") or view.get("id") or "View"),
+                "role": str(view.get("role") or "reference"),
+            }
+            for view in environment.get("views", [])
+            if view.get("assetId") in input_by_asset and input_by_asset[view["assetId"]].get("label")
+        ]
+        if shot_numbers and view_sources:
+            environment_contracts.append({
+                "name": str(environment.get("name") or environment.get("id") or "Scenario"),
+                "shotNumbers": shot_numbers,
+                "viewSources": view_sources,
+            })
+    if environment_contracts:
+        lines.append(
+            "REQUIRED ENVIRONMENT CONTRACTS (machine-derived; every Scenario view must be declared and reused "
+            "in its assigned detailed_description shot):"
+        )
+        lines.extend(
+            "- ENVIRONMENT CONTRACT JSON: " + json.dumps(contract, ensure_ascii=False, sort_keys=True)
+            for contract in environment_contracts
         )
     for item in generations.get(selected, []):
         label = item.get("label") or "<Reference>"
@@ -339,9 +397,11 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                     continue
                 emitted_roles.add(signature)
                 subject_names = [str(subjects[target].get("name") or target) for target in target_ids if target in subjects]
+                prop_names = [str(props[target].get("name") or target) for target in target_ids if target in props]
                 environment_names = [str(environments[target].get("name") or target) for target in target_ids if target in environments]
                 subject_name = ", ".join(subject_names) or "the assigned subject"
                 environment_name = ", ".join(environment_names) or "the assigned environment"
+                prop_name = ", ".join(prop_names) or "the assigned prop"
                 scope = f"in shot {shot_name}"
                 if semantic_role in {"identity_reinforcement", "subject_identity"}:
                     lines.append(f"- {label} supplies only the stable visual identity of {subject_name} {scope}. Preserve identity; do not copy its background, pose, lighting, camera or incidental text.")
@@ -362,6 +422,8 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                     lines.append(f"- {label} guides only the explicitly requested appearance edit for {subject_name} {scope}; preserve identity and all unrelated visible details.")
                 elif semantic_role == "lighting":
                     lines.append(f"- {label} supplies lighting guidance only {scope}; do not copy identity, objects, background geometry or camera composition from it.")
+                elif semantic_role in {"prop_design", "design"}:
+                    lines.append(f"- {label} supplies only the reusable physical design of {prop_name} {scope}. Preserve its named design; do not copy source people, background, camera, lighting, or incidental text.")
                 else:
                     lines.append(f"- {label} is a {semantic_role.replace('_', ' ')} reference {scope}. Use it only for that explicit role and assigned targets.")
             if not emitted_roles and not boundary_role:
@@ -370,6 +432,10 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                 implicit_environments = [
                     value for value in environments.values()
                     if any(view.get("assetId") == asset_id for view in value.get("views", []))
+                ]
+                implicit_props = [
+                    value for value in props.values()
+                    if asset_id in value.get("designAssetIds", [])
                 ]
                 if implicit_subjects and item.get("mediaType") == "picture":
                     names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_subjects)
@@ -380,6 +446,9 @@ def reference_context_for_project(reference_project: dict[str, Any], generation_
                 elif implicit_environments:
                     names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_environments)
                     lines.append(f"- {label} supplies the background/set for {names}. People and movable objects visible in it are not target subjects unless assigned separately.")
+                elif implicit_props and item.get("mediaType") == "picture":
+                    names = ", ".join(str(value.get("name") or value.get("id")) for value in implicit_props)
+                    lines.append(f"- {label} supplies only the reusable physical design of {names}. Preserve that design; do not copy source people, background, camera, lighting, or incidental text.")
                 elif not boundary_role:
                     lines.append(f"- {label} is a {str(role).replace('_', ' ')} reference. Use it only for that explicit role and assigned scope.")
     if len(lines) == 2:

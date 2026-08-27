@@ -168,6 +168,7 @@ export function normalizeShotPlanV2(value) {
         }
         Object.assign(shot, copyKnown(source, [
             "transitionIn", "cutContext", "subjectPresenceComplete", "subjects", "environment",
+            "props",
             "referenceUses", "cameraStart", "cameraEnd", "cameraPath", "appearanceTransitions",
             "environmentTransitions", "actionBeats",
             "scaleRelationships", "staging",
@@ -225,6 +226,9 @@ export function normalizeMediaProjectV2(value) {
     for (const key of ["assets", "subjects", "environments", "generations"]) {
         if (Array.isArray(value?.[key])) project[key] = structuredClone(value[key]);
     }
+    // Props are an optional v2 extension. Omit the field for legacy-compatible
+    // projects until the user actually creates one.
+    if (Array.isArray(value?.props) && value.props.length) project.props = structuredClone(value.props);
     if (!project.generations.length) project.generations = emptyMediaProjectV2().generations;
     return project;
 }

@@ -213,10 +213,11 @@ def _required_fields(value: dict[str, Any], required: set[str], field: str, issu
         issues.append(_project_issue("schema.media_manifest.missing_field", f"Missing required field {key!r} at {field}", f"{field}.{key}"))
 
 
-def _text_field(value: Any, field: str, issues: list[dict[str, Any]], maximum: int, *, required: bool = False) -> None:
+def _text_field(value: Any, field: str, issues: list[dict[str, Any]], maximum: int, *,
+                required: bool = False, allow_empty: bool = False) -> None:
     if value is None and not required:
         return
-    if not isinstance(value, str) or not value or len(value) > maximum:
+    if not isinstance(value, str) or (not value and not allow_empty) or len(value) > maximum:
         issues.append(_project_issue("schema.media_manifest.invalid_text", f"{field} must be a non-empty string of at most {maximum} characters", field))
 
 
@@ -233,7 +234,7 @@ def _check_text_values(value: Any, field: str, issues: list[dict[str, Any]]) -> 
 
 def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    root_fields = {"schemaVersion", "mode", "assets", "subjects", "environments", "generations"}
+    root_fields = {"schemaVersion", "mode", "assets", "subjects", "props", "environments", "generations"}
     _unknown_keys(project, root_fields, "media_manifest", issues)
     _required_fields(project, {"schemaVersion", "assets", "subjects", "environments", "generations"}, "media_manifest", issues)
     _check_text_values(project, "media_manifest", issues)
@@ -242,6 +243,8 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
         issues.append(_project_issue("schema.media_manifest.invalid_value", f"Unsupported mode {mode!r}", "media_manifest.mode"))
     arrays = (("assets", 128), ("subjects", 64), ("environments", 64), ("generations", 64))
     if not all(_require_array(project.get(name), f"media_manifest.{name}", issues, maximum) for name, maximum in arrays):
+        return issues
+    if "props" in project and not _require_array(project.get("props"), "media_manifest.props", issues, 64):
         return issues
     if not project["generations"]:
         issues.append(_project_issue("schema.media_manifest.limit", "media_manifest.generations requires at least one item", "media_manifest.generations"))
@@ -312,7 +315,7 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
         _unknown_keys(subject, subject_fields, field, issues)
         _required_fields(subject, required_subject_fields, field, issues)
         _text_field(subject.get("name"), f"{field}.name", issues, 500, required=True)
-        _text_field(subject.get("description"), f"{field}.description", issues, 8000, required=True)
+        _text_field(subject.get("description"), f"{field}.description", issues, 8000, required=True, allow_empty=True)
         if subject.get("description") == "Describe the stable identity.":
             issues.append(_project_issue(
                 "schema.media_manifest.invalid_value",
@@ -322,6 +325,12 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(subject.get("h3Index"), int) or isinstance(subject.get("h3Index"), bool) or not 1 <= subject.get("h3Index", 0) <= 64:
             issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.h3Index must be 1..64", f"{field}.h3Index"))
         if _require_array(subject.get("identityAssetIds"), f"{field}.identityAssetIds", issues):
+            if not str(subject.get("description") or "").strip() and not subject["identityAssetIds"]:
+                issues.append(_project_issue(
+                    "schema.media_manifest.missing_field",
+                    f"{field} requires either a stable description or at least one identity Picture",
+                    f"{field}.description",
+                ))
             if not _all_unique(subject["identityAssetIds"]):
                 issues.append(_project_issue("schema.media_manifest.duplicate", f"{field}.identityAssetIds must be unique", f"{field}.identityAssetIds"))
             if any(not _valid_id(asset_id) for asset_id in subject["identityAssetIds"]):
@@ -353,6 +362,24 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
                             issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid appearance source in {state_field}", f"{state_field}.source"))
                         if source.get("mode") == "asset" and not _valid_id(source.get("assetId")):
                             issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid appearance source asset ID in {state_field}", f"{state_field}.source.assetId"))
+
+    prop_fields = {"id", "h3Index", "name", "category", "description", "designAssetIds"}
+    for index, prop in enumerate(project.get("props", [])):
+        field = f"media_manifest.props.{index}"
+        if not _require_object(prop, field, issues):
+            continue
+        _unknown_keys(prop, prop_fields, field, issues)
+        _required_fields(prop, {"id", "h3Index", "name", "designAssetIds"}, field, issues)
+        _text_field(prop.get("name"), f"{field}.name", issues, 500, required=True)
+        _text_field(prop.get("category"), f"{field}.category", issues, 500)
+        _text_field(prop.get("description"), f"{field}.description", issues, 8000)
+        if not isinstance(prop.get("h3Index"), int) or isinstance(prop.get("h3Index"), bool) or not 1 <= prop.get("h3Index", 0) <= 64:
+            issues.append(_project_issue("schema.media_manifest.invalid_value", f"{field}.h3Index must be 1..64", f"{field}.h3Index"))
+        if _require_array(prop.get("designAssetIds"), f"{field}.designAssetIds", issues):
+            if not _all_unique(prop["designAssetIds"]):
+                issues.append(_project_issue("schema.media_manifest.duplicate", f"{field}.designAssetIds must be unique", f"{field}.designAssetIds"))
+            if any(not _valid_id(asset_id) for asset_id in prop["designAssetIds"]):
+                issues.append(_project_issue("schema.media_manifest.invalid_id", f"{field}.designAssetIds contains an invalid ID", f"{field}.designAssetIds"))
 
     environment_fields = {"id", "name", "permanent", "views", "defaultStateId", "states"}
     for index, environment in enumerate(project["environments"]):
@@ -417,7 +444,7 @@ def _validate_v2_shape(project: dict[str, Any]) -> list[dict[str, Any]]:
                             _required_fields(resource, {"kind", "id"}, ref_field, issues)
                             if not _valid_id(resource.get("id")):
                                 issues.append(_project_issue("schema.media_manifest.invalid_id", f"Invalid resource ID at {ref_field}", f"{ref_field}.id"))
-                            if resource.get("kind") not in {"asset", "subject", "environment"}:
+                            if resource.get("kind") not in {"asset", "subject", "prop", "environment"}:
                                 issues.append(_project_issue("schema.media_manifest.invalid_value", f"Invalid resource kind {resource.get('kind')!r}", f"{ref_field}.kind"))
         for list_name in ("bindings", "subjectStates", "environmentStates"):
             _require_array(generation.get(list_name), f"{field}.{list_name}", issues, 15 if list_name == "bindings" else None)
@@ -479,8 +506,8 @@ def _duplicate_id_issues(items: list[dict[str, Any]], namespace: str) -> list[di
 
 def _validate_v2_semantics(project: dict[str, Any]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    for namespace in ("assets", "subjects", "environments", "generations"):
-        issues.extend(_duplicate_id_issues(project[namespace], namespace))
+    for namespace in ("assets", "subjects", "props", "environments", "generations"):
+        issues.extend(_duplicate_id_issues(project.get(namespace, []), namespace))
     assets = {asset["id"]: asset for asset in project["assets"] if _valid_id(asset.get("id"))}
     h3_indices: set[int] = set()
     for subject in project["subjects"]:
@@ -506,6 +533,13 @@ def _validate_v2_semantics(project: dict[str, Any]) -> list[dict[str, Any]]:
                 asset = assets.get(source.get("assetId"))
                 if asset is None or asset["type"] not in {"picture", "video"}:
                     issues.append(_project_issue("reference.binding.type_mismatch", f"Appearance source {source.get('assetId')!r} must be a picture or video", f"subjects.{subject['id']}.appearanceStates.{state['id']}.source"))
+    for prop in project.get("props", []):
+        if prop["h3Index"] in h3_indices:
+            issues.append(_project_issue("schema.media_manifest.duplicate_h3_index", f"Duplicate h3Index {prop['h3Index']}", f"props.{prop['id']}.h3Index"))
+        h3_indices.add(prop["h3Index"])
+        for asset_id in prop["designAssetIds"]:
+            if not _valid_id(asset_id) or asset_id not in assets or assets[asset_id]["type"] != "picture":
+                issues.append(_project_issue("reference.binding.type_mismatch", f"Design asset {asset_id!r} for prop {prop['id']!r} must be a picture", f"props.{prop['id']}.designAssetIds"))
     for environment in project["environments"]:
         issues.extend(_duplicate_id_issues(environment["views"], f"environments.{environment['id']}.views"))
         issues.extend(_duplicate_id_issues(environment["states"], f"environments.{environment['id']}.states"))
@@ -696,11 +730,19 @@ def _legacy_projection_v2(compiled: dict[str, Any]) -> dict[str, Any]:
             "label": f"<Subject {subject['h3Index']}>",
             "description": subject["description"],
             "sources": [input_map[asset_id] for asset_id in subject["identityAssetIds"] if asset_id in input_map],
+            "family": "character",
             **({"voice_source": input_map[subject["defaultVoiceAssetId"]]}
                if subject.get("defaultVoiceAssetId") in input_map else {}),
         }
         for subject in project["subjects"]
     ]
+    subjects.extend({
+        "label": f"<Subject {prop['h3Index']}>",
+        "description": prop.get("description") or prop["name"],
+        "sources": [input_map[asset_id] for asset_id in prop["designAssetIds"] if asset_id in input_map],
+        "family": "design",
+        "name": prop["name"],
+    } for prop in project.get("props", []))
     counts = {kind: sum(item["type"] == kind for item in items) for kind in ("picture", "video", "audio")}
     counts["audio"] += sum(bool(item.get("soundtrack_label")) for item in items)
     return {
@@ -753,6 +795,20 @@ def manifest_context_for_generation(compiled: dict[str, Any], generation_id: str
                 f"- {input_map[voice_asset_id]} supplies the default voice timbre and delivery for "
                 f"<Subject {subject['h3Index']}>; it supplies no dialogue words."
             )
+    for prop in project.get("props", []):
+        if ("prop", prop["id"]) not in active_resources:
+            continue
+        description = prop.get("description") or "No additional design description."
+        category = f"; category: {prop['category']}" if prop.get("category") else ""
+        lines.append(
+            f"<Subject {prop['h3Index']}> ({prop['name']}), family design{category}: {description}"
+        )
+        sources = [input_map[asset_id] for asset_id in prop["designAssetIds"] if asset_id in input_map]
+        if sources:
+            lines.append(
+                f"- {', '.join(sources)} supplies only the reusable physical design of "
+                f"<Subject {prop['h3Index']}>; do not copy source people, background, camera, lighting, or text."
+            )
     for environment in project["environments"]:
         if ("environment", environment["id"]) not in active_resources:
             continue
@@ -801,7 +857,8 @@ def manifest_context(value: str | dict | list | None) -> str:
         lines.append("AUTHORITATIVE SUBJECT DEFINITIONS (supports multiple subjects per asset and multiple assets per subject):")
         for subject in parsed["subjects"]:
             sources = ", ".join(subject["sources"])
-            lines.append(f"{subject['label']} is {subject['description']} from {sources}.")
+            family = f" (family {subject['family']})" if subject.get("family") else ""
+            lines.append(f"{subject['label']}{family} is {subject['description']} from {sources}.")
             if subject.get("voice_source"):
                 lines.append(f"- {subject['voice_source']} supplies the default voice timbre and delivery for {subject['label']}; it supplies no dialogue words.")
     return "\n".join(lines)

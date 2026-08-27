@@ -42,6 +42,7 @@ def empty_studio_project() -> dict[str, Any]:
         },
         "files": [],
         "subjects": [],
+        "props": [],
         "environments": [],
         "generations": [{"id": "g1", "order": 1}],
         "shots": [],
@@ -93,6 +94,9 @@ def _unique_ids(items: Any, field: str, issues: list[str]) -> list[dict[str, Any
 def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any]:
     """Validate the v3 aggregate without compiling runtime slot assignments."""
     project = _json_object(value)
+    # Props were added additively to v3.  Normalise older stored v3 projects so
+    # they remain readable without inventing semantic entities from raw Files.
+    project.setdefault("props", [])
     issues: list[str] = []
     if project.get("schemaVersion") != STUDIO_PROJECT_SCHEMA_VERSION:
         issues.append(f"Studio Project schemaVersion must be {STUDIO_PROJECT_SCHEMA_VERSION}.")
@@ -109,6 +113,7 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
 
     files = _unique_ids(project.get("files"), "files", issues)
     subjects = _unique_ids(project.get("subjects"), "subjects", issues)
+    props = _unique_ids(project.get("props", []), "props", issues)
     environments = _unique_ids(project.get("environments"), "environments", issues)
     generations = _unique_ids(project.get("generations"), "generations", issues)
     shots = _unique_ids(project.get("shots"), "shots", issues)
@@ -120,6 +125,7 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
 
     file_ids = {item.get("id") for item in files}
     subject_ids = {item.get("id") for item in subjects}
+    prop_ids = {item.get("id") for item in props}
     environment_ids = {item.get("id") for item in environments}
     generation_ids = {item.get("id") for item in generations}
     shot_ids = {item.get("id") for item in shots}
@@ -154,6 +160,19 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
         voice_id = subject.get("defaultVoiceFileId")
         if voice_id and voice_id not in file_ids:
             issues.append(f"Subject {subject.get('id')!r} references missing voice file {voice_id!r}.")
+        for state in subject.get("appearanceStates", []):
+            if not isinstance(state, dict):
+                continue
+            source = state.get("source") or {}
+            source_id = source.get("fileId") or source.get("assetId")
+            if source.get("mode") == "asset" and source_id not in file_ids:
+                issues.append(f"Subject {subject.get('id')!r} appearance {state.get('id')!r} references missing file {source_id!r}.")
+    for index, prop in enumerate(props):
+        if not str(prop.get("name", "")).strip():
+            issues.append(f"props[{index}].name is required.")
+        for file_id in prop.get("designFileIds", prop.get("designAssetIds", [])):
+            if file_id not in file_ids:
+                issues.append(f"Prop {prop.get('id')!r} references missing design file {file_id!r}.")
     for environment in environments:
         for view in environment.get("views", []):
             if view.get("fileId") not in file_ids:
@@ -164,6 +183,14 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
         for cast in shot.get("cast", []):
             if cast.get("subjectId") not in subject_ids:
                 issues.append(f"Shot {shot.get('id')!r} references missing Subject {cast.get('subjectId')!r}.")
+            elif cast.get("appearanceStateId"):
+                subject = next(item for item in subjects if item.get("id") == cast.get("subjectId"))
+                known_states = {state.get("id") for state in subject.get("appearanceStates", []) if isinstance(state, dict)}
+                if cast["appearanceStateId"] not in known_states:
+                    issues.append(f"Shot {shot.get('id')!r} selects missing appearance {cast['appearanceStateId']!r} for Subject {cast.get('subjectId')!r}.")
+        for prop_use in shot.get("props", []):
+            if prop_use.get("propId") not in prop_ids:
+                issues.append(f"Shot {shot.get('id')!r} references missing Prop {prop_use.get('propId')!r}.")
         environment = shot.get("environment") or {}
         if environment.get("environmentId") and environment.get("environmentId") not in environment_ids:
             issues.append(f"Shot {shot.get('id')!r} references a missing Environment.")
@@ -172,6 +199,7 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
             kind, root_id = root.get("kind"), root.get("id")
             valid = (
                 kind == "subject" and root_id in subject_ids
+                or kind == "prop" and root_id in prop_ids
                 or kind == "environment" and root_id in environment_ids
                 or kind in {"asset", "file"} and root_id in file_ids
             )
@@ -183,6 +211,7 @@ def parse_studio_project(value: str | Mapping[str, Any] | None) -> dict[str, Any
         owner = link.get("owner") or {}
         valid_owner = (
             owner.get("kind") == "subject" and owner.get("id") in subject_ids
+            or owner.get("kind") == "prop" and owner.get("id") in prop_ids
             or owner.get("kind") == "environment" and owner.get("id") in environment_ids
             or owner.get("kind") == "shot" and owner.get("id") in shot_ids
             or owner.get("kind") == "project" and owner.get("id") in {None, "", "project"}
@@ -217,16 +246,40 @@ def _legacy_file(file: Mapping[str, Any]) -> dict[str, Any]:
 def _legacy_subject(subject: Mapping[str, Any], index: int) -> dict[str, Any]:
     states = deepcopy(subject.get("appearanceStates") or [{"id": "base", "name": "Base", "controls": []}])
     base_id = str(subject.get("baseAppearanceStateId") or states[0]["id"])
+    identity_file_ids = list(subject.get("identityFileIds") or [])
+    description = str(subject.get("description") or "").strip()
+    if not description and not identity_file_ids:
+        # Legacy v2 requires prose when there is no identity Picture. The name
+        # is the only stable fact Studio actually has, so use only that instead
+        # of fabricating visual attributes.
+        description = str(subject.get("name") or subject["id"])
     return {
         "id": subject["id"],
         "h3Index": int(subject.get("h3Index") or index + 1),
         "name": str(subject.get("name") or subject["id"]),
-        "description": str(subject.get("description") or "Unspecified stable identity."),
-        "identityAssetIds": list(subject.get("identityFileIds") or []),
+        # An identity Picture is already an authoritative visual description.
+        # Keep an omitted prose description empty instead of inventing a phrase
+        # that can leak into the generated prompt as if it were user-authored.
+        "description": description,
+        "identityAssetIds": identity_file_ids,
         **({"defaultVoiceAssetId": subject["defaultVoiceFileId"]} if subject.get("defaultVoiceFileId") else {}),
         "baseAppearanceStateId": base_id,
         "appearanceStates": states,
     }
+
+
+def _legacy_prop(prop: Mapping[str, Any], index: int, first_h3_index: int) -> dict[str, Any]:
+    result = {
+        "id": prop["id"],
+        "h3Index": int(prop.get("h3Index") or first_h3_index + index),
+        "name": str(prop.get("name") or prop["id"]),
+        "designAssetIds": list(prop.get("designFileIds", prop.get("designAssetIds", [])) or []),
+    }
+    if str(prop.get("category") or "").strip():
+        result["category"] = str(prop["category"]).strip()
+    if str(prop.get("description") or "").strip():
+        result["description"] = str(prop["description"]).strip()
+    return result
 
 
 def _legacy_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
@@ -294,9 +347,19 @@ def _legacy_shot(shot: Mapping[str, Any], timing_mode: str, links: list[Mapping[
         result["subjects"] = [{
             "subjectId": item.get("subjectId"),
             "presence": item.get("presence") if item.get("presence") in {"present", "enters", "exits", "absent"} else "present",
+            **({"appearanceStateId": item["appearanceStateId"]} if item.get("appearanceStateId") else {}),
             **({"blocking": item["blocking"]} if item.get("blocking") else {}),
         } for item in cast]
         result["subjectPresenceComplete"] = bool(shot.get("subjectPresenceComplete", True))
+    if shot.get("props"):
+        result["props"] = [
+            {
+                "propId": item.get("propId"),
+                **({"presence": item["presence"]} if item.get("presence") else {}),
+                **({"note": item["note"]} if item.get("note") else {}),
+            }
+            for item in shot["props"]
+        ]
     environment = shot.get("environment")
     if isinstance(environment, dict) and environment.get("environmentId"):
         result["environment"] = {"environmentId": environment["environmentId"]}
@@ -320,11 +383,14 @@ def _active_file_ids(
     generation: Mapping[str, Any],
     shots: list[Mapping[str, Any]],
     subjects: list[Mapping[str, Any]],
+    props: list[Mapping[str, Any]],
     environments: list[Mapping[str, Any]],
     links: list[Mapping[str, Any]],
 ) -> list[str]:
     generation_id = str(generation.get("id") or "g1")
     present_subjects: set[str] = set()
+    selected_appearances: dict[str, set[str]] = {}
+    present_props: set[str] = set()
     used_environments: set[str] = set()
     explicit_files: list[str] = []
     ordered: list[str] = []
@@ -338,6 +404,8 @@ def _active_file_ids(
     for root in (generation.get("activation") or {}).get("roots", []):
         if root.get("kind") == "subject":
             present_subjects.add(root.get("id"))
+        elif root.get("kind") == "prop":
+            present_props.add(root.get("id"))
         elif root.get("kind") == "environment":
             used_environments.add(root.get("id"))
         elif root.get("kind") in {"asset", "file"} and root.get("id"):
@@ -347,6 +415,14 @@ def _active_file_ids(
         for cast in shot.get("cast", shot.get("subjects", [])):
             if cast.get("presence", "present") != "absent":
                 present_subjects.add(cast.get("subjectId"))
+                if cast.get("appearanceStateId"):
+                    selected_appearances.setdefault(cast.get("subjectId"), set()).add(cast["appearanceStateId"])
+        for transition in shot.get("appearanceTransitions", []):
+            if transition.get("subjectId") and transition.get("toStateId"):
+                selected_appearances.setdefault(transition["subjectId"], set()).add(transition["toStateId"])
+        for prop_use in shot.get("props", []):
+            if prop_use.get("presence", "present") != "absent":
+                present_props.add(prop_use.get("propId"))
         environment = shot.get("environment") or {}
         if environment.get("environmentId"):
             used_environments.add(environment["environmentId"])
@@ -359,6 +435,25 @@ def _active_file_ids(
         for file_id in subject.get("identityFileIds", []):
             add(file_id)
         add(subject.get("defaultVoiceFileId"))
+        states = {state.get("id"): state for state in subject.get("appearanceStates", []) if isinstance(state, dict)}
+        state_ids = selected_appearances.get(subject.get("id"), set())
+        if not state_ids:
+            generation_state = next((item for item in generation.get("subjectStates", []) if item.get("subjectId") == subject.get("id")), {})
+            state_ids = {generation_state.get("stateId") or subject.get("baseAppearanceStateId")} - {None, ""}
+        for state_id in state_ids:
+            state = states.get(state_id)
+            seen_states: set[str] = set()
+            while state and state.get("id") not in seen_states:
+                seen_states.add(state.get("id"))
+                source = state.get("source") or {}
+                if source.get("mode") == "asset":
+                    add(source.get("fileId") or source.get("assetId"))
+                state = states.get(state.get("extends"))
+    for prop in props:
+        if prop.get("id") not in present_props:
+            continue
+        for file_id in prop.get("designFileIds", prop.get("designAssetIds", [])):
+            add(file_id)
     for environment in environments:
         if environment.get("id") not in used_environments:
             continue
@@ -376,6 +471,8 @@ def _active_file_ids(
         if scope.get("generationIds") and generation_id not in scope["generationIds"]:
             continue
         if owner.get("kind") == "subject" and owner.get("id") in present_subjects:
+            add(link.get("fileId"))
+        elif owner.get("kind") == "prop" and owner.get("id") in present_props:
             add(link.get("fileId"))
         elif owner.get("kind") == "environment" and owner.get("id") in used_environments:
             add(link.get("fileId"))
@@ -397,12 +494,15 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
     settings = value["project"]
     files = value["files"]
     subjects = value["subjects"]
+    props = value.get("props", [])
     environments = value["environments"]
     generations = sorted(value["generations"], key=lambda item: int(item.get("order", 0)))
     shots = value["shots"]
     links = value["links"]
     files_by_id = {item["id"]: item for item in files}
     legacy_subjects = [_legacy_subject(item, index) for index, item in enumerate(subjects)]
+    next_h3_index = max((int(item.get("h3Index") or index + 1) for index, item in enumerate(subjects)), default=0) + 1
+    legacy_props = [_legacy_prop(item, index, next_h3_index) for index, item in enumerate(props)]
     legacy_environments = [_legacy_environment(item) for item in environments]
     compiled_generations = []
     quotas: dict[str, dict[str, int]] = {}
@@ -411,7 +511,7 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
         if not str(shot.get("action") or "").strip():
             issues.append(f"Shot {shot['id']} needs a visible action before generation.")
     for generation in generations:
-        active_ids = _active_file_ids(generation, shots, subjects, environments, links)
+        active_ids = _active_file_ids(generation, shots, subjects, props, environments, links)
         counters = {kind: 0 for kind in MEDIA_TYPES}
         counters["videoAudio"] = 0
         bindings = []
@@ -434,13 +534,13 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
         roots = []
         for root in source_activation.get("roots", []):
             kind = "asset" if root.get("kind") == "file" else root.get("kind")
-            if kind in {"asset", "subject", "environment"} and root.get("id"):
+            if kind in {"asset", "subject", "prop", "environment"} and root.get("id"):
                 roots.append({"kind": kind, "id": root["id"]})
         activation = {"mode": "explicit", "roots": roots} if roots else {"mode": "auto"}
         excluded = []
         for item in source_activation.get("exclude", []):
             kind = "asset" if item.get("kind") == "file" else item.get("kind")
-            if kind in {"asset", "subject", "environment"} and item.get("id"):
+            if kind in {"asset", "subject", "prop", "environment"} and item.get("id"):
                 excluded.append({"kind": kind, "id": item["id"]})
         if excluded:
             activation["exclude"] = excluded
@@ -460,6 +560,7 @@ def compile_studio_project(value: str | Mapping[str, Any] | None, generation_id:
         "mode": settings.get("mode", "auto"),
         "assets": [_legacy_file(item) for item in files],
         "subjects": legacy_subjects,
+        "props": legacy_props,
         "environments": legacy_environments,
         "generations": compiled_generations,
     }

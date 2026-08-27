@@ -1,9 +1,9 @@
 const TOKEN_STYLE_ID = "minimax-h3-studio-tokens";
 
-// v3 separates Camera from Look. readStudioPrefs maps the former combined
-// `camera` destination from v2 to `look` without touching workflow data.
-export const STUDIO_UI_STORAGE_KEY = "minimax_h3_studio_ui_v3";
-export const STUDIO_UI_LEGACY_STORAGE_KEY = "minimax_h3_studio_ui_v2";
+// v4 adopts the wide visual workspace. Existing narrow v3 drawer preferences
+// are migrated without touching workflow or project data.
+export const STUDIO_UI_STORAGE_KEY = "minimax_h3_studio_ui_v4";
+export const STUDIO_UI_LEGACY_STORAGE_KEY = "minimax_h3_studio_ui_v3";
 export const STUDIO_MIN_WIDTH = 420;
 export const STUDIO_MAX_WIDTH = 1100;
 

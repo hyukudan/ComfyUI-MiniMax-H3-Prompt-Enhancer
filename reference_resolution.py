@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import Any
 
 
-RESOURCE_KINDS = {"asset", "subject", "environment"}
+RESOURCE_KINDS = {"asset", "subject", "prop", "environment"}
 ASSET_LIMITS = {"picture": 9, "video": 3, "audio": 3}
 
 
@@ -42,6 +42,7 @@ def dependency_closure(
     """Expand logical resources into their required assets in stable project order."""
     assets = {item["id"]: item for item in project.get("assets", [])}
     subjects = {item["id"]: item for item in project.get("subjects", [])}
+    props = {item["id"]: item for item in project.get("props", [])}
     environments = {item["id"]: item for item in project.get("environments", [])}
     subject_selections = {item["subjectId"]: item for item in generation.get("subjectStates", [])}
     environment_selections = {item["environmentId"]: item for item in generation.get("environmentStates", [])}
@@ -56,7 +57,7 @@ def dependency_closure(
         if key in active:
             continue
         kind, resource_id = key
-        table = {"asset": assets, "subject": subjects, "environment": environments}.get(kind)
+        table = {"asset": assets, "subject": subjects, "prop": props, "environment": environments}.get(kind)
         if table is None or resource_id not in table:
             issues.append(_issue(
                 "reference.activation.unknown_resource",
@@ -79,6 +80,9 @@ def dependency_closure(
                 source = state.get("source", {})
                 if source.get("mode") == "asset":
                     queue.append({"kind": "asset", "id": source.get("assetId", "")})
+        elif kind == "prop":
+            prop = props[resource_id]
+            queue.extend({"kind": "asset", "id": asset_id} for asset_id in prop["designAssetIds"])
         elif kind == "environment":
             environment = environments[resource_id]
             selection = environment_selections.get(resource_id, {})
@@ -113,11 +117,12 @@ def resolve_generation_references(
     mandatory = set(active)
     assets = {item["id"]: item for item in project.get("assets", [])}
     subjects = {item["id"]: item for item in project.get("subjects", [])}
+    props = {item["id"]: item for item in project.get("props", [])}
     environments = {item["id"]: item for item in project.get("environments", [])}
 
     excluded = {_resource_key(item) for item in activation.get("exclude", ())}
     for key in sorted(excluded):
-        table = {"asset": assets, "subject": subjects, "environment": environments}.get(key[0], {})
+        table = {"asset": assets, "subject": subjects, "prop": props, "environment": environments}.get(key[0], {})
         if key[1] not in table:
             issues.append(_issue(
                 "reference.activation.unknown_resource",

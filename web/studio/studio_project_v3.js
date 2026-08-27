@@ -10,7 +10,7 @@ export function emptyStudioProjectV3() {
             name: "Untitled project", mode: "auto", timingMode: "auto",
             look: { creativeTreatment: { schemaVersion: 2 }, cinematography: { schemaVersion: 2 } },
         },
-        files: [], subjects: [], environments: [],
+        files: [], subjects: [], props: [], environments: [],
         generations: [{ id: "g1", order: 1 }], shots: [], links: [],
     };
 }
@@ -52,6 +52,12 @@ export function studioProjectFromDocuments({ mediaProject, shotPlan, creativeTre
         delete mapped.defaultVoiceAssetId;
         return mapped;
     });
+    const props = (media.props ?? []).map((prop) => ({
+        ...clone(prop),
+        designFileIds: [...(prop.designAssetIds ?? prop.designFileIds ?? [])],
+        designAssetIds: undefined,
+    }));
+    for (const prop of props) delete prop.designAssetIds;
     const environments = (media.environments ?? []).map((environment) => ({
         ...clone(environment),
         views: (environment.views ?? []).map((view) => {
@@ -98,7 +104,7 @@ export function studioProjectFromDocuments({ mediaProject, shotPlan, creativeTre
                 cinematography: clone(cinematography ?? prior.project?.look?.cinematography ?? { schemaVersion: 2 }),
             },
         },
-        files, subjects, environments, generations, shots,
+        files, subjects, props, environments, generations, shots,
         links: clone(prior.links ?? []),
     };
 }

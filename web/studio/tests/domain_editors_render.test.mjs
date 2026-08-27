@@ -8,6 +8,7 @@ import { diagnosticFieldLabels, focusDiagnosticLocation } from "../drawer.js";
 import { captureOpenDisclosures, restoreOpenDisclosures, textArea, textInput } from "../domain_components.js";
 import { renderShotsTab } from "../tab_shots.js";
 import { renderSubjectsTab } from "../tab_subjects.js";
+import { renderPropsTab } from "../tab_props.js";
 import { renderStagingTab } from "../tab_staging.js";
 import { createWidgetStore } from "../widget_store.js";
 
@@ -136,12 +137,16 @@ const project = {
     mode: "chained_multishot",
     assets: [
         { id: "portrait", type: "picture", name: "Portrait", available: true },
+        { id: "other-portrait", type: "picture", name: "Other person", available: true },
+        { id: "voice-one", type: "audio", name: "Marta voice", available: true },
+        { id: "voice-two", type: "audio", name: "Unrelated voice", available: true },
         { id: "move", type: "video", name: "Move", available: true, cameraTransfer: { enabled: true, role: "camera_reference", aspects: ["motion", "framing"] } },
     ],
     subjects: [{
-        id: "marta", h3Index: 1, name: "Marta", description: "Stable identity", identityAssetIds: ["portrait"], baseAppearanceStateId: "base",
+        id: "marta", h3Index: 1, name: "Marta", description: "Stable identity", identityAssetIds: ["portrait"], defaultVoiceAssetId: "voice-one", baseAppearanceStateId: "base",
         appearanceStates: [{ id: "base", name: "Base", controls: [], attributes: {} }, { id: "wet", name: "Wet coat", controls: ["wardrobe", "wetness"], attributes: { wardrobe: "Wet coat", wetness: "Soaked" }, source: { mode: "asset", assetId: "portrait" } }],
     }],
+    props: [{ id: "car-y", h3Index: 2, name: "Car Y", category: "vehicle", description: "Red coupe", designAssetIds: ["other-portrait"] }],
     environments: [{
         id: "alley", name: "Alley", permanent: { geography: "Old quarter", architecture: "Brick", scale: "Narrow", fixedElements: ["Lamp"] },
         views: [{ id: "wide", name: "Wide", role: "overview", assetId: "portrait" }], defaultStateId: "day",
@@ -178,6 +183,7 @@ const plan = {
 
 function controllerFixture() {
     let writes = 0;
+    let lastProjectRaw = null;
     return {
         shotUiState: { selectedId: "s1", plan: null },
         projectUiState: { sourceRaw: null, project: null },
@@ -187,12 +193,13 @@ function controllerFixture() {
         cameraFields: () => [["shotScale"], ["cameraMotion"]],
         cameraValue: (key) => key === "shotScale" ? "wide" : "static",
         commitShotPlan: () => { writes += 1; return true; },
-        commitProject: () => { writes += 1; return true; },
+        commitProject: (raw) => { writes += 1; lastProjectRaw = raw; return true; },
         get writes() { return writes; },
+        get lastProjectRaw() { return lastProjectRaw; },
     };
 }
 
-for (const [name, render] of [["Shots", renderShotsTab], ["Subjects", renderSubjectsTab], ["Environments", renderEnvironmentsTab]]) {
+for (const [name, render] of [["Shots", renderShotsTab], ["Subjects", renderSubjectsTab], ["Environments", renderEnvironmentsTab], ["Props", renderPropsTab]]) {
     test(`${name} populated editor mounts without writes or runtime errors`, () => {
         const controller = controllerFixture();
         const container = new TestElement("section");
@@ -207,8 +214,10 @@ for (const [name, render] of [["Shots", renderShotsTab], ["Subjects", renderSubj
             }
             assert.ok(findByClass(container, "minimax-h3-action-beat"));
             assert.equal(findField(container, "Spoken words").children[1].value, "It is starting.");
-        } else {
+        } else if (name !== "Props") {
             assert.match(container.textContent, /Cannot delete|Used by/);
+        } else {
+            assert.match(container.textContent, /Car Y.*Object identity.*Design pictures/);
         }
     });
 }
@@ -355,13 +364,51 @@ test("renaming a subject patches its master card without rerendering or duplicat
 
     assert.equal(controller.writes, 0);
     assert.equal(container.children[1], originalGrid);
-    assert.equal(originalMasterRow.children[0].textContent, "Marta renamed");
+    assert.equal(originalMasterRow.children[1].children[0].textContent, "Marta renamed");
 
     dispatch(name, "change");
 
     assert.equal(controller.writes, 1);
     assert.equal(container.children[1], originalGrid);
-    assert.equal(originalMasterRow.children[0].textContent, "Marta renamed");
+    assert.equal(originalMasterRow.children[1].children[0].textContent, "Marta renamed");
+});
+
+test("Subject media shows only connected files until the global Files chooser is opened", () => {
+    const controller = controllerFixture();
+    const container = new TestElement("section");
+    renderSubjectsTab(container, controller);
+
+    const gallery = findByClass(container, "minimax-h3-assigned-media-gallery");
+    assert.match(gallery.textContent, /Portrait/);
+    assert.doesNotMatch(gallery.textContent, /Other person/);
+    assert.doesNotMatch(container.textContent, /Other person/);
+    assert.match(container.textContent, /Marta voice/);
+    assert.doesNotMatch(container.textContent, /Unrelated voice/);
+
+    findByText(container, "Choose from Files").click();
+    assert.match(container.textContent, /Choose identity pictures for Marta/);
+    assert.match(container.textContent, /Other person/);
+});
+
+test("unlinking a Subject picture removes only the relationship and keeps the global file", () => {
+    const controller = controllerFixture();
+    const container = new TestElement("section");
+    renderSubjectsTab(container, controller);
+    findByClass(container, "minimax-h3-media-unlink").click();
+
+    const committed = JSON.parse(controller.lastProjectRaw);
+    assert.deepEqual(committed.subjects[0].identityAssetIds, []);
+    assert.ok(committed.assets.some((asset) => asset.id === "portrait"));
+    assert.equal(controller.writes, 1);
+});
+
+test("Environment view media does not expose unrelated global pictures until requested", () => {
+    const controller = controllerFixture();
+    const container = new TestElement("section");
+    renderEnvironmentsTab(container, controller);
+    const gallery = findByClass(container, "minimax-h3-assigned-media-gallery");
+    assert.match(gallery.textContent, /Portrait/);
+    assert.doesNotMatch(gallery.textContent, /Other person/);
 });
 
 test("rendered shot rows keep compact metadata separate from the full accessible action", () => {

@@ -3912,7 +3912,7 @@ def empty_shot_plan(duration_seconds: float = 0.0, frame_count: int = 0) -> dict
 _SHOT_PLAN_V2_ITEM_KEYS = {
     "id", "generationId", "openingState", "action", "durationSeconds",
     "transitionIn", "cutContext", "subjectPresenceComplete", "subjects",
-    "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
+    "props", "environment", "referenceUses", "cameraStart", "cameraEnd", "cameraPath",
     "actionBeats", "scaleRelationships", "staging", "appearanceTransitions", "environmentTransitions",
 }
 _REFERENCE_ROLES = {
@@ -3967,7 +3967,7 @@ def _shot_v2_presence(value: Any, path: str) -> list[dict[str, Any]]:
         if not isinstance(item, Mapping):
             raise ValueError(f"{item_path} must be an object")
         raw = dict(item)
-        unknown = sorted(set(raw) - {"subjectId", "presence", "blocking"})
+        unknown = sorted(set(raw) - {"subjectId", "presence", "appearanceStateId", "blocking"})
         if unknown:
             raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
         subject_id = _shot_v2_id(raw.get("subjectId"), f"{item_path}.subjectId")
@@ -3978,8 +3978,40 @@ def _shot_v2_presence(value: Any, path: str) -> list[dict[str, Any]]:
         if presence not in {"present", "enters", "exits", "absent"}:
             raise ValueError(f"{item_path}.presence must be present, enters, exits, or absent")
         normalized: dict[str, Any] = {"subjectId": subject_id, "presence": presence}
+        if "appearanceStateId" in raw:
+            normalized["appearanceStateId"] = _shot_v2_id(
+                raw["appearanceStateId"], f"{item_path}.appearanceStateId"
+            )
         if "blocking" in raw:
             normalized["blocking"] = _shot_v2_text(raw["blocking"], f"{item_path}.blocking", 500)
+        result.append(normalized)
+    return result
+
+
+def _shot_v2_props(value: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{path} must be an array")
+    result = []
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{item_path} must be an object")
+        raw = dict(item)
+        unknown = sorted(set(raw) - {"propId", "presence", "note"})
+        if unknown:
+            raise ValueError(f"{item_path} contains unsupported keys: {unknown}")
+        prop_id = _shot_v2_id(raw.get("propId"), f"{item_path}.propId")
+        if prop_id in seen:
+            raise ValueError(f"{path} contains duplicate propId {prop_id!r}")
+        seen.add(prop_id)
+        normalized: dict[str, Any] = {"propId": prop_id}
+        if "presence" in raw:
+            if raw["presence"] not in {"present", "enters", "exits", "absent"}:
+                raise ValueError(f"{item_path}.presence must be present, enters, exits, or absent")
+            normalized["presence"] = raw["presence"]
+        if "note" in raw:
+            normalized["note"] = _shot_v2_text(raw["note"], f"{item_path}.note", 500)
         result.append(normalized)
     return result
 
@@ -4291,6 +4323,8 @@ def _parse_shot_plan_v2(raw: Mapping[str, Any], duration_seconds: float,
                 shot["subjectPresenceComplete"] = True
         if "subjects" in data:
             shot["subjects"] = _shot_v2_presence(data["subjects"], f"{path} subjects")
+        if "props" in data:
+            shot["props"] = _shot_v2_props(data["props"], f"{path} props")
         if "environment" in data:
             shot["environment"] = _shot_v2_environment(data["environment"], f"{path} environment")
         if "referenceUses" in data:
@@ -4614,7 +4648,7 @@ def _project_target_labels(media_project: Mapping[str, Any] | None) -> tuple[dic
         return {}, {}
     labels: dict[tuple[str, str], str] = {}
     subject_labels: dict[str, str] = {}
-    for collection, kind in (("subjects", "subject"), ("environments", "environment"), ("assets", "asset")):
+    for collection, kind in (("subjects", "subject"), ("props", "prop"), ("environments", "environment"), ("assets", "asset")):
         for item in project.get(collection, ()):
             if not isinstance(item, Mapping) or not item.get("id"):
                 continue
@@ -4635,8 +4669,8 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str,
         f"Use exactly {int(plan['shotCount'])} shots in the exact listed order.",
         "openingState is the visible state at the first frame of that shot; action is what changes or happens "
         "during it. Do not restate the opening state as a second event. Preserve generation, subject presence, "
-        "environment, reference-use, camera, appearance-state, and environment-state allocation exactly. Do not "
-        "merge, split, reorder, omit, duplicate, or invent shots, subjects, states, references, transitions, or cuts.",
+        "Prop presence, environment, reference-use, camera, appearance-state, and environment-state allocation exactly. Do not "
+        "merge, split, reorder, omit, duplicate, or invent shots, subjects, Props, states, references, transitions, or cuts.",
         "cameraStart and cameraEnd are different temporal phases, not conflicting instructions. cameraEnd contains "
         "only fields that change; inherit every omitted end field from cameraStart. A shot-level camera value "
         "normally overrides the corresponding global cinematography value for that shot only.",
@@ -4668,7 +4702,7 @@ def _shot_plan_v2_instruction(plan: Mapping[str, Any], mode: str,
         allocation = {
             key: shot[key]
             for key in (
-                "subjectPresenceComplete", "subjects", "environment", "referenceUses",
+                "subjectPresenceComplete", "subjects", "props", "environment", "referenceUses",
                 "appearanceTransitions", "environmentTransitions", "cutContext",
                 "scaleRelationships",
             )
@@ -5065,7 +5099,7 @@ def build_shots_package(enhanced_prompt: str, resolved_mode: str,
                 {
                     key: shot.get(key)
                     for key in (
-                        "id", "subjects", "environment", "appearanceTransitions",
+                        "id", "subjects", "props", "environment", "appearanceTransitions",
                         "environmentTransitions",
                     )
                     if key in shot

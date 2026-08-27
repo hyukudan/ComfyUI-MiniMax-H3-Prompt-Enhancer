@@ -177,9 +177,10 @@ def _generation_entities(
     generation: Mapping[str, Any],
     shots: list[tuple[int, Mapping[str, Any]]],
     subjects: Mapping[str, Any],
+    props: Mapping[str, Any],
     environments: Mapping[str, Any],
     assets: Mapping[str, Any],
-) -> tuple[set[str], set[str], set[str], dict[str, set[str]]]:
+) -> tuple[set[str], set[str], set[str], set[str], dict[str, set[str]]]:
     subject_ids = {
         item["id"] for item in generation["activation"].get("roots", ())
         if item["kind"] == "subject" and item["id"] in subjects
@@ -187,6 +188,10 @@ def _generation_entities(
     environment_ids = {
         item["id"] for item in generation["activation"].get("roots", ())
         if item["kind"] == "environment" and item["id"] in environments
+    }
+    prop_ids = {
+        item["id"] for item in generation["activation"].get("roots", ())
+        if item["kind"] == "prop" and item["id"] in props
     }
     asset_ids = {
         item["id"] for item in generation["activation"].get("roots", ())
@@ -197,6 +202,9 @@ def _generation_entities(
         for presence in shot.get("subjects", ()):
             if presence["presence"] != "absent":
                 subject_ids.add(presence["subjectId"])
+        for prop_use in shot.get("props", ()):
+            if prop_use.get("presence", "present") != "absent":
+                prop_ids.add(prop_use["propId"])
         for transition in shot.get("appearanceTransitions", ()):
             subject_ids.add(transition["subjectId"])
         environment = shot.get("environment")
@@ -233,7 +241,7 @@ def _generation_entities(
         for kind, resource_id, _field in _staging_target_refs(shot.get("staging", ())):
             if kind == "subject":
                 subject_ids.add(resource_id)
-    return subject_ids, environment_ids, asset_ids, view_ids
+    return subject_ids, prop_ids, environment_ids, asset_ids, view_ids
 
 
 def _filtered_generation(
@@ -242,6 +250,7 @@ def _filtered_generation(
     subject_ids: set[str],
     environment_ids: set[str],
     view_ids: Mapping[str, set[str]],
+    environments: Mapping[str, Any],
 ) -> dict[str, Any]:
     filtered = dict(generation)
     filtered["subjectStates"] = []
@@ -257,6 +266,16 @@ def _filtered_generation(
             "environmentId": environment_id, "policy": "carry", "viewIds": [],
         }))
         selected_views = set(selection.get("viewIds", ())) | set(view_ids.get(environment_id, ()))
+        # In Studio an empty view selection means "use this Place/Scenario",
+        # not "activate the logical environment but none of its Pictures".
+        # The v3 binder follows that rule and includes every declared view, so
+        # materialize the same default here before semantic validation.
+        if not selected_views and environment_id in environments:
+            selected_views.update(
+                str(view["id"])
+                for view in environments[environment_id].get("views", ())
+                if view.get("id")
+            )
         selection["viewIds"] = sorted(selected_views)
         selection["resolvedStateId"] = initial_state["environments"].get(environment_id)
         filtered["environmentStates"].append(selection)
@@ -355,8 +374,10 @@ def _validate_shots_and_resolve_state(
     generation_id: str,
     shots: list[tuple[int, Mapping[str, Any]]],
     generation_subject_ids: set[str],
+    generation_prop_ids: set[str],
     initial_state: Mapping[str, Any],
     subjects: Mapping[str, Mapping[str, Any]],
+    props: Mapping[str, Mapping[str, Any]],
     environments: Mapping[str, Mapping[str, Any]],
     assets: Mapping[str, Mapping[str, Any]],
     active_asset_ids: set[str],
@@ -368,6 +389,7 @@ def _validate_shots_and_resolve_state(
     resolved_shots: list[dict[str, Any]] = []
     for shot_index, shot in shots:
         presence = {item["subjectId"]: item["presence"] for item in shot.get("subjects", ())}
+        prop_presence = {item["propId"]: item.get("presence", "present") for item in shot.get("props", ())}
         if shot.get("subjectPresenceComplete"):
             missing = sorted(generation_subject_ids - presence.keys())
             for subject_id in missing:
@@ -382,6 +404,42 @@ def _validate_shots_and_resolve_state(
                     collector, generation_id, shot, shot_index, "subjects",
                     ResourceKind.SUBJECT, subject_id,
                     f"Shot {shot['id']!r} references unknown subject {subject_id!r}.",
+                )
+        for presence_index, item in enumerate(shot.get("subjects", ())):
+            state_id = item.get("appearanceStateId")
+            if not state_id:
+                continue
+            subject_id = item["subjectId"]
+            subject = subjects.get(subject_id)
+            if subject is None:
+                continue
+            known_states = {state["id"] for state in subject["appearanceStates"]}
+            if state_id not in known_states:
+                collector.emit(
+                    DiagnosticCode.APPEARANCE_TRANSITION_FROM_MISMATCH,
+                    f"Shot {shot['id']!r} selects unknown appearance state {state_id!r} for subject {subject_id!r}.",
+                    _location(generation_id, shot, shot_index, f"subjects.{presence_index}.appearanceStateId"),
+                    related=_resource(ResourceKind.SUBJECT, subject_id),
+                )
+                continue
+            if item.get("presence") == "absent":
+                collector.emit(
+                    DiagnosticCode.APPEARANCE_TRANSITION_SUBJECT_ABSENT,
+                    f"Shot {shot['id']!r} selects an appearance for absent subject {subject_id!r}.",
+                    _location(generation_id, shot, shot_index, f"subjects.{presence_index}.appearanceStateId"),
+                    related=_resource(ResourceKind.SUBJECT, subject_id),
+                )
+                continue
+            # A Shot appearance is its entry state and becomes the carried state
+            # unless an explicit transition changes it later in the same Shot.
+            subject_states[subject_id] = state_id
+        for prop_id in prop_presence:
+            if prop_id not in props:
+                collector.emit(
+                    DiagnosticCode.ACTIVATION_UNKNOWN_RESOURCE,
+                    f"Shot {shot['id']!r} references unknown prop {prop_id!r}.",
+                    _location(generation_id, shot, shot_index, "props"),
+                    data={"resourceKind": "prop", "resourceId": prop_id},
                 )
         environment = shot.get("environment") or {}
         active_environment_id = environment.get("environmentId")
@@ -550,6 +608,10 @@ def _validate_shots_and_resolve_state(
         after["digest"] = _digest(after)
         resolved_shots.append({
             "id": shot["id"], "generationId": generation_id,
+            "activePropIds": sorted(
+                prop_id for prop_id, value in prop_presence.items()
+                if value != "absent" and prop_id in generation_prop_ids
+            ),
             "stateBefore": before, "stateAfter": after,
         })
     final_state = {
@@ -568,6 +630,10 @@ def _structured_generation_context(
 ) -> str:
     lines = [media_context] if media_context else []
     appearance_destinations = {
+        (item["subjectId"], item["appearanceStateId"])
+        for _index, shot in shots for item in shot.get("subjects", ())
+        if item.get("appearanceStateId") and item["subjectId"] in subjects
+    } | {
         (transition["subjectId"], transition["toStateId"])
         for _index, shot in shots for transition in shot.get("appearanceTransitions", ())
         if transition["subjectId"] in subjects
@@ -578,7 +644,7 @@ def _structured_generation_context(
         if transition["environmentId"] in environments
     }
     if appearance_destinations or environment_destinations:
-        lines.append("STATE DEFINITIONS USED BY EXPLICIT TRANSITIONS:")
+        lines.append("APPEARANCE AND ENVIRONMENT STATES USED BY SHOTS:")
     for subject_id, state_id in sorted(appearance_destinations):
         subject = subjects[subject_id]
         state = resolve_state(subject["appearanceStates"], state_id, "attributes")
@@ -672,6 +738,7 @@ def compile_planning_context(
 
     assets = {item["id"]: item for item in project["assets"]}
     subjects = {item["id"]: item for item in project["subjects"]}
+    props = {item["id"]: item for item in project.get("props", [])}
     environments = {item["id"]: item for item in project["environments"]}
     generations = {item["id"]: item for item in project["generations"]}
     shots_by_generation: dict[str, list[tuple[int, Mapping[str, Any]]]] = {}
@@ -693,19 +760,24 @@ def compile_planning_context(
         generation_id = generation["id"]
         generation_shots = shots_by_generation.get(generation_id, [])
         initial_state = _generation_initial_state(project, generation, previous_final)
-        subject_ids, environment_ids, asset_ids, view_ids = _generation_entities(
-            generation, generation_shots, subjects, environments, assets,
+        subject_ids, prop_ids, environment_ids, asset_ids, view_ids = _generation_entities(
+            generation, generation_shots, subjects, props, environments, assets,
         )
         filtered_generation = _filtered_generation(
-            generation, initial_state, subject_ids, environment_ids, view_ids,
+            generation, initial_state, subject_ids, environment_ids, view_ids, environments,
         )
         roots = [
             *({"kind": "subject", "id": item} for item in sorted(subject_ids)),
+            *({"kind": "prop", "id": item} for item in sorted(prop_ids)),
             *({"kind": "environment", "id": item} for item in sorted(environment_ids)),
             *({"kind": "asset", "id": item} for item in sorted(asset_ids)),
             *_mode_anchor_roots(resolved_mode, generation, assets),
         ]
         for _shot_index, shot in generation_shots:
+            for item in shot.get("subjects", ()):
+                subject = subjects.get(item["subjectId"])
+                if subject and item.get("appearanceStateId"):
+                    roots.extend(_appearance_source_roots(subject, item["appearanceStateId"]))
             for transition in shot.get("appearanceTransitions", ()):
                 subject = subjects.get(transition["subjectId"])
                 if subject:
@@ -715,8 +787,8 @@ def compile_planning_context(
         )
         _collect_resolution_issues(diagnostic_collector, generation_id, resolution["issues"])
         generation_resolved_shots, final_state = _validate_shots_and_resolve_state(
-            diagnostic_collector, generation_id, generation_shots, subject_ids,
-            initial_state, subjects, environments, assets,
+            diagnostic_collector, generation_id, generation_shots, subject_ids, prop_ids,
+            initial_state, subjects, props, environments, assets,
             set(resolution["activeAssetIds"]), resolution["inputMap"],
         )
         resolved_shots.extend(generation_resolved_shots)
@@ -760,6 +832,7 @@ def compile_planning_context(
         "shotCount": len(shots["shots"]),
         "activeAssetCount": sum(len(item["activeAssetIds"]) for item in compiled_generations.values()),
         "subjectCount": len(subjects),
+        **({"propCount": len(props)} if props else {}),
         "environmentCount": len(environments),
         "diagnosticCount": len(report["diagnostics"]),
     }

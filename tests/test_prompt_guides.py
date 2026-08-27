@@ -1908,8 +1908,54 @@ N/A"""
     assert "video continuation" not in fixed
     assert "<Subject 1> (Malak; stable identity: short dark hair) enters" in fixed
     assert "<Subject 2> (Primo; stable identity: wears a white shirt) and <Subject 3> (Rastas; stable identity: very long dreadlocks; active appearance Work uniform: Burger King uniform; wardrobe: red polo and cap) observe" in fixed
-    assert "including: very long dreadlocks" in fixed
+    assert "preserve active appearance Work uniform" in fixed
     assert "active appearance Work uniform" in fixed
+
+
+def test_studio_subject_contracts_keep_picture_identity_without_fake_placeholder_or_bare_audio_duplicate():
+    context = """AUTHORITATIVE REFERENCE RELATIONSHIPS:
+REQUIRED SUBJECT CONTRACTS:
+- SUBJECT CONTRACT JSON: {"appearanceState": {"description": "", "name": "Base", "stateId": "base"}, "description": "", "identitySources": ["<Picture 1>"], "label": "<Subject 1>", "name": "Malak", "voiceSource": "<Audio 1>"}
+- SUBJECT CONTRACT JSON: {"appearanceState": {"description": "", "name": "Base", "stateId": "base"}, "description": "", "identitySources": ["<Picture 2>"], "label": "<Subject 2>", "name": "Primo", "voiceSource": null}
+- SUBJECT CONTRACT JSON: {"appearanceState": {"description": "Very long dreadlocks", "name": "Base", "stateId": "base"}, "description": "", "identitySources": ["<Picture 3>"], "label": "<Subject 3>", "name": "Rastas", "voiceSource": null}
+- ENVIRONMENT CONTRACT JSON: {"name": "Can Misses", "shotNumbers": [1], "viewSources": [{"label": "<Picture 4>", "name": "can-misses", "role": "overview"}]}"""
+    generated = """subject_definitions:
+Audio 1 is the voice timbre and delivery reference for the speaker who has no reference asset of their own.
+
+summary:
+[audio reference] Independent reference roles are supplied by <Audio 1>.
+
+retention_analysis:
+reference: <Audio 1> preserves an anonymous speaker.
+attribute_transfer: The camera moves smoothly.
+
+detailed_description:
+[Shot 1] <Subject 1> (Malak), visible in <Picture 1>, enters. Primo (<Picture 2>) and Rastas (<Picture 3>) are present. Malak (S1) says <d>[Spanish] Hola</d>.
+
+overall_soundscape:
+Room tone.
+
+non_diegetic_music:
+N/A"""
+
+    fixed = normalize_reference_definitions(generated, "Malak enters.", context)
+
+    definitions = fixed.split("summary:", 1)[0]
+    assert "<Subject 1> is Malak; visual identity comes from <Picture 1>." in definitions
+    assert "<Subject 2> is Primo; visual identity comes from <Picture 2>." in definitions
+    assert "<Subject 3> is Rastas; visual identity comes from <Picture 3>; active appearance Base: Very long dreadlocks." in definitions
+    assert "Unspecified stable identity" not in fixed
+    assert "speaker who has no reference asset" not in fixed
+    assert "attribute_transfer: The camera moves smoothly" not in fixed
+    assert "exclusively for <Subject 1>" in definitions
+    assert '<Picture 4> is overview view "can-misses" of Scenario Can Misses' in definitions
+    assert "<Subject 3> (Rastas; active appearance Base: Very long dreadlocks)" in fixed
+    assert "<Subject 1> (<Subject 1>" not in fixed
+    assert "visible in <Picture 1>" not in fixed
+    assert "(<Picture 2>)" not in fixed
+    assert "<Subject 1> (S1)" not in fixed
+    assert '[Shot 1] The scene takes place at Scenario Can Misses as shown in <Picture 4>.' in fixed
+    assert 'Scenario Can Misses from <Picture 4>' in fixed
 
 
 def test_explicit_child_attributes_and_forced_exit_are_critical_source_facts():
