@@ -1050,11 +1050,29 @@ function renderBoard(container, controller, plan, project, rerender) {
         });
         return control;
     };
+    const placePropInShot = (propId) => {
+        const prop = (project?.props ?? []).find((item) => item.id === propId);
+        if (!prop) return false;
+        const alreadyPresent = (selected.props ?? []).some((entry) =>
+            entry.propId === propId && entry.presence !== "absent");
+        if (!alreadyPresent) {
+            setScenePropPresence(selected, propId, true);
+            ensurePropDesignBindings(project, plan, propId);
+            const committed = controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            if (!committed?.ok) return false;
+        }
+        controller.directorUiState.composeFeedback = alreadyPresent
+            ? `${prop.name || prop.id} is already in this Shot.`
+            : `${prop.name || prop.id} added to this Shot.`;
+        rerender();
+        return true;
+    };
     const layout = el("div", "minimax-h3-director-compose-grid");
     const stage = el("section", "minimax-h3-director-stage");
     stage.setAttribute("aria-label", "Selected Shot workspace");
     const backdrop = el("div", "minimax-h3-director-backdrop");
-    const backdropCopy = el("div"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
+    const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === selected.environment?.environmentId);
+    const backdropCopy = el("div", "minimax-h3-director-backdrop-copy"); backdropCopy.append(el("span", "minimax-h3-director-kicker", "BACKGROUND / SET"), el("strong", "", environmentName(selected, project)));
     if (selected.environment?.environmentId) backdropCopy.appendChild(button("Remove set", () => {
         const name = environmentName(selected, project);
         removeSceneEnvironmentFromShot(selected);
@@ -1064,7 +1082,36 @@ function renderBoard(container, controller, plan, project, rerender) {
             : committed?.message || `Could not remove ${name} from this Shot.`;
         rerender();
     }, "minimax-h3-director-text-button minimax-h3-director-remove-button"));
-    backdrop.append(backdropCopy);
+    const placeControls = el("div", "minimax-h3-director-place-controls");
+    const environmentSelect = el("select");
+    environmentSelect.setAttribute("aria-label", "Place or background for this Shot");
+    for (const [value, label] of [["", "Choose a Place…"], ...(project?.environments ?? []).map((environment) => [environment.id, environment.name || environment.id])]) {
+        const option = el("option", "", label); option.value = value; environmentSelect.appendChild(option);
+    }
+    environmentSelect.value = selected.environment?.environmentId ?? "";
+    environmentSelect.addEventListener("change", () => {
+        setSceneEnvironment(selected, environmentSelect.value, project);
+        if (environmentSelect.value) ensureEnvironmentViewBindings(project, plan, environmentSelect.value);
+        controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+        rerender();
+    });
+    placeControls.appendChild(environmentSelect);
+    if (activeEnvironment?.views?.length) {
+        const viewSelect = el("select");
+        viewSelect.setAttribute("aria-label", "Active Place view for this Shot");
+        for (const view of activeEnvironment.views) {
+            const option = el("option", "", view.name || view.id); option.value = view.id; viewSelect.appendChild(option);
+        }
+        viewSelect.value = selected.environment?.viewIds?.[0] || activeEnvironment.views[0].id;
+        viewSelect.addEventListener("change", () => {
+            selected.environment.viewIds = [viewSelect.value];
+            ensureEnvironmentViewBindings(project, plan, activeEnvironment.id);
+            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
+            rerender();
+        });
+        placeControls.appendChild(viewSelect);
+    }
+    backdrop.append(backdropCopy, placeControls);
     const backgroundMedia = el("div", "minimax-h3-director-backdrop-media");
     for (const asset of visualAssignments.backgroundAssets.slice(0, 2)) backgroundMedia.appendChild(composeBoundMedia(asset, sources[asset.id], "Background"));
     if (backgroundMedia.childElementCount) backdrop.appendChild(backgroundMedia);
@@ -1077,17 +1124,29 @@ function renderBoard(container, controller, plan, project, rerender) {
     const cast = makeShotSubjectDropReceiver(el("div", "minimax-h3-director-cast"));
     cast.setAttribute("aria-label", "Drop a Subject here to place it in this Shot");
     const names = subjectNames(selected, project);
-    if (!names.length) {
-        const onlySubject = (project?.subjects ?? []).length === 1 ? project.subjects[0] : null;
-        if (onlySubject) {
-            const emptyTarget = button(
-                selectedAsset ? `Place ${onlySubject.name || onlySubject.id} with ${selectedAsset.name || selectedAsset.id}` : `Drop a reference to place ${onlySubject.name || onlySubject.id}`,
-                () => connectSubjectAsset(onlySubject.id),
-                "minimax-h3-director-empty-subject-target",
+    const availableSubjects = (project?.subjects ?? []).filter((subject) =>
+        !(selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent"));
+    if (availableSubjects.length) {
+        const addCast = el("div", "minimax-h3-director-add-shelf");
+        addCast.appendChild(el("span", "", "Add cast from Library"));
+        for (const subject of availableSubjects) {
+            const identityAsset = (subject.identityAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
+            const addSubject = button("", () => placeSubjectInShot(subject.id), "minimax-h3-director-library-add-card");
+            addSubject.append(
+                composeSubjectAvatar(subject.name || subject.id, identityAsset, sources[identityAsset?.id]),
+                el("strong", "", subject.name || subject.id),
+                el("small", "", identityAsset ? "Identity ready" : "No picture"),
+                el("b", "", "+"),
             );
-            emptyTarget.setAttribute("aria-label", `Place ${onlySubject.name || onlySubject.id} in this Shot and connect the selected reference`);
-            makeSubjectDropReceiver(emptyTarget, onlySubject.id); cast.appendChild(emptyTarget);
-        } else cast.appendChild(el("p", "minimax-h3-director-placeholder", "Add a Subject from Shot setup above"));
+            addSubject.setAttribute("aria-label", `Add ${subject.name || subject.id} to this Shot`);
+            makeSubjectDragSource(addSubject, subject);
+            makeSubjectDropReceiver(addSubject, subject.id);
+            addCast.appendChild(addSubject);
+        }
+        cast.appendChild(addCast);
+    }
+    if (!names.length) {
+        if (!(project?.subjects ?? []).length) cast.appendChild(el("p", "minimax-h3-director-placeholder", "Create a Subject with the compact bar above, then add it here."));
     }
     for (const entry of (selected.subjects ?? []).filter((item) => item.presence !== "absent")) {
         const subject = (project?.subjects ?? []).find((candidate) => candidate.id === entry.subjectId);
@@ -1209,6 +1268,25 @@ function renderBoard(container, controller, plan, project, rerender) {
     const propHeading = el("div", "minimax-h3-director-scene-heading");
     propHeading.append(el("strong", "", "Objects & props"), el("small", "", "Reusable designs present in this Shot"));
     propShelf.appendChild(propHeading);
+    const availableProps = (project?.props ?? []).filter((prop) =>
+        !(selected.props ?? []).some((entry) => entry.propId === prop.id && entry.presence !== "absent"));
+    if (availableProps.length) {
+        const addProps = el("div", "minimax-h3-director-add-shelf minimax-h3-director-add-props");
+        addProps.appendChild(el("span", "", "Add objects from Library"));
+        for (const prop of availableProps) {
+            const designAsset = (prop.designAssetIds ?? []).map((id) => project.assets.find((asset) => asset.id === id)).find(Boolean);
+            const addProp = button("", () => placePropInShot(prop.id), "minimax-h3-director-library-add-card");
+            addProp.append(
+                composeSubjectAvatar(prop.name || prop.id, designAsset, sources[designAsset?.id]),
+                el("strong", "", prop.name || prop.id),
+                el("small", "", designAsset ? "Design ready" : "No picture"),
+                el("b", "", "+"),
+            );
+            addProp.setAttribute("aria-label", `Add ${prop.name || prop.id} to this Shot as an object`);
+            addProps.appendChild(addProp);
+        }
+        propShelf.appendChild(addProps);
+    }
     for (const entry of visualAssignments.props ?? []) {
         const card = el("article", "minimax-h3-director-prop-card");
         const asset = entry.designAssets[0];
@@ -1226,7 +1304,7 @@ function renderBoard(container, controller, plan, project, rerender) {
         card.append(composeSubjectAvatar(entry.prop.name || "P", asset, sources[asset?.id]), copy, removeProp);
         propShelf.appendChild(card);
     }
-    if (!(visualAssignments.props ?? []).length) propShelf.appendChild(el("p", "minimax-h3-director-placeholder", "Add an Object from Shot setup or mention it below."));
+    if (!(visualAssignments.props ?? []).length && !availableProps.length) propShelf.appendChild(el("p", "minimax-h3-director-placeholder", "Create an Object above or mention it below."));
     const action = el("label", "minimax-h3-director-action");
     action.appendChild(el("span", "minimax-h3-director-kicker", "VISIBLE ACTION · THIS SHOT"));
     const actionInput = el("textarea"); actionInput.value = selected.action ?? ""; actionInput.placeholder = "Describe what visibly changes during this Shot.";
@@ -1408,16 +1486,16 @@ function renderBoard(container, controller, plan, project, rerender) {
     const setupHeading = el("div", "minimax-h3-director-inspector-heading");
     const setupActions = el("div", "minimax-h3-director-setup-actions");
     setupActions.append(
-        button("+ Subject", () => { controller.directorUiState.creatingSubject = true; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
-        button("+ Environment", () => { controller.directorUiState.creatingEnvironment = true; controller.directorUiState.creatingSubject = false; rerender(); }, "minimax-h3-director-text-button"),
-        button("+ Prop", () => { controller.directorUiState.creatingProp = true; controller.directorUiState.creatingSubject = false; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
+        button("+ New subject", () => { controller.directorUiState.creatingSubject = true; controller.directorUiState.creatingEnvironment = false; controller.directorUiState.creatingProp = false; rerender(); }, "minimax-h3-director-text-button"),
+        button("+ New place", () => { controller.directorUiState.creatingEnvironment = true; controller.directorUiState.creatingSubject = false; controller.directorUiState.creatingProp = false; rerender(); }, "minimax-h3-director-text-button"),
+        button("+ New object", () => { controller.directorUiState.creatingProp = true; controller.directorUiState.creatingSubject = false; controller.directorUiState.creatingEnvironment = false; rerender(); }, "minimax-h3-director-text-button"),
         button("Manage Library", () => {
             controller.directorUiState.libraryMode = "subjects";
             controller.directorUiState.castPlacesMode = "subjects";
             controller.navigateStudio?.("library");
         }, "minimax-h3-director-text-button"),
     );
-    setupHeading.append(el("strong", "", "Shot setup"), setupActions);
+    setupHeading.append(el("strong", "", "Create new for this Shot"), setupActions);
     setup.appendChild(setupHeading);
     if (controller.directorUiState.creatingSubject) {
         const creator = el("form", "minimax-h3-director-inline-creator");
@@ -1476,68 +1554,6 @@ function renderBoard(container, controller, plan, project, rerender) {
             rerender();
         });
         creator.append(nameInput, create, cancel, status); setup.appendChild(creator); queueMicrotask(() => nameInput.focus());
-    }
-    const castPicker = el("div", "minimax-h3-director-cast-picker"); castPicker.setAttribute("aria-label", "Subjects in this Shot");
-    for (const subject of project?.subjects ?? []) {
-        const present = (selected.subjects ?? []).some((entry) => entry.subjectId === subject.id && entry.presence !== "absent");
-        const chip = button(subject.name || subject.id, () => {
-            setSceneSubjectPresence(selected, subject.id, !present);
-            if (!present) ensureSubjectBindings(project, plan, subject.id);
-            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
-            rerender();
-        }, "minimax-h3-director-cast-chip");
-        chip.setAttribute("aria-pressed", String(present)); castPicker.appendChild(chip);
-        chip.setAttribute("aria-label", `${present ? "Remove" : "Place"} ${subject.name || subject.id}; drop a reference to connect it`);
-        makeSubjectDragSource(chip, subject);
-        makeSubjectDropReceiver(chip, subject.id);
-    }
-    if (!(project?.subjects ?? []).length) castPicker.appendChild(el(
-        "span", "minimax-h3-director-placeholder",
-        "Create a Subject above or open Library · Subjects",
-    ));
-    setup.appendChild(castPicker);
-    const propPicker = el("div", "minimax-h3-director-cast-picker minimax-h3-director-prop-picker");
-    propPicker.setAttribute("aria-label", "Props in this Shot");
-    for (const prop of project?.props ?? []) {
-        const present = (selected.props ?? []).some((entry) => entry.propId === prop.id && entry.presence !== "absent");
-        const chip = button(prop.name || prop.id, () => {
-            setScenePropPresence(selected, prop.id, !present);
-            if (!present) ensurePropDesignBindings(project, plan, prop.id);
-            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
-            rerender();
-        }, "minimax-h3-director-cast-chip minimax-h3-shot-prop-chip");
-        chip.setAttribute("aria-pressed", String(present)); chip.setAttribute("aria-label", `${present ? "Remove" : "Add"} prop ${prop.name || prop.id}`); propPicker.appendChild(chip);
-    }
-    if (!(project?.props ?? []).length) propPicker.appendChild(el("span", "minimax-h3-director-placeholder", "Create a Prop above or open Library · Props"));
-    setup.appendChild(propPicker);
-    const environmentField = el("label", "minimax-h3-studio-field"); environmentField.appendChild(el("span", "", "Environment / background"));
-    const environmentSelect = el("select");
-    for (const [value, label] of [["", "No environment"], ...(project?.environments ?? []).map((environment) => [environment.id, environment.name || environment.id])]) {
-        const option = el("option", "", label); option.value = value; environmentSelect.appendChild(option);
-    }
-    environmentSelect.value = selected.environment?.environmentId ?? "";
-    environmentSelect.addEventListener("change", () => {
-        setSceneEnvironment(selected, environmentSelect.value, project);
-        if (environmentSelect.value) ensureEnvironmentViewBindings(project, plan, environmentSelect.value);
-        controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
-        rerender();
-    });
-    environmentField.appendChild(environmentSelect); setup.appendChild(environmentField);
-    const activeEnvironment = (project?.environments ?? []).find((environment) => environment.id === selected.environment?.environmentId);
-    if (activeEnvironment?.views?.length) {
-        const viewField = el("label", "minimax-h3-studio-field"); viewField.appendChild(el("span", "", "Active Place view"));
-        const viewSelect = el("select");
-        for (const view of activeEnvironment.views) {
-            const option = el("option", "", view.name || view.id); option.value = view.id; viewSelect.appendChild(option);
-        }
-        viewSelect.value = selected.environment?.viewIds?.[0] || activeEnvironment.views[0].id;
-        viewSelect.addEventListener("change", () => {
-            selected.environment.viewIds = [viewSelect.value];
-            ensureEnvironmentViewBindings(project, plan, activeEnvironment.id);
-            controller.replaceProjectBundleAtomically?.({ mediaProject: project, shotPlan: plan });
-            rerender();
-        });
-        viewField.appendChild(viewSelect); setup.appendChild(viewField);
     }
     stage.prepend(setup);
     stage.appendChild(composeLlmHandoffPanel(llmHandoff, sources));

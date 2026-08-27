@@ -352,7 +352,10 @@ test("Visual Compose keeps environment, dialogue and audio controls usable on na
     const stylesSource = readFileSync(new URL("../styles.js", import.meta.url), "utf8");
     const directorSource = readFileSync(new URL("../director_workspace.js", import.meta.url), "utf8");
     const trimSource = readFileSync(new URL("../audio_trim_editor.js", import.meta.url), "utf8");
-    assert.match(directorSource, /\+ Environment/);
+    assert.match(directorSource, /\+ New place/);
+    assert.match(directorSource, /Place or background for this Shot/);
+    assert.match(directorSource, /Add cast from Library/);
+    assert.match(directorSource, /Add objects from Library/);
     assert.match(directorSource, /Dialogue & sound/);
     assert.match(directorSource, /Exact spoken words/);
     assert.match(directorSource, /audio\.controls = true/);
