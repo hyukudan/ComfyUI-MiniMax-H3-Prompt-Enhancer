@@ -37,6 +37,9 @@ def test_dashboard_is_nonpersistent_dom_and_does_not_add_canonical_widgets():
     assert "node.addDOMWidget" not in drawer
     assert "createStudioDashboard" in drawer
     assert "data-studio-tab" in drawer
+    assert "What Prompt Studio sends" in drawer
+    assert "studioRequestPreview(controller)" in drawer
+    assert "setBasicPromptVisible?.(!preview.authoritative)" in drawer
 
 
 def test_shot_editor_supports_v2_camera_end_delta_and_fixed_row_virtualization():

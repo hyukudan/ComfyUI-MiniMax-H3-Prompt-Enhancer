@@ -12,6 +12,8 @@ The **MiniMax H3 Prompt Enhancer** includes a deterministic titles-and-credits d
 6. Choose whether the main title appears before or after the credits.
 7. Give the sequence enough duration for formation and readable holds.
 
+If Prompt Studio contains Shots, put the visual action and atmosphere in Storyboard; Studio is the sole prompt source and the old outer Basic prompt is not sent. The title and credit controls below remain authoritative and are applied after the Studio Shot plan is compiled. The Basic prompt example below describes only the legacy/no-Shot workflow.
+
 Example:
 
 ```text

@@ -369,6 +369,9 @@ def _studio_runtime_inputs(
     compiled_duration = duration_seconds
     if compiled["shotPlan"].get("timingMode") == "exact" and selected_shots:
         compiled_duration = sum(float(shot.get("durationSeconds", 0)) for shot in selected_shots)
+    # A populated Studio Project is the sole authoring authority. Keep the
+    # legacy widget value intact for old/empty projects, but never merge a
+    # second free-form description into authored Shots.
     resolved_basic_prompt = str(basic_prompt or "").strip()
     if selected_shots:
         subject_names = {
@@ -376,7 +379,6 @@ def _studio_runtime_inputs(
             for subject in compiled["mediaProject"].get("subjects", [])
         }
         shot_summaries = []
-        authored_dialogue = []
         for index, shot in enumerate(selected_shots, start=1):
             action = str(shot.get("action") or "").strip()
             parts = [action] if action else []
@@ -396,17 +398,11 @@ def _studio_runtime_inputs(
                     mood = f" with {str(dialogue.get('mood')).strip()} tone" if str(dialogue.get("mood") or "").strip() else ""
                     line = f"{speaker} {delivery}{channel}{mood} “{text}”"
                     parts.append(line)
-                    if text.casefold() not in resolved_basic_prompt.casefold():
-                        authored_dialogue.append(line)
             summary = " ".join(part for part in parts if part).strip()
             if len(selected_shots) > 1:
                 summary = f"Shot {index}: {summary}"
             shot_summaries.append(summary)
-        if not resolved_basic_prompt:
-            resolved_basic_prompt = "\n".join(part for part in shot_summaries if part)
-        elif authored_dialogue:
-            resolved_basic_prompt += "\n\nAuthored dialogue from Prompt Studio (preserve exact words):\n"
-            resolved_basic_prompt += "\n".join(authored_dialogue)
+        resolved_basic_prompt = "\n".join(part for part in shot_summaries if part)
     return {
         "basic_prompt": resolved_basic_prompt,
         "mode": compiled["mediaProject"].get("mode", mode),

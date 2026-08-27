@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dashboardSummaries } from "../drawer.js";
+import { dashboardSummaries, studioRequestPreview } from "../drawer.js";
 import { effectivePictureBindingRole } from "../media_model.js";
 import { groupDiagnostics } from "../tab_coach.js";
 import { bindingRoleLabel, physicalLabel } from "../tab_references.js";
@@ -58,4 +58,48 @@ test("dashboard summaries use canonical widget documents", () => {
         diagnostics: () => ({ diagnostics: [{}, {}, {}, {}] }),
     });
     assert.deepEqual(summary, { shots: 2, staged: 0, subjects: 1, environments: 2, assets: 3, active: 2, diagnostics: 4 });
+});
+
+test("node request preview describes only the generation sent by Studio v3", () => {
+    const preview = studioRequestPreview({
+        selectedGenerationId: () => "g2",
+        studioProjectDocument: () => ({ kind: "v3", value: {
+            subjects: [{ id: "ana", name: "Ana" }, { id: "sergio", name: "Sergio" }],
+            environments: [{ id: "roof", name: "Rooftop" }],
+            generations: [{ id: "g1" }, { id: "g2" }],
+            shots: [
+                { id: "s1", generationId: "g1", action: "Not selected." },
+                {
+                    id: "s2", generationId: "g2", action: "Ana turns toward Sergio.",
+                    cast: [{ subjectId: "ana", presence: "present" }, { subjectId: "sergio", presence: "present" }],
+                    environment: { environmentId: "roof" },
+                    actionBeats: [{ dialogue: { speakerId: "ana", text: "Run." } }],
+                    referenceBindings: [{ fileId: "ana.face" }], cameraPath: { motionType: "push_in" },
+                },
+            ],
+        } }),
+    });
+    assert.equal(preview.authoritative, true);
+    assert.equal(preview.generationId, "g2");
+    assert.deepEqual(preview.shots, [{
+        id: "s2", label: "Shot 01", action: "Ana turns toward Sergio.",
+        cast: ["Ana", "Sergio"], environment: "Rooftop", dialogue: 1, references: 1, camera: true,
+    }]);
+});
+
+test("node request preview leaves the legacy description available until Shots exist", () => {
+    assert.deepEqual(studioRequestPreview({ studioProjectDocument: () => ({ kind: "v3", value: { shots: [] } }) }), {
+        authoritative: false, shots: [], total: 0, generationId: "",
+    });
+});
+
+test("node request preview uses the live canonical projections while an older workflow synchronizes v3", () => {
+    const preview = studioRequestPreview({
+        studioProjectDocument: () => ({ kind: "v3", value: { shots: [], generations: [{ id: "g1" }] } }),
+        shotDocument: () => ({ kind: "v2", value: { shots: [{ id: "s1", generationId: "g1", action: "The lighthouse turns." }] } }),
+        projectDocument: () => ({ kind: "v2", value: { generations: [{ id: "g1" }], subjects: [], environments: [] } }),
+        selectedGenerationId: () => "",
+    });
+    assert.equal(preview.authoritative, true);
+    assert.equal(preview.shots[0].action, "The lighthouse turns.");
 });

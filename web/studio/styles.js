@@ -83,6 +83,56 @@ export function ensureStudioStyles() {
         .minimax-h3-chip-count:empty { display: none; }
         .minimax-h3-dashboard button:hover { border-color: var(--h3-accent); }
         .minimax-h3-dashboard button:focus-visible { outline: none; box-shadow: var(--h3-focus); }
+        .minimax-h3-node-request {
+            grid-column: 1 / -1;
+            display: grid;
+            gap: var(--h3-space-2);
+            border: 1px solid color-mix(in srgb, var(--h3-accent) 28%, var(--h3-border));
+            border-radius: var(--h3-radius-md);
+            padding: var(--h3-space-3);
+            background: color-mix(in srgb, var(--h3-accent) 6%, var(--h3-surface));
+        }
+        .minimax-h3-node-request[hidden] { display: none; }
+        .minimax-h3-node-request-header,
+        .minimax-h3-node-request-shot {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--h3-space-3);
+        }
+        .minimax-h3-node-request-heading,
+        .minimax-h3-node-request-copy { display: grid; min-width: 0; gap: 2px; }
+        .minimax-h3-node-request-heading small,
+        .minimax-h3-node-request-facts,
+        .minimax-h3-node-request-footer { color: var(--h3-text-muted); }
+        .minimax-h3-node-request-edit {
+            flex: 0 0 auto;
+            border: 1px solid var(--h3-border);
+            border-radius: 999px;
+            padding: 4px 9px;
+            background: var(--h3-surface-raised);
+            cursor: pointer;
+        }
+        .minimax-h3-node-request-list { display: grid; gap: var(--h3-space-1); }
+        .minimax-h3-node-request-shot {
+            align-items: start;
+            border-top: 1px solid color-mix(in srgb, var(--h3-border) 65%, transparent);
+            padding-top: var(--h3-space-2);
+        }
+        .minimax-h3-node-request-copy { flex: 1 1 52%; }
+        .minimax-h3-node-request-copy span {
+            display: -webkit-box;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+        .minimax-h3-node-request-facts { flex: 1 1 42%; text-align: right; overflow-wrap: anywhere; }
+        @media (max-width: 520px) {
+            .minimax-h3-node-request-shot { display: grid; }
+            .minimax-h3-node-request-facts { text-align: left; }
+        }
 
         .minimax-h3-studio {
             position: fixed;

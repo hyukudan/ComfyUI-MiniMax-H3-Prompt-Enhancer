@@ -355,7 +355,7 @@ def test_compose_shots_supply_basic_prompt_when_manual_text_is_blank():
     assert resolved["basic_prompt"] == "Ana opens the door. Ana whispers “Ya estoy aquí.”"
 
 
-def test_manual_basic_prompt_remains_authoritative_over_compose_summary():
+def test_prompt_studio_shots_are_authoritative_over_legacy_description():
     studio = {
         "schemaVersion": 3,
         "project": {"name": "Manual", "mode": "t2va", "timingMode": "auto", "look": {}},
@@ -369,10 +369,10 @@ def test_manual_basic_prompt_remains_authoritative_over_compose_summary():
         studio_project_json=json.dumps(studio), basic_prompt="Manual direction.",
     )
 
-    assert resolved["basic_prompt"] == "Manual direction."
+    assert resolved["basic_prompt"] == "Visual action."
 
 
-def test_compose_dialogue_joins_manual_prompt_as_an_exact_source_contract():
+def test_compose_action_and_dialogue_replace_legacy_description_as_one_source_contract():
     studio = {
         "schemaVersion": 3,
         "project": {"name": "Manual with dialogue", "mode": "t2va", "timingMode": "auto", "look": {}},
@@ -394,12 +394,12 @@ def test_compose_dialogue_joins_manual_prompt_as_an_exact_source_contract():
         studio_project_json=json.dumps(studio), basic_prompt="A solitary night scene.",
     )
 
-    assert resolved["basic_prompt"].startswith("A solitary night scene.")
-    assert "Authored dialogue from Prompt Studio (preserve exact words):" in resolved["basic_prompt"]
+    assert resolved["basic_prompt"].startswith("Ana watches the empty road.")
+    assert "A solitary night scene." not in resolved["basic_prompt"]
     assert 'Ana whispers in voice-over with calm, steady tone “No mires atrás.”' in resolved["basic_prompt"]
 
 
-def test_compose_dialogue_is_not_duplicated_when_manual_prompt_already_contains_it():
+def test_compose_dialogue_does_not_merge_with_a_legacy_duplicate():
     studio = {
         "schemaVersion": 3,
         "project": {"name": "No duplicate", "mode": "t2va", "timingMode": "auto", "look": {}},
@@ -417,7 +417,15 @@ def test_compose_dialogue_is_not_duplicated_when_manual_prompt_already_contains_
         studio_project_json=json.dumps(studio), basic_prompt=manual,
     )
 
-    assert resolved["basic_prompt"] == manual
+    assert resolved["basic_prompt"] == "A voice is heard. A subject says “Stay here.”"
+
+
+def test_legacy_description_remains_available_without_studio_project():
+    resolved = prompt_enhancer_node._studio_runtime_inputs(
+        studio_project_json="", basic_prompt="Legacy direction.",
+    )
+
+    assert resolved["basic_prompt"] == "Legacy direction."
 
 
 def test_every_prompt_studio_shot_family_reaches_the_llm_user_request():

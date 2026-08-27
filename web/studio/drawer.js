@@ -720,6 +720,45 @@ export function dashboardSummaries(controller) {
     return { shots, staged, subjects, environments, assets, active, diagnostics };
 }
 
+export function studioRequestPreview(controller) {
+    const studio = controller.studioProjectDocument?.();
+    const shotDocument = controller.shotDocument?.();
+    const projectDocument = controller.projectDocument?.();
+    const useAggregate = studio?.kind === "v3" && studio.value?.shots?.length > 0;
+    const shotsSource = useAggregate ? studio.value.shots : shotDocument?.kind === "v2" ? shotDocument.value?.shots ?? [] : [];
+    if (!shotsSource.length) {
+        return { authoritative: false, shots: [], total: 0, generationId: "" };
+    }
+    const project = useAggregate ? studio.value : projectDocument?.kind === "v2" ? projectDocument.value : {};
+    const requestedGenerationId = controller.selectedGenerationId?.() ?? "";
+    const generationId = requestedGenerationId
+        || project.generations?.find((generation) => generation?.id)?.id
+        || shotsSource[0]?.generationId
+        || "";
+    const selected = generationId
+        ? shotsSource.filter((shot) => !shot?.generationId || shot.generationId === generationId)
+        : shotsSource;
+    const subjects = new Map((project.subjects ?? []).map((subject) => [subject.id, subject.name || subject.id]));
+    const environments = new Map((project.environments ?? []).map((environment) => [environment.id, environment.name || environment.id]));
+    const shots = selected.map((shot, index) => {
+        const cast = (shot?.cast ?? shot?.subjects ?? [])
+            .filter((item) => item?.presence !== "absent")
+            .map((item) => subjects.get(item?.subjectId) || item?.subjectId)
+            .filter(Boolean);
+        const environment = environments.get(shot?.environment?.environmentId) || shot?.environment?.environmentId || "";
+        const dialogue = (shot?.actionBeats ?? []).filter((beat) => String(beat?.dialogue?.text ?? "").trim()).length;
+        const references = (shot?.referenceBindings ?? shot?.referenceUses ?? []).length;
+        const camera = Boolean(shot?.cameraStart || shot?.cameraPath || shot?.cameraEnd || shot?.cameraMotion);
+        return {
+            id: shot?.id || `shot.${index + 1}`,
+            label: `Shot ${String(index + 1).padStart(2, "0")}`,
+            action: String(shot?.action || shot?.openingState || "Action missing").trim(),
+            cast, environment, dialogue, references, camera,
+        };
+    });
+    return { authoritative: shots.length > 0, shots, total: shots.length, generationId };
+}
+
 export function createStudioDashboard(node, controller) {
     ensureStudioStyles();
     const root = createPanelElement("div", "minimax-h3-dashboard");
@@ -747,8 +786,47 @@ export function createStudioDashboard(node, controller) {
         ["look", "Look", "look", () => ""],
         ["review", "Review & Generate", "review", (summary) => summary.diagnostics],
     ];
+    const request = createPanelElement("section", "minimax-h3-node-request");
+    const requestHeader = createPanelElement("div", "minimax-h3-node-request-header");
+    const requestHeading = createPanelElement("div", "minimax-h3-node-request-heading");
+    requestHeading.append(
+        createPanelElement("strong", "", "What Prompt Studio sends"),
+        createPanelElement("small", "", "Read-only · Studio Project v3 is the request source"),
+    );
+    const edit = createPanelElement("button", "minimax-h3-node-request-edit", "Edit Storyboard");
+    edit.type = "button";
+    edit.addEventListener("click", () => openStudioDrawer(node, controller, primaryDestination, edit));
+    requestHeader.append(requestHeading, edit);
+    const requestList = createPanelElement("div", "minimax-h3-node-request-list");
+    const requestFooter = createPanelElement("small", "minimax-h3-node-request-footer");
+    request.append(requestHeader, requestList, requestFooter);
     const refresh = () => {
         const summary = dashboardSummaries(controller);
+        const preview = studioRequestPreview(controller);
+        controller.setBasicPromptVisible?.(!preview.authoritative);
+        request.hidden = !preview.authoritative;
+        requestList.replaceChildren();
+        if (preview.authoritative) {
+            for (const shot of preview.shots.slice(0, 3)) {
+                const row = createPanelElement("article", "minimax-h3-node-request-shot");
+                const copy = createPanelElement("div", "minimax-h3-node-request-copy");
+                copy.append(
+                    createPanelElement("strong", "", shot.label),
+                    createPanelElement("span", "", shot.action),
+                );
+                const facts = [
+                    shot.cast.length ? shot.cast.join(", ") : "No cast",
+                    shot.environment || "No environment",
+                    shot.dialogue ? `${shot.dialogue} dialogue` : "No dialogue",
+                    shot.references ? `${shot.references} shot ref${shot.references === 1 ? "" : "s"}` : "No shot refs",
+                    shot.camera ? "Camera set" : "Camera automatic",
+                ];
+                row.append(copy, createPanelElement("small", "minimax-h3-node-request-facts", facts.join(" · ")));
+                requestList.appendChild(row);
+            }
+            const remaining = preview.total - Math.min(3, preview.total);
+            requestFooter.textContent = `${preview.total} Shot${preview.total === 1 ? "" : "s"}${preview.generationId ? ` · ${preview.generationId}` : ""}${remaining ? ` · ${remaining} more in Storyboard` : ""}`;
+        }
         const isOpen = studioDrawerIsOpenFor(node.id);
         open.querySelector("span").textContent = isOpen ? `Close ${workspaceName}` : openLabel;
         open.setAttribute("aria-pressed", String(isOpen));
@@ -771,6 +849,7 @@ export function createStudioDashboard(node, controller) {
         strip.appendChild(chip);
     }
     root.appendChild(strip);
+    root.appendChild(request);
     refresh();
     return { root, refresh };
 }

@@ -3161,8 +3161,22 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
                 fps: 24,
             };
         },
-        basicPrompt() {
+        legacyBasicPrompt() {
             return String(node.widgets?.find((widget) => widget.name === "basic_prompt")?.value ?? "").trim();
+        },
+        basicPrompt() {
+            const studio = this.studioProjectDocument();
+            const shots = this.shotDocument();
+            if ((studio.kind === "v3" && (studio.value?.shots?.length ?? 0) > 0)
+                || (shots.kind === "v2" && (shots.value?.shots?.length ?? 0) > 0)) return "";
+            return this.legacyBasicPrompt();
+        },
+        selectedGenerationId() {
+            return String(generationWidget?.value ?? "").trim();
+        },
+        setBasicPromptVisible(visible) {
+            setWidgetVisible(node.widgets?.find((widget) => widget.name === "basic_prompt"), visible);
+            scheduleCreativePanelLayout(node);
         },
         async runStudioNode() {
             if (typeof app.queuePrompt !== "function") throw new Error("ComfyUI queue is unavailable.");
@@ -3427,6 +3441,7 @@ function createStudioController(node, { mediaWidgetName = MEDIA_PROJECT_WIDGET }
             node.graph?.setDirtyCanvas?.(true, true);
             node.setDirtyCanvas?.(true, true);
             refreshStudioDrawer(node.id);
+            node.__minimaxStudioDashboard?.refresh();
             return { ok: true, rolledBack: false };
         },
         lookNames() {
