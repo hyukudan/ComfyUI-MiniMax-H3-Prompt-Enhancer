@@ -55,6 +55,90 @@ Explore the specialized guides in [`docs/`](docs/):
 
 ---
 
+## Requirements
+
+**This pack ships no model weights and no binaries.** It writes prompts — you supply the
+LLM that writes them. That is the single most common setup question, so: pick one of these.
+
+| | What you provide | Best for |
+|---|---|---|
+| **A. OpenAI-compatible API** | [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.com) | Getting started. No paths, no binaries. |
+| **B. Local GGUF** | `llama-server` + any instruct `.gguf` | Full VRAM control, nothing else running. |
+
+Any competent instruct model works — this pack does not require a specific one. A 7B-class
+quantized model (`Q4_K_M` or better) is plenty.
+
+### Option A — LM Studio / Ollama
+
+Nothing to download here beyond the app itself. Load a model in its UI, start its server,
+and use the **Kirei MiniMax H3 Prompt Enhancer** node. Default endpoints:
+`http://127.0.0.1:1234/v1` (LM Studio) or `http://127.0.0.1:11434/v1` (Ollama).
+
+### Option B — Local GGUF: the two files and where they go
+
+Use the **Kirei MiniMax H3 GGUF Prompt Enhancer** node. It needs two paths:
+
+**1. The `llama-server` binary** — grab a prebuilt one from the
+[llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases). No compiling needed.
+Pick the build matching your GPU (e.g. `cuda` on NVIDIA). Unzip it anywhere you like, for
+example:
+
+```
+ComfyUI/models/llm_gguf/llama.cpp/llama-server.exe     # Windows
+ComfyUI/models/llm_gguf/llama.cpp/llama-server         # Linux / macOS
+```
+
+Then set the node's **`llama_server_path`** to that full path.
+
+**2. A GGUF model** — download any instruct GGUF from HuggingFace and place it in:
+
+```
+ComfyUI/models/llm_gguf/
+```
+
+Then set the node's **`gguf_model_path`** to the full path of the `.gguf` file.
+
+> **Note:** `llama_server_path` and `gguf_model_path` are **text fields — type or paste the
+> full path**. They are not dropdowns. Use `registered_model_dirs` if you keep models in
+> extra folders you want the node to know about.
+
+Leave `keep_server_loaded = false` so the server starts only for prompt enhancement and
+releases 100% of your VRAM before MiniMax H3 begins sampling.
+
+---
+
+## Installation
+
+### Via ComfyUI Manager
+Search for `ComfyUI-MiniMax-H3-Prompt-Enhancer` in the ComfyUI Manager and install.
+
+### Manual Installation
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer.git
+```
+
+No external Python dependencies are required beyond ComfyUI's standard environment.
+**You still need an LLM backend — see [Requirements](#requirements) above.**
+
+---
+
+## Using the enhanced prompt in ANY workflow
+
+You do not need the example workflows. Connect the node's **`enhanced_prompt`** output to
+the text input of whatever prompt node your graph already uses — the official ComfyUI H3
+workflow included. That is the whole integration.
+
+This pack produces **text**, not images or video. The example graphs end in a Show Text
+node purely so you can read the result. These outputs are also meant to drive your
+generation nodes directly:
+
+- `enhanced_prompt` → your text encoder / prompt field
+- `width`, `height`, `duration_seconds`, `aspect_ratio` → your latent and length nodes
+- `ref_image_*`, `ref_video_*`, `ref_audio_*` → the identically named native H3 reference inputs
+
+---
+
 ## Quick Start
 
 ### 1. Using LM Studio / Ollama (OpenAI-compatible API)
@@ -68,7 +152,7 @@ Explore the specialized guides in [`docs/`](docs/):
 
 1. Place any quantized `.gguf` model in `ComfyUI/models/llm_gguf/`.
 2. Add **MiniMax H3 GGUF Prompt Enhancer** to your canvas.
-3. Select your `.gguf` file from the dropdown.
+3. Paste the full path to your `.gguf` into `gguf_model_path`, and the path to `llama-server` into `llama_server_path`. Both are text fields, not dropdowns.
 4. Leave `keep_server_loaded = false` to start the server during prompt enhancement and immediately reclaim 100% of your GPU VRAM before MiniMax H3 begins sampling.
 
 ---
@@ -381,21 +465,6 @@ So the tokens are injected **after validation**, where a repair pass can no long
 Source dialogue is detected from quoted text next to a speech cue. That cue list now covers the ordinary verbs writers actually reach for — `answers`, `murmurs`, `mutters`, `mumbles`, `yells`, `screams`, `insists`, `pleads`, `begs` — alongside `says`, `replies`, `asks`, `shouts`, `whispers`, `sings` and their Spanish equivalents.
 
 `answers` was missing, which had a nasty shape: the user's own line went undetected as source dialogue and validation then rejected it as **invented** dialogue, blaming the writer for text the user had typed. A cue only counts immediately beside a quoted string, so these verbs cannot fire on ordinary prose — *He repeats the gesture and picks up "the red book"* is still not dialogue.
-
----
-
-## Installation
-
-### Via ComfyUI Manager
-Search for `ComfyUI-MiniMax-H3-Prompt-Enhancer` in the ComfyUI Manager and install.
-
-### Manual Installation
-```bash
-cd ComfyUI/custom_nodes
-git clone https://github.com/hyukudan/ComfyUI-MiniMax-H3-Prompt-Enhancer.git
-```
-
-No external Python dependencies are required beyond ComfyUI's standard environment.
 
 ---
 
